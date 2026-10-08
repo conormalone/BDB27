@@ -28,7 +28,7 @@ Raw data lives on the USB drive (`data/raw` → `/mnt/project_data/conor_downloa
 
 ## Status
 - [x] Prior-work scan — `research/prior-work-scan.md` (8 Oct 2026)
-- [ ] De-risk prototype: drill-order / time-of-day recoverability; attempt-to-attempt 40-yd decay; how much survives controls
+- [x] De-risk prototype: drill-order / time-of-day recoverability; attempt-to-attempt 40-yd decay; how much survives controls — `notebooks/01_de_risk_prototype.ipynb`, `specs/de-risk-findings.md`
 - [ ] Identification strategy spec
 - [ ] Full analysis + writeup
 
