@@ -55,7 +55,8 @@ def test_audit_invariants() -> str:
     assert summ["a"]["timing_field_present"] is True
     assert summ["a"]["order_agree_frac"] >= 0.99
     assert summ["gate"]["verdict"] in {"GO", "NO-GO"}
-    assert summ["recommendation"]["position_group"] in {"DB", "DL", "OL", "WR", "TE"}
+    assert summ["recommendation"]["position_group"] == "DB"
+    assert summ["recommendation"]["position_group_locked"] is True
     # every audit CSV carries the provenance column
     for csvf in out.glob("*.csv"):
         head = csvf.read_text().splitlines()[0]
@@ -106,6 +107,14 @@ def test_assumptions_check() -> str:
     assert set(df["status"]) <= {"PASS", "FAIL", "INFO", "SKIP", "PENDING"}
     fails = set(df.loc[df["status"] == "FAIL", "assumption_id"])
     assert fails <= {"A5r"}, f"unexpected assumption failure(s): {fails}"
+    # N1: A12 must KEEP draft position as a control (structural "undrafted", not missing).
+    a12 = df[df["assumption_id"] == "A12"]
+    assert len(a12) == 1, "A12 row missing"
+    detail = str(a12.iloc[0]["detail"]).lower()
+    assert "structural" in detail and "undrafted" in detail and "keep" in detail, \
+        f"A12 detail must record the structural-undrafted KEEP decision: {detail}"
+    assert set(a12["status"]) <= {"INFO", "PASS"}, \
+        f"A12 status must be INFO/PASS (draft position kept), got {set(a12['status'])}"
     return PASS
 
 

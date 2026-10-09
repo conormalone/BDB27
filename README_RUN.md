@@ -27,6 +27,9 @@ Game-tracking full files (`game_tracking_2023/24/25.csv`) are **not** in the rep
 
 Currently implemented: **`01_audit.py`** (Phase 0/1). Later stages follow in subsequent cycles.
 
+_Deferred Engineering gaps (D15): dtype downcasting is not yet applied, and only the CSV→Parquet
+conversion is checkpointed (stage outputs re-execute unless `--force` covers them) — deferred to Phase 2+._
+
 ```bash
 # Phase 1 audit (sample)
 python src/01_audit.py --mode sample
@@ -54,8 +57,10 @@ python src/01_audit.py --mode full
 - **Drill family = ALL drills** (D12, human decision 2026-10-09; supersedes D3's 40-yd-only pick). Configured
   in `config.yaml` under `audit.families`; the tighter `timed_battery` (40 + 3-cone + shuttle) is available
   for sensitivity.
-- **Position scope = DB-only *recommended*, NOT locked** (D13) — needs sign-off. Evidence in
-  `outputs/audit/h_family_scope.csv`.
+- **Position scope = DB only, LOCKED** (D13; human decision 2026-10-09; `config.yaml` `audit.study_population`).
+  A **single** position group, which satisfies TASK.md Phase 1 ("select ONE position group"). WR is excluded
+  because WR in-game intensity depends on offensive scheme (between-system noise). No Phase-3 position terms
+  (the LMM is the spec formula as written). Evidence in `outputs/audit/h_family_scope.csv`.
 
 ## 5. Expected cost (Pi 5, 4 GB)
 

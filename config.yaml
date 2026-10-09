@@ -54,6 +54,21 @@ audit:
   max_combine_bytes: 1000000000        # A11 guard: combine_tracking must fit in RAM (<~1 GB)
   sample_row_count: 1048576            # observed cap in game_tracking_2023_sample.csv (2^20); sample-draw sanity
 
+  # LOCKED study population (position group) for the Phase 5 link. Human decision D13
+  # (Conor 2026-10-09): DB ONLY. WR is EXCLUDED — WR in-game intensity depends on
+  # offensive scheme, injecting between-system noise into the decay signal. A single
+  # position group satisfies TASK.md Phase 1 ("select ONE position group"); no position
+  # terms are pre-registered (the Phase-3 LMM is the spec formula as written).
+  study_population: DB
+
+  # ---- In-code assertion thresholds (N7: no magic numbers left in src/01_audit.py) ----
+  assert_attempt_time_min: 0.99        # A2: min attempt~time agreement fraction
+  assert_median_dt_s: 0.10             # A3: nominal inter-frame Δt (10 Hz)
+  assert_forty_span_yd: [38.0, 42.0]   # A4: 40-yd straight-line median span bounds (yd)
+  null_exclusion_pct: 20.0             # A12/N1: >this % null → exclude control. Applied to
+                                       # NON-STRUCTURAL missingness ONLY (draft position's
+                                       # nulls are the structural "undrafted" category).
+
   # ---- Drill families for the position-scope evidence (D12) ----
   # The repeated maximal-effort FAMILY = ALL drills (human decision 2026-10-09).
   # SKILL_DRILLS_{WR,DB,DL,OL,TE,LB} are position-specific blocks and are included.

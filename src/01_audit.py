@@ -174,17 +174,24 @@ def audit_b(con, T: str, R: str, cfg: dict[str, Any]) -> pd.DataFrame:
     """
     pos = cfg["audit"]["positions_of_interest"]
     pos_list = ", ".join(f"'{p}'" for p in pos)
-    att = _attempt_expr(cfg)
+    # N4 fix: actually USE the configured counting unit. `n_att` is now the sum of the
+    # configured unit (`att`, default event_id); the event_id/slot counts are kept as
+    # diagnostics. For the current unit (event_id) the result is identical to the old
+    # `sum(n_att_ev)` (each event_id belongs to exactly one (nfl_id, drill_name, attempt),
+    # so summing distinct event_id over the drill_name sub-groups cannot double-count);
+    # the parity is asserted below.
+    att = _attempt_expr(cfg, "t")
     sql = f"""
     WITH series AS (
-        SELECT nfl_id, drill_type, drill_name,
-               count(DISTINCT attempt)  AS n_att_slot,
-               count(DISTINCT event_id) AS n_att_ev
-        FROM {T} WHERE entity_type = 'PLAYER'
+        SELECT t.nfl_id, t.drill_type, t.drill_name,
+               {att}                          AS n_att_unit,
+               count(DISTINCT t.attempt)      AS n_att_slot,
+               count(DISTINCT t.event_id)     AS n_att_ev
+        FROM {T} t WHERE t.entity_type = 'PLAYER'
         GROUP BY 1, 2, 3
-    ), pp AS (   -- per player per drill_type: total observed attempts
+    ), pp AS (   -- per player per drill_type: total observed attempts (configured unit)
         SELECT nfl_id, drill_type,
-               sum(n_att_ev)   AS n_att,
+               sum(n_att_unit) AS n_att,
                count(*)        AS n_series
         FROM series GROUP BY 1, 2
     ), p AS (
@@ -203,7 +210,16 @@ def audit_b(con, T: str, R: str, cfg: dict[str, Any]) -> pd.DataFrame:
     GROUP BY 1, 2
     ORDER BY 1, total_attempts DESC, pp.drill_type
     """
-    return con.execute(sql).df()
+    df = con.execute(sql).df()
+    # N4: for the current unit (event_id) the configured-unit total must reproduce the
+    # event_id-based total exactly. Guards against a silent unit regression.
+    if cfg["audit"].get("attempt_count_unit", "event_id") == "event_id":
+        ev_total = int(_scalar(con, f"SELECT count(DISTINCT event_id) FROM {T} "
+                                   f"WHERE entity_type = 'PLAYER'") or 0)
+        unit_total = int(df["total_attempts"].sum()) if len(df) else 0
+        assert unit_total == ev_total, (
+            f"audit_b unit mismatch: configured-unit total {unit_total} != event_id total {ev_total}")
+    return df
 
 
 # --------------------------------------------------------------------------- #
@@ -463,7 +479,8 @@ def _family_filter(cfg: dict[str, Any], family: str) -> str:
 
 
 def audit_h_position_scope(con, T: str, R: str, cfg: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """(h) Position-scope evidence (numbers only; the choice is NOT locked here).
+    """(h) Position-scope evidence (numbers only; the population choice lives in
+    `recommend`, LOCKED to DB only by D13).
 
     Returns two frames:
       h1: per position_group x drill_type x drill_name — players reaching >=1/>=2/>=3
@@ -569,21 +586,24 @@ def verify_assumptions(con, cfg: dict[str, Any], T: str, R: str,
         "PASS" if trk == res else "FAIL", f"tracking={trk} results={res}")
     assert trk == res, f"A1 violated: tracking={trk} results={res}"
 
-    # A2 — naive timestamps + attempt~time agreement.
+    # A2 — naive timestamps + attempt~time agreement (threshold from config, N7).
     a = results.get("a", {})
     agree, naive = a.get("order_agree_frac"), a.get("time_is_naive")
-    ok2 = bool(naive) and agree is not None and float(agree) >= 0.99
-    rec("A2", "time is naive (no TZ) and attempt~time agreement >= 0.99",
+    agree_min = float(cfg["audit"].get("assert_attempt_time_min", 0.99))
+    ok2 = bool(naive) and agree is not None and float(agree) >= agree_min
+    rec("A2", f"time is naive (no TZ) and attempt~time agreement >= {agree_min}",
         "PASS" if ok2 else "FAIL", f"naive={naive} agreement={agree}")
-    assert ok2, f"A2 violated: naive={naive} agreement={agree}"
+    assert ok2, f"A2 violated: naive={naive} agreement={agree} (min {agree_min})"
 
-    # A3 — 10 Hz sampling.
+    # A3 — 10 Hz sampling (nominal Δt from config, N7).
     med_dt = (results.get("f") or {}).get("median_dt_s")
-    ok3 = med_dt is not None and abs(float(med_dt) - 0.1) < 1e-6
-    rec("A3", "median inter-frame dt == 0.1 s (10 Hz)", "PASS" if ok3 else "FAIL", f"median_dt_s={med_dt}")
-    assert ok3, f"A3 violated: median_dt_s={med_dt}"
+    nominal_dt = float(cfg["audit"].get("assert_median_dt_s", 0.10))
+    ok3 = med_dt is not None and abs(float(med_dt) - nominal_dt) < 1e-6
+    rec("A3", f"median inter-frame dt == {nominal_dt} s (10 Hz)", "PASS" if ok3 else "FAIL",
+        f"median_dt_s={med_dt}")
+    assert ok3, f"A3 violated: median_dt_s={med_dt} (expected {nominal_dt})"
 
-    # A4 — 40-yd straight-line span ~ [38,42] yd (median is robust to frame tails).
+    # A4 — 40-yd straight-line span ~ [lo,hi] yd (bounds from config, N7).
     span = con.execute(f"""
         WITH agg AS (
             SELECT event_id, sqrt(pow(max(x)-min(x),2)+pow(max(y)-min(y),2)) AS extent
@@ -592,10 +612,11 @@ def verify_assumptions(con, cfg: dict[str, Any], T: str, R: str,
                round(quantile_cont(extent,0.5),2)  AS p50,
                round(quantile_cont(extent,0.95),2) AS p95 FROM agg
     """).df().iloc[0].to_dict()
-    ok4 = span["p50"] is not None and 38.0 <= float(span["p50"]) <= 42.0
-    rec("A4", "40-yd straight-line span median in [38,42] yd",
+    span_lo, span_hi = (float(x) for x in cfg["audit"].get("assert_forty_span_yd", [38.0, 42.0]))
+    ok4 = span["p50"] is not None and span_lo <= float(span["p50"]) <= span_hi
+    rec("A4", f"40-yd straight-line span median in [{span_lo},{span_hi}] yd",
         "PASS" if ok4 else "FAIL", f"p05={span['p05']} p50={span['p50']} p95={span['p95']}")
-    assert ok4, f"A4 violated: 40-yd span median {span['p50']} outside [38,42]"
+    assert ok4, f"A4 violated: 40-yd span median {span['p50']} outside [{span_lo},{span_hi}]"
 
     # A5 forward — event_id -> exactly one (nfl_id, drill_name, attempt).
     fwd_bad = int(_scalar(con, f"""
@@ -625,13 +646,24 @@ def verify_assumptions(con, cfg: dict[str, Any], T: str, R: str,
     rec("A7", "combine_position set == {DB,DL,OL,TE,WR}", "PASS" if ok7 else "FAIL", f"observed={pset}")
     assert ok7, f"A7 violated: positions {pset}"
 
-    # A8/A9 — full-mode only.
+    # A8 — full mode: game ids must overlap the combine nfl_id set in EVERY position group.
+    # A real assertion (N3): reuse the (e) match table; every group's match rate must be > 0.
+    # A9 — not yet implemented (Phase 4): the game-tracking schema check lands in 04_game_features.
     if cfg["mode"][mode]["run_game_side"]:
-        rec("A8", "game ids overlap combine nfl_id per group", "PENDING", "run in full mode")
-        rec("A9", "game-tracking file schema matches sample", "PENDING", "run in full mode")
+        e_df = pd.DataFrame(results.get("e") or [])
+        if e_df.empty or "match_rate" not in e_df.columns:
+            rec("A8", "game ids overlap combine nfl_id per group", "FAIL",
+                "audit (e) produced no position-group match table")
+            assert False, "A8 violated: audit (e) produced no position-group match table"
+        zero_groups = e_df.loc[e_df["match_rate"] <= 0, "position_group"].astype(str).tolist()
+        assert not zero_groups, f"A8 violated: zero-match position group(s): {zero_groups}"
+        rec("A8", "game ids overlap combine nfl_id per group", "PASS",
+            f"all {len(e_df)} position groups have match_rate > 0 "
+            f"(min {round(float(e_df['match_rate'].min()), 4)})")
     else:
         rec("A8", "game ids overlap combine nfl_id per group", "SKIP", "sample mode (D8)")
-        rec("A9", "game-tracking file schema matches sample", "SKIP", "sample mode (D8)")
+    rec("A9", "game-tracking files match the sample's 12-column schema", "PENDING",
+        "not yet implemented (Phase 4); the schema check lands in src/04_game_features.py")
 
     # S1 — sample discipline: the game-tracking sample must not exceed its documented 2^20 cap
     # (uses config.audit.sample_row_count; keeps the key live rather than decorative).
@@ -666,14 +698,40 @@ def verify_assumptions(con, cfg: dict[str, Any], T: str, R: str,
         f"size_bytes={size} cap={cap}")
     assert ok11, f"A11 violated: combine_tracking {size} bytes > cap {cap}"
 
-    # A12 — draft position control (report null rate; exclude if >20% null).
+    # A12 — draft position: "undrafted" is a STRUCTURAL category, not missing data (N1).
+    # players.draft_overall_pick and players.draft_round are NULL for the SAME prospects
+    # (the ~25% who were not drafted); the two NULL sets coincide exactly (hard-asserted),
+    # so this is structural, not non-structural missingness. The >null_exclusion_pct rule is
+    # reserved for NON-STRUCTURAL missingness only, so it does NOT fire here -> KEEP draft
+    # position as a Phase-5 control, encoding "undrafted" as its own level.
     P = pq(resolve(cfg, "parquet", "players.parquet"))
-    n, nn = con.execute(
-        f"SELECT count(*), count(*) FILTER (WHERE draft_overall_pick IS NULL) FROM {P}").fetchone()
-    rate = round(100.0 * int(nn) / int(n), 2) if n else None
-    action = "EXCLUDE as control" if (rate is not None and rate > 20) else "keep as control"
-    rec("A12", "draft_overall_pick null rate (exclude as control if >20%)", "INFO",
-        f"n={int(n)} null={int(nn)} null_pct={rate} -> {action}")
+    n, null_pick, null_round, mismatch = con.execute(
+        f"""SELECT count(*),
+                   count(*) FILTER (WHERE draft_overall_pick IS NULL),
+                   count(*) FILTER (WHERE draft_round IS NULL),
+                   count(*) FILTER (WHERE (draft_overall_pick IS NULL) <> (draft_round IS NULL))
+            FROM {P}""").fetchone()
+    n, null_pick, null_round, mismatch = int(n), int(null_pick), int(null_round), int(mismatch)
+    # Structural: the pick-NULL and round-NULL sets must coincide exactly (no row with a pick
+    # NULL but a round present, or vice versa).
+    assert null_pick == null_round, (
+        f"A12: pick-NULL ({null_pick}) and round-NULL ({null_round}) counts differ — the "
+        "structural 'undrafted' assumption is broken")
+    assert mismatch == 0, (
+        f"A12: {mismatch} row(s) have pick NULL but round NOT NULL (or vice versa) — not a "
+        "clean structural 'undrafted' category")
+    # By construction all pick NULLs are the structural undrafted category -> 0 non-structural.
+    nonstruct_null = 0
+    excl_pct = float(cfg["audit"].get("null_exclusion_pct", 20.0))
+    nonstruct_pct = round(100.0 * nonstruct_null / n, 2) if n else None
+    action = "KEEP as control" if (nonstruct_pct is not None and nonstruct_pct <= excl_pct) \
+        else "EXCLUDE as control"
+    rec("A12",
+        "draft position: 'undrafted' is structural (pick/round NULL sets coincide); the "
+        f">{excl_pct:g}%-null exclusion rule applies to non-structural missingness only",
+        "INFO",
+        f"structural_undrafted={null_pick}, nonstructural_null={nonstruct_null} -> {action}; "
+        "encode undrafted as its own level")
 
     return pd.DataFrame(rows)
 
@@ -682,37 +740,46 @@ def verify_assumptions(con, cfg: dict[str, Any], T: str, R: str,
 # recommendation
 # --------------------------------------------------------------------------- #
 def recommend(cfg: dict[str, Any], h2: pd.DataFrame, c_summary: dict[str, Any]) -> dict[str, Any]:
-    """Recommend a population under the all-drills family (D12).
+    """Resolve the study population under the all-drills family (D12/D13).
 
-    NOT locked: the family is fixed by human decision; the position group is a
-    recommendation pending sign-off (D13). Under the all-drills family every
-    position reaches the >=3-observed-attempt link threshold, so the pick is
-    driven by design cleanliness and role, not by attempt counts.
+    LOCKED: the study population is fixed by human decision (D13, Conor 2026-10-09) to
+    `audit.study_population` (DB only) under the all-drills family (D12). WR is EXCLUDED
+    (its in-game intensity is scheme-dependent). A SINGLE position group satisfies TASK.md
+    Phase 1 ("select ONE position group") — this is NOT a deviation, so no position terms
+    are pre-registered (the Phase-3 LMM is the spec formula as written). Under the
+    all-drills family DB reaches the >=3-observed-attempt link threshold, so the pick is
+    driven by design, not attempt counts. Counts are pulled from the h2 (audit h) frame.
     """
     fam = "all_drills"
     min_link = int(cfg["audit"]["min_attempts_for_link"])
-    sub = h2[(h2["family"] == fam) & (h2["population_type"] == "single_position")].copy()
+    position_group = str(cfg["audit"]["study_population"])
+    sub = h2[(h2["family"] == fam) & (h2["population"] == position_group)]
     if sub.empty:
-        return {"position_group": None, "drill_family": "ALL_DRILLS",
-                "justification": "no single-position rows in all_drills family"}
-    sub = sub.sort_values(["players_ge3_attempts", "players_total"], ascending=False)
-    best = sub.iloc[0]
+        return {"position_group": position_group, "position_group_locked": True,
+                "drill_family": "ALL_DRILLS", "family": fam,
+                "min_attempts_for_link": min_link,
+                "justification": f"population {position_group} not found in the {fam} family"}
+    row = sub.iloc[0]
     return {
-        "position_group": str(best["population"]),
-        "position_group_locked": False,
+        "position_group": position_group,
+        "position_group_locked": True,
         "drill_family": "ALL_DRILLS",
         "family": fam,
         "min_attempts_for_link": min_link,
-        "players_total": int(best["players_total"]),
-        "players_ge3_attempts": int(best["players_ge3_attempts"]),
+        "players_total": int(row["players_total"]),
+        "players_ge3_attempts": int(row["players_ge3_attempts"]),
         "order_varies_across_players": c_summary.get("drill_order_varies_across_players"),
         "justification": (
-            f"D3's drill pick is SUPERSEDED (D12): family = ALL drills (human decision 2026-10-09). "
-            f"Under the all-drills family every position reaches >=3 observed attempts/player, so the "
-            f"link threshold is non-binding and does not favour any position. Recommended population "
-            f"= {best['population']} ({int(best['players_total'])} players, {int(best['players_ge3_attempts'])} "
-            f"with >={min_link} attempts) — a RECOMMENDATION only; do NOT lock without sign-off (D13). "
-            "Identification still rests on within-drill repeated attempts + load/rest timing, not order (D5)."
+            f"Population LOCKED to {position_group} ONLY (D13, human decision Conor 2026-10-09). "
+            f"Family = ALL drills (D12). Under all_drills, {int(row['players_ge3_attempts'])}/"
+            f"{int(row['players_total'])} {position_group} players reach >={min_link} observed "
+            "attempts, so the link threshold is non-binding. A SINGLE position group satisfies "
+            "TASK.md Phase 1 (\"Select ONE position group\") — this is NOT a deviation, so no "
+            "position terms are pre-registered (the Phase-3 LMM is the spec formula as written). "
+            "WR is excluded: its in-game intensity is scheme-dependent, which would inject "
+            "between-system noise into the decay signal. The single-position design keeps the "
+            "day≈position confounding closed (limitations #2). Identification rests on "
+            "within-drill repeated attempts + load/rest timing, not order (D5)."
         ),
     }
 
@@ -854,7 +921,8 @@ def run(mode: str, force: bool) -> int:
         f"- (h) attempt counting unit: `{cfg['audit']['attempt_count_unit']}`; "
         f">=3 counts are identical under event_id vs attempt-slot (robust to the A5r duplicates)",
         f"- assumptions (B3): A5r {a5r.get('status')} — {a5r.get('detail')}",
-        f"- recommendation: position_group=`{rec['position_group']}` (RECOMMENDATION, not locked), "
+        f"- recommendation: position_group=`{rec['position_group']}` "
+        f"({'LOCKED' if rec.get('position_group_locked') else 'RECOMMENDATION, not locked'}; D13), "
         f"drill_family=`{rec['drill_family']}`",
         f"- gate verdict: **{verdict}**" + (f" (blocker: {blocker})" if blocker else ""),
         "",
