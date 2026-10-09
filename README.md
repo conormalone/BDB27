@@ -29,6 +29,9 @@ Raw data lives on the USB drive (`data/raw` → `/mnt/project_data/conor_downloa
 ## Status
 - [x] Prior-work scan — `research/prior-work-scan.md` (8 Oct 2026)
 - [x] De-risk prototype: drill-order / time-of-day recoverability; attempt-to-attempt 40-yd decay; how much survives controls — `notebooks/01_de_risk_prototype.ipynb`, `specs/de-risk-findings.md`
+- [x] Phase 0 setup (`notes/rules.md`, `notes/schema.md`) + **Phase 1 audit (a–g) — gate = GO** — `src/01_audit.py`, `outputs/audit/SUMMARY.md` (9 Oct 2026)
+- [x] Drill family = **ALL drills** (D12, supersedes D3's drill pick); position scope = **DB-only _recommended_, NOT locked** (D13) — `notes/decisions.md`, `outputs/audit/h_family_scope.csv`
+- [ ] Position-scope sign-off (Conor)
 - [ ] Identification strategy spec
 - [ ] Full analysis + writeup
 

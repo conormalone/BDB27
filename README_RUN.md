@@ -12,6 +12,8 @@ python3 -m venv .venv
 pip install -r requirements.txt          # pinned; verified on ARM64, Python 3.13
 ```
 
+_On this Pi a pre-built venv already exists at `~/.venvs/bdb27` (source it instead of rebuilding)._
+
 ## 2. Data
 
 Raw data is symlinked at `data/raw` → the mounted drive (`/mnt/project_data/conor_downloads/bdb27/`).
@@ -37,9 +39,23 @@ python src/01_audit.py --mode full
 
 ## 4. Outputs
 
-- `outputs/audit/*.csv` + `audit_summary.json` + `SUMMARY.md` (all stamped with a `provenance` column).
+- `outputs/audit/*.csv` + `audit_summary.json` + `SUMMARY.md` (all stamped with a `provenance` column,
+  which is always the **first** column).
+  - audit (a–g): timing, attempts, order, distance, missingness, gaps.
+  - **(h) position scope:** `h_attempts_by_drill.csv` (per position × drill_name, players reaching
+    ≥1/≥2/≥3 observed attempts) and `h_family_scope.csv` (per population × family, incl. candidate
+    populations DB-only / DB+WR / DB+WR+DL+OL; matched-N columns = **PENDING FULL RUN**).
+  - **`assumptions_check.csv`** — runtime results for assumptions A1–A12 (`notes/assumptions.md`).
 - `outputs/run_log.csv` — wall time + peak RAM per stage (appended each run).
 - Sample-mode outputs are labelled **`UNVALIDATED SAMPLE OUTPUT`** and must never be interpreted.
+
+## 7. Study scope (see `notes/decisions.md`)
+
+- **Drill family = ALL drills** (D12, human decision 2026-10-09; supersedes D3's 40-yd-only pick). Configured
+  in `config.yaml` under `audit.families`; the tighter `timed_battery` (40 + 3-cone + shuttle) is available
+  for sensitivity.
+- **Position scope = DB-only *recommended*, NOT locked** (D13) — needs sign-off. Evidence in
+  `outputs/audit/h_family_scope.csv`.
 
 ## 5. Expected cost (Pi 5, 4 GB)
 

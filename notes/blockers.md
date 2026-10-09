@@ -18,6 +18,13 @@ Per `TASK.md`, a blocker stops work and must be written here. The following were
    using time-of-day as an exposure.
 3. **Full game-tracking files absent.** `game_tracking_2023/24/25.csv` not on the drive; game-side audit
    (e) and Phase 4/5 need them. Marked PENDING FULL RUN — expected, not blocking Phase 0/1.
-4. **Interpretation of "family of repeated maximal-effort drills".** PM read: primary = `FORTY_YARD_DASH`
-   (best repeats), secondary = the wider timed battery (sparse). Recorded in `decisions.md` D3; revisit if
-   the spec intends a multi-drill pool.
+4. ~~**Interpretation of "family of repeated maximal-effort drills".**~~ **RESOLVED (D12):** human decision
+   (2026-10-09) sets the family = **ALL drills**; recorded in `decisions.md` D12. Supersedes D3's drill pick.
+5. **Position scope NOT locked.** DB-only is a *recommendation* (D13); Conor decides. Table:
+   `outputs/audit/h_family_scope.csv`. **Action:** obtain sign-off before Phase 2 features are scoped.
+6. **Matched Combine→NFL counts per candidate population = PENDING FULL RUN.** Needs
+   `game_tracking_{2023,24,25}.csv` (absent). Not blocking Phase 0/1; blocks finalising the population
+   (D13 escalation rule). See `pending_full_run.md` P1/P8.
+7. **Draft position unavailable as a control (A12).** `players.draft_overall_pick` is 24.9% null (> 20%)
+   → dropped as a Phase-5 control (recorded `assumptions.md`, `limitations.md`). Not a blocker (the spec
+   makes draft position a control *if provided*).

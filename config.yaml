@@ -39,22 +39,39 @@ mode:
 
 # ---- Audit (Phase 1) parameters ----
 audit:
-  session_gap_s: 7200             # >2h of inactivity starts a new session
-  sampling_rate_hz: 10            # nominal tracking rate
-  peak_speed_sanity_yds: 12.0     # flag attempts exceeding this peak speed
-  distance_rtol: 0.05             # provided-vs-recomputed distance rel. tolerance
-  coord_x_range: [0.0, 120.0]     # yards (long axis)
-  coord_y_range: [0.0, 53.3]      # yards (short axis)
+  sampling_rate_hz: 10            # nominal tracking rate (audit f)
+  distance_rtol: 0.05             # provided-vs-recomputed distance rel. tolerance (audit d)
+  coord_x_range: [0.0, 120.0]     # yards (long axis) (audit f)
+  coord_y_range: [0.0, 53.3]      # yards (short axis) (audit f)
   positions_of_interest: [WR, TE, OL, DL, DB]
-  # Candidate families of repeated maximal-effort drills, ranked later by data.
+  # Candidate drill types ranked later by data (audit c order-variation pairs).
   candidate_drill_types: [FORTY_YARD_DASH, THREE_CONE_DRILL, SHORT_SHUTTLE]
-  primary_drill_type: FORTY_YARD_DASH   # PM call, revised by audit evidence
+  primary_drill_type: FORTY_YARD_DASH   # legacy single-drill pick; superseded by families.all_drills (D12)
   min_attempts_for_repeat: 2           # attempts/player for a drill to count as "repeated"
-  sample_row_count: 1048576            # observed cap in game_tracking_2023_sample.csv (2^20)
+  min_attempts_for_link: 3             # spec Phase 5: >=3 observed attempts/player. Read as TOTAL across the drill family (D12), not per drill.
+  attempt_count_unit: event_id         # an "observed attempt" = one observed event_id (schema.md: 1 event_id = 1 attempt)
+  order_flip_threshold: 0.05           # |frac(A first) - 0.5| above which a drill pair counts as reordered (was hard-coded; B4)
+  max_combine_bytes: 1000000000        # A11 guard: combine_tracking must fit in RAM (<~1 GB)
+  sample_row_count: 1048576            # observed cap in game_tracking_2023_sample.csv (2^20); sample-draw sanity
+
+  # ---- Drill families for the position-scope evidence (D12) ----
+  # The repeated maximal-effort FAMILY = ALL drills (human decision 2026-10-09).
+  # SKILL_DRILLS_{WR,DB,DL,OL,TE,LB} are position-specific blocks and are included.
+  families:
+    all_drills: ALL                                     # ALL => every drill_type for that player
+    timed_battery: [FORTY_YARD_DASH, THREE_CONE_DRILL, SHORT_SHUTTLE]
+
+  # Candidate study populations (position groups) for the Phase 5 link sweep.
+  candidate_populations:
+    DB-only: [DB]
+    DB+WR: [DB, WR]
+    DB+WR+DL+OL: [DB, WR, DL, OL]
 
 # ---- Combine features (Phase 2) ----
 features:
   interp_max_gap_s: 0.5           # interpolate frame gaps shorter than this
+  session_gap_s: 7200             # >2h inactivity starts a new combine session (moved from audit; Phase 2 concept)
+  peak_speed_sanity_yds: 12.0     # flag attempts exceeding this peak speed (moved from audit; Phase 2 sanity check)
   # segmentation (only used if explicit attempt ids were absent; attempt exists here)
   segmentation_gap_s: 5.0
 

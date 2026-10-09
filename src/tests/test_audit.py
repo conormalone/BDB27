@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import duckdb
+import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
@@ -62,6 +63,52 @@ def test_audit_invariants() -> str:
     return PASS
 
 
+def test_audit_b_fix() -> str:
+    """B2: player counts must be distinct-player counts (no mixed-granularity bug)."""
+    cfg = load_config()
+    out = resolve(cfg, "outputs", "audit")
+    df = pd.read_csv(out / "b_attempts_by_position.csv")
+    assert "players_ge3_attempts" in df.columns, "B2 fix: ge3 column missing"
+    assert "player_drillseries_groups" in df.columns, "B2 fix: series-group count missing"
+    assert (df["players_with_drill"] >= df["players_ge1_attempts"]).all()
+    assert (df["players_ge1_attempts"] >= df["players_ge2_attempts"]).all()
+    assert (df["players_ge2_attempts"] >= df["players_ge3_attempts"]).all()
+    # the old bug allowed ge2 to exceed players_with_drill via series-group summing
+    assert (df["players_ge2_attempts"] <= df["players_with_drill"]).all(), \
+        "players_ge2_attempts exceeds players_with_drill (mixed-granularity regression)"
+    return PASS
+
+
+def test_position_scope() -> str:
+    """Audit (h): position-scope evidence tables, monotone counts, populations present."""
+    cfg = load_config()
+    out = resolve(cfg, "outputs", "audit")
+    h1 = pd.read_csv(out / "h_attempts_by_drill.csv")
+    h2 = pd.read_csv(out / "h_family_scope.csv")
+    for df in (h1, h2):
+        assert df.columns[0] == "provenance", "h-table missing provenance column"
+        assert (df["players_ge1_attempts"] >= df["players_ge2_attempts"]).all()
+        assert (df["players_ge2_attempts"] >= df["players_ge3_attempts"]).all()
+    assert set(h2["family"]) == {"all_drills", "timed_battery"}
+    assert {"DB-only", "DB+WR", "DB+WR+DL+OL"} <= set(h2["population"])
+    # matched counts are explicitly pending full data (D8)
+    assert set(h2["matched_status"]) == {"PENDING FULL RUN"}
+    return PASS
+
+
+def test_assumptions_check() -> str:
+    """B3: assumptions are asserted at runtime; only the documented A5r may FAIL."""
+    cfg = load_config()
+    out = resolve(cfg, "outputs", "audit")
+    df = pd.read_csv(out / "assumptions_check.csv")
+    assert df.columns[0] == "provenance", "assumptions_check missing provenance column"
+    assert {"A1", "A5f", "A5r"} <= set(df["assumption_id"])
+    assert set(df["status"]) <= {"PASS", "FAIL", "INFO", "SKIP", "PENDING"}
+    fails = set(df.loc[df["status"] == "FAIL", "assumption_id"])
+    assert fails <= {"A5r"}, f"unexpected assumption failure(s): {fails}"
+    return PASS
+
+
 def _hash_outputs() -> dict[str, str]:
     cfg = load_config()
     out = resolve(cfg, "outputs", "audit")
@@ -83,7 +130,14 @@ def test_determinism() -> str:
 
 
 def main() -> int:
-    tests = [test_parquet_schema, test_audit_invariants, test_determinism]
+    tests = [
+        test_parquet_schema,
+        test_audit_invariants,
+        test_audit_b_fix,
+        test_position_scope,
+        test_assumptions_check,
+        test_determinism,
+    ]
     rc = 0
     for t in tests:
         try:

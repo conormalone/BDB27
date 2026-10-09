@@ -151,28 +151,57 @@ def audit_a(con, T: str, cfg: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # (b) attempts per player per drill, by position group
 # --------------------------------------------------------------------------- #
+def _attempt_expr(cfg: dict[str, Any], alias: str = "t") -> str:
+    """SQL for one attempt under the configured counting unit (D12)."""
+    unit = cfg["audit"].get("attempt_count_unit", "event_id")
+    if unit == "event_id":
+        return f"count(DISTINCT {alias}.event_id)"
+    return f"count(DISTINCT ({alias}.drill_name, {alias}.attempt))"
+
+
 def audit_b(con, T: str, R: str, cfg: dict[str, Any]) -> pd.DataFrame:
+    """(b) attempts per player per drill TYPE, by position group.
+
+    B2 fix: the old ``players_ge2_attempts`` summed ``(nfl_id, drill_name)`` series
+    groups, so for a multi-sub-drill drill_type (e.g. ``SKILL_DRILLS_DB``) it could
+    EXCEED ``players_with_drill`` — a mixed-granularity mislabel. Every player count
+    below is now a DISTINCT-PLAYER count; the series-group count is kept separately
+    and correctly named (``player_drillseries_groups``).
+
+    Note: ``drill_type`` aggregates its ``drill_name`` sub-drills, so a player's
+    ``n_att`` here is their total observed attempts within that drill_type. The
+    per-drill_name breakdown lives in ``h_attempts_by_drill.csv``.
+    """
     pos = cfg["audit"]["positions_of_interest"]
     pos_list = ", ".join(f"'{p}'" for p in pos)
+    att = _attempt_expr(cfg)
     sql = f"""
-    WITH t AS (
+    WITH series AS (
         SELECT nfl_id, drill_type, drill_name,
-               count(DISTINCT attempt) AS n_att,
-               count(DISTINCT event_id) AS n_events
+               count(DISTINCT attempt)  AS n_att_slot,
+               count(DISTINCT event_id) AS n_att_ev
         FROM {T} WHERE entity_type = 'PLAYER'
         GROUP BY 1, 2, 3
+    ), pp AS (   -- per player per drill_type: total observed attempts
+        SELECT nfl_id, drill_type,
+               sum(n_att_ev)   AS n_att,
+               count(*)        AS n_series
+        FROM series GROUP BY 1, 2
     ), p AS (
         SELECT nfl_id, combine_position AS pos FROM {R} WHERE combine_position IN ({pos_list})
     )
-    SELECT p.pos AS position_group, t.drill_type,
-           count(DISTINCT t.nfl_id)                         AS players_with_drill,
-           sum(CASE WHEN t.n_att >= 2 THEN 1 ELSE 0 END)    AS players_ge2_attempts,
-           round(avg(t.n_att), 2)                           AS avg_attempts,
-           max(t.n_att)                                     AS max_attempts,
-           sum(t.n_events)                                  AS total_attempts
-    FROM t JOIN p ON p.nfl_id = t.nfl_id
+    SELECT p.pos AS position_group, pp.drill_type,
+           count(DISTINCT pp.nfl_id)                 AS players_with_drill,
+           count(*) FILTER (WHERE pp.n_att >= 1)     AS players_ge1_attempts,
+           count(*) FILTER (WHERE pp.n_att >= 2)     AS players_ge2_attempts,
+           count(*) FILTER (WHERE pp.n_att >= 3)     AS players_ge3_attempts,
+           round(avg(pp.n_att), 2)                   AS avg_attempts,
+           max(pp.n_att)                             AS max_attempts,
+           sum(pp.n_att)                             AS total_attempts,
+           sum(pp.n_series)                          AS player_drillseries_groups
+    FROM pp JOIN p ON p.nfl_id = pp.nfl_id
     GROUP BY 1, 2
-    ORDER BY 1, total_attempts DESC, t.drill_type
+    ORDER BY 1, total_attempts DESC, pp.drill_type
     """
     return con.execute(sql).df()
 
@@ -218,15 +247,18 @@ def audit_c(con, T: str, cfg: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFram
     """
     pairs = con.execute(pair_sql).df()
     # order is "fixed" for a pair if the fraction is ~0 or ~1 (no mixing).
+    # Threshold lives in config (B4: was hard-coded 0.05).
+    thr = float(cfg["audit"].get("order_flip_threshold", 0.05))
     mixes = [min(row["frac_a_first"], 1 - row["frac_a_first"]) for _, row in pairs.iterrows()]
-    order_varies = bool(mixes and max(mixes) > 0.05)
+    order_varies = bool(mixes and max(mixes) > thr)
     # which pairs actually flip?
     flipping = []
     for _, row in pairs.iterrows():
         f = row["frac_a_first"]
-        if min(f, 1 - f) > 0.05:
+        if min(f, 1 - f) > thr:
             flipping.append(f"{row['drill_a']}~{row['drill_b']}(≈{round(f, 2)})")
     summary = {
+        "order_flip_threshold": thr,
         "max_pairwise_flip_share": round(max(mixes), 4) if mixes else None,
         "drill_order_varies_across_players": order_varies,
         "flipping_pairs": flipping,
@@ -419,39 +451,269 @@ def audit_g(con, T: str, R: str, cfg: dict[str, Any]) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------- #
+# (h) position-scope evidence: players reaching >=k observed attempts
+# --------------------------------------------------------------------------- #
+def _family_filter(cfg: dict[str, Any], family: str) -> str:
+    """SQL fragment restricting a family's drill_type (empty for ALL)."""
+    fam = cfg["audit"]["families"][family]
+    if isinstance(fam, str) and fam.upper() == "ALL":
+        return ""
+    drills = ", ".join(f"'{d}'" for d in fam)
+    return f" AND t.drill_type IN ({drills})"
+
+
+def audit_h_position_scope(con, T: str, R: str, cfg: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(h) Position-scope evidence (numbers only; the choice is NOT locked here).
+
+    Returns two frames:
+      h1: per position_group x drill_type x drill_name — players reaching >=1/>=2/>=3
+          observed attempts in that drill (the unambiguous attempt-series unit).
+      h2: per population x family — players reaching >=1/>=2/>=3 observed attempts
+          TOTAL across the family, for the single positions and the candidate
+          populations (DB-only / DB+WR / DB+WR+DL+OL). Matched-NFL counts are
+          PENDING FULL RUN (D8): the game side cannot be evaluated on the sample.
+    """
+    pos = cfg["audit"]["positions_of_interest"]
+    pos_list = ", ".join(f"'{p}'" for p in pos)
+    att = _attempt_expr(cfg)
+    families = cfg["audit"]["families"]
+    min_link = int(cfg["audit"]["min_attempts_for_link"])
+
+    h1 = con.execute(f"""
+        WITH pp AS (
+            SELECT r.combine_position AS position_group, t.drill_type, t.drill_name, t.nfl_id,
+                   {att} AS n_att
+            FROM {T} t JOIN {R} r ON r.nfl_id = t.nfl_id
+            WHERE t.entity_type = 'PLAYER' AND r.combine_position IN ({pos_list})
+            GROUP BY 1, 2, 3, 4
+        )
+        SELECT position_group, drill_type, drill_name,
+               count(*)                           AS players_ge1_attempts,
+               count(*) FILTER (WHERE n_att >= 2) AS players_ge2_attempts,
+               count(*) FILTER (WHERE n_att >= 3) AS players_ge3_attempts,
+               round(avg(n_att), 2)               AS avg_attempts,
+               max(n_att)                         AS max_attempts,
+               sum(n_att)                         AS total_attempts
+        FROM pp GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
+    """).df()
+
+    populations: dict[str, list[str]] = {p: [p] for p in pos}
+    populations.update(cfg["audit"]["candidate_populations"])
+    candidates = set(cfg["audit"]["candidate_populations"])
+
+    rows: list[dict[str, Any]] = []
+    for pop_name, pop_pos in populations.items():
+        pop_list = ", ".join(f"'{p}'" for p in pop_pos)
+        for fam_name in families:
+            fam_filter = _family_filter(cfg, fam_name)
+            d = con.execute(f"""
+                WITH pp AS (
+                    SELECT t.nfl_id, {att} AS n_att
+                    FROM {T} t JOIN {R} r ON r.nfl_id = t.nfl_id
+                    WHERE t.entity_type = 'PLAYER' AND r.combine_position IN ({pop_list}){fam_filter}
+                    GROUP BY 1
+                )
+                SELECT count(*)                           AS players_total,
+                       count(*) FILTER (WHERE n_att >= 1) AS players_ge1,
+                       count(*) FILTER (WHERE n_att >= 2) AS players_ge2,
+                       count(*) FILTER (WHERE n_att >= 3) AS players_ge3,
+                       round(avg(n_att), 2)               AS avg_attempts,
+                       round(median(n_att), 1)            AS median_attempts,
+                       max(n_att)                         AS max_attempts
+                FROM pp
+            """).df().iloc[0].to_dict()
+            total = int(d["players_total"])
+            ge3 = int(d["players_ge3"])
+            rows.append({
+                "population": pop_name,
+                "population_positions": "+".join(pop_pos),
+                "population_type": "candidate" if pop_name in candidates else "single_position",
+                "family": fam_name,
+                "players_total": total,
+                "players_ge1_attempts": int(d["players_ge1"]),
+                "players_ge2_attempts": int(d["players_ge2"]),
+                "players_ge3_attempts": ge3,
+                "pct_ge3": round(100.0 * ge3 / total, 1) if total else None,
+                "avg_attempts": float(d["avg_attempts"]) if d["avg_attempts"] is not None else None,
+                "median_attempts": float(d["median_attempts"]) if d["median_attempts"] is not None else None,
+                "max_attempts": int(d["max_attempts"]) if d["max_attempts"] is not None else None,
+                "min_attempts_for_link": min_link,
+                "matched_with_game_data": None,
+                "matched_status": "PENDING FULL RUN",
+            })
+    return h1, pd.DataFrame(rows)
+
+
+# --------------------------------------------------------------------------- #
+# runtime assertions for notes/assumptions.md  (B3: claimed but absent before)
+# --------------------------------------------------------------------------- #
+def verify_assumptions(con, cfg: dict[str, Any], T: str, R: str,
+                       results: dict[str, Any], mode: str) -> pd.DataFrame:
+    """Evaluate the assumptions in notes/assumptions.md with real runtime checks.
+
+    Hard invariants raise AssertionError (the spec: "fail loudly on mismatch").
+    The one KNOWN violation (A5 reverse: a few (nfl_id, drill_name, attempt)
+    tuples carry two event_ids) is recorded as a FAIL row without aborting, since
+    Phase 2 is specified to *flag* duplicate attempts rather than stop.
+    """
+    rows: list[dict[str, Any]] = []
+
+    def rec(aid: str, assumption: str, status: str, detail: str) -> None:
+        rows.append({"assumption_id": aid, "assumption": assumption,
+                     "status": status, "detail": detail})
+
+    # A1 — combine_tracking covers the same prospects as combine_results.
+    trk = int(_scalar(con, f"SELECT count(DISTINCT nfl_id) FROM {T}"))
+    res = int(_scalar(con, f"SELECT count(DISTINCT nfl_id) FROM {R}"))
+    rec("A1", "combine_tracking nfl_id set == combine_results nfl_id set",
+        "PASS" if trk == res else "FAIL", f"tracking={trk} results={res}")
+    assert trk == res, f"A1 violated: tracking={trk} results={res}"
+
+    # A2 — naive timestamps + attempt~time agreement.
+    a = results.get("a", {})
+    agree, naive = a.get("order_agree_frac"), a.get("time_is_naive")
+    ok2 = bool(naive) and agree is not None and float(agree) >= 0.99
+    rec("A2", "time is naive (no TZ) and attempt~time agreement >= 0.99",
+        "PASS" if ok2 else "FAIL", f"naive={naive} agreement={agree}")
+    assert ok2, f"A2 violated: naive={naive} agreement={agree}"
+
+    # A3 — 10 Hz sampling.
+    med_dt = (results.get("f") or {}).get("median_dt_s")
+    ok3 = med_dt is not None and abs(float(med_dt) - 0.1) < 1e-6
+    rec("A3", "median inter-frame dt == 0.1 s (10 Hz)", "PASS" if ok3 else "FAIL", f"median_dt_s={med_dt}")
+    assert ok3, f"A3 violated: median_dt_s={med_dt}"
+
+    # A4 — 40-yd straight-line span ~ [38,42] yd (median is robust to frame tails).
+    span = con.execute(f"""
+        WITH agg AS (
+            SELECT event_id, sqrt(pow(max(x)-min(x),2)+pow(max(y)-min(y),2)) AS extent
+            FROM {T} WHERE entity_type='PLAYER' AND drill_type='FORTY_YARD_DASH' GROUP BY 1)
+        SELECT round(quantile_cont(extent,0.05),2) AS p05,
+               round(quantile_cont(extent,0.5),2)  AS p50,
+               round(quantile_cont(extent,0.95),2) AS p95 FROM agg
+    """).df().iloc[0].to_dict()
+    ok4 = span["p50"] is not None and 38.0 <= float(span["p50"]) <= 42.0
+    rec("A4", "40-yd straight-line span median in [38,42] yd",
+        "PASS" if ok4 else "FAIL", f"p05={span['p05']} p50={span['p50']} p95={span['p95']}")
+    assert ok4, f"A4 violated: 40-yd span median {span['p50']} outside [38,42]"
+
+    # A5 forward — event_id -> exactly one (nfl_id, drill_name, attempt).
+    fwd_bad = int(_scalar(con, f"""
+        WITH g AS (SELECT event_id, count(DISTINCT (nfl_id, drill_name, attempt)) AS k
+                   FROM {T} WHERE entity_type='PLAYER' GROUP BY 1)
+        SELECT count(*) FILTER (WHERE k > 1) FROM g""") or 0)
+    rec("A5f", "event_id maps to exactly one (nfl_id, drill_name, attempt)",
+        "PASS" if fwd_bad == 0 else "FAIL", f"event_ids_with_multiple_keys={fwd_bad}")
+    assert fwd_bad == 0, f"A5 (forward) violated: {fwd_bad} event_id(s) map to >1 key"
+
+    # A5 reverse — (nfl_id, drill_name, attempt) -> exactly one event_id (KNOWN VIOLATION).
+    rev_bad = int(_scalar(con, f"""
+        WITH g AS (SELECT nfl_id, drill_name, attempt, count(DISTINCT event_id) AS k
+                   FROM {T} WHERE entity_type='PLAYER' GROUP BY 1,2,3)
+        SELECT count(*) FILTER (WHERE k > 1) FROM g""") or 0)
+    rec("A5r", "(nfl_id, drill_name, attempt) maps to exactly one event_id",
+        "PASS" if rev_bad == 0 else "FAIL",
+        f"tuples_with_multiple_event_ids={rev_bad} (duplicate attempt captures; D12/B3; Phase 2 flags duplicate attempts)")
+
+    # A6 — numbering gaps = lost data (informational).
+    rec("A6", "attempt-numbering gaps = lost data (share reported)", "INFO",
+        f"overall_gap_share={(results.get('gate') or {}).get('overall_gap_share')}")
+
+    # A7 — combine position groups.
+    pset = [r[0] for r in con.execute(f"SELECT DISTINCT combine_position FROM {R} ORDER BY 1").fetchall()]
+    ok7 = set(pset) == {"DB", "DL", "OL", "TE", "WR"}
+    rec("A7", "combine_position set == {DB,DL,OL,TE,WR}", "PASS" if ok7 else "FAIL", f"observed={pset}")
+    assert ok7, f"A7 violated: positions {pset}"
+
+    # A8/A9 — full-mode only.
+    if cfg["mode"][mode]["run_game_side"]:
+        rec("A8", "game ids overlap combine nfl_id per group", "PENDING", "run in full mode")
+        rec("A9", "game-tracking file schema matches sample", "PENDING", "run in full mode")
+    else:
+        rec("A8", "game ids overlap combine nfl_id per group", "SKIP", "sample mode (D8)")
+        rec("A9", "game-tracking file schema matches sample", "SKIP", "sample mode (D8)")
+
+    # S1 — sample discipline: the game-tracking sample must not exceed its documented 2^20 cap
+    # (uses config.audit.sample_row_count; keeps the key live rather than decorative).
+    if not cfg["mode"][mode]["run_game_side"]:
+        samp = REPO_ROOT / "data/raw" / cfg["files"]["game_tracking_sample"]
+        if samp.exists():
+            nrows = int(_scalar(con, f"SELECT count(*) FROM read_csv_auto('{samp}', header=true)") or 0)
+            cap_rows = int(cfg["audit"]["sample_row_count"])
+            ok_rows = nrows <= cap_rows
+            rec("S1", "game-tracking sample rows <= sample_row_count (2^20 cap)",
+                "PASS" if ok_rows else "FAIL", f"rows={nrows} cap={cap_rows}")
+            assert ok_rows, f"S1 violated: sample has {nrows} rows > cap {cap_rows}"
+        else:
+            rec("S1", "game-tracking sample rows <= sample_row_count (2^20 cap)", "SKIP",
+                f"sample file absent: {samp.name}")
+
+    # A10 — no residual literal 'NA' after NA->NULL conversion.
+    na_bad = int(_scalar(con, f"""
+        SELECT sum(CASE WHEN CAST(forty AS VARCHAR)='NA' THEN 1 ELSE 0 END)
+             + sum(CASE WHEN CAST(three_cone AS VARCHAR)='NA' THEN 1 ELSE 0 END)
+             + sum(CASE WHEN CAST(short_shuttle AS VARCHAR)='NA' THEN 1 ELSE 0 END)
+        FROM {R}""") or 0)
+    rec("A10", "no residual literal 'NA' in numeric columns", "PASS" if na_bad == 0 else "FAIL",
+        f"literal_NA_cells={na_bad}")
+    assert na_bad == 0, f"A10 violated: {na_bad} literal 'NA' cells survived conversion"
+
+    # A11 — combine_tracking fits in RAM (< max_combine_bytes).
+    size = (REPO_ROOT / "data/raw" / cfg["files"]["combine_tracking"]).stat().st_size
+    cap = int(cfg["audit"]["max_combine_bytes"])
+    ok11 = size <= cap
+    rec("A11", "combine_tracking size <= max_combine_bytes", "PASS" if ok11 else "FAIL",
+        f"size_bytes={size} cap={cap}")
+    assert ok11, f"A11 violated: combine_tracking {size} bytes > cap {cap}"
+
+    # A12 — draft position control (report null rate; exclude if >20% null).
+    P = pq(resolve(cfg, "parquet", "players.parquet"))
+    n, nn = con.execute(
+        f"SELECT count(*), count(*) FILTER (WHERE draft_overall_pick IS NULL) FROM {P}").fetchone()
+    rate = round(100.0 * int(nn) / int(n), 2) if n else None
+    action = "EXCLUDE as control" if (rate is not None and rate > 20) else "keep as control"
+    rec("A12", "draft_overall_pick null rate (exclude as control if >20%)", "INFO",
+        f"n={int(n)} null={int(nn)} null_pct={rate} -> {action}")
+
+    return pd.DataFrame(rows)
+
+
+# --------------------------------------------------------------------------- #
 # recommendation
 # --------------------------------------------------------------------------- #
-def recommend(cfg: dict[str, Any], b: pd.DataFrame, c_summary: dict[str, Any]) -> dict[str, Any]:
-    primary = cfg["audit"]["primary_drill_type"]
-    sub = b[b["drill_type"] == primary].copy()
+def recommend(cfg: dict[str, Any], h2: pd.DataFrame, c_summary: dict[str, Any]) -> dict[str, Any]:
+    """Recommend a population under the all-drills family (D12).
+
+    NOT locked: the family is fixed by human decision; the position group is a
+    recommendation pending sign-off (D13). Under the all-drills family every
+    position reaches the >=3-observed-attempt link threshold, so the pick is
+    driven by design cleanliness and role, not by attempt counts.
+    """
+    fam = "all_drills"
+    min_link = int(cfg["audit"]["min_attempts_for_link"])
+    sub = h2[(h2["family"] == fam) & (h2["population_type"] == "single_position")].copy()
     if sub.empty:
-        return {"position_group": None, "drill_family": None,
-                "justification": f"no rows for primary drill {primary}"}
-    sub = sub.sort_values(["players_ge2_attempts", "total_attempts"], ascending=False)
+        return {"position_group": None, "drill_family": "ALL_DRILLS",
+                "justification": "no single-position rows in all_drills family"}
+    sub = sub.sort_values(["players_ge3_attempts", "players_total"], ascending=False)
     best = sub.iloc[0]
-    runner = sub.iloc[1] if len(sub) > 1 else None
-    just = (
-        f"{best['position_group']} maximises repeated maximal-effort attempts on {primary}: "
-        f"{int(best['players_with_drill'])} players ran it, {int(best['players_ge2_attempts'])} "
-        f"with >=2 attempts ({int(best['total_attempts'])} total attempts)."
-    )
-    if runner is not None:
-        just += (f" Next best {runner['position_group']}: "
-                 f"{int(runner['players_ge2_attempts'])} players with >=2 attempts.")
-    just += (" Within-session drill order is a fixed protocol (see (c)); identification therefore "
-             "rests on within-drill repeated attempts (attempt 1 vs 2+) plus load/rest timing, not on "
-             "cross-drill order.")
     return {
-        "position_group": str(best["position_group"]),
-        "drill_family": primary,
-        "drill_family_secondary": [d for d in cfg["audit"]["candidate_drill_types"] if d != primary],
-        "players_with_drill": int(best["players_with_drill"]),
-        "players_ge2_attempts": int(best["players_ge2_attempts"]),
-        "total_attempts": int(best["total_attempts"]),
+        "position_group": str(best["population"]),
+        "position_group_locked": False,
+        "drill_family": "ALL_DRILLS",
+        "family": fam,
+        "min_attempts_for_link": min_link,
+        "players_total": int(best["players_total"]),
+        "players_ge3_attempts": int(best["players_ge3_attempts"]),
         "order_varies_across_players": c_summary.get("drill_order_varies_across_players"),
-        "justification": just +
-            " Secondary repeated maximal-effort drills (THREE_CONE_DRILL, SHORT_SHUTTLE) are too "
-            "sparse per position (<=13 players with >=2 attempts) to carry the model.",
+        "justification": (
+            f"D3's drill pick is SUPERSEDED (D12): family = ALL drills (human decision 2026-10-09). "
+            f"Under the all-drills family every position reaches >=3 observed attempts/player, so the "
+            f"link threshold is non-binding and does not favour any position. Recommended population "
+            f"= {best['population']} ({int(best['players_total'])} players, {int(best['players_ge3_attempts'])} "
+            f"with >={min_link} attempts) — a RECOMMENDATION only; do NOT lock without sign-off (D13). "
+            "Identification still rests on within-drill repeated attempts + load/rest timing, not order (D5)."
+        ),
     }
 
 
@@ -521,10 +783,17 @@ def run(mode: str, force: bool) -> int:
         _write(cfg, "g_attempt_gaps.csv", g, prov, logger)
         results["g_rows"] = int(len(g))
 
+    with timed_stage(cfg, "01_audit:h_position_scope", mode):
+        h1, h2 = audit_h_position_scope(con, T, R, cfg)
+        _write(cfg, "h_attempts_by_drill.csv", h1, prov, logger)
+        _write(cfg, "h_family_scope.csv", h2, prov, logger)
+        results["h_rows"] = int(len(h1))
+
     # ---- recommendation + go/no-go inputs ----
-    rec = recommend(cfg, b, c_summary)
+    rec = recommend(cfg, h2, c_summary)
     timing_ok = bool(results["a"]["timing_field_present"])
-    group_ok = rec["position_group"] is not None and rec.get("players_ge2_attempts", 0) > 0
+    min_link = int(cfg["audit"]["min_attempts_for_link"])
+    group_ok = rec["position_group"] is not None and rec.get("players_ge3_attempts", 0) >= min_link
     g_tot = con.execute(f"""
         WITH grp AS (SELECT nfl_id, drill_type, drill_name, count(DISTINCT attempt) n, max(attempt) mx
                      FROM {T} WHERE entity_type='PLAYER' GROUP BY 1,2,3)
@@ -546,6 +815,12 @@ def run(mode: str, force: bool) -> int:
         "blocker": blocker,
     }
 
+    # ---- runtime assumptions (B3): real assertions, not just prose ----
+    with timed_stage(cfg, "01_audit:assumptions", mode):
+        assumptions = verify_assumptions(con, cfg, T, R, results, mode)
+        _write(cfg, "assumptions_check.csv", assumptions, prov, logger)
+        results["assumptions"] = assumptions.to_dict("records")
+
     out_dir = resolve(cfg, "outputs", OUT_SUBDIR)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "audit_summary.json").write_text(json.dumps(results, indent=2, default=str), encoding="utf-8")
@@ -553,6 +828,13 @@ def run(mode: str, force: bool) -> int:
         f"{prov}\nGenerated {mode}-mode by src/01_audit.py. Not results.\n", encoding="utf-8")
 
     size_mb = round((REPO_ROOT / "data/raw" / cfg["files"]["combine_tracking"]).stat().st_size / 1e6, 1)
+    fam_all = h2[(h2["family"] == "all_drills") & (h2["population_type"] == "single_position")]
+    fam_tb = h2[(h2["family"] == "timed_battery") & (h2["population_type"] == "single_position")]
+    fmt = lambda dd: ", ".join(  # noqa: E731
+        f"{r['population']} {int(r['players_ge3_attempts'])}/{int(r['players_total'])}"
+        for _, r in dd.sort_values("population").iterrows())
+    ad = {r["assumption_id"]: r for r in results["assumptions"]}
+    a5r = ad.get("A5r", {})
     lines = [
         f"# Audit summary — {prov}",
         "",
@@ -560,12 +842,20 @@ def run(mode: str, force: bool) -> int:
         f"- combine_tracking file size: {size_mb} MB",
         f"- (a) timing fields present: {timing_ok}; attempt~time agreement: {results['a']['order_agree_frac']}",
         f"- (c) drill order varies across players: {c_summary['drill_order_varies_across_players']} "
-        f"(max flip share {c_summary['max_pairwise_flip_share']}; flipping pairs: {c_summary.get('flipping_pairs')})",
+        f"(max flip share {c_summary['max_pairwise_flip_share']}; flipping pairs: {c_summary.get('flipping_pairs')}; "
+        f"flip threshold {c_summary.get('order_flip_threshold')})",
         f"- (d) distance reliable: {d_summary['reliable']} "
         f"(median provided/recomputed ratio range {d_summary.get('median_ratio_range')}, "
         f"share >5% off {d_summary['share_over_tol_weighted']})",
         f"- (g) overall share of player-drill groups with numbering gaps: {g_tot}",
-        f"- recommendation: position_group=`{rec['position_group']}`, drill_family=`{rec['drill_family']}`",
+        f"- (h) position-scope, family=`all_drills` (ALL drills): players reaching >={min_link} attempts — {fmt(fam_all)}",
+        f"- (h) position-scope, family=`timed_battery` (40+3-cone+shuttle): players reaching >={min_link} attempts — {fmt(fam_tb)}",
+        f"- (h) matched Combine->NFL counts per candidate population: PENDING FULL RUN (D8; no full game files)",
+        f"- (h) attempt counting unit: `{cfg['audit']['attempt_count_unit']}`; "
+        f">=3 counts are identical under event_id vs attempt-slot (robust to the A5r duplicates)",
+        f"- assumptions (B3): A5r {a5r.get('status')} — {a5r.get('detail')}",
+        f"- recommendation: position_group=`{rec['position_group']}` (RECOMMENDATION, not locked), "
+        f"drill_family=`{rec['drill_family']}`",
         f"- gate verdict: **{verdict}**" + (f" (blocker: {blocker})" if blocker else ""),
         "",
         rec.get("justification", ""),

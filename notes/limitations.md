@@ -24,6 +24,12 @@ the writeup's Limitations section.
 
 ## Measurement
 
+6b. **All-drills family is broad (D12).** The family pools `FORTY_YARD_DASH`, the agility drills and the
+   position-specific `SKILL_DRILLS_*` blocks; the skill sub-drills include route/technique work of
+   heterogeneous intensity, so "maximal-effort" is a looser construct than a pure timed battery.
+   *Mitigation:* the model keys on `C(drill)` and standardises **within drill** (Phase 2), so non-maximal
+   drills contribute load/rows without biasing the within-drill contrast; the tighter **timed_battery**
+   (40 + 3-cone + shuttle) is pre-defined in config for a sensitivity refit.
 7. **Performance measurement error / slope reliability.** Per-player fatigue slopes are noisy.
    *Mitigation:* model-based reliability (slope variance / (slope var + mean squared SE)); ≥3 observed
    attempts required for the Phase 5 link; error-in-both-slopes correction (regression calibration /
@@ -43,5 +49,15 @@ the writeup's Limitations section.
     game-side work is full-run only (PENDING FULL RUN).
 13. **Threshold provenance.** Must be "FULL" in full runs; frozen before Phase 5. *Mitigation:* runtime
     assert; `00_thresholds.py`.
+
+15. **Draft position control unavailable (A12).** `players.draft_overall_pick` is **24.9% null** (> 20%
+    threshold) → draft position is dropped as a Phase-5 control. *Mitigation:* retain baseline speed and
+    height/weight controls; state the omission explicitly; optionally report a complete-case sensitivity.
+16. **Duplicate attempt captures (A5r).** 9 `(nfl_id, drill_name, attempt)` tuples carry 2 `event_id`s
+    (all `attempt=1`). *Mitigation:* Phase 2 flags/​deduplicates duplicate attempts; the ≥3 link-threshold
+    counts are unaffected (identical under `event_id` vs attempt-slot). See `assumptions.md`.
+17. **Position scope not locked (D13).** The study population is a recommendation (DB-only); a change to a
+    wider population alters the matched-N and the population definition. *Mitigation:* `h_family_scope.csv`
+    records the counts for DB-only / DB+WR / DB+WR+DL+OL; re-run on full data before locking.
 14. **Effort definition sensitivity.** *Mitigation:* sensitivity analysis on alternate thresholds/metrics;
     placebo test (combine slope should not predict early-game output).
