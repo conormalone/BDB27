@@ -1,0 +1,15 @@
+# BDB27 pinned dependencies — verified working on ARM64 (Raspberry Pi OS, Python 3.13)
+# and expected to work on x86_64 Linux/macOS. Install into a venv:
+#   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+#
+# Versions below were resolved on the ARM64 Pi (2026-10-09).
+duckdb==1.5.6
+polars==2.0.0
+pyarrow==26.0.0
+pandas==3.0.6
+numpy==2.5.3
+statsmodels==0.15.0
+scikit-learn==1.9.1
+scipy==1.16.3
+matplotlib==3.11.2
+PyYAML==6.0.3

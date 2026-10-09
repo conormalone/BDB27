@@ -1,0 +1,66 @@
+# BDB27 pipeline configuration.
+# All paths, thresholds and sizes live here (no magic numbers in code).
+# Binding spec: TASK.md. Decisions: notes/decisions.md.
+
+project: BDB27
+seed: 20270106            # fixed seed for any stochastic step
+
+paths:
+  raw: data/raw                 # symlink -> USB bdb27 dir
+  interim: data/interim         # symlink -> USB interim dir
+  parquet: data/interim/parquet # converted Parquet cache
+  outputs: outputs
+  figures: outputs/figures
+  notes: notes
+
+files:
+  combine_tracking: combine_tracking.csv
+  combine_results: combine_results.csv
+  players: players.csv
+  games: games.csv
+  player_play: player_play.csv
+  player_career_successes: player_career_successes.csv
+  game_tracking_sample: game_tracking_2023_sample.csv
+  game_tracking_full:                # full-mode sources (bigger machine)
+    - game_tracking_2023.csv
+    - game_tracking_2024.csv
+    - game_tracking_2025.csv
+
+mode:
+  default: sample
+  sample:
+    game_tracking: game_tracking_sample
+    provenance: UNVALIDATED SAMPLE OUTPUT
+    run_game_side: false          # (e) game-side audit is full-only
+  full:
+    game_tracking: game_tracking_full
+    provenance: FULL
+    run_game_side: true
+
+# ---- Audit (Phase 1) parameters ----
+audit:
+  session_gap_s: 7200             # >2h of inactivity starts a new session
+  sampling_rate_hz: 10            # nominal tracking rate
+  peak_speed_sanity_yds: 12.0     # flag attempts exceeding this peak speed
+  distance_rtol: 0.05             # provided-vs-recomputed distance rel. tolerance
+  coord_x_range: [0.0, 120.0]     # yards (long axis)
+  coord_y_range: [0.0, 53.3]      # yards (short axis)
+  positions_of_interest: [WR, TE, OL, DL, DB]
+  # Candidate families of repeated maximal-effort drills, ranked later by data.
+  candidate_drill_types: [FORTY_YARD_DASH, THREE_CONE_DRILL, SHORT_SHUTTLE]
+  primary_drill_type: FORTY_YARD_DASH   # PM call, revised by audit evidence
+  min_attempts_for_repeat: 2           # attempts/player for a drill to count as "repeated"
+  sample_row_count: 1048576            # observed cap in game_tracking_2023_sample.csv (2^20)
+
+# ---- Combine features (Phase 2) ----
+features:
+  interp_max_gap_s: 0.5           # interpolate frame gaps shorter than this
+  # segmentation (only used if explicit attempt ids were absent; attempt exists here)
+  segmentation_gap_s: 5.0
+
+# ---- Runtime ----
+runtime:
+  duckdb_threads: 1   # single-threaded => bit-deterministic reductions (spec: same seed, identical outputs)
+
+logging:
+  run_log: outputs/run_log.csv
