@@ -81,6 +81,7 @@ COLUMNS: list[tuple[str, str]] = [
     ("drill_type", "VARCHAR"),
     ("drill_name", "VARCHAR"),
     ("attempt", "INTEGER"),
+    ("attempt_unit", "VARCHAR"),
     ("event_id", "VARCHAR"),
     ("is_imputed", "INTEGER"),
     ("session_id", "VARCHAR"),
@@ -173,6 +174,70 @@ def missing_attempt_numbers(observed, max_attempt: int) -> list[int]:
     """Attempt numbers in {1..max_attempt} that were NOT observed (lost data)."""
     have = {int(a) for a in observed}
     return [a for a in range(1, int(max_attempt) + 1) if a not in have]
+
+
+def detect_attempt_unit(attempts: pd.DataFrame, min_restart_drill_names: int) -> pd.DataFrame:
+    """Empirically detect the `attempt` numbering unit per `(nfl_id, drill_type)` block (D19).
+
+    A block is a **per-`drill_name` restart** unit (`attempt_unit='drill_name'`) iff it has
+    **>= 2 distinct `drill_name`s AND >= ``min_restart_drill_names`` of them have
+    ``min(attempt) == 1``**; otherwise it is a **per-`drill_type` block counter**
+    (`attempt_unit='drill_type'`). Single-`drill_name` blocks are unit-invariant
+    (grouping by `drill_name` == grouping by `drill_type`) and are reported as
+    ``'drill_type'``.
+
+    ``attempts`` is the observed attempt-level frame with
+    ``nfl_id, drill_type, drill_name, attempt``. Returns one row per
+    ``(nfl_id, drill_type)`` with columns
+    ``nfl_id, drill_type, attempt_unit, n_drill_names, n_drill_names_starting_at_1``.
+    """
+    thr = int(min_restart_drill_names)
+    rows: list[dict[str, Any]] = []
+    for (nfl, dtyp), grp in attempts.groupby(["nfl_id", "drill_type"], sort=True):
+        starts = grp.groupby("drill_name")["attempt"].min()
+        n_dn = int(starts.size)
+        n_start1 = int((starts.astype(int) == 1).sum())
+        unit = "drill_name" if (n_dn >= 2 and n_start1 >= thr) else "drill_type"
+        rows.append({
+            "nfl_id": int(nfl),
+            "drill_type": str(dtyp),
+            "attempt_unit": unit,
+            "n_drill_names": n_dn,
+            "n_drill_names_starting_at_1": n_start1,
+        })
+    return pd.DataFrame(rows, columns=[
+        "nfl_id", "drill_type", "attempt_unit", "n_drill_names", "n_drill_names_starting_at_1"])
+
+
+def _imputed_drill_name(grp: pd.DataFrame, m: int) -> str:
+    """The `drill_name` for an imputed attempt `m`: of the observed rep with the
+    largest ``attempt < m`` (fallback: smallest ``attempt > m``; final fallback: the
+    group's `drill_name`)."""
+    below = grp[grp["attempt"].astype(int) < int(m)]
+    if len(below):
+        return str(below.loc[below["attempt"].idxmax(), "drill_name"])
+    above = grp[grp["attempt"].astype(int) > int(m)]
+    if len(above):
+        return str(above.loc[above["attempt"].idxmin(), "drill_name"])
+    return str(grp["drill_name"].iloc[0])
+
+
+def resolve_attempt_units(attempts: pd.DataFrame, cfg: dict[str, Any]) -> dict[tuple[int, str], str]:
+    """Map every ``(nfl_id, drill_type)`` block to its numbering unit.
+
+    ``features.attempt_level``: ``empirical`` (default) runs the D19 detection;
+    ``drill_name`` / ``drill_type`` force a fixed unit for every block (tests /
+    sensitivity). The detection is always run once so diagnostics can report the
+    *detected* block counts; only the returned assignment depends on the mode.
+    """
+    level = str(cfg["features"]["attempt_level"])
+    det = detect_attempt_unit(attempts, int(cfg["features"]["attempt_restart_min_drill_names"]))
+    unit_map = {(int(n), str(t)): str(u)
+                for n, t, u in zip(det["nfl_id"], det["drill_type"], det["attempt_unit"])}
+    if level != "empirical":
+        assert level in ("drill_name", "drill_type"), f"unknown features.attempt_level: {level}"
+        unit_map = {k: level for k in unit_map}
+    return unit_map
 
 
 def kinematics_for_attempt(t, x, y, params: dict) -> dict:
@@ -447,8 +512,10 @@ def _assign_sessions(obs: pd.DataFrame, gap_s: float) -> pd.Series:
 def _order_and_load(combined: pd.DataFrame, cfg: dict[str, Any]) -> pd.DataFrame:
     """Within-(player, session) ordering + cumulative prior load + rest time.
 
-    Order key = (drill_first_start_rank, attempt); drill_first_start_rank = rank of
-    the drill_name's min observed start time in the session (ties by drill_name).
+    Numbering unit (D19) is column ``attempt_unit``: `drill_name` for per-`drill_name`
+    restart blocks, else `drill_type`. Order key = (``unit_first_start_rank``, ``attempt``),
+    where ``unit_first_start_rank`` = within-(player, session) rank of the unit's min
+    observed start time (ties by unit key).
     """
     session_gap_s = float(cfg["features"]["session_gap_s"])
     combined = combined.copy()
@@ -456,41 +523,53 @@ def _order_and_load(combined: pd.DataFrame, cfg: dict[str, Any]) -> pd.DataFrame
     combined["attempt_start_time"] = pd.to_datetime(combined["attempt_start_time"])
     combined["attempt_end_time"] = pd.to_datetime(combined["attempt_end_time"])
 
+    # ---- numbering-unit key (D19): drill_name for restart units, else drill_type ----
+    combined["unit_key"] = np.where(
+        combined["attempt_unit"].to_numpy() == "drill_name",
+        combined["drill_name"].to_numpy(), combined["drill_type"].to_numpy())
+
     # ---- session assignment (from observed start times) ----
     obs = combined.loc[observed, ["nfl_id", "attempt_start_time"]].copy()
     obs = obs.sort_values(["nfl_id", "attempt_start_time"])
     obs["session_id"] = _assign_sessions(obs, session_gap_s)
     combined["session_id"] = obs["session_id"]
 
-    # imputed rows inherit the session of their (nfl_id, drill_name)'s observed attempts
-    dn_session = (obs.assign(drill_name=combined.loc[obs.index, "drill_name"])
-                  .groupby(["nfl_id", "drill_name"], sort=False)["session_id"].first())
+    # imputed rows inherit the session of their (nfl_id, unit_key)'s observed attempts
+    key_session = (combined.loc[observed]
+                   .groupby(["nfl_id", "unit_key"], sort=False)["session_id"].first())
     imp_mask = ~observed
     if imp_mask.any():
-        keys = list(zip(combined.loc[imp_mask, "nfl_id"], combined.loc[imp_mask, "drill_name"]))
-        combined.loc[imp_mask, "session_id"] = [dn_session.get(kk, None) for kk in keys]
+        keys = list(zip(combined.loc[imp_mask, "nfl_id"], combined.loc[imp_mask, "unit_key"]))
+        combined.loc[imp_mask, "session_id"] = [key_session.get(kk, None) for kk in keys]
     combined = combined[combined["session_id"].notna()].copy()
     observed = (combined["is_imputed"] == 0).to_numpy()
 
-    # ---- drill_first_start_rank per (player, session) ----
+    # ---- unit_first_start_rank (D19) per (player, session) ----
     firsts = (combined.loc[observed]
-              .groupby(["nfl_id", "session_id", "drill_name"], sort=True)["attempt_start_time"]
+              .groupby(["nfl_id", "session_id", "unit_key"], sort=True)["attempt_start_time"]
               .min().reset_index())
-    firsts["drill_first_start_rank"] = (firsts
-                                        .sort_values(["nfl_id", "session_id", "attempt_start_time", "drill_name"])
-                                        .groupby(["nfl_id", "session_id"]).cumcount() + 1)
-    rank_map = firsts.set_index(["nfl_id", "session_id", "drill_name"])["drill_first_start_rank"]
-    combined["drill_first_start_rank"] = [
-        rank_map.get((int(n), s, d), np.nan)
-        for n, s, d in zip(combined["nfl_id"], combined["session_id"], combined["drill_name"])
+    firsts["unit_first_start_rank"] = (firsts
+                                       .sort_values(["nfl_id", "session_id", "attempt_start_time", "unit_key"])
+                                       .groupby(["nfl_id", "session_id"]).cumcount() + 1)
+    rank_map = firsts.set_index(["nfl_id", "session_id", "unit_key"])["unit_first_start_rank"]
+    combined["unit_first_start_rank"] = [
+        rank_map.get((int(n), s, u), np.nan)
+        for n, s, u in zip(combined["nfl_id"], combined["session_id"], combined["unit_key"])
     ]
 
     # ---- order within session and cumulative prior load ----
-    # Key = (drill_first_start_rank, attempt) per spec; event_id is a deterministic
-    # tiebreak for the 9 duplicate-attempt pairs (A5r) that share (rank, attempt).
+    # Key = (unit_first_start_rank, attempt, is_imputed, event_id) per spec (D19).
     combined = combined.sort_values(
-        ["nfl_id", "session_id", "drill_first_start_rank", "attempt", "is_imputed", "event_id"]).copy()
-    combined["first_attempt"] = (combined["attempt"] == 1).astype(int)
+        ["nfl_id", "session_id", "unit_first_start_rank", "attempt", "is_imputed", "event_id"]).copy()
+
+    # ---- first_attempt (D19): 1 iff OBSERVED and the player's earliest observed rep
+    # of that drill_name by attempt_start_time (ties -> min attempt); imputed rows = 0.
+    obs_sorted = (combined.loc[combined["is_imputed"] == 0]
+                  .sort_values(["nfl_id", "drill_name", "attempt_start_time", "attempt"]))
+    first_idx = obs_sorted.groupby(["nfl_id", "drill_name"], sort=False).head(1).index
+    combined["first_attempt"] = 0
+    combined.loc[first_idx, "first_attempt"] = 1
+
     eff = combined["effort_cost_yd"].fillna(0.0)
     cum = eff.groupby(combined["session_id"], sort=False).cumsum()
     combined["prior_load_yd"] = cum - eff
@@ -535,53 +614,67 @@ def _order_and_load(combined: pd.DataFrame, cfg: dict[str, Any]) -> pd.DataFrame
     return combined
 
 
-def _impute_rows(attempts: pd.DataFrame, cfg: dict[str, Any]) -> pd.DataFrame:
+def _impute_rows(attempts: pd.DataFrame, cfg: dict[str, Any],
+                 unit_map: dict[tuple[int, str], str]) -> pd.DataFrame:
     """Lost-attempt (numbering-gap) rows: load only, flagged, no performance.
 
-    The grouping level is `features.attempt_level` (config; default `drill_name`).
-    NOTE: the numbering level differs by draft class in the provided data — see
-    notes/blockers.md B5; the default implements the locked design literally.
+    The grouping (numbering) unit is per ``(nfl_id, drill_type)`` block and is chosen
+    empirically per D19 (``unit_map`` from `resolve_attempt_units`): `drill_name` for
+    per-`drill_name` restart blocks, else `drill_type`. Missing numbers
+    ``m in {1..max(attempt)} \\ observed`` within the unit become rows with
+    ``is_imputed=1``; `drill_name` of the imputed row = that of the nearest observed
+    rep (largest ``attempt < m``, else smallest ``attempt > m``).
     """
-    level = str(cfg["features"]["attempt_level"])
     stat = str(cfg["features"].get("impute_stat", "median"))
     assert stat == "median", f"only impute_stat=median is implemented (got {stat})"
     rows: list[dict[str, Any]] = []
-    # drill-global medians (fallback) per numbering level across all players
-    drill_med = attempts.groupby(level)["effort_cost_yd"].median()
-    for (nfl, lvl), grp in attempts.groupby(["nfl_id", level], sort=True):
-        have = grp["attempt"].astype(int).tolist()
-        mx = int(max(have))
-        for m in missing_attempt_numbers(have, mx):
-            player_med = grp["effort_cost_yd"].median()
-            if np.isfinite(player_med):
-                cost, src = float(player_med), "player_drill"
-            else:
-                g = drill_med.get(lvl, np.nan)
-                cost, src = (float(g) if np.isfinite(g) else np.nan), "drill_global"
-            rows.append({
-                "event_id": None,
-                "nfl_id": int(nfl),
-                "draft_year": int(grp["draft_year"].iloc[0]),
-                "combine_position": grp["combine_position"].iloc[0],
-                "drill_type": grp["drill_type"].iloc[0],
-                "drill_name": grp["drill_name"].iloc[0],
-                "attempt": int(m),
-                "is_imputed": 1,
-                "effort_cost_yd": cost,
-                "impute_source": src,
-                "n_frames": np.nan, "n_gaps": np.nan, "max_gap_s": np.nan,
-                "peak_speed_yds": np.nan, "peak_accel_yds2": np.nan, "t90_s": np.nan,
-                "best_speed_yds": np.nan,
-                "flag_gap_in_peak_speed_window": 0, "flag_gap_in_peak_accel_window": 0,
-                "flag_large_gap": 0, "flag_speed_outlier": 0,
-                "flag_duplicate_attempt": 0, "flag_out_of_order": 0,
-                "flag_std_group_too_small": 0,
-                "advisory_provided_dis_sum": np.nan,
-                "advisory_provided_peak_s": np.nan,
-                "advisory_provided_peak_a": np.nan,
-                "attempt_start_time": pd.NaT, "attempt_end_time": pd.NaT,
-                "elapsed_session_s": np.nan, "rest_s": np.nan, "rest_spans_imputed": 0,
-            })
+    # global (unit-level) medians (fallback) across all players
+    med_dn = attempts.groupby("drill_name")["effort_cost_yd"].median()
+    med_dt = attempts.groupby("drill_type")["effort_cost_yd"].median()
+    for (nfl, dtyp), block in attempts.groupby(["nfl_id", "drill_type"], sort=True):
+        unit = unit_map.get((int(nfl), str(dtyp)), "drill_type")
+        if unit == "drill_name":
+            groups = [(None, g) for _, g in block.groupby("drill_name", sort=True)]
+        else:
+            groups = [(None, block)]  # whole block = one numbering unit
+        for _, grp in groups:
+            have = grp["attempt"].astype(int).tolist()
+            mx = int(max(have))
+            for m in missing_attempt_numbers(have, mx):
+                player_med = grp["effort_cost_yd"].median()
+                if np.isfinite(player_med):
+                    cost, src = float(player_med), "player_drill"
+                else:
+                    if unit == "drill_name":
+                        g = med_dn.get(grp["drill_name"].iloc[0], np.nan)
+                    else:
+                        g = med_dt.get(str(dtyp), np.nan)
+                    cost, src = (float(g) if np.isfinite(g) else np.nan), "drill_global"
+                rows.append({
+                    "event_id": None,
+                    "nfl_id": int(nfl),
+                    "draft_year": int(grp["draft_year"].iloc[0]),
+                    "combine_position": grp["combine_position"].iloc[0],
+                    "drill_type": grp["drill_type"].iloc[0],
+                    "drill_name": _imputed_drill_name(grp, m),
+                    "attempt": int(m),
+                    "attempt_unit": unit,
+                    "is_imputed": 1,
+                    "effort_cost_yd": cost,
+                    "impute_source": src,
+                    "n_frames": np.nan, "n_gaps": np.nan, "max_gap_s": np.nan,
+                    "peak_speed_yds": np.nan, "peak_accel_yds2": np.nan, "t90_s": np.nan,
+                    "best_speed_yds": np.nan,
+                    "flag_gap_in_peak_speed_window": 0, "flag_gap_in_peak_accel_window": 0,
+                    "flag_large_gap": 0, "flag_speed_outlier": 0,
+                    "flag_duplicate_attempt": 0, "flag_out_of_order": 0,
+                    "flag_std_group_too_small": 0,
+                    "advisory_provided_dis_sum": np.nan,
+                    "advisory_provided_peak_s": np.nan,
+                    "advisory_provided_peak_a": np.nan,
+                    "attempt_start_time": pd.NaT, "attempt_end_time": pd.NaT,
+                    "elapsed_session_s": np.nan, "rest_s": np.nan, "rest_spans_imputed": 0,
+                })
     return pd.DataFrame(rows)
 
 
@@ -769,7 +862,13 @@ def run(mode: str, force: bool) -> int:
 
     # ---- imputation + sessions/ordering/load/rest ----
     with timed_stage(cfg, "02_features:impute_load", mode):
-        imputed = _impute_rows(attempt, cfg)
+        # D19: detect the attempt-numbering unit per (nfl_id, drill_type) block
+        unit_map = resolve_attempt_units(attempt, cfg)
+        attempt["attempt_unit"] = [
+            unit_map.get((int(n), str(t)), "drill_type")
+            for n, t in zip(attempt["nfl_id"], attempt["drill_type"])
+        ]
+        imputed = _impute_rows(attempt, cfg, unit_map)
         combined = pd.concat([attempt, imputed], ignore_index=True, sort=False)
         combined["in_study_population"] = (combined["combine_position"] == study_pop)
         combined = _order_and_load(combined, cfg)
@@ -830,9 +929,8 @@ def run(mode: str, force: bool) -> int:
         if int(dict(zip(diag["metric"], diag["value"])).get("attempt_numbering_restart_warning", 0)):
             logger.warning(
                 "ATTEMPT-NUMBERING WARNING: imputed rows (%d) exceed %.0f%% of observed rows. "
-                "The drill_name-level gap rule fabricates phantom lost attempts for the 2025 class "
-                "(its `attempt` is a per-(player, drill_type) block counter, not per (player, drill_name)). "
-                "See notes/blockers.md.",
+                "The detected numbering unit may be wrong (D19); re-check "
+                "features.attempt_level / attempt_restart_min_drill_names and notes/decisions.md.",
                 int((combined["is_imputed"] == 1).sum()),
                 100.0 * float(cfg["features"].get("impute_warn_share", 0.5)),
             )
@@ -863,13 +961,13 @@ def _diagnostics(combined, study_obs, vif, cfg, prov, study_pop) -> pd.DataFrame
     if len(rest_obs) >= 3 and rest_obs["prior_load_yd"].nunique() >= 2 and rest_obs["rest_s"].nunique() >= 2:
         corr_rest = float(np.corrcoef(rest_obs["rest_s"], rest_obs["prior_load_yd"])[0, 1])
     load = study_obs["prior_load_yd"]
-    # ---- numbering-level sanity: imputation volume by draft_year ----
-    # In the 2023/2024 classes `attempt` restarts per (nfl_id, drill_name); in the
-    # 2025 class it is a per-(nfl_id, drill_type) block counter, so the spec's
-    # drill_name-level gap rule fabricates phantom lost attempts for 2025. Detect
-    # and REPORT (non-fatal); see notes/blockers.md.
+    # ---- numbering-unit sanity (D19): imputation volume by draft_year + detected units ----
+    # The attempt-numbering unit is detected empirically per (nfl_id, drill_type) block
+    # (D19); imputed rows are generated at that unit. Detect and REPORT (non-fatal).
     imp_by_year = (combined[combined["is_imputed"] == 1].groupby("draft_year").size()
                    .reindex([2023, 2024, 2025], fill_value=0))
+    _blocks = combined.drop_duplicates(["nfl_id", "drill_type"])
+    _unit_counts = _blocks["attempt_unit"].value_counts()
     warn_share = float(cfg["features"].get("impute_warn_share", 0.5))
     n_obs = int((combined["is_imputed"] == 0).sum())
     n_imp = int((combined["is_imputed"] == 1).sum())
@@ -900,6 +998,8 @@ def _diagnostics(combined, study_obs, vif, cfg, prov, study_pop) -> pd.DataFrame
         ("imputed_share_of_observed", round(n_imp / n_obs, 4) if n_obs else np.nan),
         ("impute_warn_share", warn_share),
         ("attempt_numbering_restart_warning", numbering_warn),
+        ("attempt_unit_blocks_drill_name", int(_unit_counts.get("drill_name", 0))),
+        ("attempt_unit_blocks_drill_type", int(_unit_counts.get("drill_type", 0))),
         ("rest_first_observed_n", int(obs["rest_s"].isna().sum())),
         ("rest_spans_imputed_n", int(obs["rest_spans_imputed"].sum())),
         ("rest_spans_imputed_in_between_n", int(((obs["rest_spans_imputed"] == 1) & obs["rest_s"].notna()).sum())),

@@ -150,3 +150,38 @@ Append-only. Each entry: what was decided, why, and the evidence/constraint behi
 - **Rest:** `rest_s` = start − end of the immediately preceding **observed** attempt in the session; session-first → NaN. `rest_spans_imputed=1` when an imputed attempt lies between the preceding observed attempt and this one **or** when the attempt is session-first (no observed predecessor). POLICY `rest_use=dropped_from_primary_kept_as_feature`: kept as a column and reported (distribution + Pearson corr with `prior_load_yd`, sample −0.19); **not** in the pre-registered Phase-3 primary LMM; declared a Phase-3 robustness covariate (USED).
 **FINDING (2025 attempt numbering — contradicts the D16 premise).** The PM brief (and `notes/schema.md` §2) state `attempt` "restarts per `(player, drill_name)`". This holds for the **2023/2024** classes (per-`drill_name` restart; 121/81 gap-groups; max attempt 6). It **does NOT hold for the 2025 class**, where `attempt` is a **per-`(player, drill_type)` block counter**: e.g. nfl_id 58968 ran `SKILL_DRILLS_WR` once through with attempts `1..17` across 17 *different* `drill_name`s, so within any single `drill_name` only one number is observed but `max(attempt)=17`. Applying the D18 `drill_name`-level gap rule to 2025 therefore **fabricates** phantom lost attempts. Impact: imputed rows = **2023 144 + 2024 118 + 2025 7874 = 8136** under the spec level, vs **96 + 94 + 2025 148 = 338** under a `drill_type` level for 2025; for the **DB study population** the spec rule yields **1617** imputed rows (49+32+**1536**) vs ≈**130** — i.e. ~**92%** of DB imputed load is phantom, corrupting the primary exposure `prior_load_yd`.
 **Action taken.** The pipeline implements the **locked** rule **exactly** and additionally emits a runtime warning + diagnostics (`imputed_rows_{2023,2024,2025}`, `imputed_share_of_observed`, `attempt_numbering_restart_warning`) when the imputed share exceeds `features.impute_warn_share`. The discrepancy is raised as a **blocker** (`notes/blockers.md`) with a recommendation (make the numbering unit **year-aware**: `drill_name` for 2023/24, `drill_type` for 2025) for the PM to decide **before** Phase 3 / the full run. Not changed unilaterally (design marked LOCKED; "do not re-litigate").
+
+## D19 — Phase-2 attempt-numbering unit is **empirical per (player, drill_type)**; supersedes D16/D18's `drill_name` premise · 2026-10-10
+**Decision (human-approved fix; Conor 2026-10-10).** The `attempt` numbering unit for gap-imputation and
+`first_attempt` is **detected empirically per `(nfl_id, drill_type)` block**, not hardcoded by year. A block is a
+**per-`drill_name` restart** unit (`attempt_unit='drill_name'`) iff it has **≥2 distinct `drill_name`s AND
+≥ `features.attempt_restart_min_drill_names` (2) of them have `min(attempt)==1`**; otherwise it is a
+**per-`drill_type` block counter** (`attempt_unit='drill_type'`). Single-`drill_name` blocks are unit-invariant.
+**Why (evidence — full combine data, 6,310 observed attempts).** D16/D18 locked `attempt_level: drill_name`,
+which matches 2023/2024 (`attempt` restarts per `(nfl_id, drill_name)`) but is **violated by 2025**, where
+`attempt` is a per-`(nfl_id, drill_type)` block counter. Implemented literally it fabricates phantom reps and
+inflates `prior_load_yd`.
+- Spec rule (`drill_name`): imputed rows 2023 144 / 2024 118 / **2025 7,874** (1,749 groups); **DB 2025 = 1,536**
+  of 1,617 DB-imputed (~92% phantom).
+- Empirical unit: imputed rows 2023 144 / 2024 118 / **2025 148** (424 blocks, 104 with a gap); **DB 2025 = 28**;
+  nfl_id 58968 (WR) = **0**.
+- Worked example: 58968 ran `SKILL_DRILLS_WR` once through, attempts 1..17 across 17 distinct `drill_name`s
+  (OVER_SHOULDER_ADJUST=1 … RED_ZONE_FADE_RIGHT=17), real timestamps 23:48:41→00:50:17; zero genuinely lost reps.
+- Detection validated clean: 2023 160/160 and 2024 177/177 multi-`drill_name` blocks → `drill_name`; 2025 0/173
+  → `drill_name` (173 → `drill_type`), reproducing 148 exactly.
+**Consequences.** (i) gap-imputation recomputed at the detected unit → 2025 imputed load falls to the genuine
+~148; imputed rows still carry **load only** (no performance/clock). (ii) `prior_load_yd`/`prior_load_efforts`
+recomputed; `prior_load_observed_yd`/`prior_load_observed_efforts` kept (observed-only) as the pre-registered
+Phase-3 **robustness** refit. (iii) ordering uses real timestamps; imputed reps (no timestamp) are slotted only
+within their detected unit via `unit_first_start_rank`. (iv) new provenance column `attempt_unit`. (v)
+`first_attempt` redefined below.
+**`first_attempt` (definition documented + construct flagged to Main).** = **1 iff the rep is the player's
+earliest *observed* rep of that `drill_name` (by `attempt_start_time`; ties by min `attempt`)**; imputed rows = 0.
+Rationale: the original `attempt==1` is degenerate under block numbering (only the block's first rep). **Construct
+flag:** under block numbering this flags ~one rep per distinct `drill_name` (the warm-up of each skill/task),
+whereas the unit-consistent alternative ("first attempt of the *numbering unit*": `attempt==1` within `drill_name`
+for restart units, within `drill_type` for block units) flags exactly the block's first rep (the session's true
+warm-up). The per-brief definition is implemented; **confirm the warm-up construct before Phase 3**. For
+2023/2024 the change is limited to the 121/81 gap-groups where attempt 1 was lost (first observed rep now flags 1).
+**Not changed:** `standardize_level`, `t90_baseline_level`, `performance_metric`; all other D16/D18 choices stand.
+D16/D18's `attempt_level: drill_name` premise is superseded by this entry.

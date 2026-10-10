@@ -1,6 +1,6 @@
 # Blockers — BDB27
 
-**Status: 1 ACTIVE (Cycle-3 blocker B5 below — 2025 attempt-numbering level).** Phase 1 cleared the gate (GO), and Phase-2 code/tests are complete, but a **data-semantics discrepancy** between the locked `attempt_level: drill_name` design and the 2025 class is raised for a PM decision before Phase 3 / the full run. Recorded 2026-10-09.
+**Status: 0 ACTIVE — B5 RESOLVED (D19, 2026-10-10).** Phase 1 cleared the gate (GO); Phase-2 code/tests are complete. The **data-semantics discrepancy** between the old locked `attempt_level: drill_name` design and the 2025 class was **resolved by D19** (empirical per-`(nfl_id, drill_type)` numbering-unit detection, human-approved 2026-10-10). Recorded 2026-10-09; resolved 2026-10-10.
 
 Per `TASK.md`, a blocker stops work and must be written here. The following were checked and are **not** blocking:
 
@@ -28,10 +28,10 @@ Per `TASK.md`, a blocker stops work and must be written here. The following were
 
 ---
 
-# Cycle 3 — ACTIVE blocker
+# Cycle 3 — RESOLVED blocker (B5, resolved 2026-10-10 by D19)
 
-## B5 — `attempt` numbering unit differs by draft class (2023/24 vs 2025): the locked `attempt_level: drill_name` premise is violated for 2025 · 2026-10-09
-**Status:** ACTIVE — decision needed **before Phase 3** and **before the full run**; Phase-2 code is complete and implements the locked rule literally.
+## B5 — `attempt` numbering unit differs by draft class (2023/24 vs 2025): the locked `attempt_level: drill_name` premise is violated for 2025 · 2026-10-09 (RESOLVED 2026-10-10, D19)
+**Status:** **RESOLVED (D19, 2026-10-10)** — the numbering unit is now detected empirically per `(nfl_id, drill_type)` before gap-imputation / `first_attempt`; see the Resolution paragraph at the end of this section.
 
 **What.** The locked Phase-2 design (`decisions.md` D16/D18) and `notes/schema.md` §2 assume `attempt` "restarts per `(player, drill_name)`", and the numbering-gap imputation (D18) is applied at that level. **Evidence contradicts this for the 2025 draft class.**
 
@@ -52,3 +52,5 @@ The spec rule makes **~92% of the DB study-population imputed rows phantom**, wh
 **Recommendation (for the PM).** Make the numbering unit **year-aware**: `attempt_level` = `drill_name` for 2023/2024, `drill_type` for 2025 (equivalently, derive the unit per player by detecting where `attempt` restarts at 1 and is contiguous). Re-derive `first_attempt`, numbering-gap imputation, and `prior_load_yd`/`prior_load_efforts` accordingly, then re-run Phase 2 and Phase 3.
 
 **Current handling.** `src/02_features.py` implements the locked rule exactly and emits a runtime **WARNING** + diagnostics (`imputed_rows_{2023,2024,2025}`, `imputed_share_of_observed`, `attempt_numbering_restart_warning`) whenever imputed rows exceed `features.impute_warn_share` (0.5) of observed rows. Sample run: warning **tripped** (8136/6310 = 1.29). Choosing to read the sample DB rows would be wrong (sample discipline, D8) — the blocker is raised on the **full-combine** evidence (combine data is complete, not sampled).
+
+**Resolution (2026-10-10, D19).** The `attempt` numbering unit is now **detected empirically per `(nfl_id, drill_type)` block** (`features.attempt_level: empirical`, rule: `drill_name` restart unit iff ≥2 distinct `drill_name`s and ≥ `features.attempt_restart_min_drill_names` (2) of them start at `attempt==1`), replacing the hardcoded `drill_name` premise. Detection reproduces the classes cleanly: 2023 160/160 and 2024 177/177 multi-`drill_name` blocks → `drill_name`; 2025 0/173 → `drill_name` (173 → `drill_type`). Effect: **2025 imputed rows 7,874 → 148** (DB study population **1,536 → 28**); 2023 (144) and 2024 (118) unchanged; total imputed 410 of 6,310 observed (share 0.065, warning now **OFF**). `first_attempt` is redefined as the player's earliest *observed* rep of that `drill_name` (imputed → 0); a new `attempt_unit` provenance column is emitted per row; ordering uses `unit_first_start_rank`. `test_2025_numbering_fix` + the updated `test_invariants`/`test_attempt_unit_detection` are green, and the Phase-1 audit tests still pass. Full record: `decisions.md` **D19**.

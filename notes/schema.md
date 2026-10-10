@@ -30,7 +30,7 @@
 | `time` | TIMESTAMP | ISO-8601, **naive (no TZ offset)** — assumed UTC (unverified) |
 | `drill_type` | VARCHAR | `FORTY_YARD_DASH`, `THREE_CONE_DRILL`, `SHORT_SHUTTLE`, `SKILL_DRILLS_{WR,DB,DL,OL,TE,LB}` |
 | `drill_name` | VARCHAR | specific sub-drill (e.g. `GAUNTLET_DRILL`) |
-| `attempt` | BIGINT | attempt index within `(player, drill_name)`, restarts per sub-drill — **see correction below** |
+| `attempt` | BIGINT | attempt index — numbering unit is **class-dependent** (per-`drill_name` restart for 2023/2024; per-`(player, drill_type)` block counter for 2025) — **see D19 note below** |
 | `x` | DOUBLE | yards — local Combine frame (x ∈ [1.3, 103.9]) |
 | `y` | DOUBLE | yards — local Combine frame (y ∈ [−7.2, 66.3]); **not** the NFL 0–53.3 width |
 | `s` | DOUBLE | speed, **yards/second** |
@@ -43,10 +43,16 @@
 - **Nulls:** none in any column (PLAYER+BALL) in this file.
 - **Consistency across the table:** 6,310 distinct `event_id`; each maps 1:1 to `(nfl_id, drill_name, attempt)`.
 
-> **Correction (2026-10-09, Phase 2).** The `attempt` semantics above hold for the **2023/2024** combine classes
-> but **not 2025**: in 2025 `attempt` is a per-`(player, drill_type)` **block counter** (one player ran
-> `SKILL_DRILLS_WR` once through with attempts `1..17` across 17 different `drill_name`s). This affects the
-> numbering-gap imputation unit — see blocker **B5** (`notes/blockers.md`) and `notes/decisions.md` D18.
+> **Note (2026-10-10, Phase 2, D19).** The `attempt` numbering unit is **class-dependent and detected
+> empirically** per `(nfl_id, drill_type)` block (decision **D19**, `notes/decisions.md`). A block is a
+> **per-`drill_name` restart** unit (`attempt_unit='drill_name'`) iff it has **≥2 distinct `drill_name`s AND
+> ≥ `features.attempt_restart_min_drill_names` (2) of them have `min(attempt)==1`**; otherwise it is a
+> **per-`(player, drill_type)` block counter** (`attempt_unit='drill_type'`). In practice: `attempt` restarts per
+> `(player, drill_name)` for **2023/2024** (e.g. 160/160 and 177/177 multi-`drill_name` blocks), but is a
+> per-`(player, drill_type)` block counter for **2025** (a player ran `SKILL_DRILLS_WR` once through with attempts
+> `1..17` across 17 different `drill_name`s; 0/173 multi-`drill_name` blocks restart). The detected unit is emitted
+> per row as the `attempt_unit` provenance column and drives gap-imputation + `first_attempt`. See `notes/blockers.md`
+> **B5 (RESOLVED)** and `notes/decisions.md` **D19**.
 
 ## 3. `combine_results.csv` (18 cols)
 

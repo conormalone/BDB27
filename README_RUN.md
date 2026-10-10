@@ -93,6 +93,8 @@ python src/tests/test_audit.py      # Phase 1; or run standalone
 python src/tests/test_features.py   # Phase 2; or run standalone
 ```
 
-> **Phase-2 caveat (blocker B5).** The locked `features.attempt_level: drill_name` numbering unit holds for the
-> 2023/2024 combine classes but **not** for 2025 (its `attempt` is a per-`(player, drill_type)` block counter),
-> which inflates imputed load. See `notes/blockers.md` **B5** and `notes/decisions.md` **D18** before Phase 3.
+> **Phase-2 note (blocker B5 — RESOLVED, D19, 2026-10-10).** The attempt-numbering unit is **detected
+> empirically per `(nfl_id, drill_type)`** (`features.attempt_level: empirical`): `attempt` restarts per
+> `(player, drill_name)` for 2023/2024 but is a per-`(player, drill_type)` block counter for 2025. The phantom
+> 2025 imputation is gone — **2025 imputed rows now 148** (DB study population **28**; total imputed 410 of 6,310
+> observed). See `notes/decisions.md` **D19** and `notes/blockers.md` **B5**.

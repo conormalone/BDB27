@@ -14,6 +14,7 @@ from pathlib import Path
 
 import duckdb
 import numpy as np
+import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
@@ -72,8 +73,19 @@ def test_invariants() -> str:
     assert bad == 0, f"{bad} imputed rows carry performance/clock values"
     # imputed carry load and effort only
     assert con.execute(f"SELECT count(*) FROM {F} WHERE is_imputed=1 AND effort_cost_yd IS NULL").fetchone()[0] == 0
-    # first_attempt == (attempt==1)
-    assert con.execute(f"SELECT count(*) FROM {F} WHERE first_attempt <> (attempt=1)::INT").fetchone()[0] == 0
+    # first_attempt (D19): 1 iff OBSERVED and the player's earliest observed rep of that
+    # drill_name by attempt_start_time (ties -> min attempt); imputed rows = 0.
+    assert con.execute(f"SELECT count(*) FROM {F} WHERE first_attempt=1 AND is_imputed=1").fetchone()[0] == 0
+    n_flag = con.execute(f"SELECT count(*) FROM {F} WHERE first_attempt=1").fetchone()[0]
+    n_groups = con.execute(f"SELECT count(DISTINCT (nfl_id, drill_name)) FROM {F} WHERE is_imputed=0").fetchone()[0]
+    assert n_flag == n_groups, f"first_attempt flags {n_flag} != observed (player,drill_name) groups {n_groups}"
+    fa_bad = con.execute(f"""
+        WITH r AS (SELECT first_attempt,
+                          row_number() OVER (PARTITION BY nfl_id, drill_name
+                                             ORDER BY attempt_start_time, attempt) rn
+                   FROM {F} WHERE is_imputed=0)
+        SELECT count(*) FROM r WHERE (rn=1) <> (first_attempt=1)""").fetchone()[0]
+    assert fa_bad == 0, f"{fa_bad} rows disagree with the D19 first_attempt definition"
     # no negative effort
     assert con.execute(f"SELECT count(*) FROM {F} WHERE effort_cost_yd < 0").fetchone()[0] == 0
     # observed-only load never exceeds total load
@@ -88,19 +100,101 @@ def test_invariants() -> str:
         FROM {F} WHERE is_imputed=0 AND perf_z IS NOT NULL GROUP BY 1,2""").df()
     assert (z["m"].abs() < 1e-3).all(), "group mean(perf_z) != 0"
     assert (z["s"].sub(1).abs() < 2e-3).all(), "group sd(perf_z) != 1"
-    # prior_load_yd non-decreasing within a session in the rank/attempt order
-    # (event_id tiebreak matches the deterministic key used in the pipeline)
+    # prior_load_yd non-decreasing within a session in the D19 unit-rank/attempt order
+    # (rank recomputed here independently from raw observed times + emitted attempt_unit)
     viol = con.execute(f"""
-        WITH firsts AS (SELECT session_id, drill_name, min(attempt_start_time) mn
-                        FROM {F} WHERE is_imputed=0 GROUP BY 1,2),
-             rk AS (SELECT session_id, drill_name,
-                    row_number() OVER (PARTITION BY session_id ORDER BY mn, drill_name) r FROM firsts),
+        WITH firsts AS (SELECT nfl_id, session_id,
+                    CASE WHEN attempt_unit='drill_name' THEN drill_name ELSE drill_type END AS uk,
+                    min(attempt_start_time) AS mn
+                    FROM {F} WHERE is_imputed=0 GROUP BY 1,2,3),
+             rk AS (SELECT nfl_id, session_id, uk,
+                    row_number() OVER (PARTITION BY nfl_id, session_id ORDER BY mn, uk) r
+                    FROM firsts),
              o AS (SELECT f.prior_load_yd,
-                   lag(f.prior_load_yd) OVER (PARTITION BY f.session_id
+                   lag(f.prior_load_yd) OVER (PARTITION BY f.nfl_id, f.session_id
                        ORDER BY rk.r, f.attempt, f.is_imputed, f.event_id) prev
-                   FROM {F} f JOIN rk ON rk.session_id=f.session_id AND rk.drill_name=f.drill_name)
+                   FROM {F} f JOIN rk ON rk.nfl_id=f.nfl_id AND rk.session_id=f.session_id
+                       AND rk.uk = (CASE WHEN f.attempt_unit='drill_name' THEN f.drill_name ELSE f.drill_type END))
         SELECT count(*) FROM o WHERE prev IS NOT NULL AND prior_load_yd < prev - 1e-3""").fetchone()[0]
     assert viol == 0, f"{viol} prior_load_yd monotonicity violations"
+    return PASS
+
+
+def test_attempt_unit_detection() -> str:
+    """D19: empirical numbering-unit detection on synthetic blocks."""
+    # (a) per-drill_name restart block: A and B each start at attempt 1 -> drill_name
+    a = pd.DataFrame([
+        {"nfl_id": 1, "drill_type": "D", "drill_name": "A", "attempt": 1},
+        {"nfl_id": 1, "drill_type": "D", "drill_name": "A", "attempt": 2},
+        {"nfl_id": 1, "drill_type": "D", "drill_name": "B", "attempt": 1},
+        {"nfl_id": 1, "drill_type": "D", "drill_name": "B", "attempt": 2},
+    ])
+    r = FEAT.detect_attempt_unit(a, 2)
+    assert len(r) == 1
+    row = r.iloc[0]
+    assert row["attempt_unit"] == "drill_name", row.to_dict()
+    assert row["n_drill_names"] == 2 and row["n_drill_names_starting_at_1"] == 2
+
+    # (b) per-drill_type block counter: only the first sub-drill starts at 1 -> drill_type
+    b = pd.DataFrame([
+        {"nfl_id": 2, "drill_type": "D", "drill_name": "A", "attempt": 1},
+        {"nfl_id": 2, "drill_type": "D", "drill_name": "B", "attempt": 2},
+        {"nfl_id": 2, "drill_type": "D", "drill_name": "B", "attempt": 3},
+        {"nfl_id": 2, "drill_type": "D", "drill_name": "C", "attempt": 4},
+    ])
+    r = FEAT.detect_attempt_unit(b, 2)
+    assert r.iloc[0]["attempt_unit"] == "drill_type", r.iloc[0].to_dict()
+    assert r.iloc[0]["n_drill_names_starting_at_1"] == 1
+
+    # (c) single-drill_name block is unit-invariant -> drill_type
+    c = pd.DataFrame([
+        {"nfl_id": 3, "drill_type": "D", "drill_name": "A", "attempt": 1},
+        {"nfl_id": 3, "drill_type": "D", "drill_name": "A", "attempt": 2},
+        {"nfl_id": 3, "drill_type": "D", "drill_name": "A", "attempt": 3},
+    ])
+    assert FEAT.detect_attempt_unit(c, 2).iloc[0]["attempt_unit"] == "drill_type"
+
+    # (d) attempt numbers overlap across drill_names only via a repeated sub-drill:
+    #     D1=[1], D2=[2,3] (repeated), D3=[3] (overlaps D2 at 3) -> still drill_type
+    d = pd.DataFrame([
+        {"nfl_id": 4, "drill_type": "D", "drill_name": "D1", "attempt": 1},
+        {"nfl_id": 4, "drill_type": "D", "drill_name": "D2", "attempt": 2},
+        {"nfl_id": 4, "drill_type": "D", "drill_name": "D2", "attempt": 3},
+        {"nfl_id": 4, "drill_type": "D", "drill_name": "D3", "attempt": 3},
+    ])
+    assert FEAT.detect_attempt_unit(d, 2).iloc[0]["attempt_unit"] == "drill_type"
+
+    # threshold is honored: with a higher min, a 2-restart block is no longer 'drill_name'
+    assert FEAT.detect_attempt_unit(a, 3).iloc[0]["attempt_unit"] == "drill_type"
+    return PASS
+
+
+def test_2025_numbering_fix() -> str:
+    """D19: the literal drill_name premise's phantom 2025 imputation is eliminated."""
+    con = duckdb.connect()
+    F = _pq("combine_features.parquet")
+    S = _pq("combine_features_study.parquet")
+    by_year = dict(con.execute(
+        f"SELECT draft_year, count(*) FROM {F} WHERE is_imputed=1 GROUP BY 1").fetchall())
+    assert by_year.get(2023) == 144, by_year
+    assert by_year.get(2024) == 118, by_year
+    assert by_year.get(2025) == 148, by_year
+    assert sum(by_year.values()) == 410, by_year
+    assert con.execute(f"SELECT count(*) FROM {F} WHERE is_imputed=0").fetchone()[0] == 6310
+    # DB study population
+    db = dict(con.execute(
+        f"SELECT draft_year, count(*) FROM {S} WHERE is_imputed=1 GROUP BY 1").fetchall())
+    assert db.get(2023) == 49 and db.get(2024) == 32 and db.get(2025) == 28, db
+    assert sum(db.values()) == 109, db
+    # nfl_id 58968 (2025 WR): block counter, zero phantom imputation
+    imp, au = con.execute(
+        f"SELECT count(*) FILTER (WHERE is_imputed=1), any_value(attempt_unit) FROM {F} WHERE nfl_id=58968").fetchone()
+    assert imp == 0, f"58968 has {imp} imputed rows"
+    assert au == "drill_type", au
+    # detected block counts
+    blocks = dict(con.execute(
+        f"SELECT attempt_unit, count(*) FROM (SELECT DISTINCT nfl_id, drill_type, attempt_unit FROM {F}) GROUP BY 1").fetchall())
+    assert blocks.get("drill_name") == 337 and blocks.get("drill_type") == 921, blocks
     return PASS
 
 
@@ -185,8 +279,8 @@ def test_determinism() -> str:
 
 
 def main() -> int:
-    tests = [test_schema, test_invariants, test_study_subset, test_player_summary,
-             test_edge_cases, test_determinism]
+    tests = [test_schema, test_attempt_unit_detection, test_invariants, test_study_subset,
+             test_player_summary, test_edge_cases, test_2025_numbering_fix, test_determinism]
     rc = 0
     for t in tests:
         try:

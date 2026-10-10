@@ -75,7 +75,7 @@ the writeup's Limitations section.
 
 ## Phase 2 (Combine features) — added 2026-10-09
 
-19. **Attempt-numbering unit differs by draft class → phantom imputed attempts (2025).** The locked Phase-2
+19. **[RESOLVED (D19, 2026-10-10)] Attempt-numbering unit differs by draft class → phantom imputed attempts (2025).** The locked Phase-2
     design standardises and imputes at `attempt_level = drill_name`, matching 2023/2024, where `attempt`
     restarts per `(player, drill_name)`. In the **2025** class `attempt` is instead a
     **per-`(player, drill_type)` block counter** (one player ran `SKILL_DRILLS_WR` once through with attempts
@@ -87,6 +87,13 @@ the writeup's Limitations section.
     `imputed_share_of_observed`, `attempt_numbering_restart_warning`) when imputed rows exceed
     `features.impute_warn_share` of observed. Raised as blocker **B5** (`notes/blockers.md`) with a recommended
     year-aware fix; **must be decided before Phase 3 / the full run**.
+    *Resolution (D19, 2026-10-10).* The numbering unit is now **detected empirically per `(nfl_id, drill_type)`**
+    (`features.attempt_level: empirical`; rule in `decisions.md` D19), so gap-imputation, `first_attempt` and
+    `prior_load_yd` all use the detected unit and the phantom 2025 imputation is **eliminated**: 2025 imputed rows
+    **7,874 → 148** (DB **1,536 → 28**); 2023 (144) / 2024 (118) unchanged; total 410 of 6,310 observed (share
+    0.065 — warning now OFF). A per-row `attempt_unit` provenance column is emitted. **Residual threat:** only the
+    detection heuristic's ambiguity for **single-`drill_name` blocks**, which is **unit-invariant** (grouping by
+    `drill_name` == grouping by `drill_type`), so mis-detection there has **no effect** on imputation or load.
 20. **Lost-attempt imputation is load-only and model-free.** Missing `(player, drill_name)` attempt numbers get
     the player's median observed `effort_cost_yd` for that drill (fallback: drill-name global median); no
     performance values are emitted and imputed rows are excluded from standardisation. *Mitigation:*

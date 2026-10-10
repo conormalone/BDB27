@@ -88,7 +88,8 @@ audit:
 features:
   out_subdir: features            # outputs/features/
   # --- unit levels (config-driven; no magic) ---
-  attempt_level: drill_name       # D18: attempt numbering restarts per (nfl_id, drill_name)
+  attempt_level: empirical            # empirical | drill_name | drill_type (D19). empirical = detect per (nfl_id, drill_type)
+  attempt_restart_min_drill_names: 2  # a block is a per-drill_name restart unit iff >= this many drill_names start at attempt 1
   standardize_level: drill_type   # D17: standardise perf_z WITHIN (standardize_level, combine_position)
   t90_baseline_level: drill_type  # D18: "the player's best" = max observed peak_speed within the drill_type
   performance_metric: peak_speed_yds   # primary standardised metric (D17)
