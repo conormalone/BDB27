@@ -30,7 +30,7 @@
 | `time` | TIMESTAMP | ISO-8601, **naive (no TZ offset)** — assumed UTC (unverified) |
 | `drill_type` | VARCHAR | `FORTY_YARD_DASH`, `THREE_CONE_DRILL`, `SHORT_SHUTTLE`, `SKILL_DRILLS_{WR,DB,DL,OL,TE,LB}` |
 | `drill_name` | VARCHAR | specific sub-drill (e.g. `GAUNTLET_DRILL`) |
-| `attempt` | BIGINT | attempt index within `(player, drill_name)`, restarts per sub-drill |
+| `attempt` | BIGINT | attempt index within `(player, drill_name)`, restarts per sub-drill — **see correction below** |
 | `x` | DOUBLE | yards — local Combine frame (x ∈ [1.3, 103.9]) |
 | `y` | DOUBLE | yards — local Combine frame (y ∈ [−7.2, 66.3]); **not** the NFL 0–53.3 width |
 | `s` | DOUBLE | speed, **yards/second** |
@@ -42,6 +42,11 @@
 - **Rows/attempt:** mean 68.3, median 63, max 209.
 - **Nulls:** none in any column (PLAYER+BALL) in this file.
 - **Consistency across the table:** 6,310 distinct `event_id`; each maps 1:1 to `(nfl_id, drill_name, attempt)`.
+
+> **Correction (2026-10-09, Phase 2).** The `attempt` semantics above hold for the **2023/2024** combine classes
+> but **not 2025**: in 2025 `attempt` is a per-`(player, drill_type)` **block counter** (one player ran
+> `SKILL_DRILLS_WR` once through with attempts `1..17` across 17 different `drill_name`s). This affects the
+> numbering-gap imputation unit — see blocker **B5** (`notes/blockers.md`) and `notes/decisions.md` D18.
 
 ## 3. `combine_results.csv` (18 cols)
 

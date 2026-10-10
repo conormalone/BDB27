@@ -111,3 +111,42 @@ Append-only. Each entry: what was decided, why, and the evidence/constraint behi
 (i) **dtype downcasting** — Parquet is written via DuckDB `COPY` with ZSTD compression but **no explicit float64→float32 / int64→int32 downcast** is applied (TASK.md: "Downcast dtypes").
 (ii) **stage-level checkpointing** — only the CSV→Parquet **conversion** is checkpointed (`to_parquet` skips when the cache exists); **stage outputs are not** — re-running `01_audit.py` re-executes every query even when its output tables exist (TASK.md: "Stages checkpoint to disk and skip finished work unless `--force`").
 **Why deferred.** At Phase 0/1 the audit is cheap (sample run ≈6 s, ≈380 MB) and the Combine Parquet is small (83.8 MB), so the cost is immaterial; both become material at Phase 2 (per-frame tracking features) and on the full run.
+
+## D14 — (stub; withdrawn) · 2026-10-09
+**Decision.** Withdrawn before adoption — no design change was made under this number. Recorded **only** so the cross-reference in **D13** ("(D14 is withdrawn.)") resolves to a real, append-only entry. No action required.
+
+---
+
+# Cycle 3 — Phase 2 (Combine features)
+
+## D15 (partial resolution) — dtype downcasting + stage checkpointing landed in `02_features.py` · 2026-10-09
+**Decision.** The two deferred TASK.md "Engineering" items from D15 are now **implemented** in `src/02_features.py` (the stage where they first became material):
+(i) **dtype downcasting** — outputs are written via DuckDB `COPY … (FORMAT PARQUET, COMPRESSION ZSTD)` with explicit `TRY_CAST`/`CAST`: float64→`FLOAT` (float32), int64→`INTEGER` (int32), timestamps→`TIMESTAMP` (a `COLUMNS` schema table is the single source of truth).
+(ii) **stage checkpointing** — the whole feature stage is skipped when `outputs/features/combine_features.parquet` exists unless `--force`; a `02_features:checkpoint` row is still appended to `outputs/run_log.csv` on the skip. Per-stage `timed_stage` rows (`:convert`, `:kinematics`, `:impute_load`, `:standardize`, `:vif`, `:write`) log wall time + peak RAM.
+**Still open.** The **Phase-1** audit (`01_audit.py`) keeps the earlier behaviour (only the CSV→Parquet conversion is checkpointed); retro-fitting stage checkpoints there is cosmetic and remains optional.
+
+## D16 — Phase-2 unit levels (config-driven) · 2026-10-09
+**Decision (locked by the PM brief; implemented exactly).** Encoded in `config.yaml` under `features`:
+- `attempt_level: drill_name` — attempt numbering unit (used for `first_attempt` and numbering-gap imputation).
+- `standardize_level: drill_type` — `perf_z` is a z-score **within `(drill_type, combine_position)`** (rationale: most `drill_name`s have ~1 attempt/player, so per-`drill_name` groups would have sd=0; `drill_type` is the family/C(drill) unit and yields sd>0 — verified: every group in the sample run has `group_ok=1`).
+- `t90_baseline_level: drill_type` — "the player's best" = that player's max observed `peak_speed_yds` within the drill_type.
+- `performance_metric: peak_speed_yds` — the primary standardised metric.
+**Why.** Recorded from the PM brief; standardisation level chosen to avoid degenerate (sd=0) groups. **Caveat surfaced in D18/`blockers.md`:** the `attempt_level: drill_name` premise does **not** hold for the 2025 class.
+
+## D17 — Phase-2 kinematics, gaps, standardisation, first_attempt + VIF · 2026-10-09
+**Decision (locked; implemented).**
+- **Kinematics from `x`/`y`/`time` only** (the provided `s`/`a`/`dis` are **advisory cross-checks** only). Per segment: Δt, Euclidean distance `d`, speed `v=d/Δt`, accel `a=(v_i−v_{i−1})/((Δt_i+Δt_{i−1})/2)`. `peak_speed_yds=max v`, `peak_accel_yds2=max signed a`, `t90_s=ΣΔt` over counted segments with `v ≥ t90_frac·best`, `effort_cost_yd=Σd` over counted segments.
+- **Frame gaps:** a gap is `Δt > gap_detect_factor·expected_dt_s` (1.5×0.1=0.15 s). Gaps inside the peak-speed segment or peak-accel window are **flagged and left raw**; **elsewhere** gaps `< interp_max_gap_s` (0.5 s) are linearly interpolated onto the expected grid, gaps `≥0.5 s` are **not** interpolated → segment excluded and `flag_large_gap`.
+- **Sanity flags:** `flag_speed_outlier` (>`peak_speed_sanity_yds`=12), `flag_duplicate_attempt` (>1 `event_id` per (nfl_id, drill_name, attempt); 9 A5r tuples → 18 rows; flagged, not dropped), `flag_out_of_order` (time order disagrees with attempt order), `flag_std_group_too_small`.
+- **Standardisation:** `perf_z` (primary = `peak_speed_yds`) + `peak_accel_z`, `t90_z`, `effort_cost_z`, z-scored within `(drill_type, position)` over **observed** attempts only (ddof=0); a group with `n < min_std_group_n` (3) or sd=0 → NaN + flag; group (n, mean, sd) written to `standardization_params.csv`.
+- **`first_attempt`** = 1 iff original `attempt == 1` within (player, drill_name). **VIF** of {`prior_load_yd`, `first_attempt`} on study-population observed rows (statsmodels, with constant), flagged if > `vif_flag_threshold` (5.0); also `corr(load, first_attempt)` → `vif_report.csv`. Sample result: **VIF=1.089 (< 5, no flag)**, corr=−0.286.
+**Why.** Recorded from the PM brief; the sanity thresholds live in `config.yaml` (no magic numbers).
+
+## D18 — Phase-2 imputation, sessions/ordering, prior load, rest (and the 2025 attempt-numbering finding) · 2026-10-09
+**Decision (locked; implemented).**
+- **Numbering-gap imputation (lost data; load only):** for each `(nfl_id, drill_name)`, missing numbers = `{1..max(attempt)} \ observed`; each becomes a row with `is_imputed=1`, `event_id=NULL`, all kinematics/perf/clock NULL, `effort_cost_yd` = `player_drill` median (fallback `drill_global`). Imputed rows carry **no** performance and are excluded from standardisation.
+- **Sessions:** split a player's observed timeline where consecutive attempt starts differ by `> session_gap_s` (7200 s); `session_id=f"{nfl_id}:{k}"` (k by time). *(Real combine data is single-session: max observed gap 3159 s < 7200 s.)*
+- **Ordering & cumulative prior load:** within (player, session) order by `(drill_first_start_rank, attempt)`; `prior_load_yd` = Σ `effort_cost_yd` of **all** (observed+imputed) earlier attempts; `prior_load_efforts` = count of them; **plus** `prior_load_observed_yd`/`prior_load_observed_efforts` (observed-only) for the Phase-3 observed-only robustness refit.
+- **Rest:** `rest_s` = start − end of the immediately preceding **observed** attempt in the session; session-first → NaN. `rest_spans_imputed=1` when an imputed attempt lies between the preceding observed attempt and this one **or** when the attempt is session-first (no observed predecessor). POLICY `rest_use=dropped_from_primary_kept_as_feature`: kept as a column and reported (distribution + Pearson corr with `prior_load_yd`, sample −0.19); **not** in the pre-registered Phase-3 primary LMM; declared a Phase-3 robustness covariate (USED).
+**FINDING (2025 attempt numbering — contradicts the D16 premise).** The PM brief (and `notes/schema.md` §2) state `attempt` "restarts per `(player, drill_name)`". This holds for the **2023/2024** classes (per-`drill_name` restart; 121/81 gap-groups; max attempt 6). It **does NOT hold for the 2025 class**, where `attempt` is a **per-`(player, drill_type)` block counter**: e.g. nfl_id 58968 ran `SKILL_DRILLS_WR` once through with attempts `1..17` across 17 *different* `drill_name`s, so within any single `drill_name` only one number is observed but `max(attempt)=17`. Applying the D18 `drill_name`-level gap rule to 2025 therefore **fabricates** phantom lost attempts. Impact: imputed rows = **2023 144 + 2024 118 + 2025 7874 = 8136** under the spec level, vs **96 + 94 + 2025 148 = 338** under a `drill_type` level for 2025; for the **DB study population** the spec rule yields **1617** imputed rows (49+32+**1536**) vs ≈**130** — i.e. ~**92%** of DB imputed load is phantom, corrupting the primary exposure `prior_load_yd`.
+**Action taken.** The pipeline implements the **locked** rule **exactly** and additionally emits a runtime warning + diagnostics (`imputed_rows_{2023,2024,2025}`, `imputed_share_of_observed`, `attempt_numbering_restart_warning`) when the imputed share exceeds `features.impute_warn_share`. The discrepancy is raised as a **blocker** (`notes/blockers.md`) with a recommendation (make the numbering unit **year-aware**: `drill_name` for 2023/24, `drill_type` for 2025) for the PM to decide **before** Phase 3 / the full run. Not changed unilaterally (design marked LOCKED; "do not re-litigate").

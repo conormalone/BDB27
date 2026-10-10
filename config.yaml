@@ -83,10 +83,33 @@ audit:
     DB+WR+DL+OL: [DB, WR, DL, OL]
 
 # ---- Combine features (Phase 2) ----
+# All Phase-2 thresholds live here (TASK.md: no magic numbers). Locked design
+# decisions D16-D18; see notes/decisions.md.
 features:
-  interp_max_gap_s: 0.5           # interpolate frame gaps shorter than this
-  session_gap_s: 7200             # >2h inactivity starts a new combine session (moved from audit; Phase 2 concept)
-  peak_speed_sanity_yds: 12.0     # flag attempts exceeding this peak speed (moved from audit; Phase 2 sanity check)
+  out_subdir: features            # outputs/features/
+  # --- unit levels (config-driven; no magic) ---
+  attempt_level: drill_name       # D18: attempt numbering restarts per (nfl_id, drill_name)
+  standardize_level: drill_type   # D17: standardise perf_z WITHIN (standardize_level, combine_position)
+  t90_baseline_level: drill_type  # D18: "the player's best" = max observed peak_speed within the drill_type
+  performance_metric: peak_speed_yds   # primary standardised metric (D17)
+  # --- kinematics ---
+  expected_dt_s: 0.1              # nominal inter-frame dt (10 Hz); gap reference
+  gap_detect_factor: 1.5          # a segment is a gap when dt_i > factor * expected_dt_s
+  interp_max_gap_s: 0.5           # linearly interpolate frame gaps shorter than this (elsewhere only)
+  distance_gap_max_s: 0.5         # effort_cost counts only segments with dt_i <= this (after interp)
+  t90_frac: 0.90                  # time-above threshold as a fraction of the player's best
+  # --- sessions & clock ---
+  session_gap_s: 7200             # >2h inactivity starts a new combine session
+  # --- imputation ---
+  impute_stat: median             # lost attempt -> player_drill median effort_cost (fallback: drill_global)
+  impute_warn_share: 0.5          # WARNING if imputed rows exceed this share of observed rows (numbering-level sanity)
+  # --- standardisation ---
+  min_std_group_n: 3              # a (standardize_level, position) group needs >= this many observed rows
+  # --- sanity flags ---
+  peak_speed_sanity_yds: 12.0     # flag attempts exceeding this peak speed
+  vif_flag_threshold: 5.0         # flag VIF(prior_load_yd, first_attempt) above this
+  # --- rest policy ---
+  rest_use: dropped_from_primary_kept_as_feature  # rest_s kept as a column + reported; NOT in the pre-registered Phase-3 primary LMM; declared a Phase-3 robustness covariate
   # segmentation (only used if explicit attempt ids were absent; attempt exists here)
   segmentation_gap_s: 5.0
 

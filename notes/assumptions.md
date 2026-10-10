@@ -61,3 +61,21 @@ and records `structural_undrafted=127, nonstructural_null=0 -> KEEP`.
 
 *(Earlier revisions wrongly applied the raw 24.9% null rate and **excluded** draft position as a control;
 that conclusion is reverted — see `notes/decisions.md` and `notes/limitations.md`.)*
+
+## Phase-2 additions (2026-10-09)
+
+- **A8 hardened (audit, full mode).** `01_audit.py::verify_assumptions` A8 now **hard-asserts** that the audit-(e)
+  match table contains **exactly** the expected position-group set `audit.positions_of_interest`
+  (`{DB,DL,OL,TE,WR}`), not merely `match_rate > 0` in every observed group. Sample-mode behaviour is unchanged
+  (A8 = SKIP), so `test_audit.py` still passes.
+- **Phase-2 attempt-numbering check (warning, not assertion).** `02_features.py` assumes the locked
+  `features.attempt_level` unit is the level at which `attempt` numbering restarts. It **detects** a violation of
+  this at runtime by comparing imputed-row volume to observed rows and emits a **WARNING** when
+  `imputed / observed > features.impute_warn_share` (0.5), recording `imputed_rows_{2023,2024,2025}`,
+  `imputed_share_of_observed` and `attempt_numbering_restart_warning` in `outputs/features/feature_diagnostics.csv`.
+  This is a *reported* condition (the design is locked, so the rule is not silently changed) — see blocker **B5**
+  and `notes/decisions.md` D18. It is **not** a hard `assert` because the correct level legitimately differs by
+  draft class and the fix is a methodology decision.
+- **Phase-2 hard invariants** are asserted in `src/tests/test_features.py` (schema/dtypes; imputed rows carry no
+  performance/clock; `first_attempt == (attempt==1)`; `prior_load_observed_yd ≤ prior_load_yd`; no negative
+  effort; group `mean(perf_z)≈0`/`sd(perf_z)≈1`; monotone `prior_load_yd` in the session order).

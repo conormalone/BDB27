@@ -25,10 +25,12 @@ Game-tracking full files (`game_tracking_2023/24/25.csv`) are **not** in the rep
 01_audit → 02_features → 03_combine_model → 00_thresholds → 04_game_features → 05_link
 ```
 
-Currently implemented: **`01_audit.py`** (Phase 0/1). Later stages follow in subsequent cycles.
+Currently implemented: **`01_audit.py`** (Phase 0/1) and **`02_features.py`** (Phase 2, Combine features).
+Later stages follow in subsequent cycles.
 
-_Deferred Engineering gaps (D15): dtype downcasting is not yet applied, and only the CSV→Parquet
-conversion is checkpointed (stage outputs re-execute unless `--force` covers them) — deferred to Phase 2+._
+_Dtype downcasting and stage checkpointing (D15) are now **implemented in `02_features.py`** (float64→float32,
+int64→int32 on write; the whole feature stage is skipped unless `--force`, and its per-stage wall/RAM rows are
+logged). The Phase-1 audit keeps the earlier behaviour (only the CSV→Parquet conversion is checkpointed)._
 
 ```bash
 # Phase 1 audit (sample)
@@ -38,6 +40,12 @@ python src/01_audit.py --mode sample --force
 
 # Phase 1 audit (full; needs the full game files) — audit (e) runs only here
 python src/01_audit.py --mode full
+
+# Phase 2 Combine features (sample). Combine data is COMPLETE, so features are
+# computed for REAL in both modes; the mode only changes the provenance label.
+python src/02_features.py --mode sample
+# force a rebuild (ignores the checkpoint)
+python src/02_features.py --mode sample --force
 ```
 
 ## 4. Outputs
@@ -50,6 +58,12 @@ python src/01_audit.py --mode full
     populations DB-only / DB+WR / DB+WR+DL+OL; matched-N columns = **PENDING FULL RUN**).
   - **`assumptions_check.csv`** — runtime results for assumptions A1–A12 (`notes/assumptions.md`).
 - `outputs/run_log.csv` — wall time + peak RAM per stage (appended each run).
+- `outputs/features/` — Phase 2 (all stamped with a `provenance` column; CSVs have it **first**):
+  - `combine_features.parquet` — per attempt (observed + imputed), **all positions** (Phase-2 deliverable).
+  - `combine_features_study.parquet` — rows with `in_study_population = true` (**DB**; Phase-3 handoff).
+  - `combine_features_player.parquet` — per-player summary.
+  - `feature_diagnostics.csv` (long key/value), `standardization_params.csv`, `vif_report.csv`,
+    `PROVENANCE.txt`, `SUMMARY.md`.
 - Sample-mode outputs are labelled **`UNVALIDATED SAMPLE OUTPUT`** and must never be interpreted.
 
 ## 7. Study scope (see `notes/decisions.md`)
@@ -67,12 +81,18 @@ python src/01_audit.py --mode full
 | Stage | Wall | Peak RAM |
 |---|---:|---:|
 | `01_audit --mode sample` | ≈6 s | ≈380 MB |
+| `02_features --mode sample` | ≈12 s | ≈650 MB |
 
 Full-mode costs depend on the big machine; see `notes/scale.md` and `notes/pending_full_run.md`.
 
 ## 6. Tests
 
 ```bash
-python -m pytest src/tests -q       # schema assertions + determinism (if pytest available)
-python src/tests/test_audit.py      # or run standalone
+python -m pytest src/tests -q       # schema assertions + invariants + determinism (if pytest available)
+python src/tests/test_audit.py      # Phase 1; or run standalone
+python src/tests/test_features.py   # Phase 2; or run standalone
 ```
+
+> **Phase-2 caveat (blocker B5).** The locked `features.attempt_level: drill_name` numbering unit holds for the
+> 2023/2024 combine classes but **not** for 2025 (its `attempt` is a per-`(player, drill_type)` block counter),
+> which inflates imputed load. See `notes/blockers.md` **B5** and `notes/decisions.md` **D18** before Phase 3.

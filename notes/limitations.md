@@ -72,3 +72,38 @@ the writeup's Limitations section.
     scope.
 18. **Effort definition sensitivity.** *Mitigation:* sensitivity analysis on alternate thresholds/metrics;
     placebo test (combine slope should not predict early-game output).
+
+## Phase 2 (Combine features) — added 2026-10-09
+
+19. **Attempt-numbering unit differs by draft class → phantom imputed attempts (2025).** The locked Phase-2
+    design standardises and imputes at `attempt_level = drill_name`, matching 2023/2024, where `attempt`
+    restarts per `(player, drill_name)`. In the **2025** class `attempt` is instead a
+    **per-`(player, drill_type)` block counter** (one player ran `SKILL_DRILLS_WR` once through with attempts
+    `1..17` across 17 *different* `drill_name`s). Applying the `drill_name`-level gap rule to 2025 therefore
+    **fabricates** lost attempts: imputed rows = 2023 144 + 2024 118 + 2025 **7874** = 8136, vs ≈338 under a
+    year-aware unit; for the **DB** study population 1617 imputed rows (49+32+**1536**) vs ≈130 — ~92% phantom,
+    inflating the primary exposure `prior_load_yd`. *Mitigation:* the pipeline implements the locked rule
+    **exactly** and emits a runtime **WARNING** + diagnostics (`imputed_rows_{2023,2024,2025}`,
+    `imputed_share_of_observed`, `attempt_numbering_restart_warning`) when imputed rows exceed
+    `features.impute_warn_share` of observed. Raised as blocker **B5** (`notes/blockers.md`) with a recommended
+    year-aware fix; **must be decided before Phase 3 / the full run**.
+20. **Lost-attempt imputation is load-only and model-free.** Missing `(player, drill_name)` attempt numbers get
+    the player's median observed `effort_cost_yd` for that drill (fallback: drill-name global median); no
+    performance values are emitted and imputed rows are excluded from standardisation. *Mitigation:*
+    `is_imputed`/`impute_source` flags; `prior_load_observed_yd`/`prior_load_observed_efforts` (observed-only)
+    columns support the Phase-3 observed-only robustness refit; imputed counts reported. (Subject to threat #19.)
+21. **Rest time spans imputed attempts (or is undefined at a session start).** `rest_s` = this attempt's start
+    − end of the immediately preceding **observed** attempt; when an imputed attempt sits between them — or the
+    attempt is session-first — `rest_spans_imputed = 1` (the true predecessor is lost/undefined). *Mitigation:*
+    the flag lets Phase 3 exclude/split; `rest_s` is kept as a column and reported (distribution + Pearson
+    correlation with `prior_load_yd`) under POLICY `rest_use = dropped_from_primary_kept_as_feature` — it is
+    **used** (declared a Phase-3 robustness covariate), not silently ignored.
+22. **Frame interpolation assumes linear motion over short gaps.** Gaps (`Δt > 1.5×0.1 s`) under 0.5 s are
+    linearly interpolated onto the expected 0.1 s grid; gaps ≥ 0.5 s are **excluded** from distance/speed/accel
+    (`flag_large_gap`); gaps inside the peak-speed/peak-accel window are flagged and left raw. *Mitigation:*
+    flags + `n_gaps`/`max_gap_s`. The provided combine file has **no** frame gaps (every Δt = 0.1 s), so this
+    path is exercised only by synthetic tests; re-check on any re-cut of the data.
+23. **Broad-family standardisation within `drill_type`.** `perf_z` etc. are z-scored within
+    `(drill_type, position)`, so heterogeneous skill sub-drills share a standardisation group (see threat #7).
+    *Mitigation:* `C(drill)` in the Phase-3 LMM absorbs drill identity; group `(n, mean, sd)` are written to
+    `standardization_params.csv`; groups with `n < min_std_group_n` or sd = 0 are set to NaN and flagged.

@@ -657,8 +657,14 @@ def verify_assumptions(con, cfg: dict[str, Any], T: str, R: str,
             assert False, "A8 violated: audit (e) produced no position-group match table"
         zero_groups = e_df.loc[e_df["match_rate"] <= 0, "position_group"].astype(str).tolist()
         assert not zero_groups, f"A8 violated: zero-match position group(s): {zero_groups}"
-        rec("A8", "game ids overlap combine nfl_id per group", "PASS",
-            f"all {len(e_df)} position groups have match_rate > 0 "
+        # hard-assert the FULL expected 5-group set (from config), not merely match_rate > 0
+        expected_groups = {str(p) for p in cfg["audit"]["positions_of_interest"]}
+        observed_groups = set(e_df["position_group"].dropna().astype(str))
+        assert observed_groups == expected_groups, (
+            f"A8 violated: expected position groups {sorted(expected_groups)}, "
+            f"got {sorted(observed_groups)}")
+        rec("A8", "game ids overlap combine nfl_id in every expected position group", "PASS",
+            f"all {len(e_df)} position groups present {sorted(observed_groups)} with match_rate > 0 "
             f"(min {round(float(e_df['match_rate'].min()), 4)})")
     else:
         rec("A8", "game ids overlap combine nfl_id per group", "SKIP", "sample mode (D8)")

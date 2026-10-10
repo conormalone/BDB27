@@ -1,6 +1,6 @@
 # Blockers — BDB27
 
-**Status: NONE ACTIVE.** Phase 1 cleared the gate (GO). Recorded 2026-10-09.
+**Status: 1 ACTIVE (Cycle-3 blocker B5 below — 2025 attempt-numbering level).** Phase 1 cleared the gate (GO), and Phase-2 code/tests are complete, but a **data-semantics discrepancy** between the locked `attempt_level: drill_name` design and the 2025 class is raised for a PM decision before Phase 3 / the full run. Recorded 2026-10-09.
 
 Per `TASK.md`, a blocker stops work and must be written here. The following were checked and are **not** blocking:
 
@@ -25,3 +25,30 @@ Per `TASK.md`, a blocker stops work and must be written here. The following were
    `game_tracking_{2023,24,25}.csv` (absent). Not blocking Phase 0/1; needed before the Phase 5 link
    (if the DB matched-N is too small, that is a blocker). See `pending_full_run.md` P1/P8.
 7. **Draft position control: structural "undrafted", not missing (A12).** `players.draft_overall_pick` and `draft_round` are null for the **same 127/510** prospects (the undrafted); the >20%-null exclusion rule applies to **non-structural** missingness only, so it does **not** fire → draft position is **KEPT** as a Phase-5 control, with "undrafted" encoded as its own level (recorded `assumptions.md`, `limitations.md`, `decisions.md`). Not a blocker; the spec makes draft position a control where available.
+
+---
+
+# Cycle 3 — ACTIVE blocker
+
+## B5 — `attempt` numbering unit differs by draft class (2023/24 vs 2025): the locked `attempt_level: drill_name` premise is violated for 2025 · 2026-10-09
+**Status:** ACTIVE — decision needed **before Phase 3** and **before the full run**; Phase-2 code is complete and implements the locked rule literally.
+
+**What.** The locked Phase-2 design (`decisions.md` D16/D18) and `notes/schema.md` §2 assume `attempt` "restarts per `(player, drill_name)`", and the numbering-gap imputation (D18) is applied at that level. **Evidence contradicts this for the 2025 draft class.**
+
+- **2023 / 2024** — `attempt` restarts per `(nfl_id, drill_name)`. Gap-groups (max > distinct): **121 / 81**; max attempt **6**. (e.g. `GAUNTLET_DRILL` attempts 1,2 for one player.)
+- **2025** — `attempt` is a **per-`(nfl_id, drill_type)` block counter**. Example: nfl_id **58968** ran `SKILL_DRILLS_WR` once through with attempts **1..17** spread across 17 **different** `drill_name`s (`OVER_SHOULDER_ADJUST`=1, `GAUNTLET_DRILL`=2,3, `SLANT_ROUTE_LEFT`=4, … `RED_ZONE_FADE_RIGHT`=17). Within any single `drill_name` only one number is observed, yet `max(attempt)=17`. The same player has **zero** genuinely lost reps.
+
+**Impact (measured on the combine Parquet, complete data).**
+
+| Level | 2023 | 2024 | 2025 | Total | DB-only total |
+|---|---:|---:|---:|---:|---:|
+| spec `drill_name` (implemented) | 144 | 118 | **7874** | **8136** | **1617** (49+32+**1536**) |
+| year-aware (`drill_type` for 2025) | 96 | 94 | 148 | ≈338 | ≈130 |
+
+The spec rule makes **~92% of the DB study-population imputed rows phantom**, which directly inflates the primary exposure `prior_load_yd` (and `prior_load_efforts`) for the 37/122 DB players from the 2025 class. `first_attempt` (= `attempt==1`) is likewise degenerate for 2025 skill drills (only the block's first rep is flagged).
+
+**Why it is a blocker (not silently fixed).** The design is marked LOCKED and "do not re-litigate"; changing the level is a methodology call, not a coding call.
+
+**Recommendation (for the PM).** Make the numbering unit **year-aware**: `attempt_level` = `drill_name` for 2023/2024, `drill_type` for 2025 (equivalently, derive the unit per player by detecting where `attempt` restarts at 1 and is contiguous). Re-derive `first_attempt`, numbering-gap imputation, and `prior_load_yd`/`prior_load_efforts` accordingly, then re-run Phase 2 and Phase 3.
+
+**Current handling.** `src/02_features.py` implements the locked rule exactly and emits a runtime **WARNING** + diagnostics (`imputed_rows_{2023,2024,2025}`, `imputed_share_of_observed`, `attempt_numbering_restart_warning`) whenever imputed rows exceed `features.impute_warn_share` (0.5) of observed rows. Sample run: warning **tripped** (8136/6310 = 1.29). Choosing to read the sample DB rows would be wrong (sample discipline, D8) — the blocker is raised on the **full-combine** evidence (combine data is complete, not sampled).
