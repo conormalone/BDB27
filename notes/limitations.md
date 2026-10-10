@@ -114,3 +114,39 @@ the writeup's Limitations section.
     `(drill_type, position)`, so heterogeneous skill sub-drills share a standardisation group (see threat #7).
     *Mitigation:* `C(drill)` in the Phase-3 LMM absorbs drill identity; group `(n, mean, sd)` are written to
     `standardization_params.csv`; groups with `n < min_std_group_n` or sd = 0 are set to NaN and flagged.
+
+## Phase 3 (Combine fatigue model) — added 2026-10-10
+
+24. **Per-player slope reliability is the binding constraint (and, on the real data, fails the pre-registered
+    stop).** The primary random-slope LMM `(1 + load | player)` and the uncorrelated-RE fallback both sit at
+    the parameter-space boundary (random-slope variance ≈ 0) under **every** optimiser, so the chain selects
+    the empirical-Bayes estimator whose between-player slope variance `tau2 = 0` ⇒ **reliability 0.0 < 0.2**.
+    *Mitigation:* the pre-registered stop rule is honoured — the finding is reported as a **NULL**
+    (`SUMMARY.md`); per-player slopes are emitted only flagged, and the Phase-5 link is not estimated from
+    them. The honest reading: there *is* an average within-player decline (baseline late−early 0.46 z,
+    t = 6.66), but the combine data cannot resolve **between-player** differences in that decline.
+25. **EB shrinkage collapses slopes to the population mean when `tau2 = 0`.** With `tau2 = 0` the shrinkage
+    weight is 0 and every `slope_shrunk` equals the pooled mean; the CI is widened by the per-player OLS
+    sampling SE (`slope_se`) to avoid degenerate zero-width intervals. *Mitigation:* `slope_raw`,
+    `slope_se`, `shrinkage_weight` and `reliability` are all reported so a downstream user can see the
+    collapse; the Phase-5 link must not treat these as informative predictors (`skip_phase5_link` semantics).
+26. **Permutation interpretation.** The permutation test shuffles the within-player `(load, load2,
+    first_attempt, drill)` block and tests the **`meta_slope`** statistic (inverse-variance-weighted mean
+    per-player slope), not a full LMM refit — chosen for speed + determinism. A small permutation p (0.029
+    here) says the *pooled point estimate* is unusual under within-player order shuffling; it does **not**
+    license a reliable per-player slope (reliability is a separate, and here failing, gate). Load is
+    collinear with attempt order within a drill, so the shuffle weakens but does not fully break the
+    load–order association.
+27. **Robustness refit is partly vacuous under the EB path.** `without_first_attempt` is numerically
+    identical to the main fit because per-player OLS slopes do not use `first_attempt`; the check only
+    bites if an LMM is accepted. *Mitigation:* stated in `notes/decisions.md` D20; the observed-only-load
+    refit (which *does* differ) is reported (−0.000481 vs −0.000444).
+28. **Fallback-chain convergence rule is strict.** Treating *any* `ConvergenceWarning` (incl. the benign
+    "MLE may be on the boundary" note) as non-convergence rejects LMMs whose RE variance collapses to ≈0.
+    This is the spec's literal rule; the consequence (EB selected, reliability 0, NULL) is a genuine
+    finding about slope identifiability, not a numerical artefact. *Mitigation:* what the rejected `powell`
+    fits would have given (boundary G_22 ≈ 0) is consistent with the EB conclusion.
+29. **Cross-drill slope correlation is undefined on the real data.** No player has ≥3 observed attempts in
+    two different `drill_type`s (40-yd/3-cone/shuttle cap at ≤2 attempts/player), so the table is empty of
+    qualified pairs. *Mitigation:* emitted with `n_players`/`meets_min_players` so the gap is explicit; a
+    `drill_name`-level variant is a possible sensitivity if the family is ever re-scoped.

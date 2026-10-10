@@ -50,3 +50,29 @@ modeling stages (Phase 3/5) read only those summaries. Never `pd.read_csv` a ful
 **Extrapolated peak:** ≈ sample peak + (rows_full / rows_sample) × (frame working set). With per-game
 chunking the working set stays ~O(one game), so peak should stay **< 1 GB**. Re-measure on the big
 machine and update this file (`notes/scale.md`) — see `pending_full_run.md` P5.
+
+## Measured — Phase 3 (`03_combine_model.py`, sample mode)
+
+The Combine study frame is small (DB-only: 122 players, 1,432 model rows; 1,541 study rows
+incl. imputed), so Phase 3 is dominated by **fit cost**, not data volume.
+
+| Stage | Input | Cost | Peak RSS |
+|---|---|---:|---:|
+| `03_combine_model:load` | `combine_features_study.parquet` | ≈0.03 s | — |
+| `03_combine_model:baseline` | 1,432 rows | ≈0.5 s | — |
+| `03_combine_model:lmm` (primary, 4 optimisers) | 122 groups | ≈5 s | — |
+| `03_combine_model:fallbacks` (uncorrelated RE, 4 optimisers) | 122 groups | ≈5.5 s | — |
+| `03_combine_model:robustness` (3 variants × chain) | 122 groups | ≈33 s | — |
+| `03_combine_model:permutation` (1,000 within-player shuffles) | 1,432 rows | ≈2.4 s | — |
+| `03_combine_model:write` | 3 parquet + 5 csv/json/md | ≈0.4 s | — |
+| **Whole Phase-3 stage** | complete Combine study parquet | **≈47 s wall** | **≈255 MB** |
+
+**Cost driver.** The MixedLM fits dominate (robustness re-runs the fallback chain for 3 variants). The
+**pathological** case is a (near-)constant performance field, where the degenerate likelihood makes the
+4-optimiser primary fit ≈30 s (bounded by `model.lmm_maxiter`); real Combine data is well-behaved (≈47 s
+total). Phase 3 always processes the **complete** combine file in both modes, so its cost is **fixed** and
+does not scale with the game side. **No game-side data is touched** — Phase-3 outputs are small (≈140 KB).
+
+**Extrapolation to full data.** Phase 3 is **unchanged** on the full run (the Combine study frame is already
+complete); only the provenance label flips to `FULL`. It is not a RAM risk. The Phase-4/5 game side remains
+the scale driver (see above).

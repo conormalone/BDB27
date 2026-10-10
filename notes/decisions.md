@@ -185,3 +185,108 @@ warm-up). The per-brief definition is implemented; **confirm the warm-up constru
 2023/2024 the change is limited to the 121/81 gap-groups where attempt 1 was lost (first observed rep now flags 1).
 **Not changed:** `standardize_level`, `t90_baseline_level`, `performance_metric`; all other D16/D18 choices stand.
 D16/D18's `attempt_level: drill_name` premise is superseded by this entry.
+
+---
+
+# Cycle 6 — Phase 3 (Combine fatigue model)
+
+## D20 — Phase-3 model decisions (fallback chain, load² criterion, reliability, permutation, stop rule) · 2026-10-10
+**Context.** `src/03_combine_model.py` fits the pre-registered within-player fatigue model on the DB-only
+study population (`combine_features_study.parquet`; model rows = `is_imputed=0 AND perf_z IS NOT NULL`:
+**122 players, 1,432 observations**; real DB data; combine file is complete so both modes fit for real —
+`--mode` only flips the provenance label). All thresholds/params live in the new `config.yaml` **`model:`**
+section (no magic numbers). Methodology is the PM's; encoded exactly.
+
+**1. Convergence rule (implemented literally).** Every LMM tries `model.lmm_optimizers` in order
+`[lbfgs, bfgs, cg, powell]`; a fit is **clean/converged** iff `res.converged is True` **and** no
+`statsmodels.tools.sm_exceptions.ConvergenceWarning` is outstanding (category-based, not message-based).
+`MixedLM` raises `ConvergenceWarning("The MLE may be on the boundary of the parameter space.")` whenever a
+RE variance/co-variance diagonal `< 0.01` (statsmodels `mixed_linear_model.py:2433-2436`); this is treated
+as **not clean** (the RE structure has collapsed), per the spec's "no ConvergenceWarning is outstanding".
+
+**2. Fallback chain + which path the real data took.** `model.fallback_order =
+[lmm_random_slopes, lmm_uncorrelated_re, per_player_eb, random_intercept]`; stop at the first *clean*
+estimator. On the real data:
+- `lmm_random_slopes` (`(1 + load_c | player)`): **FAILS** — `lbfgs/bfgs/cg` `converged=False`; `powell`
+  `converged=True` but a boundary `ConvergenceWarning` → not clean. (The MLE sits at the boundary:
+  random-slope variance ≈ 0 ⇒ no between-player slope heterogeneity.)
+- `lmm_uncorrelated_re` (`vc_formula = (1|player) + (0+load_s|player)`, centred/rescaled load):
+  **FAILS** — `lbfgs`/`powell` `converged=True` but both emit the boundary warning (vc variance `< 0.01`).
+- `per_player_eb` (per-player OLS slopes + empirical-Bayes shrinkage): **ACCEPTED** — selected.
+- `random_intercept`: not run.
+Which optimiser converged (per estimator) is logged in `combine_model_diagnostics.csv`
+(`converged_lmm_random_slopes`/`_uncorrelated_re`/`_per_player_eb` = `failed`/`failed`/`accepted(ols)`).
+The uncorrelated-RE parameterisation is genuinely diagonal (separate variance component), matching the spec's
+`(1|player) + (0+load|player)`.
+
+**3. load² spread criterion (documented, no magic numbers).** Include `load2` iff
+`n_unique(prior_load_yd) >= model.load2_min_unique (20)` **AND** `IQR(prior_load_yd) >=
+model.load2_min_iqr_yd (10.0 yd)`. Real DB data: **n_unique = 1,329, IQR = 244.45 yd → load² INCLUDED**
+(evidence recorded in diagnostics: `load2_included`, `load_n_unique`, `load_iqr_yd`). Load (and load²) are
+centred for stability (`load_c = load − mean`, `load2_c = load_c² − mean(load_c²)`).
+
+**4. Reliability definition (spec item 6).** `reliability = tau2 / (tau2 + mean_i(SE_i²))`.
+- LMM path: `tau2` = fitted random-slope variance `G_22`; `SE_i` = posterior (BLUP) SE of player i's slope =
+  `sqrt(diag((Z_i' V_i⁻¹ Z_i + G⁻¹)⁻¹))` (statsmodels `random_effects_cov`).
+- EB path: `tau2 = max(0, Var_obs(slopes) − mean_i(SE_i²))` (the spec's `eb_tau2_method: dl` formula; the
+  Q-based DL estimator is additionally reported for comparison); `SE_i` = per-player OLS slope SE.
+- Reliability is computed for **every estimator fitted**; the **final estimator's** reliability drives the
+  stop rule. If `< model.reliability_min_players (20)` players yield usable slopes, reliability is forced to 0.
+
+**5. permutation (`perm_stat: meta_slope`) + why.** Target = the population load slope of the final
+estimator. Statistic = the **inverse-variance-weighted mean per-player load slope** (fast + deterministic;
+a per-permutation refit of the full LMM would be 1,000× the fit cost and non-determinism-prone). The
+`(load, load2, first_attempt, drill)` block is shuffled **within each player** (keeping `perf_z` per row);
+since the statistic depends only on the permuted load, the joint block shuffle is equivalent to shuffling
+load alone. `np.random.default_rng(seed + model.perm_seed_offset)`, `perm_n = 1000`,
+`p = (1 + #{|stat_perm| ≥ |stat_obs|}) / (perm_n + 1)`. **Odd/even split-half is NOT used** (spec).
+Real data: `stat_obs = −0.000444`, **perm p = 0.0290** (2,000+ within-player order shuffles give a
+comparable tail; see `combine_model_permutation.csv`).
+
+**6. Stop rule outcome (the finding).** Final estimator `per_player_eb`, `tau2 = 0`, `mean_se² = 4.5e-6`,
+**reliability = 0.0 < 0.2 → `stop_rule_triggered = true` → the NULL is reported as the finding** in
+`SUMMARY.md` (honestly; no forced result). The pooled population load coefficient is **−0.000444 yd⁻¹**
+(SE 0.000160, p = 0.0055; permutation p = 0.029) and the within-player baseline late−early difference is
+0.459 z (t = 6.66, p = 8.4e-10) — i.e. there *is* an average decline — **but there is no reliable
+*between-player* slope variation** (tau2 = 0), so per-player slopes cannot be trusted for the Phase-5 link
+at this population. Slopes are still emitted (flagged) for completeness.
+
+**7. Robustness refits.** `observed_only_load` (uses `prior_load_observed_yd`), `without_first_attempt`, and
+both together. On the real data all three select `per_player_eb`; `observed_only_load` coef **−0.000481**
+(p 0.0045) vs main **−0.000444** (p 0.0055) — small, same sign. **Caveat:** under the EB path the
+`without_first_attempt` refit is *numerically identical* to the main fit, because per-player OLS slopes do
+not use `first_attempt` (it only enters the LMM fixed part, which is not selected here); the refit is
+retained for completeness and would bite only if an LMM were accepted. **D19 `first_attempt` is FINAL — not
+redefined.**
+
+**8. Phase-5 handoff (`combine_player_slopes.parquet`/`.csv`).** Shrunken (**empirical-Bayes**) per-player
+slopes: `slope_raw` = per-player OLS slope on `load_c`; `slope_shrunk` = `w·slope_raw + (1−w)·mu` with
+`w = tau2/(tau2+SE_i²)` (the *shrinkage weight*); `mu` = inverse-variance-weighted population mean; the CI
+uses the **per-player OLS SE** (`slope_se`) so intervals are non-degenerate when `tau2 = 0`
+(`slope_shrunk ± z·slope_se`, normal, `player_slope_ci_level = 0.95`). `method` records the **population
+estimator** fitted; `reliability` its value; `meets_link_min_attempts` = `n_attempts_model ≥
+model.link_min_attempts (3)` (all 122 real DB players meet it).
+
+**9. Cross-drill-group correlation.** Per `(player, drill_type)` slopes on centred load for players with
+`>= xdrill_min_attempts (3)` attempts in each of ≥2 drills, pairwise Pearson across shared players requiring
+`>= xdrill_min_players (10)`. Real data: **all pairs have 0 shared players** (the 40-yd dash / 3-cone /
+shuttle max out at ≤2 observed attempts per player, so no player has ≥3 in two different drills); the table
+is emitted with `meets_min_players = false` — an honest null, not a computed correlation.
+
+**10. Guard added (robustness).** A (near-)constant `perf_z` field produced numerically-noisy per-player
+slopes (~1e-16) and a spurious reliability ≈ 1; `per_player_slopes` now **skips players with exactly zero
+outcome variance** (constant performance ⇒ slope unidentifiable ⇒ reliability 0 ⇒ stop rule fires).
+Discovered and fixed during the Phase-3 test cycle.
+
+**Determinism.** Verified byte-identical across two `--force` sample runs (all 11 `outputs/model/` files).
+DuckDB `threads=1`; fixed seeds; every table sorted; the LMM coefficient values are *not* written to any
+artefact unless the LMM is the selected estimator (the real data selects EB, so all written numbers come from
+deterministic EB/baseline/permutation paths).
+
+**11. Phase-5 link gating fix (`skip_phase5_link`) · 2026-10-10.** `skip_phase5_link` is now set to
+`stop_rule_triggered OR estimator == random_intercept` (assigned in `run_pipeline` immediately after the
+stop rule is evaluated). Reason: `tau2 = 0` ⇒ zero between-player predictor variance ⇒ the Phase-5 link must
+be skipped (the EIV / regression-calibration correction is undefined at reliability 0). Previously the
+diagnostics reported `stop_rule_triggered = True`, `reliability = 0.0`, yet `skip_phase5_link = False` — an
+inconsistency flagged by independent review and fixed here; all other headline numbers are unchanged
+(estimator `per_player_eb`, population load coef −0.000444, p 0.0055, perm p 0.029).

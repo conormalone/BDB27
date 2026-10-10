@@ -114,6 +114,46 @@ features:
   # segmentation (only used if explicit attempt ids were absent; attempt exists here)
   segmentation_gap_s: 5.0
 
+# ---- Combine fatigue model (Phase 3) ----
+# All Phase-3 thresholds/params live here (TASK.md: no magic numbers). Methodology is
+# fixed by the PM brief; the convergence fallback chain and the load² spread criterion
+# are recorded in notes/decisions.md D20.
+model:
+  out_subdir: model              # outputs/model/
+  outcome: perf_z                # standardised within (drill_type, position) by Phase 2
+  load: prior_load_yd            # primary exposure (observed + imputed), baked in by Phase 2
+  load_observed: prior_load_observed_yd  # observed-only load (robustness refit)
+  load2_min_unique: 20           # load² included iff n_unique(load) >= this ...
+  load2_min_iqr_yd: 10.0         # ... AND IQR(load) >= this (documented spread criterion)
+  drill: drill_type              # C(drill) fixed effect
+  player: nfl_id                 # random-effect grouping
+  first_attempt: first_attempt    # D19 definition, KEPT AS-IS (do not redefine)
+  lmm_optimizers: [lbfgs, bfgs, cg, powell]  # tried in order; first *clean* one wins
+  lmm_maxiter: 200
+  lmm_reml: false                # ML fit (reml=False)
+  load_center: true              # centre load (and load²) for numeric stability
+  fallback_order: [lmm_random_slopes, lmm_uncorrelated_re, per_player_eb, random_intercept]
+  eb_min_attempts: 2             # per-player OLS slope needs >= this many attempts + load variation
+  eb_tau2_method: dl             # spec EB tau2 = max(0, Var_obs(slopes) - mean_i(SE_i^2))
+  reliability_stop_threshold: 0.2
+  reliability_min_players: 20    # < this many usable slopes -> reliability forced to 0 (stop)
+  baseline_min_attempts: 2
+  baseline_window: 1
+  perm_n: 1000
+  perm_stat: meta_slope          # inverse-variance-weighted mean per-player load slope
+  perm_seed_offset: 101
+  xdrill_min_players: 10
+  xdrill_min_attempts: 3
+  link_min_attempts: 3           # Phase-5 link: >= 3 observed attempts per player
+  player_slope_ci_level: 0.95
+  synth_n_players: 60
+  synth_slopes: [-0.6, -0.3, 0.0, 0.3, 0.6]
+  synth_attempts_range: [3, 12]
+  synth_delete_frac: 0.2
+  synth_impute: true
+  synth_seed: 424242
+  synth_slope_tol: 0.15
+
 # ---- Runtime ----
 runtime:
   duckdb_threads: 1   # single-threaded => bit-deterministic reductions (spec: same seed, identical outputs)

@@ -25,8 +25,8 @@ Game-tracking full files (`game_tracking_2023/24/25.csv`) are **not** in the rep
 01_audit → 02_features → 03_combine_model → 00_thresholds → 04_game_features → 05_link
 ```
 
-Currently implemented: **`01_audit.py`** (Phase 0/1) and **`02_features.py`** (Phase 2, Combine features).
-Later stages follow in subsequent cycles.
+Currently implemented: **`01_audit.py`** (Phase 0/1), **`02_features.py`** (Phase 2, Combine features)
+and **`03_combine_model.py`** (Phase 3, Combine fatigue model). Later stages follow in subsequent cycles.
 
 _Dtype downcasting and stage checkpointing (D15) are now **implemented in `02_features.py`** (float64→float32,
 int64→int32 on write; the whole feature stage is skipped unless `--force`, and its per-stage wall/RAM rows are
@@ -46,6 +46,12 @@ python src/01_audit.py --mode full
 python src/02_features.py --mode sample
 # force a rebuild (ignores the checkpoint)
 python src/02_features.py --mode sample --force
+
+# Phase 3 Combine fatigue model (sample). Combine data is COMPLETE, so the model is
+# fit for REAL in both modes; the mode only changes the provenance label.
+python src/03_combine_model.py --mode sample
+# force a rebuild (ignores the checkpoint)
+python src/03_combine_model.py --mode sample --force
 ```
 
 ## 4. Outputs
@@ -64,6 +70,17 @@ python src/02_features.py --mode sample --force
   - `combine_features_player.parquet` — per-player summary.
   - `feature_diagnostics.csv` (long key/value), `standardization_params.csv`, `vif_report.csv`,
     `PROVENANCE.txt`, `SUMMARY.md`.
+- `outputs/model/` — Phase 3 (all stamped with a `provenance` column; CSVs have it **first**):
+  - `combine_player_slopes.parquet` + `.csv` — **Phase-5 handoff**: shrunken (empirical-Bayes)
+    per-player fatigue slopes with CIs (`slope_raw, slope_shrunk, slope_se, ci_lo, ci_hi,
+    shrinkage_weight, method, reliability, meets_link_min_attempts`).
+  - `combine_model_fixed_effects.csv` — final-estimator fixed effects.
+  - `combine_model_random_effects.parquet` — per-player BLUP / EB random effects.
+  - `combine_model_baseline.csv` — within-player late−early differencing detail.
+  - `combine_model_permutation.csv` — per-permutation `meta_slope` statistic.
+  - `combine_model_xdrill.csv` — cross-drill-group per-player slope correlations.
+  - `combine_model_diagnostics.csv` (long key/value), `combine_model_summary.json`,
+    `SUMMARY.md`, `PROVENANCE.txt`.
 - Sample-mode outputs are labelled **`UNVALIDATED SAMPLE OUTPUT`** and must never be interpreted.
 
 ## 7. Study scope (see `notes/decisions.md`)
@@ -82,6 +99,7 @@ python src/02_features.py --mode sample --force
 |---|---:|---:|
 | `01_audit --mode sample` | ≈6 s | ≈380 MB |
 | `02_features --mode sample` | ≈12 s | ≈650 MB |
+| `03_combine_model --mode sample` | ≈47 s | ≈255 MB |
 
 Full-mode costs depend on the big machine; see `notes/scale.md` and `notes/pending_full_run.md`.
 
@@ -91,6 +109,7 @@ Full-mode costs depend on the big machine; see `notes/scale.md` and `notes/pendi
 python -m pytest src/tests -q       # schema assertions + invariants + determinism (if pytest available)
 python src/tests/test_audit.py      # Phase 1; or run standalone
 python src/tests/test_features.py   # Phase 2; or run standalone
+python src/tests/test_combine_model.py   # Phase 3; or run standalone
 ```
 
 > **Phase-2 note (blocker B5 — RESOLVED, D19, 2026-10-10).** The attempt-numbering unit is **detected
@@ -98,3 +117,14 @@ python src/tests/test_features.py   # Phase 2; or run standalone
 > `(player, drill_name)` for 2023/2024 but is a per-`(player, drill_type)` block counter for 2025. The phantom
 > 2025 imputation is gone — **2025 imputed rows now 148** (DB study population **28**; total imputed 410 of 6,310
 > observed). See `notes/decisions.md` **D19** and `notes/blockers.md` **B5**.
+
+> **Phase-3 note (D20, 2026-10-10).** On the real Combine data (DB-only study population, 122 players, 1,432
+> model observations) the pre-registered **stop rule fires**: the primary random-slope LMM
+> `(1 + load | player)` and the uncorrelated-RE fallback both hit the parameter-space boundary under **every**
+> optimiser (only `powell` reports `converged=True`, but each emits a `ConvergenceWarning`, so neither is
+> *clean*), the chain falls to **`per_player_eb`**, and the between-player slope variance is estimated at
+> **0 → reliability 0.0 < 0.2**. Per TASK.md Phase 3 the finding is therefore reported as a **NULL**
+> (see `outputs/model/SUMMARY.md`). Per-player slopes are still emitted (flagged) for completeness.
+> The pooled population load coefficient is −0.000444 yd⁻¹ (p = 0.0055) with permutation p = 0.029, but with
+> **zero cross-player slope variance** those slopes cannot support the Phase-5 link. Decisions in
+> `notes/decisions.md` **D20**; threats in `notes/limitations.md`.
