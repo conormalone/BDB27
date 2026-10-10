@@ -124,17 +124,20 @@ ESTIMATORS = ["lmm_random_slopes", "lmm_uncorrelated_re", "per_player_eb", "rand
 # --------------------------------------------------------------------------- #
 # Pure helpers (importable by tests — no pipeline state)
 # --------------------------------------------------------------------------- #
-def per_player_slopes(df: pd.DataFrame, load_col: str, min_attempts: int) -> pd.DataFrame:
-    """Per-player OLS slope of ``perf_z`` on ``load_col`` (spec item 3 fallback 2).
+def per_player_slopes(df: pd.DataFrame, load_col: str, min_attempts: int,
+                      outcome_col: str = "perf_z") -> pd.DataFrame:
+    """Per-player OLS slope of ``outcome_col`` on ``load_col`` (spec item 3 fallback 2).
 
-    A player contributes iff it has ``>= min_attempts`` rows **and** load variation
-    (``n_unique >= 2``) — otherwise the slope is not identified. Returns columns
-    ``nfl_id, n, slope, se`` (empty frame if no player qualifies).
+    ``outcome_col`` defaults to ``perf_z`` (Phase-3 behaviour unchanged); the metric
+    panel overrides it to fit other standardised outcomes. A player contributes iff it
+    has ``>= min_attempts`` rows **and** load variation (``n_unique >= 2``) — otherwise
+    the slope is not identified. Returns columns ``nfl_id, n, slope, se`` (empty frame
+    if no player qualifies).
     """
     rows: list[dict[str, Any]] = []
     for pid, g in df.groupby("nfl_id", sort=True):
         x = g[load_col].to_numpy(dtype=np.float64)
-        y = g["perf_z"].to_numpy(dtype=np.float64)
+        y = g[outcome_col].to_numpy(dtype=np.float64)
         n = int(x.size)
         if n < int(min_attempts) or np.unique(x).size < 2:
             continue
@@ -312,15 +315,17 @@ def build_design(df: pd.DataFrame, cfg: dict[str, Any], include_load2: bool,
     return out
 
 
-def _formula(cfg: dict[str, Any], include_load2: bool, use_first_attempt: bool) -> str:
+def _formula(cfg: dict[str, Any], include_load2: bool, use_first_attempt: bool,
+             outcome_col: str | None = None) -> str:
     m = cfg["model"]
+    outcome = outcome_col or str(m["outcome"])
     terms = ["load_c"]
     if include_load2:
         terms.append("load2_c")
     if use_first_attempt:
         terms.append(str(m["first_attempt"]))
     terms.append("C(drill)")
-    return f"{m['outcome']} ~ " + " + ".join(terms)
+    return f"{outcome} ~ " + " + ".join(terms)
 
 
 def _fit_optimizers(model, optimizers: list[str], maxiter: int, reml: bool) -> tuple[list[dict], Any]:
@@ -413,12 +418,13 @@ def _pop_from_fixed(fe: pd.DataFrame, term: str) -> tuple[float, float, float]:
 
 
 def fit_lmm_random_slopes(df: pd.DataFrame, cfg: dict[str, Any], include_load2: bool,
-                          use_first_attempt: bool = True, load_col: str | None = None) -> dict[str, Any]:
+                          use_first_attempt: bool = True, load_col: str | None = None,
+                          outcome_col: str | None = None) -> dict[str, Any]:
     """Primary spec LMM: ``(1 + load_c | player)`` (correlated random slopes)."""
     m = cfg["model"]
     load_col = load_col or str(m["load"])
     d = build_design(df, cfg, include_load2, load_col, use_first_attempt)
-    formula = _formula(cfg, include_load2, use_first_attempt)
+    formula = _formula(cfg, include_load2, use_first_attempt, outcome_col)
     try:
         model = smf.mixedlm(formula, d, groups=d[m["player"]], re_formula="1 + load_c")
     except Exception as exc:  # noqa: BLE001
@@ -448,7 +454,8 @@ def fit_lmm_random_slopes(df: pd.DataFrame, cfg: dict[str, Any], include_load2: 
 
 
 def fit_lmm_uncorrelated_re(df: pd.DataFrame, cfg: dict[str, Any], include_load2: bool,
-                            use_first_attempt: bool = True, load_col: str | None = None) -> dict[str, Any]:
+                            use_first_attempt: bool = True, load_col: str | None = None,
+                            outcome_col: str | None = None) -> dict[str, Any]:
     """Fallback (1): uncorrelated random effects ``(1|player) + (0+load|player)``.
 
     Implemented via statsmodels ``vc_formula`` (a separate variance component for the
@@ -457,7 +464,7 @@ def fit_lmm_uncorrelated_re(df: pd.DataFrame, cfg: dict[str, Any], include_load2
     m = cfg["model"]
     load_col = load_col or str(m["load"])
     d = build_design(df, cfg, include_load2, load_col, use_first_attempt)
-    formula = _formula(cfg, include_load2, use_first_attempt)
+    formula = _formula(cfg, include_load2, use_first_attempt, outcome_col)
     try:
         model = smf.mixedlm(formula, d, groups=d[m["player"]], re_formula="1",
                             vc_formula={str(m["player"]): "0 + load_s"})
@@ -501,12 +508,14 @@ def fit_lmm_uncorrelated_re(df: pd.DataFrame, cfg: dict[str, Any], include_load2
 
 
 def fit_per_player_eb(df: pd.DataFrame, cfg: dict[str, Any], include_load2: bool,
-                      use_first_attempt: bool = True, load_col: str | None = None) -> dict[str, Any]:
+                      use_first_attempt: bool = True, load_col: str | None = None,
+                      outcome_col: str | None = None) -> dict[str, Any]:
     """Fallback (2): per-player OLS slopes + empirical-Bayes shrinkage (always fits)."""
     m = cfg["model"]
     load_col = load_col or str(m["load"])
+    oc = outcome_col or str(m["outcome"])
     d = build_design(df, cfg, include_load2, load_col, use_first_attempt)
-    slopes = per_player_slopes(d, "load_c", int(m["eb_min_attempts"]))
+    slopes = per_player_slopes(d, "load_c", int(m["eb_min_attempts"]), outcome_col=oc)
     tau2 = dl_tau2(slopes)
     mu, mu_se, k = inv_var_mean(slopes)
     mean_se2 = float(np.mean(slopes["se"].to_numpy() ** 2)) if len(slopes) else float("nan")
@@ -514,14 +523,14 @@ def fit_per_player_eb(df: pd.DataFrame, cfg: dict[str, Any], include_load2: bool
     if k < int(m["reliability_min_players"]):
         rel = 0.0
     p = float(2.0 * stats.norm.sf(abs(mu / mu_se))) if (np.isfinite(mu) and np.isfinite(mu_se) and mu_se > 0) else float("nan")
-    fe = pd.DataFrame({"term": ["Intercept", "load_c"], "estimate": [float(d["perf_z"].mean()), mu],
+    fe = pd.DataFrame({"term": ["Intercept", "load_c"], "estimate": [float(d[oc].mean()), mu],
                        "se": [float("nan"), mu_se], "z": [float("nan"), (mu / mu_se if mu_se else float("nan"))],
                        "p": [float("nan"), p]})
     sh = eb_shrink(slopes, tau2, mu)
-    pmean = d.groupby("nfl_id", sort=True)["perf_z"].mean().rename("pmean")
-    pstd = d.groupby("nfl_id", sort=True)["perf_z"].std(ddof=1).rename("psd")
+    pmean = d.groupby("nfl_id", sort=True)[oc].mean().rename("pmean")
+    pstd = d.groupby("nfl_id", sort=True)[oc].std(ddof=1).rename("psd")
     pn = d.groupby("nfl_id", sort=True).size().rename("pn")
-    gmean = float(d["perf_z"].mean())
+    gmean = float(d[oc].mean())
     rm = sh[['nfl_id', 'se', 'slope_shrunk']].copy()
     rm['se_slope'] = rm['se'].to_numpy(dtype=np.float64)
     rm['re_slope'] = rm['slope_shrunk'] - mu
@@ -536,12 +545,13 @@ def fit_per_player_eb(df: pd.DataFrame, cfg: dict[str, Any], include_load2: bool
 
 
 def fit_random_intercept(df: pd.DataFrame, cfg: dict[str, Any], include_load2: bool,
-                         use_first_attempt: bool = True, load_col: str | None = None) -> dict[str, Any]:
+                         use_first_attempt: bool = True, load_col: str | None = None,
+                         outcome_col: str | None = None) -> dict[str, Any]:
     """Fallback (3): ``(1 | player)`` only — population-level results, skip Phase-5 link."""
     m = cfg["model"]
     load_col = load_col or str(m["load"])
     d = build_design(df, cfg, include_load2, load_col, use_first_attempt)
-    formula = _formula(cfg, include_load2, use_first_attempt)
+    formula = _formula(cfg, include_load2, use_first_attempt, outcome_col)
     try:
         model = smf.mixedlm(formula, d, groups=d[m["player"]], re_formula="1")
     except Exception as exc:  # noqa: BLE001
@@ -578,16 +588,20 @@ FITTERS = {
 }
 
 
-def fit_chain(df: pd.DataFrame, cfg: dict[str, Any], include_load2: bool) -> tuple[dict, list[dict]]:
+def fit_chain(df: pd.DataFrame, cfg: dict[str, Any], include_load2: bool,
+              load_col: str | None = None,
+              outcome_col: str | None = None) -> tuple[dict, list[dict]]:
     """Run ``model.fallback_order``; return ``(chosen, all_results)``.
 
     The first estimator that is *accepted* is chosen. ``per_player_eb`` is always
-    accepted (deterministic OLS), so a choice is guaranteed.
+    accepted (deterministic OLS), so a choice is guaranteed. Optional ``load_col`` /
+    ``outcome_col`` overrides support the metric panel (defaults unchanged).
     """
     results: list[dict] = []
     chosen = None
     for name in cfg["model"]["fallback_order"]:
-        r = FITTERS[str(name)](df, cfg, include_load2)
+        r = FITTERS[str(name)](df, cfg, include_load2, load_col=load_col,
+                               outcome_col=outcome_col)
         results.append(r)
         if r["accepted"] and chosen is None:
             chosen = r
@@ -687,12 +701,13 @@ def xdrill_correlation(df_model: pd.DataFrame, cfg: dict[str, Any]) -> pd.DataFr
 # --------------------------------------------------------------------------- #
 # Permutation test (meta_slope statistic)
 # --------------------------------------------------------------------------- #
-def _player_slope_blocks(df: pd.DataFrame, load_col: str) -> list[dict[str, Any]]:
+def _player_slope_blocks(df: pd.DataFrame, load_col: str,
+                         outcome_col: str = "perf_z") -> list[dict[str, Any]]:
     """Precompute per-player blocks for the fast permutation statistic."""
     blocks = []
     for pid, g in df.groupby("nfl_id", sort=True):
         x = g[load_col].to_numpy(dtype=np.float64)
-        y = g["perf_z"].to_numpy(dtype=np.float64)
+        y = g[outcome_col].to_numpy(dtype=np.float64)
         n = int(x.size)
         if n < 2 or np.unique(x).size < 2:
             continue
@@ -728,19 +743,22 @@ def _meta_slope_from_blocks(blocks: list[dict[str, Any]], load_perm: np.ndarray)
     return float(num / den) if den > 0 else float("nan")
 
 
-def permutation_test(df_model: pd.DataFrame, cfg: dict[str, Any]) -> tuple[float, float, pd.DataFrame]:
+def permutation_test(df_model: pd.DataFrame, cfg: dict[str, Any],
+                     load_col: str | None = None,
+                     outcome_col: str | None = None) -> tuple[float, float, pd.DataFrame]:
     """Shuffle the ``(load, load2, first_attempt, drill)`` block within each player.
 
     Target = population load slope; statistic = inverse-variance-weighted mean
     per-player load slope (``meta_slope`` — fast + deterministic; documented choice).
     Only the permuted ``load`` enters the statistic, so shuffling the block jointly is
-    equivalent to shuffling load alone for this statistic. Returns
-    ``(stat_obs, p, per_permutation_frame)``.
+    equivalent to shuffling load alone for this statistic. ``load_col``/``outcome_col``
+    override the defaults (metric panel); returns ``(stat_obs, p, per_permutation_frame)``.
     """
     m = cfg["model"]
-    load_col = str(m["load"])
+    load_col = load_col or str(m["load"])
+    oc = outcome_col or "perf_z"
     d = build_design(df_model, cfg, include_load2=True, load_col=load_col)
-    blocks = _player_slope_blocks(d, "load_c")
+    blocks = _player_slope_blocks(d, "load_c", oc)
     if not blocks:
         return float("nan"), float("nan"), pd.DataFrame(columns=["perm_index", "stat"])
     load_full = d["load_c"].to_numpy(dtype=np.float64)
@@ -1024,13 +1042,14 @@ def run_pipeline(df_all: pd.DataFrame, cfg: dict[str, Any], mode: str, prov: str
 
 
 def fit_chain_variant(df: pd.DataFrame, cfg: dict[str, Any], include_load2: bool,
-                      variant: dict[str, Any]) -> tuple[dict, list[dict]]:
+                      variant: dict[str, Any],
+                      outcome_col: str | None = None) -> tuple[dict, list[dict]]:
     """Run the fallback chain for a robustness variant (load_col / first_attempt toggles)."""
     results: list[dict] = []
     chosen = None
     for name in cfg["model"]["fallback_order"]:
         r = FITTERS[str(name)](df, cfg, include_load2, use_first_attempt=bool(variant["use_first_attempt"]),
-                               load_col=str(variant["load_col"]))
+                               load_col=str(variant["load_col"]), outcome_col=outcome_col)
         results.append(r)
         if r["accepted"] and chosen is None:
             chosen = r

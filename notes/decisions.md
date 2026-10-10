@@ -290,3 +290,101 @@ be skipped (the EIV / regression-calibration correction is undefined at reliabil
 diagnostics reported `stop_rule_triggered = True`, `reliability = 0.0`, yet `skip_phase5_link = False` — an
 inconsistency flagged by independent review and fixed here; all other headline numbers are unchanged
 (estimator `per_player_eb`, population load coef −0.000444, p 0.0055, perm p 0.029).
+
+---
+
+# Cycle 7 — Phase 3b metric panel (pre-registered)
+
+## D21 — Pre-registered metric panel: does a better load metric rescue per-player slope reliability ≥ 0.2? · DECLARED 2026-10-10T16:29:33Z (2026-10-10 17:29 IST)
+**Declaration order (no HARKing).** This entry and the `config.yaml` **`panel:` block** were written and
+committed to the working tree **BEFORE any panel result was computed or viewed**. The thresholds, weights and
+formulas below are **FIXED**; they are not tuned against results. Purpose: test whether a better load metric
+rescues the per-player slope **reliability ≥ 0.2** gate (the Phase-5 gate) versus the flat, metric-robust
+Phase-3 null (D20: reliability 0.0, stop rule fires).
+
+**Load metrics** — all **cumulative prior load since session start**, mirroring Phase-2 `prior_load_yd`
+semantics (observed + imputed; imputed rows carry **no** performance value and are **not** model observations
+but **DO** contribute cumulative load). Computed from the 10 Hz frames (`combine_tracking.parquet`).
+- **L1 `prior_load_yd`** — cumulative distance (yards) [existing primary].
+- **L2 `prior_load_hmld`** — cumulative **HMLD** (yards) = Σ_i dist_i·[1(v_i > v_hs) + 1(|a_i| > a_th AND v_i ≤ v_hs)]
+  (the declared **threshold-sum**: high-speed distance + accel/decel distance-equivalent).
+- **L3 `prior_load_hsd`** — cumulative high-speed distance = Σ_i dist_i·1(v_i > v_hs).
+- **L4 `prior_load_accel`** — cumulative accel/decel distance-equivalent = Σ_i dist_i·1(|a_i| > a_th AND v_i ≤ v_hs).
+- **L5 `prior_load_efforts`** — cumulative effort count [existing].
+- **L6 `elapsed_session_s`** — elapsed session time to attempt start (seconds) [existing].
+- **L7 `prior_load_mp`** — **di Prampero metabolic-power variant (robustness)**: cumulative distance (yards)
+  where instantaneous metabolic power P > `mp_threshold_wkg` (25.5 W/kg).
+**Decomposition (item 5).** The distance axis splits into a **speed** component (L3 = HSD) and an
+**accel/decel** component (L4); both are reported. (L1 = high-speed distance + low-speed distance; L3+L4 is
+the high-intensity analogue, and by construction L2 = L3 + L4 at the per-attempt level.)
+
+**Thresholds / weights (SI; FIXED, declared before results):**
+- `speed_hs_mps: 5.5` (≈6.0145 yd/s); `accel_th_mps2: 2.0`; `mp_threshold_wkg: 25.5`.
+- Clipping (physically-impossible artifacts exist up to ~26 yd/s and ~44 yd/s²): `speed_clip_mps: 11.0`
+  (≈12.03 yd/s); `accel_clip_mps2: 13.72` (≈15.0 yd/s²). **Clip BEFORE thresholds**; clipped-frame counts logged.
+- Smoothing before the 2nd derivative: **Savitzky–Golay on x,y** (`smooth_window_frames: 7`,
+  `smooth_polyorder: 3`); speed/accel are computed from the **smoothed positions**; cross-checked against the
+  provided `s`/`a` with agreement (mean abs diff, correlation) reported. (For attempts with fewer frames than
+  the window, the effective window is the largest odd window ≤ n, reduced only as needed to stay valid.)
+- Unit conversion: 1 yd = 0.9144 m (`m_per_yd: 0.9144`); g = 9.81 m/s² (`g_mps2`).
+- **di Prampero/Osgnach energy cost** (source: P. E. di Prampero et al., *J Appl Physiol* 2005; modelled by
+  Osgnach et al., *Med Sci Sports Exerc* 2010 for soccer match-play): ES = arctan(a/g);
+  EC(J/kg/m) = 155.4·ES⁵ − 30.4·ES⁴ − 43.3·ES³ + 46.3·ES² + 19.5·ES + 3.6; P(W/kg) = EC·v (v m/s, a m/s²).
+  Coefficients stored descending in ES (`ec_coef`) and evaluated with `np.polyval`; a is the signed
+  (smoothed) acceleration so deceleration yields the lower-energy branch.
+- **load² rule (metric-agnostic, per cell):** include load² iff `n_unique(load) ≥ 20` **AND** `IQR(load) > 0`;
+  `n_unique`/`IQR` recorded per cell. (This is the panel's declared rule; Phase-3's `model.load2_*` rule is
+  unchanged for `03_combine_model.py`.)
+- **Panel cell rule** = the **SAME** Phase-3 fallback chain (`model.fallback_order`) + reliability formula
+  (`tau2 / (tau2 + mean_i(SE_i²))`) + stop rule (`model.reliability_stop_threshold = 0.2`); per-cell
+  permutation p (≥1000 within-player shuffles, `meta_slope` statistic, `panel.perm_seed_offset`).
+
+**Outcome metrics** (per-attempt performance, standardised within (drill_type, combine_position) — Phase 2
+already emits these): **O1 `perf_z`** (peak speed; current primary) · **O2 `peak_accel_z`** (peak acceleration)
+· **O3 `t90_z`** (time above 90% of best).
+
+**Panel** = every (L, O) combination (**L1–L7 × O1–O3 = 21 cells**). Per cell record:
+`load_metric, outcome_metric, estimator, optimizer, load_coef, load_se, load_p, perm_p, tau2, mean_se2,
+reliability, reliability_met (≥0.2), stop_triggered, skip_phase5_link, n_players, n_obs, load2_included,
+load_n_unique, load_iqr`.
+
+**Implementation notes (non-methodology).** New metrics are computed in `src/03b_metric_panel.py` from
+`data/interim/parquet/combine_tracking.parquet` + the Phase-2 study frame (`combine_features_study.parquet`,
+DB-only); `03_combine_model.py` gains an optional `outcome_col` parameter (default `model.outcome ⇒ perf_z`)
+so its behaviour/outputs are unchanged. Per-attempt new-metric distance is summed over segments with
+`0 < dt ≤ features.distance_gap_max_s` (the same distance basis as `effort_cost_yd`). The study-frame ordering
+is reproduced deterministically and **validated** by recomputing `cumsum(effort_cost_yd)` and requiring it to
+equal the Phase-2 `prior_load_yd`. Imputed rows take the player-drill median (fallback: drill-level median) of
+each new metric, matching Phase 2's `_impute_rows`.
+**Scope.** No Phase-4/5 work; `01`–`03` behaviour and existing outputs must remain byte-identical. This panel
+is a robustness/exploratory battery on the **combine** side only; results reported honestly (nulls included).
+Not committed until an independent Reviewer + Validator sign off.
+
+---
+
+**D21 — independent Reviewer + Validator sign-off · 2026-10-10.**
+The declared metric panel was verified by an independent Reviewer+Validator (combined) **before** commit:
+**PASS, no blocking defects**.
+- *Independent re-derivation:* all 21 cells rebuilt by calling the model code directly on the panel frame
+  match `outputs/model/metric_panel.csv` exactly (estimator/optimizer/load_coef/SE/p/tau2/mean_se2/
+  reliability/stop/perm_p; zero mismatches). Per-attempt HSD/accel/HMLD/MP recomputed from the raw 10 Hz
+  frames with an independent implementation match to <1e-9. The L1/O1 cell reproduces Phase-3's headline
+  exactly (coef −0.000444004477416772, reliability 0.0, perm_p 0.028971).
+- *Construction:* `entity_type='PLAYER'` only; acceleration from **savgol-smoothed** positions (not raw
+  double-difference); clipping **before** thresholds; SI→yard conversions and the di Prampero/Osgnach EC
+  polynomial verified; every threshold/weight present in `config.yaml` and matching D21 verbatim; the
+  HMLD = HSD + accel decomposition holds per-attempt and cumulatively.
+- *Determinism:* two `--force` sample runs give byte-identical `metric_panel*` outputs. *Tests:*
+  `test_metric_panel.py` 7/7 + `test_audit.py` 6/6, `test_features.py` 8/8, `test_combine_model.py` 7/7.
+- *Regression:* the `03_combine_model.py` change is additive-only; its outputs are byte-identical and D20's
+  headline (estimator `per_player_eb`, load coef −0.000444, reliability 0.0) is unchanged.
+- **Headline:** **3 of 21 cells** clear reliability ≥ 0.2 — `prior_load_accel×peak_accel_z` (0.5357),
+  `prior_load_efforts×peak_accel_z` (0.5934), `prior_load_efforts×t90_z` (0.5568) — all via
+  `lmm_uncorrelated_re` with a **positive** load coef, i.e. a **potentiation/warm-up** direction, **not**
+  fatigue. No fatigue-direction cell clears the gate; the population null is metric-robust.
+- **Caveats carried to the report (honest).** (i) The three gate cells clear the threshold **only under the
+  LMM fallback** (`lmm_uncorrelated_re`); under the deterministic EB estimator their reliabilities are
+  0.0 / 0.0 / 0.0778 — all < 0.2 — so the "rescue" rests on the LMM variance-component estimate, not a
+  robust slope signal. (ii) 2 of the 3 gate cells use `peak_accel_z`, whose Phase-2 definition
+  (`peak_accel_yds2`) is the **instantaneous central-difference max**, not the ~0.3–0.5 s average assumed
+  in the brief (Phase-2 committed at Cycle 4; flagged, not changed).

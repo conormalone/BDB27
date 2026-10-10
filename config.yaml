@@ -154,6 +154,59 @@ model:
   synth_seed: 424242
   synth_slope_tol: 0.15
 
+# ---- Metric panel (Phase 3b) — PRE-REGISTERED (D21, 2026-10-10) ----
+# Declared BEFORE any panel result was computed (no HARKing). Purpose: test whether a
+# better load metric rescues per-player slope reliability >= 0.2 (the Phase-5 gate)
+# versus the flat, metric-robust Phase-3 null. Thresholds/weights/formulas are FIXED;
+# the panel cell rule is the SAME Phase-3 fallback chain + reliability formula + stop rule
+# (model.reliability_stop_threshold = 0.2). ALL thresholds are SI (m/s, m/s^2, W/kg);
+# positions are yards, so yard-space thresholds are derived via m_per_yd (no magic numbers).
+panel:
+  out_subdir: model              # outputs/model/ (new files only; 03 artefacts untouched)
+  # --- load metrics (cumulative PRIOR load since session start, Phase-2 prior_load_yd semantics
+  #     incl. the observed+imputed rule: imputed rows carry no performance but DO add load) ---
+  load_metrics:
+    L1: prior_load_yd            # cumulative distance (yards) [existing primary]
+    L2: prior_load_hmld          # cumulative HMLD threshold-sum (yards): HSD + accel/decel-equiv
+    L3: prior_load_hsd           # cumulative high-speed distance (yards)
+    L4: prior_load_accel         # cumulative accel/decel distance-equivalent (yards)
+    L5: prior_load_efforts       # cumulative effort count [existing]
+    L6: elapsed_session_s        # elapsed session time to attempt start (seconds) [existing]
+    L7: prior_load_mp            # di Prampero metabolic-power distance (yards), P > mp_threshold_wkg
+  # --- outcome metrics (per-attempt, standardised within (drill_type, combine_position) by Phase 2) ---
+  outcome_metrics:
+    O1: perf_z                   # peak speed (current primary)
+    O2: peak_accel_z             # peak acceleration
+    O3: t90_z                    # time above 90% of best
+  # --- thresholds / weights (SI; FIXED, declared before results) ---
+  speed_hs_mps: 5.5              # high-speed threshold (approx 6.0145 yd/s)
+  accel_th_mps2: 2.0             # accel/decel threshold (approx 2.1872 yd/s^2)
+  mp_threshold_wkg: 25.5         # di Prampero metabolic-power threshold W/kg
+  speed_clip_mps: 11.0           # clip physical artifacts BEFORE thresholds (approx 12.03 yd/s)
+  accel_clip_mps2: 13.72         # accel clip (approx 15.0 yd/s^2)
+  m_per_yd: 0.9144               # 1 yd = 0.9144 m
+  g_mps2: 9.81                   # gravitational acceleration
+  smooth_window_frames: 7        # Savitzky-Golay window on x,y BEFORE the 2nd derivative
+  smooth_polyorder: 3            # Savitzky-Golay polynomial order
+  # di Prampero/Osgnach energy cost. ES = arctan(a/g); P(W/kg) = EC * v (v m/s, a m/s^2);
+  # EC(J/kg/m) = 155.4*ES^5 - 30.4*ES^4 - 43.3*ES^3 + 46.3*ES^2 + 19.5*ES + 3.6.
+  # Coefficients stored descending in ES (ES^5..ES^0) — evaluated with np.polyval.
+  ec_coef: [155.4, -30.4, -43.3, 46.3, 19.5, 3.6]
+  # --- load^2 rule (metric-agnostic, per cell): include load^2 iff n_unique >= 20 AND IQR > 0 ---
+  load2_min_unique: 20
+  load2_min_iqr: 0.0
+  # --- per-cell permutation (>= 1000 within-player shuffles, same statistic as Phase 3) ---
+  perm_n: 1000
+  perm_stat: meta_slope           # inverse-variance-weighted mean per-player load slope
+  perm_seed_offset: 101
+  # --- per-attempt new-metric imputation (same rule as Phase 2: player-drill median, drill fallback) ---
+  impute_stat: median
+  # --- cross-check smoothed positions' speed/accel against the provided s/a (report agreement) ---
+  crosscheck_provided: true
+  # --- reliability gate (mirrors model.reliability_stop_threshold; declared again for clarity) ---
+  reliability_stop_threshold: 0.2
+  reliability_min_players: 20
+
 # ---- Runtime ----
 runtime:
   duckdb_threads: 1   # single-threaded => bit-deterministic reductions (spec: same seed, identical outputs)
