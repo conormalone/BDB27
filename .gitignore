@@ -1,3 +1,6 @@
+# --- BDB27 notebook run scratch (local) ---
+bdb27_run/
+
 # --- Data (lives on the USB; symlinked via data/raw) ---
 data/*
 !data/README.md

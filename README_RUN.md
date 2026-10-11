@@ -1,5 +1,21 @@
 # README_RUN — how to run the BDB27 pipeline
 
+> **Primary interface (no CLI):** `notebooks/run_pipeline.ipynb`. It is **self-contained** — it embeds the
+> stage code (`src/*.py`) + `config.yaml` as sha256-verified `gzip`+`base64` payloads, writes them to a work
+> directory and runs **Phases 1 → 2 → 3 → 3b → 3d** in-process.
+> **Kaggle:** attach the 2027 BDB dataset and **Run All** (`DATA_DIR` auto-detects the `/kaggle/input` dir
+> holding `combine_tracking.csv`; outputs go to `/kaggle/working/bdb27_run/`). **Headless:**
+>
+> ```bash
+> BDB27_WORK_DIR=/mnt/project_data/bdb27_run \
+> jupyter nbconvert --to notebook --execute notebooks/run_pipeline.ipynb \
+>     --output /mnt/project_data/bdb27_run/run_pipeline.executed.ipynb \
+>     --ExecutePreprocessor.timeout=2400
+> ```
+>
+> The notebook is **generated**: regenerate with `python tools/build_notebook.py` (never hand-edit it).
+> The **CLI sections below are the fallback** — same logic, per-stage scripts.
+
 Stage scripts live in `src/` and take `--mode sample|full` and `--force`. All paths/thresholds come from
 `config.yaml`. Heavy files are converted to Parquet once (checkpointed) and queried with DuckDB; no full
 CSV is loaded into pandas.

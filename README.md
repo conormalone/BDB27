@@ -16,6 +16,34 @@ Raw data lives on the USB drive (`data/raw` → `/mnt/project_data/conor_downloa
 - `combine_results.csv` — anthropometrics + electronic splits (10-yd split, 40, vertical, broad, 3-cone, shuttle, bench reps).
 - `player_play.csv` + `game_tracking_2023/24/25.csv` — in-game NGS "target" side.
 
+## Run the pipeline
+
+**Primary interface — the notebook** `notebooks/run_pipeline.ipynb` (self-contained: no CLI, no Internet at run time).
+It embeds the stage code (`src/*.py`) + `config.yaml` as sha256-verified `gzip`+`base64` payloads, writes them
+to a work dir and runs **Phases 1 → 2 → 3 → 3b → 3d** in-process.
+
+- **Kaggle:** attach the 2027 BDB dataset, open the notebook, **Run All**. `DATA_DIR` auto-detects the
+  `/kaggle/input` directory holding `combine_tracking.csv`; outputs go to `/kaggle/working/bdb27_run/`.
+  Leave `MODE = "full"` (default) for the `FULL` provenance stamp; `"sample"` is a developer dry-run only.
+- **Local / headless:**
+
+  ```bash
+  source ~/.venvs/bdb27/bin/activate
+  BDB27_WORK_DIR=/mnt/project_data/bdb27_run \
+  jupyter nbconvert --to notebook --execute notebooks/run_pipeline.ipynb \
+      --output /mnt/project_data/bdb27_run/run_pipeline.executed.ipynb \
+      --ExecutePreprocessor.timeout=2400
+  ```
+
+Because the **combine data are COMPLETE**, the combine-side numbers are **REAL in both modes** — the mode
+switch only sets the provenance stamp (and governs the not-run game side). Game side (Phases 4/5) is **not**
+implemented this cycle (requires the full Kaggle game-tracking files).
+
+**Regeneration.** The notebook is generated, not hand-edited: `python tools/build_notebook.py` rebuilds it
+deterministically from `src/*.py` + `config.yaml`.
+
+**CLI fallback.** The identical per-stage scripts still run directly — see `README_RUN.md`.
+
 ## Layout
 | Dir | Purpose |
 |---|---|
