@@ -1,92 +1,92 @@
-# TASK: Combine fatigue slope vs. in-game intensity decay
+# TASK: Does the Combine ceiling bind on max-effort routes? (WR primary, TE replication)
 
-> **Core project task spec — binding.** Captured from Conor 2026-10-09. Every role and sub-agent follows it; when this and convenience disagree, this wins.
+> **Core project task spec — binding.** Captured from Conor 2026-10-11. **This supersedes the old
+> combine-fatigue task** (archived at git tag `archive/combine-fatigue-v1`, HEAD `fdc794c`). Every role and
+> sub-agent working the BDB27 project follows this spec; when the spec and convenience disagree, the spec
+> wins.
 
-NFL Big Data Bowl 2027 (Kaggle), deadline Jan 6, 2027 23:59 UTC.
+NFL Big Data Bowl 2027 (Kaggle), deadline **2027-01-06 23:59 UTC**.
 
 ## Goal
-Test whether performance decay across a Combine session (from Combine tracking) predicts decay in high-intensity output across games (from NFL tracking), beyond baseline speed, size and draft position (if provided).
 
-## Environment
-You run on a Raspberry Pi with limited RAM. Game tracking here is a ~100 MB SAMPLE; the final run happens on a bigger machine. Produce correct, memory-safe, tested code that runs unchanged on full data. Scripts 01-05 must run end-to-end in `--mode sample` on sample or synthetic data, and every sample output is labeled `UNVALIDATED SAMPLE OUTPUT`. Never interpret, report or tune against sample results.
+For **receivers who reached the NFL**, test whether each player's **physical ceiling** (estimated from
+Combine tracking) predicts the **upper tail** of their in-game speed/acceleration on **max-effort routes**,
+and **how close they get to it**.
 
-## Rules
-- Never invent data, columns or results. If something is missing or ambiguous, stop and write to /notes/blockers.md.
-- Official competition docs and rules are the source of truth; third-party repos are unverified hints. No external data unless permitted.
-- Log decisions and reasons in /notes/decisions.md. Report null results honestly.
-- Fixed seeds, scripts not ad-hoc cells, strict sequential gating.
+Questions:
 
-## Engineering
-- Scripts take `--mode sample|full` and `--force`, with one code path for both. Paths, thresholds and sizes live in config.yaml; no magic numbers.
-- Never load full CSVs into pandas. Convert to Parquet, then query with DuckDB or lazy Polars with explicit column selection. Process game data per game or player in chunks and write small summary tables; modeling stages read only summaries.
-- Downcast dtypes. Log wall time and peak RAM per stage to outputs/run_log.csv.
-- Stages checkpoint to disk and skip finished work unless `--force`.
-- Check how the sample was drawn and note which code paths it cannot exercise. If it lacks enough matched players, generate a synthetic schema-compliant set with a planted fatigue slope.
+1. **Is the Combine ceiling a real bound in games** — what is the **exceedance rate** (share of in-game
+   efforts that beat the ceiling)?
+2. **Does the Combine→game relationship strengthen toward the upper tail** (quantile-dependent link)?
+3. **Which Combine features predict closeness** on **deep vs. breaking routes**?
+
+**Claim limits (hard).** Claims are limited to players who **reached the NFL**. **Never** claim that Combine
+athleticism predicts NFL success — that angle is saturated and explicitly out of scope (see
+`research/prior-work-scan.md` §1).
+
+## Environment / engineering
+
+- One code path for `--mode sample|full` plus `--force`. Config-driven — **no magic numbers**.
+- **Never load full CSVs into pandas.** Parquet + DuckDB / lazy Polars with explicit column selection;
+  process game data **per game/player**, write small summary tables.
+- Downcast dtypes.
+- Log **wall time + peak RAM per stage** to `outputs/run_log.csv`.
+- **Checkpoint + skip finished work** unless `--force`.
+- Note what the **sample can't exercise** and add a **synthetic schema-compliant set** with a **planted
+  binding ceiling** if matched players are insufficient.
+- Label sample outputs **`UNVALIDATED SAMPLE OUTPUT`**.
 
 ## Phases
 
-**0. Setup.** Data is stored on the mounted drive. Summarize rules and limits (writeup and figure caps, notebook requirements, external data) in /notes/rules.md. Record schemas and Combine file size in /notes/schema.md.
+**0. Setup.** Rules/limits → `notes/rules.md`; schemas/sizes → `notes/schema.md`; pre-registration skeleton →
+`notes/prereg.md`; config skeleton → `config.yaml`.
 
-**1. Audit (gate: go/no-go).** Evidence, not assumptions:
-a. Timing and ordering fields for Combine attempts.
-b. Attempts per player per drill, by position group.
-c. Does drill order vary across players? (If fixed, fatigue and drill are confounded.)
-d. Is the provided distance column reliable? Compare with distance from x/y.
-e. Matched Combine-to-NFL players per position group (game side: scripted now, run in full mode only, mark PENDING FULL RUN).
-f. Missingness, units, sampling rate, coordinates.
-g. Gaps in attempt numbering: share of players affected, by drill and position.
-Select ONE position group and ONE family of repeated maximal-effort drills with the best attempts and order variation. Stop if a required timing field is missing or no group qualifies.
+**1. Audit (a–i).** Game-side items **c/d/e/h/i marked `PENDING FULL RUN`**. Go/no-go gate on: matched WR
+count, route snaps/player, missing Combine fields, ICC.
 
-**2. Combine features** (run for real if the Combine data fits in RAM).
-- Per attempt, from x/y/time: peak speed, peak acceleration, time above 90% of the player's best, distance (effort cost), elapsed session time.
-- Keep original attempt numbers and real clock time; never renumber. If explicit attempt IDs are absent, infer attempts from timestamps using a segmentation rule defined in config.
-- Any gap in attempt numbering is lost data. Impute load only: add the player's median observed cost for that drill (drill-level median if none). Flag imputed rows. Imputed attempts are not model observations and carry no performance values.
-- Cumulative prior load = observed plus imputed efforts since session start (distance and count of maximal efforts).
-- Standardize performance within drill and position.
-- `first_attempt` = 1 iff the original attempt number is 1 within that drill (not merely the first observed row). Check its collinearity with load (VIF) and report it.
-- Frames: flag attempts with gaps inside the peak-speed or peak-acceleration window. Interpolate gaps under 0.5 s only elsewhere. Sanity checks: flag speeds above 12 yd/s, duplicate attempts.
-- Rest time: compute from the clock, accounting for imputed attempts. Use it as a covariate or drop it; do not leave it unused.
+**2. Combine envelope.** Fit `v(t) = vmax·(1 − exp(−t/tau))` on **straight-line drills** → `a0 = vmax/tau`;
+model-free split / speed-at-time features; cut metrics for **cutting drills**; hierarchical shrinkage;
+**≤3 features** chosen by **ICC + VIF**, fixed in the pre-registration; per-player table with SE.
 
-**3. Combine fatigue model.**
-- Baseline: within-player late-minus-early differencing on comparable efforts.
-- Main LMM: `perf_z ~ load + load^2 + first_attempt + C(drill) + (1 + load | player)`. Drop `load^2` if pooled load values lack spread (document the criterion in config).
-- Convergence fallbacks, logged in decisions.md: (1) uncorrelated random effects `(1|player) + (0+load|player)` with centered, rescaled load and an alternate optimizer; (2) per-player OLS slopes on centered load with empirical Bayes shrinkage, or a Bayesian hierarchical model with weak priors; (3) only if both fail, random intercept only, report population-level results only and skip the Phase 5 link.
-- Robustness: refit with observed-only load (no imputed attempts); refit with and without `first_attempt`.
-- Diagnostics: residuals, convergence, random-effect distributions. Reliability is model-based: slope variance / (slope variance + mean squared SE of per-player slopes), plus cross-drill-group slope correlation if players ran multiple drills. Permutation test (>= 1000 within-player order shuffles; the effect should vanish). Do not use odd/even split-half; attempts are too few.
-- Stop if reliability < 0.2 (threshold fixed in config before running) and report the null as the finding.
-- Extract shrunken per-player slopes with intervals. Fit all players at population level; the Phase 5 link requires >= 3 observed attempts per player.
+**3. Game demand.** `00_thresholds.json` provenance `FULL`/`PLACEHOLDER`; route snaps via `route_ran`;
+**top-k efforts per fixed route-snap count**; per-effort features; **envelope fraction**.
 
-**4. In-game decay** (full data only).
-- `00_thresholds.py` writes outputs/thresholds.json (effort cutoffs, minimum snaps). In sample mode provenance is "PLACEHOLDER_SAMPLE"; in full mode it is "FULL". Scripts 04 and 05 assert provenance == "FULL" in full mode. Never set thresholds from the sample. Freeze thresholds before running 05; no tuning against Phase 5 results.
-- Per matched player, model high-intensity effort intensity relative to their own early-game baseline against cumulative in-game distance, snaps in drive and time since rest. Controls: play type, role, down/distance, score margin. Apply the minimum-snaps rule.
-- Extract shrunken per-player decay slopes. Report the same model-based reliability and stop-threshold as Phase 3.
+**4. Models.** Quantile regression at pre-registered taus, **effort-level**, **player-clustered bootstrap**;
+draft position with/without; exceedance; utilization `u`; pooled vs WR/TE; fallbacks.
 
-**5. Link and validate** (full data only).
-- Primary test: regress game decay slope on Combine fatigue slope, controlling for baseline speed, height/weight and draft position (if provided).
-- Account for error in both slopes: inverse-variance weighting for the outcome, plus a reliability-corrected effect for the predictor (regression calibration using posterior SEs, or a joint bivariate hierarchical model), reported alongside the naive regression.
-- Player-grouped cross-validation; held-out delta R^2 with bootstrap CIs.
-- Placebo: Combine slope should not predict early-game output. Sensitivity: alternate thresholds, metrics, excluding low-snap players.
-- State the selection limitation (only players who reached NFL games have game data).
+**5. Validation.** Player-grouped CV vs **controls-only baseline**; permutation; measurement-error
+correction; sensitivity; power note; limitations.
 
-**6. Deliverables.** Public Kaggle notebook and writeup within official limits (placeholders for results until the full run), max 5 figures. Writeup sections: problem, audit, method, reliability, link, implications, limitations. /notes/limitations.md lists every threat and mitigation, including the lost-attempts assumption, selection bias and slope measurement error.
+## Deliverables / tests / handoff
 
-## Tests before handoff
-1. Schema assertions on columns, dtypes and units; fail loudly on mismatch.
-2. Synthetic recovery: simulated players with known slopes, real attempt timings and randomly deleted attempts (with imputed load). Both the Combine and game models must recover the slopes. Include a fallback-path test.
-3. Edge cases: one-attempt players, numbering gaps, missing frames, ties, constant performance, no game data.
-4. Scale: run on the sample, then on the sample concatenated several times with renamed IDs. Check roughly linear memory growth, extrapolate to full size in /notes/scale.md and flag stages likely to exceed RAM.
-5. Determinism: same seed gives identical outputs.
+- Public **Kaggle notebook + writeup** (≤5 figures; `UNVALIDATED` placeholders pre-full-run).
+- Schema assertions.
+- **Synthetic recovery**: planted ceiling **+ null case**.
+- Edge cases.
+- **Scale test** (sample concatenated ×N).
+- Determinism.
+- `README_RUN.md`.
+- Pinned **ARM+x86** `requirements.txt`.
+- `notes/{pending_full_run,assumptions,limitations}.md`.
+- `.gitignore` data — commit only **code/configs/notes/synthetic fixtures**.
 
-## Handoff
-- README_RUN.md: clone, environment setup, data download, ordered commands, expected runtime and RAM per stage.
-- Pinned requirements.txt that works on ARM and x86.
-- /notes/pending_full_run.md: questions only full data can answer, with the script for each.
-- /notes/assumptions.md: unverified assumptions about full data, each with a runtime assertion.
-- .gitignore data; commit only code, configs, notes and synthetic fixtures.
+## Blockers — write to `notes/blockers.md`
 
-## Stop and write to blockers.md if
-A required timing or order field is missing; no position group qualifies; reliability is below threshold; thresholds provenance is not "FULL" in a full run; or any instruction conflicts with competition rules.
+A blocker **stops work** and must be written there. Trigger on:
+
+- A **missing required Combine/game field**.
+- **Matched receivers or route snaps below config minima**.
+- **Key Combine features unreliable**.
+- **Thresholds provenance not `FULL` in a full run**.
+- **`notes/prereg.md` missing before a full run**.
+- Any instruction **conflicting with competition rules**.
+
+Never invent data or fields. If something is unclear/missing, stop and write it to `notes/blockers.md`.
 
 ## Layout and run order
-/data/raw /data/interim /src /notebooks /notes /outputs/figures
-01_audit -> 02_features -> 03_combine_model -> 00_thresholds -> 04_game_features -> 05_link
+
+```
+/data/raw  /data/interim  /src  /notebooks  /notes  /outputs/figures
+
+01_audit → 02_combine_envelope → 00_thresholds → 03_game_demand → 04_models → 05_validate
+```

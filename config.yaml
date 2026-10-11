@@ -1,18 +1,28 @@
-# BDB27 pipeline configuration.
-# All paths, thresholds and sizes live here (no magic numbers in code).
-# Binding spec: TASK.md. Decisions: notes/decisions.md.
+# BDB27 pipeline configuration — CEILING-BINDING TASK.
+# All paths, thresholds, sizes and parameters live here (no magic numbers in code).
+# Binding spec: TASK.md  ·  Pre-registration: notes/prereg.md  ·  Decisions: notes/decisions.md
+#
+# Values marked `null` / `TBD` are NOT yet fixed. They must be filled in — and the corresponding
+# notes/prereg.md entries frozen — BEFORE a `--mode full` run of the stage that consumes them.
+# Sample mode may run with a-priori placeholders, always labelled `UNVALIDATED SAMPLE OUTPUT`.
 
 project: BDB27
 seed: 20270106            # fixed seed for any stochastic step
 
+# --------------------------------------------------------------------------- #
+# Paths (resolve to REPO_ROOT / value; see src/common.py::resolve)
+# --------------------------------------------------------------------------- #
 paths:
-  raw: data/raw                 # symlink -> USB bdb27 dir
-  interim: data/interim         # symlink -> USB interim dir
+  raw: data/raw                 # symlink -> mounted drive (bdb27/)
+  interim: data/interim         # symlink -> scratch interim dir
   parquet: data/interim/parquet # converted Parquet cache
   outputs: outputs
   figures: outputs/figures
   notes: notes
 
+# --------------------------------------------------------------------------- #
+# Source filenames (keys are references used by src/common.py::csv_path)
+# --------------------------------------------------------------------------- #
 files:
   combine_tracking: combine_tracking.csv
   combine_results: combine_results.csv
@@ -21,422 +31,128 @@ files:
   player_play: player_play.csv
   player_career_successes: player_career_successes.csv
   game_tracking_sample: game_tracking_2023_sample.csv
-  game_tracking_full:                # full-mode sources (bigger machine)
+  game_tracking_full:               # full-mode sources (bigger machine)
     - game_tracking_2023.csv
     - game_tracking_2024.csv
     - game_tracking_2025.csv
 
+# --------------------------------------------------------------------------- #
+# Run mode
+# --------------------------------------------------------------------------- #
 mode:
   default: sample
   sample:
     game_tracking: game_tracking_sample
     provenance: UNVALIDATED SAMPLE OUTPUT
-    run_game_side: false          # (e) game-side audit is full-only
+    run_game_side: false            # game-side audit items (c/d/e/h/i) are full-only
   full:
     game_tracking: game_tracking_full
     provenance: FULL
     run_game_side: true
 
-# ---- Audit (Phase 1) parameters ----
-audit:
-  sampling_rate_hz: 10            # nominal tracking rate (audit f)
-  distance_rtol: 0.05             # provided-vs-recomputed distance rel. tolerance (audit d)
-  coord_x_range: [0.0, 120.0]     # yards (long axis) (audit f)
-  coord_y_range: [0.0, 53.3]      # yards (short axis) (audit f)
-  positions_of_interest: [WR, TE, OL, DL, DB]
-  # Candidate drill types ranked later by data (audit c order-variation pairs).
-  candidate_drill_types: [FORTY_YARD_DASH, THREE_CONE_DRILL, SHORT_SHUTTLE]
-  primary_drill_type: FORTY_YARD_DASH   # legacy single-drill pick; superseded by families.all_drills (D12)
-  min_attempts_for_repeat: 2           # attempts/player for a drill to count as "repeated"
-  min_attempts_for_link: 3             # spec Phase 5: >=3 observed attempts/player. Read as TOTAL across the drill family (D12), not per drill.
-  attempt_count_unit: event_id         # an "observed attempt" = one observed event_id (schema.md: 1 event_id = 1 attempt)
-  order_flip_threshold: 0.05           # |frac(A first) - 0.5| above which a drill pair counts as reordered (was hard-coded; B4)
-  max_combine_bytes: 1000000000        # A11 guard: combine_tracking must fit in RAM (<~1 GB)
-  sample_row_count: 1048576            # observed cap in game_tracking_2023_sample.csv (2^20); sample-draw sanity
-
-  # LOCKED study population (position group) for the Phase 5 link. Human decision D13
-  # (Conor 2026-10-09): DB ONLY. WR is EXCLUDED — WR in-game intensity depends on
-  # offensive scheme, injecting between-system noise into the decay signal. A single
-  # position group satisfies TASK.md Phase 1 ("select ONE position group"); no position
-  # terms are pre-registered (the Phase-3 LMM is the spec formula as written).
-  study_population: DB
-
-  # ---- In-code assertion thresholds (N7: no magic numbers left in src/01_audit.py) ----
-  assert_attempt_time_min: 0.99        # A2: min attempt~time agreement fraction
-  assert_median_dt_s: 0.10             # A3: nominal inter-frame Δt (10 Hz)
-  assert_forty_span_yd: [38.0, 42.0]   # A4: 40-yd straight-line median span bounds (yd)
-  null_exclusion_pct: 20.0             # A12/N1: >this % null → exclude control. Applied to
-                                       # NON-STRUCTURAL missingness ONLY (draft position's
-                                       # nulls are the structural "undrafted" category).
-
-  # ---- Drill families for the position-scope evidence (D12) ----
-  # The repeated maximal-effort FAMILY = ALL drills (human decision 2026-10-09).
-  # SKILL_DRILLS_{WR,DB,DL,OL,TE,LB} are position-specific blocks and are included.
-  families:
-    all_drills: ALL                                     # ALL => every drill_type for that player
-    timed_battery: [FORTY_YARD_DASH, THREE_CONE_DRILL, SHORT_SHUTTLE]
-
-  # Candidate study populations (position groups) for the Phase 5 link sweep.
-  candidate_populations:
-    DB-only: [DB]
-    DB+WR: [DB, WR]
-    DB+WR+DL+OL: [DB, WR, DL, OL]
-
-# ---- Combine features (Phase 2) ----
-# All Phase-2 thresholds live here (TASK.md: no magic numbers). Locked design
-# decisions D16-D18; see notes/decisions.md.
-features:
-  out_subdir: features            # outputs/features/
-  # --- unit levels (config-driven; no magic) ---
-  attempt_level: empirical            # empirical | drill_name | drill_type (D19). empirical = detect per (nfl_id, drill_type)
-  attempt_restart_min_drill_names: 2  # a block is a per-drill_name restart unit iff >= this many drill_names start at attempt 1
-  standardize_level: drill_type   # D17: standardise perf_z WITHIN (standardize_level, combine_position)
-  t90_baseline_level: drill_type  # D18: "the player's best" = max observed peak_speed within the drill_type
-  performance_metric: peak_speed_yds   # primary standardised metric (D17)
-  # --- kinematics ---
-  expected_dt_s: 0.1              # nominal inter-frame dt (10 Hz); gap reference
-  gap_detect_factor: 1.5          # a segment is a gap when dt_i > factor * expected_dt_s
-  interp_max_gap_s: 0.5           # linearly interpolate frame gaps shorter than this (elsewhere only)
-  distance_gap_max_s: 0.5         # effort_cost counts only segments with dt_i <= this (after interp)
-  t90_frac: 0.90                  # time-above threshold as a fraction of the player's best
-  # --- sessions & clock ---
-  session_gap_s: 7200             # >2h inactivity starts a new combine session
-  # --- imputation ---
-  impute_stat: median             # lost attempt -> player_drill median effort_cost (fallback: drill_global)
-  impute_warn_share: 0.5          # WARNING if imputed rows exceed this share of observed rows (numbering-level sanity)
-  # --- standardisation ---
-  min_std_group_n: 3              # a (standardize_level, position) group needs >= this many observed rows
-  # --- sanity flags ---
-  peak_speed_sanity_yds: 12.0     # flag attempts exceeding this peak speed
-  vif_flag_threshold: 5.0         # flag VIF(prior_load_yd, first_attempt) above this
-  # --- rest policy ---
-  rest_use: dropped_from_primary_kept_as_feature  # rest_s kept as a column + reported; NOT in the pre-registered Phase-3 primary LMM; declared a Phase-3 robustness covariate
-  # segmentation (only used if explicit attempt ids were absent; attempt exists here)
-  segmentation_gap_s: 5.0
-
-# ---- Combine fatigue model (Phase 3) ----
-# All Phase-3 thresholds/params live here (TASK.md: no magic numbers). Methodology is
-# fixed by the PM brief; the convergence fallback chain and the load² spread criterion
-# are recorded in notes/decisions.md D20.
-model:
-  out_subdir: model              # outputs/model/
-  outcome: perf_z                # standardised within (drill_type, position) by Phase 2
-  load: prior_load_yd            # primary exposure (observed + imputed), baked in by Phase 2
-  load_observed: prior_load_observed_yd  # observed-only load (robustness refit)
-  load2_min_unique: 20           # load² included iff n_unique(load) >= this ...
-  load2_min_iqr_yd: 10.0         # ... AND IQR(load) >= this (documented spread criterion)
-  drill: drill_type              # C(drill) fixed effect
-  player: nfl_id                 # random-effect grouping
-  first_attempt: first_attempt    # D19 definition, KEPT AS-IS (do not redefine)
-  lmm_optimizers: [lbfgs, bfgs, cg, powell]  # tried in order; first *clean* one wins
-  lmm_maxiter: 200
-  lmm_reml: false                # ML fit (reml=False)
-  load_center: true              # centre load (and load²) for numeric stability
-  fallback_order: [lmm_random_slopes, lmm_uncorrelated_re, per_player_eb, random_intercept]
-  eb_min_attempts: 2             # per-player OLS slope needs >= this many attempts + load variation
-  eb_tau2_method: dl             # spec EB tau2 = max(0, Var_obs(slopes) - mean_i(SE_i^2))
-  reliability_stop_threshold: 0.2
-  reliability_min_players: 20    # < this many usable slopes -> reliability forced to 0 (stop)
-  baseline_min_attempts: 2
-  baseline_window: 1
-  perm_n: 1000
-  perm_stat: meta_slope          # inverse-variance-weighted mean per-player load slope
-  perm_seed_offset: 101
-  xdrill_min_players: 10
-  xdrill_min_attempts: 3
-  link_min_attempts: 3           # Phase-5 link: >= 3 observed attempts per player
-  player_slope_ci_level: 0.95
-  synth_n_players: 60
-  synth_slopes: [-0.6, -0.3, 0.0, 0.3, 0.6]
-  synth_attempts_range: [3, 12]
-  synth_delete_frac: 0.2
-  synth_impute: true
-  synth_seed: 424242
-  synth_slope_tol: 0.15
-
-# ---- Metric panel (Phase 3b) — PRE-REGISTERED (D21, 2026-10-10) ----
-# Declared BEFORE any panel result was computed (no HARKing). Purpose: test whether a
-# better load metric rescues per-player slope reliability >= 0.2 (the Phase-5 gate)
-# versus the flat, metric-robust Phase-3 null. Thresholds/weights/formulas are FIXED;
-# the panel cell rule is the SAME Phase-3 fallback chain + reliability formula + stop rule
-# (model.reliability_stop_threshold = 0.2). ALL thresholds are SI (m/s, m/s^2, W/kg);
-# positions are yards, so yard-space thresholds are derived via m_per_yd (no magic numbers).
-panel:
-  out_subdir: model              # outputs/model/ (new files only; 03 artefacts untouched)
-  # --- load metrics (cumulative PRIOR load since session start, Phase-2 prior_load_yd semantics
-  #     incl. the observed+imputed rule: imputed rows carry no performance but DO add load) ---
-  load_metrics:
-    L1: prior_load_yd            # cumulative distance (yards) [existing primary]
-    L2: prior_load_hmld          # cumulative HMLD threshold-sum (yards): HSD + accel/decel-equiv
-    L3: prior_load_hsd           # cumulative high-speed distance (yards)
-    L4: prior_load_accel         # cumulative accel/decel distance-equivalent (yards)
-    L5: prior_load_efforts       # cumulative effort count [existing]
-    L6: elapsed_session_s        # elapsed session time to attempt start (seconds) [existing]
-    L7: prior_load_mp            # di Prampero metabolic-power distance (yards), P > mp_threshold_wkg
-  # --- outcome metrics (per-attempt, standardised within (drill_type, combine_position) by Phase 2) ---
-  outcome_metrics:
-    O1: perf_z                   # peak speed (current primary)
-    O2: peak_accel_z             # peak acceleration
-    O3: t90_z                    # time above 90% of best
-  # --- thresholds / weights (SI; FIXED, declared before results) ---
-  speed_hs_mps: 5.5              # high-speed threshold (approx 6.0145 yd/s)
-  accel_th_mps2: 2.0             # accel/decel threshold (approx 2.1872 yd/s^2)
-  mp_threshold_wkg: 25.5         # di Prampero metabolic-power threshold W/kg
-  speed_clip_mps: 11.0           # clip physical artifacts BEFORE thresholds (approx 12.03 yd/s)
-  accel_clip_mps2: 13.72         # accel clip (approx 15.0 yd/s^2)
-  m_per_yd: 0.9144               # 1 yd = 0.9144 m
-  g_mps2: 9.81                   # gravitational acceleration
-  smooth_window_frames: 7        # Savitzky-Golay window on x,y BEFORE the 2nd derivative
-  smooth_polyorder: 3            # Savitzky-Golay polynomial order
-  # di Prampero/Osgnach energy cost. ES = arctan(a/g); P(W/kg) = EC * v (v m/s, a m/s^2);
-  # EC(J/kg/m) = 155.4*ES^5 - 30.4*ES^4 - 43.3*ES^3 + 46.3*ES^2 + 19.5*ES + 3.6.
-  # Coefficients stored descending in ES (ES^5..ES^0) — evaluated with np.polyval.
-  ec_coef: [155.4, -30.4, -43.3, 46.3, 19.5, 3.6]
-  # --- load^2 rule (metric-agnostic, per cell): include load^2 iff n_unique >= 20 AND IQR > 0 ---
-  load2_min_unique: 20
-  load2_min_iqr: 0.0
-  # --- per-cell permutation (>= 1000 within-player shuffles, same statistic as Phase 3) ---
-  perm_n: 1000
-  perm_stat: meta_slope           # inverse-variance-weighted mean per-player load slope
-  perm_seed_offset: 101
-  # --- per-attempt new-metric imputation (same rule as Phase 2: player-drill median, drill fallback) ---
-  impute_stat: median
-  # --- cross-check smoothed positions' speed/accel against the provided s/a (report agreement) ---
-  crosscheck_provided: true
-  # --- reliability gate (mirrors model.reliability_stop_threshold; declared again for clarity) ---
-  reliability_stop_threshold: 0.2
-  reliability_min_players: 20
-
-# ---- Null hardening (Phase 3c) — PRE-REGISTERED (D22, 2026-10-10) ----
-# Declared BEFORE any Phase-3c result was computed or viewed (no HARKing). Purpose:
-# harden the Phase-3/3b null so it is (a) demonstrably not a broken pipeline (positive
-# control), (b) bounded (design-based detection limit), and (c) mechanistically credible
-# (TOST equivalence + Bayesian posterior on the between-player slope variance tau^2, and
-# a smoothed peak-accel outcome re-check of the 3b "rescue" cells). All thresholds/params
-# are FIXED here. No Phase-4/5 work; 01/02/03/03b behaviour and outputs must stay
-# byte-identical.
-hardening:
-  out_subdir: model            # new hardening_* files only; existing artefacts untouched
-  seed: 20270106               # global seed (mirrors project seed)
-  # --- (1) positive control: synthetic recovery on the REAL attempt/rest/session structure ---
-  # Planted per-player slopes (z per SD of cumulative prior load) cycled across players;
-  # outcome = b_i * standardize(load_L) + intercept_i + N(0, pc_noise_sd^2). Real attempt
-  # timings/loads/sessions; a fraction of attempts deleted (load-only imputation, no
-  # performance), exactly mirroring Phase-2 lost-attempt handling.
-  pc_n_players: 122            # match the real DB study N for realistic power
-  pc_slopes: [-0.8, -0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8]  # z per SD(load); incl. 0
-  pc_delete_frac: 0.2
-  pc_impute: true
-  pc_noise_sd: 0.6
-  pc_seed: 424242
-  pc_reps: 10                  # MC reps (each rep = pc_n_players over the real structure)
-  pc_perm_n: 0                 # recovery needs no permutation (0 => skip)
-  pc_corr_min: 0.7             # recovered-vs-planted Pearson r must be >= this
-  pc_calib_tol: 0.3            # |calibration slope - 1| <= this
-  pc_rel_min: 0.2              # reliability gate expected to PASS when |slope| > 0
-  pc_over_cells: true          # run the FULL L1-L7 x O1-O3 panel (21 cells)
-  # --- (2) power / detection bound (design-based Monte Carlo on the real structure) ---
-  # Curve A: homogeneous common per-player slope delta -> power to reject H0 (pop slope = 0)
-  #          at power_alpha (two-sided). Curve B: between-player slope SD tau (mean 0) ->
-  #          power that the EB reliability gate (>= model.reliability_stop_threshold)
-  #          passes. Smallest delta/tau with power >= power_target is the design's bound.
-  # Estimator on both curves = the deterministic EB inverse-variance meta-slope (the
-  # estimator the real data selects); documented approximation for speed + determinism.
-  power_estimator: eb_meta
-  power_slope_grid: [0.0, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5]  # z per SD(load)
-  power_tau_grid: [0.0, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0]           # z per SD(load)
-  power_alpha: 0.05
-  power_target: 0.8
-  power_reps: 200
-  power_seed: 808080
-  power_noise_sd: 0.6
-  # --- (3a) TOST equivalence test on the population load slope (primary cell L1 x O1) ---
-  # Smallest effect of interest (SESOI) on the population load slope. Two one-sided tests
-  # at tost_alpha; equivalence declared iff the (1-2*tost_alpha) CI lies within +/- SESOI.
-  # Units: z per 100 yd of cumulative prior load (== 0.001 z/yd). Reported also in z/SD.
-  tost_sesoi_z_per_100yd: 0.1
-  tost_alpha: 0.05
-  # --- (3b) Bayesian posterior on between-player slope variance tau^2 + reliability ---
-  # Random-effects meta-analysis on per-player OLS slopes with KNOWN within-player SEs:
-  #   s_i | theta_i ~ N(theta_i, se_i^2);  theta_i ~ N(mu, tau^2);  mu flat;  tau ~ HalfN(scale).
-  # Slopes are expressed z per SD(load); tau / prior scale in the same units. Marginal
-  # likelihood L(tau) is closed-form (theta, mu integrated analytically); posterior is
-  # evaluated on a tau grid and normalised (deterministic, numpy/scipy only).
-  tau2_prior_dist: halfnormal
-  tau2_prior_scales: [0.25, 0.5, 1.0]   # prior-sensitivity (z per SD(load))
-  tau2_prior_scale_primary: 0.5
-  tau2_grid_max: 2.0                    # tau grid upper bound (z per SD(load))
-  tau2_grid_n: 2001
-  tau2_cred: 0.95                       # equal-tailed credible level for tau, tau^2, reliability
-  tau2_small_threshold: 0.1             # "negligible" between-player slope SD (z per SD(load))
-  # --- (4) smoothed peak-accel outcome (O4) ---
-  # Per-attempt peak accel from Savitzky-Golay-smoothed positions (~0.5 s window),
-  # standardised within (drill_type, combine_position) over observed attempts (Phase-2 rule).
-  accel_smooth_window_frames: 5         # 0.5 s at 10 Hz
-  accel_smooth_polyorder: 3
-  accel_outcome_code: O4
-  accel_outcome_metric: peak_accel_sg_z
-  accel_dist_gap_max_s: 0.5             # same distance/segment basis as Phase 2
-  accel_clip_yds2: 15.0                 # clip BEFORE peak (matches panel accel_clip_mps2)
-
-# ---- Warm-up phenotype (Phase 3d) — PRE-REGISTERED (D23, 2026-10-11) ----
-# HEADLINE PIVOT: the only reliable individual combine signal found (D21) is a POSITIVE
-# load coefficient on explosive output — i.e. warm-up / post-activation potentiation, NOT
-# fatigue. Declared BEFORE any Phase-3d result was computed or viewed (no HARKing). All
-# thresholds/params below are FIXED. No Phase-4/5 work; 01/02/03/03b behaviour and outputs
-# must remain byte-identical. Warm-up slope = the sign-flipped analogue of the fatigue
-# slope: the per-player coefficient of explosive output on accumulated prior effort.
-# MAKE-OR-BREAK: "warmed up" must be separated from "ran this drill later in the fixed
-# combine drill order" (Phase 1: drill order ~ drill; session position ~ accumulated
-# effort). See D23 for the deconfounding protocol and its PASS/FAIL rule.
-warmup:
-  out_subdir: model            # outputs/model/ (warmup_* files only; 03/03b artefacts untouched)
-  seed: 20270106               # global seed (mirrors project seed)
-  # --- cells: load metrics (accumulated PRIOR effort) x outcome metrics (explosive output) ---
-  load_metrics:                # L1, L5, L4 — L5/L4 feed the promising accel cell (D21)
-    L1: prior_load_yd
-    L5: prior_load_efforts
-    L4: prior_load_accel
-  outcome_metrics:             # O1, O2, O4 (O4 = smoothed accel, new here; from D22 item 4)
-    O1: perf_z
-    O2: peak_accel_z
-    O4: peak_accel_sg_z
-  primary_load: prior_load_efforts   # D21's strongest gate cell (rel 0.5934) = efforts x peak_accel
-  primary_outcome: peak_accel_z
-  # --- (1) DE-CONFOUNDING (make-or-break): separate warm-up from fixed drill order ---
-  deconf_drill_adjust: true    # add C(drill_type) fixed effects (drill identity removed)
-  deconf_session_rank: true    # add explicit session_rank (attempt order position within the session)
-  deconf_within_drill: true    # primary identification: within-drill_type prior load (SAME drill, e.g. battery rep1->rep2)
-  deconf_retain_frac: 0.5      # PASS requires |adjusted coef| >= this * |raw coef| AND same (positive) sign
-  deconf_require_positive: true  # PASS requires the adjusted accel-cell coefficient > 0 (warm-up direction)
-  # D24 adjudication (PM): which reading of D23 §1's PASS/FAIL rule GOVERNS the headline. Not a
-  # scientific threshold — a verdict-interpretation choice. `strict_all_accel` = the rule must
-  # hold for EVERY accel-outcome cell (L1/L4/L5 × O2/O4), not only the declared primary cell.
-  deconf_governing_reading: strict_all_accel
-  # --- (2) per-player phenotype ---
-  phenotype_min_attempts: 3    # min observed attempts for a player phenotype (matches model.link_min_attempts)
-  within_drill_min_attempts: 2 # min observed reps of the same drill_type for the within-drill slope
-  # session-position-of-peak = rank (1..K) of the player's max outcome within the single session,
-  # on the primary outcome (peak_accel_z); also reported for perf_z.
-  # --- saturating-curve fit (per player), "reps/position to reach peak": perf = ceil - (ceil-base)*exp(-k*load) ---
-  sat_curve: exponential       # exponential saturation
-  sat_curve_alt: hyperbolic    # Michaelis-Menten alternative (reported alongside; robustness)
-  sat_reach_frac: 0.9          # "reps to reach peak" = load where the rise reaches this frac of (ceil-base)
-  sat_min_attempts: 4          # min observed attempts to fit a saturating curve
-  sat_min_load_sd_frac: 0.2    # min (SD(load)/mean(load)) required to fit; else NaN (no spread => unidentifiable)
-  # Numerical bounds ONLY for the saturating-curve optimiser (implementation detail, NOT a
-  # scientific threshold). The profile is parameterised by the candidate "reps/session-position
-  # to reach the sat_reach_frac rise" (a directly interpretable quantity); k / k_m are derived
-  # per the declared curve form. No magic numbers in code.
-  sat_fit:
-    rtp_grid_min: 0.25         # candidate reps-to-peak lower bound
-    rtp_grid_max: 200.0        # candidate reps-to-peak upper bound
-    rtp_grid_n: 500            # profile grid size (deterministic)
-  # --- (3) reliability (reuse the Phase-3/3b formula: tau2 / (tau2 + mean_i SE_i^2)) ---
-  reliability_stop_threshold: 0.2
-  reliability_min_players: 20
-  # bootstrap SEs for the peak-position / saturating-curve phenotypes (deterministic seed)
-  phenotype_boot_reps: 200
-  phenotype_boot_seed: 31337
-  # --- (4) smoothed peak-accel outcome O4 (Savitzky-Golay; from D22 item 4) ---
-  accel_smooth_window_frames: 5    # 0.5 s at 10 Hz
-  accel_smooth_polyorder: 3
-  accel_clip_yds2: 15.0            # clip BEFORE peak (matches panel accel_clip_mps2)
-  accel_dist_gap_max_s: 0.5        # same segment basis as Phase 2
-  # --- permutation for the warm-up population slope (meta_slope statistic, within-player shuffles) ---
-  perm_n: 1000
-  perm_seed_offset: 101
-
-# ---- In-game decay / ramp (Phase 4) — reframed link (D25, 2026-10-11) ----
-# The pre-registered fatigue-slope -> game-decay link is GATED OFF (D20: combine fatigue
-# reliability 0.0). The viable link is Conor's pivot: reliable combine WARM-UP phenotypes
-# (D21/D23) -> in-game RAMPING. The warm-up phenotype de-confounding was NOT robust (D24),
-# so the link is EXPLORATORY and clearly labelled. All thresholds live here (no magic
-# numbers). Scripts 00/04 never derive thresholds from the SAMPLE (D8): sample mode writes
-# the a-priori placeholders with provenance PLACEHOLDER_SAMPLE.
-game:
-  out_subdir: game                 # outputs/game/
-  thresholds_file: thresholds.json # outputs/thresholds.json (frozen before 05; FULL in full mode)
-  # --- thresholds SOURCE (written by 00_thresholds.py) ---
-  # `method: percentile` => data-driven cut-offs from the FULL game data (provenance FULL).
-  # `method: fixed`      => the a-priori values below (provenance FULL_FIXED).
-  # SAMPLE mode NEVER derives thresholds; it writes sample_placeholders with provenance
-  # PLACEHOLDER_SAMPLE. 04/05 assert provenance == FULL in full mode.
-  thresholds:
-    method: percentile             # percentile | fixed
-    high_speed_percentile: 90.0    # percentile of non-zero per-frame speed => "high speed"
-    accel_percentile: 95.0         # percentile of non-zero |a| => "high accel"
-    min_speed_floor_yds: 3.0       # frames below this are not "moving" (excluded from the speed quantile)
-    min_accel_floor_yds2: 0.5      # |a| floor for the accel quantile
-    min_snaps: 30                  # minimum snaps (plays) per player for a game-side slope
-    # `fixed` fallback values (used iff method=fixed, or as percentile upper guard)
-    high_speed_threshold_yds: 6.0
-    accel_threshold_yds2: 2.19
-  # a-priori placeholders used in SAMPLE mode ONLY (never derived from the sample)
-  sample_placeholders:
-    high_speed_threshold_yds: 6.0   # ~5.5 m/s (matches panel.speed_hs_mps / panel.m_per_yd)
-    accel_threshold_yds2: 2.19      # ~2.0 m/s^2 (matches panel.accel_th_mps2 / panel.m_per_yd)
-    min_snaps: 30
-  # --- per-play effort intensity (threshold-sum, same construction as panel L2 HMLD) ---
-  effort: threshold_sum            # high-speed distance + accel/decel distance-equivalent (yd)
-  # --- per-player in-game slope ---
-  outcome: effort_intensity_z      # per-play high-intensity effort intensity, standardised within player
-  load: cum_dist_yd                # cumulative in-game distance (yd) up to & incl. this play
-  controls: [snaps_in_drive, time_since_rest_s, is_pass_play, down, score_margin]
-  standardize_within: player       # z-score the per-play intensity within nfl_id (ddof=0)
-  early_plays_n: 5                 # early-game output = mean intensity_z over the player's first N plays (placebo)
-  # --- drive definition (the provided data has no explicit drive column) ---
-  drive_break_on_possession_change: true
-  # --- reliability / stop rule (SAME formula + threshold as Phase 3) ---
-  reliability_stop_threshold: 0.2
-  reliability_min_players: 20
-  player_slope_ci_level: 0.95
-  xdrill_min_players: 10           # unused placeholder-safe mirror (kept for symmetry)
-
-# ---- Link (Phase 5) — reframed (D25, 2026-10-11) ----
-# Reliable combine WARM-UP phenotype -> in-game ramp slope (EXPLORATORY; D24 de-confounding
-# not robust). Error-in-both-slopes: inverse-variance weighting of the OUTCOME + reliability-
-# corrected (regression-calibration) predictor effect, reported ALONGSIDE the naive OLS.
-# Player-grouped CV with held-out delta-R^2 + bootstrap CIs; a placebo (phenotype must NOT
-# predict EARLY-game output); sensitivity to alternate cells + excluding low-snap players.
-link:
-  out_subdir: link                 # outputs/link/
-  # Primary predictor = the reliable warm-up phenotype (D21/D23): warmup_slope on
-  # L5(prior_load_efforts) x O2(peak_accel_z) (reliability 0.5934). L4 x O2 is the declared
-  # secondary/robustness phenotype (reliability 0.5357).
-  primary_load: L5                 # prior_load_efforts
-  primary_outcome: O2              # peak_accel_z
-  secondary_load: L4               # prior_load_accel
-  secondary_outcome: O2            # peak_accel_z
-  phenotype_source: outputs/model/warmup_phenotypes.csv
-  combine_slopes_source: outputs/model/combine_player_slopes.parquet
-  game_slopes_source: outputs/game/game_player_slopes.parquet
-  reliability_source: outputs/model/warmup_reliability.csv
-  player_frame_source: outputs/features/combine_features_player.parquet
-  # --- controls ---
-  controls: [baseline_speed, combine_height, combine_weight, draft_position]
-  baseline_speed_col: max_peak_speed_yds   # combine peak speed (features player frame)
-  undrafted_level: 0               # draft position: players.draft_overall_pick; undrafted (NULL) is its OWN level (D13/A12)
-  # --- error-in-both-slopes ---
-  eiv_outcome_weighting: inverse_variance    # weight the OUTCOME regression by 1/SE_game^2
-  eiv_predictor_correction: regression_calibration  # beta_corrected = beta_naive / R_predictor
-  # --- cross-validation (player-grouped; held-out delta-R^2) ---
-  cv_folds: 5
-  cv_seed: 20270106
-  cv_min_train: 4
-  # --- bootstrap CIs on delta-R^2 ---
-  bootstrap_reps: 1000
-  bootstrap_seed: 424242
-  # --- placebo: the combine phenotype must NOT predict EARLY-game output ---
-  placebo_outcome: early_output_z
-  # --- sensitivity ---
-  sens_cells: [[L4, O2], [L5, O4]]   # alternate load/outcome cells
-  sens_exclude_low_snaps: true
-  min_link_n: 10                   # below this matched-N the link is reported as underpowered (honest null)
-
-# ---- Runtime ----
-runtime:
-  duckdb_threads: 1   # single-threaded => bit-deterministic reductions (spec: same seed, identical outputs)
-
 logging:
   run_log: outputs/run_log.csv
+
+runtime:
+  duckdb_threads: 1   # single-threaded => deterministic reductions (same seed => identical outputs)
+
+# --------------------------------------------------------------------------- #
+# Phase 1 — Audit (a–i)
+# --------------------------------------------------------------------------- #
+audit:
+  out_subdir: audit
+  positions: [WR, TE]               # primary = WR; replication = TE
+  primary_position: WR
+  replication_position: TE
+  sampling_rate_hz: 10              # nominal tracking rate (audit f)
+  distance_rtol: 0.05               # provided-vs-recomputed distance rel. tolerance
+  # --- go/no-go minima (FREEZE in prereg.md before a full run) ---
+  min_matched_wr: null              # matched WR (Combine -> NFL game tracking), audit gate
+  min_route_snaps_per_player: null  # route snaps/player (via route_ran), audit gate
+  min_icc: null                     # minimum per-feature ICC to keep a Combine feature (Phase 2 rule)
+  # --- item status (game-side c/d/e/h/i are PENDING FULL RUN; see notes/pending_full_run.md) ---
+  game_side_items_pending_full_run: [c, d, e, h, i]
+  # --- drill families (audit) ---
+  straight_line_drills: [FORTY_YARD_DASH]                  # -> envelope fit (Phase 2)
+  cutting_drills: [THREE_CONE_DRILL, SHORT_SHUTTLE]        # -> cut metrics (Phase 2)
+
+# --------------------------------------------------------------------------- #
+# Phase 2 — Combine envelope  (v(t) = vmax·(1 − exp(−t/tau)); a0 = vmax/tau)
+# --------------------------------------------------------------------------- #
+envelope:
+  out_subdir: envelope
+  curve: exponential              # v(t) = vmax*(1 - exp(-t/tau))  (fitted on straight-line drills)
+  a0_definition: vmax_over_tau     # a0 = vmax / tau
+  fit_drills: FORTY_YARD_DASH      # straight-line family used for the envelope fit
+  # --- model-free features (per attempt + per player) ---
+  split_distances_yd: null         # e.g. [5, 10, 20] timing splits  (TBD)
+  speed_at_times_s: null           # model-free speed-at-time samples (TBD)
+  cut_metrics: null                # e.g. entry/exit speed, COD deficit  (TBD; cutting drills)
+  # --- feature selection (FIXED in prereg.md before the full run) ---
+  max_features: 3                  # <= 3 Combine features in the primary model
+  selection_rule: [icc, vif]       # keep by ICC first, then prune by VIF
+  icc_min: null                    # ICC threshold (TBD in prereg.md)
+  vif_max: null                    # VIF ceiling (TBD in prereg.md)
+  shrinkage: hierarchical           # per-player envelope parameters are hierarchically shrunk
+  min_attempts_per_player: null     # observed straight-line attempts needed to fit an envelope (TBD)
+
+# --------------------------------------------------------------------------- #
+# Phase 3 — Game demand
+# --------------------------------------------------------------------------- #
+game:
+  out_subdir: game
+  thresholds_file: thresholds.json # outputs/thresholds.json (FULL in full mode; PLACEHOLDER in sample)
+  route_snap_col: route_ran        # 'route ran' flag on player_play.csv
+  # --- effort sampling ---
+  top_k_efforts: null              # top-k efforts per fixed route-snap count (TBD in prereg.md)
+  route_snap_count: null           # the fixed route-snap denominator (TBD in prereg.md)
+  # --- per-effort features ---
+  effort_metrics: [speed, accel]   # per-effort speed/accel (yard-space)
+  envelope_fraction: max_over_ceiling  # per-effort envelope fraction (effort / player ceiling)
+  # --- effort cut-offs (produced by 00_thresholds.py; never derived from the sample) ---
+  thresholds:
+    method: percentile             # percentile | fixed
+    high_speed_percentile: null    # (TBD)
+    accel_percentile: null         # (TBD)
+  sample_placeholders:
+    high_speed_threshold_yds: null # a-priori placeholder ONLY (never set from the sample)
+    accel_threshold_yds2: null
+
+# --------------------------------------------------------------------------- #
+# Phase 4 — Models
+# --------------------------------------------------------------------------- #
+models:
+  out_subdir: models
+  quantiles: null                  # pre-registered tau set for quantile regression (TBD)
+  level: effort                    # effort-level regression
+  cluster: player                  # player-clustered bootstrap
+  bootstrap_reps: null             # (TBD)
+  bootstrap_seed_offset: 101
+  controls_without_draft: []       # controls excluding draft position (TBD)
+  controls_with_draft: [draft_position]   # controls including draft position (TBD)
+  exceedance: true                 # model/measure the exceedance rate
+  utilization: u                   # utilization covariate/quantity
+  pooling: [pooled, WR, TE]        # pooled vs per-position
+  fallbacks: []                    # estimator fallbacks, logged in decisions.md (TBD)
+
+# --------------------------------------------------------------------------- #
+# Phase 5 — Validation
+# --------------------------------------------------------------------------- #
+validate:
+  out_subdir: validate
+  cv_grouping: player              # player-grouped CV
+  cv_folds: null                   # (TBD)
+  cv_seed: 20270106
+  baseline: controls_only          # compare against a controls-only baseline
+  permutation: true
+  perm_reps: null                  # (TBD)
+  measurement_error_correction: null  # (TBD; method fixed before full run)
+  sensitivity: null                # (TBD)
+
+# --------------------------------------------------------------------------- #
+# Deliverables / sample discipline
+# --------------------------------------------------------------------------- #
+deliverables:
+  figures_max: 5                   # <= 5 figures (stricter than the official "<10")
+  sample_label: UNVALIDATED SAMPLE OUTPUT
+  kaggle_notebook: true            # public Kaggle notebook + writeup is a pass/fail gate

@@ -1,13 +1,15 @@
 # Competition rules & limits — NFL Big Data Bowl 2027
 
 **Purpose:** Phase 0 summary of the competition's rules, limits and requirements that constrain this project.
-**Captured:** 2026-10-09. **Sources are tagged; the binding internal spec is `TASK.md`.**
+**Captured:** 2026-10-09 (combine-fatigue task); **retained 2026-10-11** for the ceiling-binding task — the
+competition rules are unchanged. **Binding internal spec = `TASK.md`.**
 
 > ⚠️ Kaggle competition pages are JS-rendered and returned no body to `web_fetch`; the exact
 > official text below was captured from the **live Kaggle page content surfaced via search-result
-> snippets** (DuckDuckGo-lite) and corroborated by secondary mirrors. **Verify against
+> snippets** and corroborated by secondary mirrors. **Verify against
 > `kaggle.com/competitions/nfl-big-data-bowl-2027/{overview,rules}` at entry time** before relying
-> on any cap. No number below is invented.
+> on any cap. No number below is invented. **Source of truth = the official competition docs**;
+> third-party repos (e.g. the chasko-labs history repo) are **unverified hints**.
 
 ---
 
@@ -22,7 +24,7 @@
 | Results | ~late Jan 2027; finalists present at the 2027 NFL Scouting Combine (Indianapolis) | Primary (operations.nfl.com) |
 | Positions in scope | WR, TE, OL, DL, DB (5 groups) | Primary (Front Office Sports; Kaggle) |
 | Data years | 2023, 2024, 2025 combine classes; matching in-game tracking | Primary (Front Office Sports) |
-| Prize pool | ~$100,000 total (Open-track + University-track prizes + grand prize) | Primary (operations.nfl.com: "$100,000 in prize money"); FOS also states "$100,000 shared prize" |
+| Prize pool | ~$100,000 total (Open-track + University-track prizes + grand prize) | Primary (operations.nfl.com) |
 
 ## 2. Submission format & limits (the hard caps)
 
@@ -34,8 +36,9 @@
 - **Notebook requirement:** Each entry needs "readable markdown, embedded visuals, and an **attached
   Public Kaggle Notebook**." The writeup + a **public Kaggle notebook** are a **pass/fail gate**.
   — *primary (Kaggle overview snippet); gate corroborated by prior-work scan.*
-- **Code location:** deliverable is a Kaggle Notebook (public). Our repo `src/` is the development
-  source; the notebook must import/execute the same logic.
+- **Code location:** the deliverable is a **public Kaggle Notebook**. Our repo `src/` is the development
+  source; the notebook must import/execute the same logic. (This task's deliverable model: a scripts
+  engine in `src/` + a Kaggle notebook that runs it — see `README.md` / `README_RUN.md`.)
 
 ## 3. Judging
 
@@ -62,7 +65,7 @@
 
 ## 5. Timeline / logistics (for planning)
 
-- Deadline **2027-01-06 23:59 UTC**; today (cycle start) **2026-10-09** → ~89 days.
+- Deadline **2027-01-06 23:59 UTC**; as of this restructure (2026-10-11) → **~87 days** remaining.
 - Two tracks to enter (Open and University); we target **Open** (mixed/unknown eligibility — confirm).
 
 ## 6. Open items to confirm at entry time (do not assume)

@@ -1,77 +1,82 @@
 # BDB27 — NFL Big Data Bowl 2027
 
-**Question:** Is there a *fatigue signal* within NFL Combine events — does measurable performance degrade as the combine progresses (across days, drill order, repeated attempts within a session) — and does that within-combine signal show up later in NFL game data?
+**Question:** *Does the Combine ceiling bind on max-effort routes?* For receivers who **reached the NFL**,
+test whether each player's physical **ceiling** (estimated from 10 Hz Combine tracking) predicts the
+**upper tail** of their in-game speed/acceleration on **max-effort routes**, and **how close they get to it**.
+**WR primary; TE replication.**
 
-**Competition:** NFL Big Data Bowl 2027, theme **"Combine to NFL Performance"** — the first combine-themed edition.
-- Final deadline **6 Jan 2027**; results ~late Jan 2027.
-- Tracks: Open ($45k) + University ($45k), plus a $10k grand prize.
-- Judged: Football 30 / Data Science 30 / Writeup 20 / Viz 20, with pass/fail gates (explicit Combine→NFL linkage; public Kaggle notebook + writeup).
+Three questions: (1) is the Combine ceiling a **real bound** in games (exceedance rate)? (2) does the
+Combine→game relationship **strengthen toward the upper tail**? (3) **which Combine features** predict
+closeness on **deep vs. breaking** routes?
 
-**Framing:** a **mechanism / measurement** paper. Not "do combine numbers predict NFL success?" — that angle is saturated (combine tests explain ~2.6% of year-1 game performance; Cook et al. 2020; Rishis et al. 2023).
+**Claim limits (hard).** Claims apply only to players who reached the NFL. We **never** claim Combine
+athleticism predicts NFL success — that angle is saturated (combine tests explain ~2.6% of year-1 game
+performance; Cook et al. 2020). This is a **mechanism / measurement** paper.
+
+**Competition:** NFL Big Data Bowl 2027, theme **"Combine to NFL Performance"** (first combine-themed
+edition). Final deadline **6 Jan 2027**; judged Football 30 / Data Science 30 / Writeup 20 / Viz 20, with
+pass/fail gates (an explicit Combine→NFL linkage; a public Kaggle notebook + writeup). Limits: ≤2,000 words,
+≤5 figures (stricter than the official "<10"). See `notes/rules.md`.
+
+> **Binding spec = `TASK.md`.** The prior combine-fatigue task is archived at git tag
+> `archive/combine-fatigue-v1` (HEAD `fdc794c`). `research/prior-work-scan.md` is the prior-art scan and
+> remains valid for context.
+
+## Deliverable model: scripts engine + Kaggle notebook
+
+`src/` is the **development engine** — small, tested, config-driven stage scripts (`01_audit`,
+`02_combine_envelope`, `00_thresholds`, `03_game_demand`, `04_models`, `05_validate`). The **competition
+deliverable** is a **public Kaggle notebook + writeup** (≤5 figures) that runs the same logic end-to-end on
+a Kaggle kernel and renders the results. Keep heavy logic in `src/`; the notebook imports/calls it.
 
 ## Data (2027 BDB, Kaggle)
-Raw data lives on the USB drive (`data/raw` → `/mnt/project_data/conor_downloads/bdb27/`) — never committed here.
 
-- `combine_tracking.csv` — 10 Hz optical tracking, ~6,310 drill attempts. Fields: `event_id`, `attempt`, ISO-8601 `time`, `drill_type`, `x/y/s/a/dis/dir`. **The key asset.**
-- `combine_results.csv` — anthropometrics + electronic splits (10-yd split, 40, vertical, broad, 3-cone, shuttle, bench reps).
-- `player_play.csv` + `game_tracking_2023/24/25.csv` — in-game NGS "target" side.
+Raw data lives on the mounted drive (`data/raw` → `/mnt/project_data/conor_downloads/bdb27/`) — never
+committed here.
 
-## Run the pipeline
+- `combine_tracking.csv` — **10 Hz** optical tracking of combine drill attempts (~6,310 attempts). The key
+  Combine asset (`event_id`, `attempt`, ISO-8601 `time`, `drill_type`, `x/y/s/a/dis/dir`).
+- `combine_results.csv` — anthropometrics + electronic splits (10-yd split, 40, vertical, broad, 3-cone,
+  shuttle, bench reps) + NGS scores.
+- `player_play.csv` — in-game per-play context (`route_ran`, `pass_length`, `target`,
+  `separation_at_pass_forward`, coverage fields, …).
+- `game_tracking_{2023,24,25}.csv` — frame-level in-game tracking (**absent on the Pi**; full-run only).
+  A non-representative 2023 **sample** is present for plumbing only.
 
-**Primary interface — the notebook** `notebooks/run_pipeline.ipynb` (self-contained: no CLI, no Internet at run time).
-It embeds the stage code (`src/*.py`) + `config.yaml` as sha256-verified `gzip`+`base64` payloads, writes them
-to a work dir and runs **Phases 1 → 2 → 3 → 3b → 3d** in-process.
+See `notes/schema.md` for full schemas/sizes.
 
-- **Kaggle:** attach the 2027 BDB dataset, open the notebook, **Run All**. `DATA_DIR` auto-detects the
-  `/kaggle/input` directory holding `combine_tracking.csv`; outputs go to `/kaggle/working/bdb27_run/`.
-  Leave `MODE = "full"` (default) for the `FULL` provenance stamp; `"sample"` is a developer dry-run only.
-- **Local / headless:**
+## Run order
 
-  ```bash
-  source ~/.venvs/bdb27/bin/activate
-  BDB27_WORK_DIR=/mnt/project_data/bdb27_run \
-  jupyter nbconvert --to notebook --execute notebooks/run_pipeline.ipynb \
-      --output /mnt/project_data/bdb27_run/run_pipeline.executed.ipynb \
-      --ExecutePreprocessor.timeout=2400
-  ```
+```
+01_audit → 02_combine_envelope → 00_thresholds → 03_game_demand → 04_models → 05_validate
+```
 
-**Local link run (Phases 4/5).** `notebooks/run_link_local.ipynb` is the **local-first** link notebook
-(self-contained; open it and **Run All**). Cross-platform (Windows/macOS/Linux): it uses `sys.executable`
-+ argument lists (no bash) and `pathlib`, and accepts Windows `DATA_DIR` paths. Set `DATA_DIR` / `MODE`
-(`AUTO`/`SAMPLE`/`FULL`) / `WORK_DIR` in the PARAMS cell — defaults: the repo `data/raw` symlink, `AUTO`,
-and the USB scratch dir when it exists else `<repo>/bdb27_run`. A real (FULL) run needs
-`game_tracking_2023/24/25.csv` in `DATA_DIR`; otherwise it runs the sample and stamps
-`UNVALIDATED SAMPLE OUTPUT`. Generated by `python notebooks/build_local_link_nb.py`.
-On Windows: `py -3.12 -m venv .venv` → `.venv\Scripts\activate` → `pip install -r requirements.txt jupyter`
-→ open the notebook → Run All. See `README_RUN.md`.
-
-Because the **combine data are COMPLETE**, the combine-side numbers are **REAL in both modes** — the mode
-switch only sets the provenance stamp (and governs the not-run game side). Game side (Phases 4/5) is **not**
-implemented this cycle (requires the full Kaggle game-tracking files).
-
-**Regeneration.** The notebook is generated, not hand-edited: `python tools/build_notebook.py` rebuilds it
-deterministically from `src/*.py` + `config.yaml`.
-
-**CLI fallback.** The identical per-stage scripts still run directly — see `README_RUN.md`.
+Every stage takes `--mode sample|full` and `--force`, with **one code path** for both. All paths/thresholds
+come from `config.yaml` (no magic numbers). Heavy files are converted to Parquet once (checkpointed) and
+queried with DuckDB; **no full CSV is loaded into pandas**. Sample outputs are labelled
+`UNVALIDATED SAMPLE OUTPUT`. **Not yet implemented** — this cycle is Phase 0 (setup) only.
 
 ## Layout
+
 | Dir | Purpose |
 |---|---|
 | `research/` | Prior-work scan, literature notes, method surveys |
-| `notebooks/` | Runnable `.ipynb` — the primary interface (no CLI) |
-| `specs/` | Methodology + identification strategy (PM-owned) |
-| `src/` | Reusable code, implemented by coder sub-agents via the PM |
+| `src/` | Stage scripts + reusable code (imported by notebooks) |
+| `notebooks/` | The public Kaggle notebook deliverable (+ local-run variant) |
+| `notes/` | Rules, schema, pre-registration, assumptions, limitations, decisions, blockers |
 | `outputs/` | Generated figures, tables, metrics (gitignored) |
-| `data/` | Pointer to the raw data on the USB (gitignored) |
+| `data/` | Pointer to the raw data on the mounted drive (gitignored) |
 
-## Status
-- [x] Prior-work scan — `research/prior-work-scan.md` (8 Oct 2026)
-- [x] De-risk prototype: drill-order / time-of-day recoverability; attempt-to-attempt 40-yd decay; how much survives controls — `notebooks/01_de_risk_prototype.ipynb`, `specs/de-risk-findings.md`
-- [x] Phase 0 setup (`notes/rules.md`, `notes/schema.md`) + **Phase 1 audit (a–g) — gate = GO** — `src/01_audit.py`, `outputs/audit/SUMMARY.md` (9 Oct 2026)
-- [x] Drill family = **ALL drills** (D12, supersedes D3's drill pick); position scope = **DB only, LOCKED** (D13; WR excluded — scheme-dependent in-game intensity) — `notes/decisions.md`, `outputs/audit/h_family_scope.csv`
-- [x] Position-scope sign-off (Conor) — **LOCKED to DB only** (D13, 2026-10-09)
-- [ ] Identification strategy spec
-- [ ] Full analysis + writeup
+## Status (Phase 0)
 
-## Key risk
-Confounding — combine **day = position group**; **drill order may be collinear with drill type**; opt-outs are non-random. Isolating a true fatigue effect is make-or-break.
+- [x] Prior-work scan — `research/prior-work-scan.md`
+- [x] **Cycle 0: pivot to the ceiling-binding task — repo restructured, analysis reset, infra kept**
+- [x] Phase 0 setup — `notes/rules.md`, `notes/schema.md`, `notes/prereg.md` (skeleton), `config.yaml`
+- [ ] Phase 1 audit (a–i) — go/no-go gate (matched WR, route snaps, missing fields, ICC)
+- [ ] Phases 2–5
+
+## Local run (Windows / laptop)
+
+Runs on a laptop or desktop as well as the Pi: create a venv, `pip install -r requirements.txt`, point
+`data/raw` at a folder holding the BDB CSVs, then run the stage scripts (or the notebook). Full Windows /
+laptop instructions are in **`README_RUN.md`**.
