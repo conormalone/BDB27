@@ -144,3 +144,51 @@ python src/tests/test_combine_model.py   # Phase 3; or run standalone
 > The pooled population load coefficient is −0.000444 yd⁻¹ (p = 0.0055) with permutation p = 0.029, but with
 > **zero cross-player slope variance** those slopes cannot support the Phase-5 link. Decisions in
 > `notes/decisions.md` **D20**; threats in `notes/limitations.md`.
+
+## 8. Phase 4 (in-game features) + Phase 5 (link) — the reframe (D25)
+
+> **Reframe (D25, 2026-10-11).** The pre-registered fatigue-slope→game-decay link is **GATED OFF**
+> (D20: combine fatigue-slope reliability 0.0). The viable link is Conor's pivot: **reliable combine
+> warm-up phenotypes → in-game ramping**. The warm-up de-confounding was **NOT robust** (D24) ⇒ the
+> link is **EXPLORATORY, clearly labelled**. Full game-tracking files are **PENDING** on the Pi (sample only).
+
+Stage scripts (same `--mode sample|full` / `--force` convention):
+
+```bash
+# Phase 4 thresholds (FULL derives from the full game data; SAMPLE writes the a-priori
+# placeholders, provenance PLACEHOLDER_SAMPLE — never derived from the sample)
+python src/00_thresholds.py --mode sample
+# Phase 4 in-game features + per-player ramp/decay slopes (DuckDB streaming over Parquet)
+python src/04_game_features.py --mode sample
+# Phase 5 link: reliable warm-up phenotype -> in-game ramp slope (EXPLORATORY)
+python src/05_link.py --mode sample
+```
+
+Run order adds **`00 → 04 → 05`** after `03d`:
+
+```
+01_audit → 02_features → 03_combine_model → 03b → 03d → 00_thresholds → 04_game_features → 05_link
+```
+
+Outputs: `outputs/thresholds.json`; `outputs/game/` (`game_player_slopes.{parquet,csv}`,
+`game_features_summary.csv`, `game_model_fixed_effects.csv`, `game_reliability.csv`, `SUMMARY.md`,
+`PROVENANCE.txt`); `outputs/link/` (`link_results.csv` [naive + error-corrected], `link_cv.csv`,
+`link_placebo.csv`, `link_sensitivity.csv`, `link_matched_counts.csv`, `SUMMARY.md`, `PROVENANCE.txt`).
+Every CSV's **first** column is `provenance`; sample outputs are `UNVALIDATED SAMPLE OUTPUT`.
+
+### Kaggle notebook (self-contained; no CLI, no `git clone`)
+
+`notebooks/run_kaggle_link.ipynb` is **generated** by `notebooks/build_kaggle_link_nb.py` (single source of
+truth: it embeds `src/{common,02_features,03_combine_model,03b_metric_panel,03d_warmup_phenotype,00_thresholds,
+04_game_features,05_link}.py` + `config.yaml` via `%%writefile`). Set `MODE`/`INPUT_DIR`/`FILES` in the
+**PARAMS** cell and **Run All**. It runs `02 → 03b → 03d → 00 → 04 → 05`, then renders tables + ≤5 figures.
+
+```bash
+# regenerate, then execute headless (sample; local data/raw)
+python notebooks/build_kaggle_link_nb.py
+jupyter nbconvert --to notebook --execute --inplace notebooks/run_kaggle_link.ipynb \
+    --ExecutePreprocessor.timeout=1800
+```
+
+Tests: `python src/tests/test_game_link.py` (schema, synthetic recovery incl. placebo + fallback path,
+edge cases, determinism).

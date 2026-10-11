@@ -573,3 +573,66 @@ coefficients and all verdict variants remain reported (sensitivity table).
 **B7 (companion).** The saturating-curve "reps to reach peak" is boundary-censored (46/122 = 37.7% pinned
 at the grid cap 200); the headline number is the **identified-only median 4.14 reps**, with the all-player
 median (17.1) explicitly flagged as cap-driven. The saturating phenotype is exploratory (R=0.256, borderline).
+
+---
+
+# Cycle 10 — Phase 4 (in-game features) + Phase 5 (link) — the reframe
+
+## D25 — Link reframe: reliable combine **warm-up phenotypes** → in-game **ramping** (EXPLORATORY); fatigue-slope→decay link GATED OFF · 2026-10-11
+
+**Decision (Conor's pivot; binding for Cycle 10).** The **pre-registered** link (combine *fatigue*
+slope → in-game *decay*) is **GATED OFF**: Phase 3 measured the combine fatigue-slope reliability at
+**0.0** (D20 stop rule fires; the D21 metric panel is metric-robust for the fatigue direction). The
+**viable link** is: **reliable combine WARM-UP phenotypes → in-game ramping** — early-game/drive output,
+snaps-to-peak, and the ramp/decay slope. The reliable warm-up phenotypes (from
+`outputs/model/warmup_reliability.csv`) are:
+- `warmup_slope` **L5(prior_load_efforts) × O2(peak_accel_z)** — reliability **0.5934**;
+- `warmup_slope` **L4(prior_load_accel) × O2** — **0.5357**; **L4 × O4(peak_accel_sg_z)** — **0.5437**;
+- `session_position_of_peak`(peak_accel_z) — **0.4823**;
+- `sat_reps_to_peak`(efforts) — **0.2557**.
+**Primary exposure = the warm-up slope (L5×O2, or L4×O2).**
+
+**Why EXPLORATORY / labelled.** The warm-up phenotype **de-confounding was NOT robust** (D24): under the
+strict reading of D23 §1 the drill+order-adjusted accel coefficients are **not** consistently positive at
+≥0.5× the raw effect → `deconf_pass = False`, the warm-up phenotype is **not claimed**, and the finding
+remains the metric-robust fatigue null. This link is therefore reported as **EXPLORATORY, clearly labelled**,
+not a confirmatory result.
+
+**Phenotype cells used.** Predictor per player = the per-cell per-player `warmup_slope` from
+`outputs/model/warmup_phenotypes.csv`. **Operational note (degeneracy):** the *shrunken* `warmup_slope`
+column collapses to the population mean under the EB path (`shrinkage_weight = 0`; EB `tau2 = 0` for every
+cell), so it carries **no between-player variance**; the link therefore uses the per-player **raw** slope
+(`slope_raw`) as the predictor, with its OLS SE, and the cell's **model-based reliability** (LMM variance
+component; e.g. 0.5934 for L5×O2) for the error-in-both-slopes correction.
+
+**Design (error-in-both-slopes / placebo / CV).**
+- **Error-in-both-slopes:** the OUTCOME regression is **inverse-variance weighted** (weights `1/SE_game²`),
+  and the predictor effect is **reliability-corrected** by **regression calibration**
+  (`beta_corrected = beta_WLS / R_predictor`) — both reported **alongside** the naive OLS.
+- **Player-grouped CV** (grouped by `nfl_id`) with held-out **delta-R²** (full model − controls-only) and
+  **bootstrap CIs** (resample players; `link.bootstrap_reps`, `link.bootstrap_seed`).
+- **Placebo:** the combine warm-up phenotype must **NOT** predict **early-game** output
+  (`early_output_z` = mean in-game intensity over the player's first `game.early_plays_n` plays).
+- **Sensitivity:** alternate cells (`L4×O2`, `L5×O4`) and **excluding low-snap players**.
+- **Controls:** baseline speed (combine peak speed `max_peak_speed_yds`), combine height/weight
+  (`combine_results.csv`), and draft position (`players.csv`; **undrafted is its own level**, D13/A12).
+
+**Thresholds FROZEN in config.** New `config.yaml` `game:` block (thresholds method/percentiles, a-priori
+sample placeholders, min-snaps, per-play effort threshold-sum, outcome/load, controls, drive rule,
+reliability stop threshold + min players) and `link:` block (primary/secondary cells, controls, EIV
+options, CV folds/seed, bootstrap reps/seed, placebo outcome, sensitivity cells, `min_link_n`). **No magic
+numbers in code.** Effort cut-offs are produced by `00_thresholds.py`: **data-driven from the FULL game
+data** (`provenance = "FULL"`) in full mode; the **a-priori placeholders** (`PLACEHOLDER_SAMPLE`) in sample
+mode — **never derived from the sample** (D8); `04`/`05` assert `FULL` in full mode.
+
+**Selection limitation (stated plainly).** Only players who **reached NFL games** (and are tracked) have
+game data, so the link is conditional on combine participant **AND** on-field — a **selection** threat,
+reported alongside the matched Combine↔NFL counts (audit e / P1 / P8). In `--mode sample` the matched-N is
+**small** (the sample is a non-representative 2²⁰ prefix; D8) — reported as a **real finding**, not tuned on.
+
+**Data status.** The **full** game-tracking files are **PENDING on the Pi** (only
+`game_tracking_2023_sample.csv` is present), so all Cycle-10 outputs are **`UNVALIDATED SAMPLE OUTPUT`**;
+the full run happens on a bigger machine. Outputs: `outputs/game/*` (Phase 4) and `outputs/link/*`
+(Phase 5); a **self-contained Kaggle notebook** is generated by `notebooks/build_kaggle_link_nb.py`
+(single source of truth: embeds `src/` + `config.yaml`, recomputes genuine FULL warm-up phenotypes on
+Kaggle; no CLI, no `git clone`).

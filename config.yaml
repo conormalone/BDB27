@@ -347,6 +347,93 @@ warmup:
   perm_n: 1000
   perm_seed_offset: 101
 
+# ---- In-game decay / ramp (Phase 4) — reframed link (D25, 2026-10-11) ----
+# The pre-registered fatigue-slope -> game-decay link is GATED OFF (D20: combine fatigue
+# reliability 0.0). The viable link is Conor's pivot: reliable combine WARM-UP phenotypes
+# (D21/D23) -> in-game RAMPING. The warm-up phenotype de-confounding was NOT robust (D24),
+# so the link is EXPLORATORY and clearly labelled. All thresholds live here (no magic
+# numbers). Scripts 00/04 never derive thresholds from the SAMPLE (D8): sample mode writes
+# the a-priori placeholders with provenance PLACEHOLDER_SAMPLE.
+game:
+  out_subdir: game                 # outputs/game/
+  thresholds_file: thresholds.json # outputs/thresholds.json (frozen before 05; FULL in full mode)
+  # --- thresholds SOURCE (written by 00_thresholds.py) ---
+  # `method: percentile` => data-driven cut-offs from the FULL game data (provenance FULL).
+  # `method: fixed`      => the a-priori values below (provenance FULL_FIXED).
+  # SAMPLE mode NEVER derives thresholds; it writes sample_placeholders with provenance
+  # PLACEHOLDER_SAMPLE. 04/05 assert provenance == FULL in full mode.
+  thresholds:
+    method: percentile             # percentile | fixed
+    high_speed_percentile: 90.0    # percentile of non-zero per-frame speed => "high speed"
+    accel_percentile: 95.0         # percentile of non-zero |a| => "high accel"
+    min_speed_floor_yds: 3.0       # frames below this are not "moving" (excluded from the speed quantile)
+    min_accel_floor_yds2: 0.5      # |a| floor for the accel quantile
+    min_snaps: 30                  # minimum snaps (plays) per player for a game-side slope
+    # `fixed` fallback values (used iff method=fixed, or as percentile upper guard)
+    high_speed_threshold_yds: 6.0
+    accel_threshold_yds2: 2.19
+  # a-priori placeholders used in SAMPLE mode ONLY (never derived from the sample)
+  sample_placeholders:
+    high_speed_threshold_yds: 6.0   # ~5.5 m/s (matches panel.speed_hs_mps / panel.m_per_yd)
+    accel_threshold_yds2: 2.19      # ~2.0 m/s^2 (matches panel.accel_th_mps2 / panel.m_per_yd)
+    min_snaps: 30
+  # --- per-play effort intensity (threshold-sum, same construction as panel L2 HMLD) ---
+  effort: threshold_sum            # high-speed distance + accel/decel distance-equivalent (yd)
+  # --- per-player in-game slope ---
+  outcome: effort_intensity_z      # per-play high-intensity effort intensity, standardised within player
+  load: cum_dist_yd                # cumulative in-game distance (yd) up to & incl. this play
+  controls: [snaps_in_drive, time_since_rest_s, is_pass_play, down, score_margin]
+  standardize_within: player       # z-score the per-play intensity within nfl_id (ddof=0)
+  early_plays_n: 5                 # early-game output = mean intensity_z over the player's first N plays (placebo)
+  # --- drive definition (the provided data has no explicit drive column) ---
+  drive_break_on_possession_change: true
+  # --- reliability / stop rule (SAME formula + threshold as Phase 3) ---
+  reliability_stop_threshold: 0.2
+  reliability_min_players: 20
+  player_slope_ci_level: 0.95
+  xdrill_min_players: 10           # unused placeholder-safe mirror (kept for symmetry)
+
+# ---- Link (Phase 5) — reframed (D25, 2026-10-11) ----
+# Reliable combine WARM-UP phenotype -> in-game ramp slope (EXPLORATORY; D24 de-confounding
+# not robust). Error-in-both-slopes: inverse-variance weighting of the OUTCOME + reliability-
+# corrected (regression-calibration) predictor effect, reported ALONGSIDE the naive OLS.
+# Player-grouped CV with held-out delta-R^2 + bootstrap CIs; a placebo (phenotype must NOT
+# predict EARLY-game output); sensitivity to alternate cells + excluding low-snap players.
+link:
+  out_subdir: link                 # outputs/link/
+  # Primary predictor = the reliable warm-up phenotype (D21/D23): warmup_slope on
+  # L5(prior_load_efforts) x O2(peak_accel_z) (reliability 0.5934). L4 x O2 is the declared
+  # secondary/robustness phenotype (reliability 0.5357).
+  primary_load: L5                 # prior_load_efforts
+  primary_outcome: O2              # peak_accel_z
+  secondary_load: L4               # prior_load_accel
+  secondary_outcome: O2            # peak_accel_z
+  phenotype_source: outputs/model/warmup_phenotypes.csv
+  combine_slopes_source: outputs/model/combine_player_slopes.parquet
+  game_slopes_source: outputs/game/game_player_slopes.parquet
+  reliability_source: outputs/model/warmup_reliability.csv
+  player_frame_source: outputs/features/combine_features_player.parquet
+  # --- controls ---
+  controls: [baseline_speed, combine_height, combine_weight, draft_position]
+  baseline_speed_col: max_peak_speed_yds   # combine peak speed (features player frame)
+  undrafted_level: 0               # draft position: players.draft_overall_pick; undrafted (NULL) is its OWN level (D13/A12)
+  # --- error-in-both-slopes ---
+  eiv_outcome_weighting: inverse_variance    # weight the OUTCOME regression by 1/SE_game^2
+  eiv_predictor_correction: regression_calibration  # beta_corrected = beta_naive / R_predictor
+  # --- cross-validation (player-grouped; held-out delta-R^2) ---
+  cv_folds: 5
+  cv_seed: 20270106
+  cv_min_train: 4
+  # --- bootstrap CIs on delta-R^2 ---
+  bootstrap_reps: 1000
+  bootstrap_seed: 424242
+  # --- placebo: the combine phenotype must NOT predict EARLY-game output ---
+  placebo_outcome: early_output_z
+  # --- sensitivity ---
+  sens_cells: [[L4, O2], [L5, O4]]   # alternate load/outcome cells
+  sens_exclude_low_snaps: true
+  min_link_n: 10                   # below this matched-N the link is reported as underpowered (honest null)
+
 # ---- Runtime ----
 runtime:
   duckdb_threads: 1   # single-threaded => bit-deterministic reductions (spec: same seed, identical outputs)
