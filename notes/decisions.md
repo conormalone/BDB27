@@ -553,4 +553,23 @@ Sample outputs carry `UNVALIDATED SAMPLE OUTPUT`. **Not committed until an indep
 sign off.** Expected headline number: **"<N> reps / session-position <K> to reach peak (or ceiling)"** — reported
 **only if** deconfounding passes and the phenotype reliability `>= 0.2`.
 
-**D23 — independent Reviewer + Validator sign-off · 2026-10-11.** _[to be filled in after review]_
+**D23 — independent Reviewer + Validator sign-off · 2026-10-11.** Verdict: PASS on the implementation subject to the B6 headline change (adjudicated in D24); the reframed output was independently re-reviewed in Cycle 8b-ii.
+
+## D24 — B6/J adjudication: the warm-up de-confounding verdict adopts the STRICT reading (all accel-outcome cells); warm-up phenotype NOT claimed · 2026-10-11
+**Decision (PM adjudication of blocker B6).** D23 §1's PASS/FAIL rule is read STRICTLY: de-confounding
+PASSES only if the rule holds for **every accel-outcome cell** {L1,L4,L5} × {O2 peak_accel_z, O4
+peak_accel_sg_z} — not only the declared primary cell, and regardless of the (under-specified) `load²`
+term. Rationale: D23 §1 pre-declares accel-outcome cells (plural) as the test; the primary cell was
+singled out only as the *strongest* D21 gate cell, and the confirmatory claim must not hinge on an
+under-specified modelling choice ((i) `load²` retention, (ii) primary-only vs all-cells).
+**Result.** Under the strict reading `deconf_pass = False`: three accel cells fail (`prior_load_accel ×
+peak_accel_z` adj coef −0.0132; `prior_load_accel × peak_accel_sg_z` retain 0.12; `prior_load_yd ×
+peak_accel_z` retain 0.15). The `deconf_pass_no_load2` robustness is also False (primary retain 0.32).
+⇒ The warm-up/potentiation phenotype is **NOT claimed**; per D23 §1 and TASK.md (report nulls honestly,
+no overclaiming) the **finding is the metric-robust fatigue null (D20/D21)**, and the warm-up signal is
+**exploratory only** — the single surviving signal is the consistently positive within-drill
+rep-1→rep-2 battery contrast (≈+0.05…+0.07 z on both accel outcomes). The raw/drill-adjusted/within-drill
+coefficients and all verdict variants remain reported (sensitivity table).
+**B7 (companion).** The saturating-curve "reps to reach peak" is boundary-censored (46/122 = 37.7% pinned
+at the grid cap 200); the headline number is the **identified-only median 4.14 reps**, with the all-player
+median (17.1) explicitly flagged as cap-driven. The saturating phenotype is exploratory (R=0.256, borderline).

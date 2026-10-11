@@ -309,6 +309,10 @@ warmup:
   deconf_within_drill: true    # primary identification: within-drill_type prior load (SAME drill, e.g. battery rep1->rep2)
   deconf_retain_frac: 0.5      # PASS requires |adjusted coef| >= this * |raw coef| AND same (positive) sign
   deconf_require_positive: true  # PASS requires the adjusted accel-cell coefficient > 0 (warm-up direction)
+  # D24 adjudication (PM): which reading of D23 §1's PASS/FAIL rule GOVERNS the headline. Not a
+  # scientific threshold — a verdict-interpretation choice. `strict_all_accel` = the rule must
+  # hold for EVERY accel-outcome cell (L1/L4/L5 × O2/O4), not only the declared primary cell.
+  deconf_governing_reading: strict_all_accel
   # --- (2) per-player phenotype ---
   phenotype_min_attempts: 3    # min observed attempts for a player phenotype (matches model.link_min_attempts)
   within_drill_min_attempts: 2 # min observed reps of the same drill_type for the within-drill slope
@@ -320,6 +324,14 @@ warmup:
   sat_reach_frac: 0.9          # "reps to reach peak" = load where the rise reaches this frac of (ceil-base)
   sat_min_attempts: 4          # min observed attempts to fit a saturating curve
   sat_min_load_sd_frac: 0.2    # min (SD(load)/mean(load)) required to fit; else NaN (no spread => unidentifiable)
+  # Numerical bounds ONLY for the saturating-curve optimiser (implementation detail, NOT a
+  # scientific threshold). The profile is parameterised by the candidate "reps/session-position
+  # to reach the sat_reach_frac rise" (a directly interpretable quantity); k / k_m are derived
+  # per the declared curve form. No magic numbers in code.
+  sat_fit:
+    rtp_grid_min: 0.25         # candidate reps-to-peak lower bound
+    rtp_grid_max: 200.0        # candidate reps-to-peak upper bound
+    rtp_grid_n: 500            # profile grid size (deterministic)
   # --- (3) reliability (reuse the Phase-3/3b formula: tau2 / (tau2 + mean_i SE_i^2)) ---
   reliability_stop_threshold: 0.2
   reliability_min_players: 20
