@@ -212,6 +212,32 @@ game files exist in `DATA_DIR`, else `SAMPLE` with a loud non-representative-pre
 `game_tracking_2025.csv` in `DATA_DIR`. Without them the notebook runs on the sample and prints
 `UNVALIDATED SAMPLE OUTPUT` — the link is meaningless there.
 
+The notebook is **cross-platform** (Windows, macOS, Linux). It shells out with
+`sys.executable` + argument lists (no bash, no `shell=True`), uses `pathlib` throughout, and
+accepts Windows paths for `DATA_DIR` (e.g. `C:\Users\Conor\...\bdb27`). On Windows the PARAMS
+cell writes a tiny `resource` stub beside the embedded modules — the Unix-only stdlib
+`resource` is used solely for peak-RAM logging and does not exist on Windows (the real module
+is used on POSIX; the stub is never created there, so nothing is shadowed).
+
+**Windows setup (Python 3.12 or 3.13):**
+
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt jupyter
+```
+
+Then open `notebooks\run_link_local.ipynb` and **Run All**.
+
+**Linux/macOS setup:**
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt jupyter
+```
+
+**Headless (any OS):**
+
 ```bash
 source ~/.venvs/bdb27/bin/activate
 python notebooks/build_local_link_nb.py
