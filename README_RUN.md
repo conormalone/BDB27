@@ -192,3 +192,32 @@ jupyter nbconvert --to notebook --execute --inplace notebooks/run_kaggle_link.ip
 
 Tests: `python src/tests/test_game_link.py` (schema, synthetic recovery incl. placebo + fallback path,
 edge cases, determinism).
+
+### Local-first link notebook (`notebooks/run_link_local.ipynb`) — run locally
+
+`notebooks/run_link_local.ipynb` is the **local-first** variant of the link notebook (same embedded
+sources + `02 → 03b → 03d → 00 → 04 → 05` chain, no Kaggle branches). Open it, **Run All** — no CLI.
+It is **generated** by `notebooks/build_local_link_nb.py` (deterministic; never hand-edit).
+
+The PARAMS cell sets:
+
+- `DATA_DIR` — default is the repo's `data/raw` symlink (→ the mounted USB); set an explicit path to override.
+- `MODE` — `'AUTO'` (default) | `'SAMPLE'` | `'FULL'`. `AUTO` resolves to `FULL` **iff** all three full
+game files exist in `DATA_DIR`, else `SAMPLE` with a loud non-representative-prefix warning.
+- `WORK_DIR` — default `/mnt/project_data/bdb27_run` when `/mnt/project_data` exists (keeps the small SD
+  card free), else `<repo>/bdb27_run`. Scratch Parquet caches under `<WORK_DIR>/data/interim/parquet` are
+  cleaned at the end; committed artefacts stay under `outputs/`.
+
+**A real (FULL) run requires** `game_tracking_2023.csv`, `game_tracking_2024.csv`,
+`game_tracking_2025.csv` in `DATA_DIR`. Without them the notebook runs on the sample and prints
+`UNVALIDATED SAMPLE OUTPUT` — the link is meaningless there.
+
+```bash
+source ~/.venvs/bdb27/bin/activate
+python notebooks/build_local_link_nb.py
+jupyter nbconvert --to notebook --execute notebooks/run_link_local.ipynb \
+    --output /mnt/project_data/bdb27_run/run_link_local.executed.ipynb \
+    --ExecutePreprocessor.timeout=2400
+```
+
+The Kaggle notebook `notebooks/run_kaggle_link.ipynb` is kept as-is (an additional variant).
