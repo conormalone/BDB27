@@ -279,6 +279,62 @@ hardening:
   accel_dist_gap_max_s: 0.5             # same distance/segment basis as Phase 2
   accel_clip_yds2: 15.0                 # clip BEFORE peak (matches panel accel_clip_mps2)
 
+# ---- Warm-up phenotype (Phase 3d) — PRE-REGISTERED (D23, 2026-10-11) ----
+# HEADLINE PIVOT: the only reliable individual combine signal found (D21) is a POSITIVE
+# load coefficient on explosive output — i.e. warm-up / post-activation potentiation, NOT
+# fatigue. Declared BEFORE any Phase-3d result was computed or viewed (no HARKing). All
+# thresholds/params below are FIXED. No Phase-4/5 work; 01/02/03/03b behaviour and outputs
+# must remain byte-identical. Warm-up slope = the sign-flipped analogue of the fatigue
+# slope: the per-player coefficient of explosive output on accumulated prior effort.
+# MAKE-OR-BREAK: "warmed up" must be separated from "ran this drill later in the fixed
+# combine drill order" (Phase 1: drill order ~ drill; session position ~ accumulated
+# effort). See D23 for the deconfounding protocol and its PASS/FAIL rule.
+warmup:
+  out_subdir: model            # outputs/model/ (warmup_* files only; 03/03b artefacts untouched)
+  seed: 20270106               # global seed (mirrors project seed)
+  # --- cells: load metrics (accumulated PRIOR effort) x outcome metrics (explosive output) ---
+  load_metrics:                # L1, L5, L4 — L5/L4 feed the promising accel cell (D21)
+    L1: prior_load_yd
+    L5: prior_load_efforts
+    L4: prior_load_accel
+  outcome_metrics:             # O1, O2, O4 (O4 = smoothed accel, new here; from D22 item 4)
+    O1: perf_z
+    O2: peak_accel_z
+    O4: peak_accel_sg_z
+  primary_load: prior_load_efforts   # D21's strongest gate cell (rel 0.5934) = efforts x peak_accel
+  primary_outcome: peak_accel_z
+  # --- (1) DE-CONFOUNDING (make-or-break): separate warm-up from fixed drill order ---
+  deconf_drill_adjust: true    # add C(drill_type) fixed effects (drill identity removed)
+  deconf_session_rank: true    # add explicit session_rank (attempt order position within the session)
+  deconf_within_drill: true    # primary identification: within-drill_type prior load (SAME drill, e.g. battery rep1->rep2)
+  deconf_retain_frac: 0.5      # PASS requires |adjusted coef| >= this * |raw coef| AND same (positive) sign
+  deconf_require_positive: true  # PASS requires the adjusted accel-cell coefficient > 0 (warm-up direction)
+  # --- (2) per-player phenotype ---
+  phenotype_min_attempts: 3    # min observed attempts for a player phenotype (matches model.link_min_attempts)
+  within_drill_min_attempts: 2 # min observed reps of the same drill_type for the within-drill slope
+  # session-position-of-peak = rank (1..K) of the player's max outcome within the single session,
+  # on the primary outcome (peak_accel_z); also reported for perf_z.
+  # --- saturating-curve fit (per player), "reps/position to reach peak": perf = ceil - (ceil-base)*exp(-k*load) ---
+  sat_curve: exponential       # exponential saturation
+  sat_curve_alt: hyperbolic    # Michaelis-Menten alternative (reported alongside; robustness)
+  sat_reach_frac: 0.9          # "reps to reach peak" = load where the rise reaches this frac of (ceil-base)
+  sat_min_attempts: 4          # min observed attempts to fit a saturating curve
+  sat_min_load_sd_frac: 0.2    # min (SD(load)/mean(load)) required to fit; else NaN (no spread => unidentifiable)
+  # --- (3) reliability (reuse the Phase-3/3b formula: tau2 / (tau2 + mean_i SE_i^2)) ---
+  reliability_stop_threshold: 0.2
+  reliability_min_players: 20
+  # bootstrap SEs for the peak-position / saturating-curve phenotypes (deterministic seed)
+  phenotype_boot_reps: 200
+  phenotype_boot_seed: 31337
+  # --- (4) smoothed peak-accel outcome O4 (Savitzky-Golay; from D22 item 4) ---
+  accel_smooth_window_frames: 5    # 0.5 s at 10 Hz
+  accel_smooth_polyorder: 3
+  accel_clip_yds2: 15.0            # clip BEFORE peak (matches panel accel_clip_mps2)
+  accel_dist_gap_max_s: 0.5        # same segment basis as Phase 2
+  # --- permutation for the warm-up population slope (meta_slope statistic, within-player shuffles) ---
+  perm_n: 1000
+  perm_seed_offset: 101
+
 # ---- Runtime ----
 runtime:
   duckdb_threads: 1   # single-threaded => bit-deterministic reductions (spec: same seed, identical outputs)

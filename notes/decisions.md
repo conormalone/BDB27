@@ -470,3 +470,87 @@ peak_accel_panel}.{csv,json}` + `hardening_summary.json` + `SUMMARY_3c.md` + `PR
 an independent Reviewer + Validator sign off.**
 
 **D22 — independent Reviewer + Validator sign-off · 2026-10-10.** _[to be filled in after review]_
+
+---
+
+# Cycle 8b — Phase 3d warm-up phenotype (HEADLINE PIVOT)
+
+## D23 — Warm-up / potentiation phenotype: deconfounding protocol + per-player phenotype + reliability · DECLARED 2026-10-11T00:58:00Z (2026-10-11 01:58 IST)
+**Declaration order (no HARKing).** This entry and the `config.yaml` **`warmup:` block** were written to the
+working tree **BEFORE any Phase-3d result was computed or viewed**. All thresholds/params/formulas below are
+**FIXED**; they are **not** tuned against results. No Phase-4/5 work; `01`/`02`/`03`/`03b` behaviour and
+outputs must remain **byte-identical**.
+
+**Context — the pivot.** Phase 3 reported a **null** on the primary fatigue metric (D20) and the D21 panel
+showed the null is **metric-robust for the fatigue direction**. The only cells that cleared reliability
+≥ 0.2 were `prior_load_accel × peak_accel_z` (0.5357), `prior_load_efforts × peak_accel_z` (0.5934) and
+`prior_load_efforts × t90_z` (0.5568) — **all with a POSITIVE load coefficient**, i.e. **more prior effort →
+Faster/harder explosive output = warm-up / post-activation potentiation**, not fatigue. The headline is
+therefore **pivoted** from the fatigue null to the **warm-up phenotype**. This entry pre-registers how the
+warm-up phenotype is measured, **deconfounded**, and tested for reliability.
+
+**Definitions.**
+- **Warm-up slope** (per player) = the coefficient of explosive output on accumulated prior effort — the
+  **sign-flipped analogue of the fatigue slope** (a positive slope = warms up; a negative slope = fatigues).
+  This reuses the Phase-3/3b per-player OLS-slope + EB-shrinkage machinery on a declared (load, outcome) cell.
+- **Session-position-of-peak** (per player) = the rank `1..K` (within the player's single combine session,
+  ordered by real timestamps) of that player's **maximum** outcome value over their observed attempts.
+- **Saturating-curve fit** (per player): fit `perf = ceil − (ceil − base)·exp(−k·load)` on the player's
+  observed attempts; the headline **"reps/session-position to reach peak"** = the load value at which the
+  fitted rise reaches `sat_reach_frac` (0.9) of `(ceil − base)`, reported in **reps** (for `prior_load_efforts`)
+  and in session-position terms (for the session-rank load). A hyperbolic (Michaelis–Menten) fit is reported
+  alongside as robustness (`sat_curve_alt`). Players with `< sat_min_attempts` attempts or too little load
+  spread are excluded (NaN).
+
+### (1) DE-CONFOUNDING — the make-or-break step (pre-registered method)
+**Why.** Phase 1 found **drill order ≈ drill identity** (the 40-yd dash is *always* first; the only order
+variation is 3-cone ↔ shuttle, two *different* drills — D5) and **session position is ~collinear with
+accumulated prior effort**. So a positive "slope on accumulated load" could be an artefact of *which drill
+was run later in the fixed battery*, not a within-player warm-up. The warm-up claim is only credible if the
+effect survives explicit drill-order control.
+**Two orthogonal identifications, both pre-declared, on the declared cells:**
+- **(W) Within-drill — primary.** Compute the per-player slope of `perf_z`/`peak_accel_z` on **within-drill
+  accumulated prior effort** (cumulative effort cost of earlier reps of the **same `drill_type`**), for
+  players with `>= within_drill_min_attempts` (2) observed reps of that drill. Drill identity is removed by
+  construction (same drill; e.g. the battery's rep-1 → rep-2 of the 40/3-cone/shuttle).
+- **(S) Drill-adjusted session position — secondary.** Fit the population model with an explicit
+  `session_rank` term **AND** `C(drill_type)` fixed effects (LMM path; EB analogue = within-drill centring),
+  so the warm-up term is the session-position effect **net of drill identity**.
+**PASS / FAIL rule (FIXED, evaluated before the phenotype is claimed).** Deconfounding **PASSES** iff, for the
+**accel-outcome cells** (`O2 peak_accel_z`, and `O4 peak_accel_sg_z` if computed):
+(i) the drill+order-adjusted population coefficient is **positive** (warm-up direction), **AND**
+(ii) `|adjusted coef| >= deconf_retain_frac (0.5) × |raw (unadjusted) coef|`, **AND**
+(iii) the within-drill (W) rep-1 → rep-2 battery contrast is **positive** on the accel outcome.
+Otherwise deconfounding **FAILS** → **report the metric-robust fatigue null as the finding and do NOT claim a
+warm-up phenotype** (TASK.md: report nulls honestly; no overclaiming). The raw, drill-adjusted and within-drill
+coefficients are **all** reported so the reader can see the attenuation.
+
+### (2) Cells, phenotype outputs, and the reliability requirement
+- **Cells** = the declared `load_metrics` (L1 yd, L5 efforts, L4 accel) × `outcome_metrics` (O1 `perf_z`,
+  O2 `peak_accel_z`, O4 `peak_accel_sg_z`); **primary cell = L5(prior_load_efforts) × O2(peak_accel_z)**
+  (D21's strongest gate cell, rel 0.5934).
+- **Per-player outputs:** `warmup_slope` (shrunken, as in D20 §8) with SE/CI per cell; `session_position_of_peak`
+  (on `primary_outcome` and on `perf_z`); `sat_ceiling`, `sat_rate_k`, `sat_reps_to_peak` (and hyperbolic alt)
+  per player.
+- **Reliability** of each phenotype, **including the warm-up slope**, uses the SAME formula as Phase 3/3b:
+  `R = tau2 / (tau2 + mean_i(SE_i^2))` (`tau2` from the selected estimator; `model.reliability_stop_threshold
+  = 0.2`). For `session_position_of_peak` and the saturating-curve parameters (which have no closed-form slope
+  SE), SE per player = bootstrap SD over `phenotype_boot_reps` (200) **deterministic** resamples of the player's
+  attempts (seed `phenotype_boot_seed`), and `R` is computed on the same formula. A phenotype whose
+  reliability `< 0.2`, or whose usable-player count `< reliability_min_players (20)`, is reported as
+  **not reliable** (no headline claim).
+- **Smoothed peak-accel outcome O4** (from D22 item 4, implemented here since D22 was pre-registered but never
+  built): per attempt, Savitzky–Golay smooth `x`/`y` (`accel_smooth_window_frames = 5`, `accel_smooth_polyorder
+  = 3`), signed acceleration from the smoothed speed, clip to `accel_clip_yds2 = 15.0`, take the peak, standardise
+  within `(drill_type, combine_position)` over observed attempts (Phase-2 rule). It is added because the D21
+  "rescue" rests on `peak_accel_z`, whose Phase-2 definition is the noisy instantaneous central-difference max.
+
+### (3) Deliverables, tests, gating
+New script `src/03d_warmup_phenotype.py` (imports `03_combine_model` + `03b_metric_panel` helpers via
+`importlib`, exactly as `03b` does); writes `outputs/model/warmup_{cells,deconfounding,phenotypes,reliability,
+summary}.{csv,json}` + `SUMMARY_3d.md` + `PROVENANCE.txt`; new tests `src/tests/test_warmup_phenotype.py`.
+Sample outputs carry `UNVALIDATED SAMPLE OUTPUT`. **Not committed until an independent Reviewer + Validator
+sign off.** Expected headline number: **"<N> reps / session-position <K> to reach peak (or ceiling)"** — reported
+**only if** deconfounding passes and the phenotype reliability `>= 0.2`.
+
+**D23 — independent Reviewer + Validator sign-off · 2026-10-11.** _[to be filled in after review]_
