@@ -30,7 +30,11 @@ archived at git tag `archive/combine-fatigue-v1`.
 6. **Sampling / digitisation error in tail estimates.** Max-effort quantities live in the **upper tail**
    of a noisy 10 Hz signal; peaks are sensitive to frame alignment. *Mitigation:* top-k over a **fixed
    route-snap count** (not "best-ever"); measurement-error correction in Phase 5; sensitivity to the
-   peak-definition and smoothing window.
+   peak-definition and smoothing window. *Audit (g) evidence:* 40-yd-dash `peak_speed` test-retest ICC
+   = 0.975 (reliable); however speed/timing splits measured from **movement onset at 10 Hz** are weak
+   (`time_to_10yd` 0.216, `time_to_20yd` 0.403) and cutting-drill metrics are unreliable (≈0.1–0.3).
+   Because an x/y-derived peak is a **max over frames**, it is inflated by per-frame position noise —
+   relevant to any ceiling/effort ratio (motivates the pre-registered margin in `prereg.md` §6).
 
 ## Design & identification
 
@@ -62,3 +66,6 @@ archived at git tag `archive/combine-fatigue-v1`.
     minima, the study cannot proceed. *Mitigation:* go/no-go gate (audit) → **blocker** if failed; a
     synthetic schema-compliant set with a **planted binding ceiling** exercises the pipeline if the real
     matched players are insufficient.
+15. **Line-count ≠ record-count for `player_play.csv`.** 11,234 quoted `play_description` fields contain
+    embedded newlines; `wc -l` (327,019) over-counts the true 314,197 records. *Mitigation:* never size or
+    count this file by lines; use a real CSV parser / DuckDB (audit-corrected `schema.md`).

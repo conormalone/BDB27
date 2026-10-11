@@ -6,8 +6,8 @@ is NOT pending** — the Combine file is complete, so `02_combine_envelope` runs
 
 | # | Question | Stage | Notes |
 |---|---|---|---|
-| P1 | **Matched Combine→NFL receivers** (audit item e): how many of the 510 prospects appear in in-game tracking, by position (WR/TE focus)? | `01_audit` (e) | Needs `game_tracking_{2023,24,25}.csv`. Sample mode emits a PENDING placeholder. |
-| P2 | **Route snaps/player** (audit item h) via `route_ran` — is the median above `audit.min_route_snaps_per_player`? | `01_audit` (h) | The go/no-go gate for the per-player tail. |
+| P1 | **Matched Combine→NFL receivers** (audit item c): how many of the 510 prospects appear in in-game tracking, by position (WR/TE focus)? | `01_audit` (c) | Needs `game_tracking_{2023,24,25}.csv`. Sample mode emits a PENDING placeholder. **Preview (audit 2026-10-11)** via the complete `player_play.csv`: **WR 106/107, TE 38/42**; sample *tracking* prefix matched only WR 39/TE 11 (non-representative). |
+| P2 | **Route snaps/player** (audit item c) via `route_ran` — is the median above `audit.min_route_snaps_per_player`? | `01_audit` (c) | The go/no-go gate for the per-player tail. **Preview (audit 2026-10-11)**: median route snaps **WR 261, TE 184** (from complete `player_play.csv`). |
 | P3 | **Audit items c/d/h/i game-side** — route/coverage field behaviour, effort distributions, coverage splits. | `01_audit` (c,d,h,i) | Sample non-representative → full run only. |
 | P4 | **Route-effort thresholds** with provenance `FULL` (high-speed/accel cut-offs). | `00_thresholds` | Never set from the sample; models assert provenance == `FULL` in full mode. |
 | P5 | **Per-effort game demand** (Phase 3): route snap counts, top-k efforts, per-effort speed/accel, envelope fraction. | `03_game_demand` | The scale driver — stream per game/player. |

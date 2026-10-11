@@ -24,6 +24,12 @@ env/
 *.csv
 *.zip
 
+# --- Synthetic fixtures (SMALL, schema-compliant, committed) ---
+# TASK.md: commit only code/configs/notes/synthetic fixtures. Re-include the fixture dirs.
+!fixtures/**
+!fixtures/**/*.csv
+!fixtures/**/*.json
+
 # --- OS / editor ---
 .DS_Store
 Thumbs.db

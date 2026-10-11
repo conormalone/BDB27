@@ -19,12 +19,17 @@ DuckDB `read_csv_auto` after mapping `NA`→NULL (see §6).
 | `combine_results.csv` | 41,020 | 510 | 18 | Combine anthropometrics + electronic splits / NGS scores |
 | `players.csv` | 47,301 | 510 | 10 | Prospect identity, position, college, draft slot |
 | `games.csv` | 43,174 | 1,002 | 7 | Game index (season, week, teams) |
-| `player_play.csv` | 146,879,042 (140.1 MiB) | 327,019 | 64 | In-game player-play NGS records (2023–2025) |
+| `player_play.csv` | 146,879,042 (140.1 MiB) | **314,197** | 64 | In-game player-play NGS records (2023–2025) |
 | `player_career_successes.csv` | 13,801 | 510 | 9 | Career snaps/games/honours (label side) |
 | `game_tracking_2023_sample.csv` | 93,739,461 | 1,048,575 | 12 | **SAMPLE** frame-level in-game tracking (see §5) |
 
 > The 2027 set covers **510 prospects**, combine classes **2023/2024/2025**. `nfl_id` is the join key across
 > all tables.
+>
+> **Row-count correction (audit f, 2026-10-11).** `player_play.csv` holds **314,197 records** (audit-verified
+> with a proper RFC-4180 parser *and* DuckDB). The earlier “327,019” counted **physical lines**: 11,234
+> `play_description` fields contain embedded newlines (quoted), inflating `wc -l` (327,019 lines) above the
+> true record count. Do not use line counts for this file.
 
 ## 2. `combine_tracking.csv` (14 cols) — the key asset
 
@@ -114,7 +119,7 @@ present** (verified against the header):
 
 | Column | Used for |
 |---|---|
-| `route_ran` | **route snap** flag → the route-snap denominator / top-k effort sampling (Phase 3) |
+| `route_ran` | **route snap + route TYPE** (audit d). It is **categorical** (GO/HITCH/CROSS/IN/OUT/POST/CORNER/SLANT/FLAT/SCREEN/WHEEL/ANGLE), **not a boolean flag**; a *route snap* = `route_ran IS NOT NULL`. Config key `game.route_snap_col=route_ran` refers to this column. |
 | `pass_length` | deep vs. short routes (question 3: deep vs. breaking) |
 | `target` | whether the route was targeted |
 | `separation_at_pass_forward` | separation at the pass-forward moment |
@@ -138,3 +143,8 @@ Plus the join/context keys: `game_id, play_id, nfl_id, down, yards_to_go, play_d
   full-season route-snap counts; (iii) the scale of Phase 3 (`03_game_demand`). → **`PENDING FULL RUN`**.
 - Full-mode sources expected at `data/raw/`: `game_tracking_2023.csv`, `game_tracking_2024.csv`,
   `game_tracking_2025.csv` (**not present now**).
+- **Audit confirmation (2026-10-11):** the sample is a **prefix** — it truncates plays. Players tracked per
+  play: min 1, median 1, max **4** (a full play has up to 22). It therefore cannot verify 22-player tracking,
+  nearest-defender/ball-distance controls, or ball location; all such checks are `PENDING FULL RUN`. The file
+  also uses the NFL game frame (`x≈[-5.9,123.3]`, `y≈[-6.1,60.7]`; players out of bounds allowed), unlike the
+  Combine local frame.

@@ -44,3 +44,15 @@ modelling stages read only those summaries. **Never** `pd.read_csv` a full game-
 **Extrapolated peak:** ≈ sample peak + (rows_full / rows_sample) × (frame working set). With per-game
 chunking the working set stays ~O(one game), so peak should stay **< 1 GB**. Re-measure on the big
 machine and update this file — see `pending_full_run.md` P8.
+
+## Measured — Phase 1 audit (2026-10-11, sample mode)
+
+| Stage | wall (warm Parquet) | wall (`--force`, reconvert) | peak RAM |
+|---|---:|---:|---:|
+| `01_audit` (sample) | ≈ 4 s | ≈ 19 s | ≈ 330–370 MB |
+| `01_audit` (synthetic fixture) | ≈ 0.8 s | — | ≈ 140 MB |
+
+Parquet cache (ZSTD, on `/mnt`): `player_play` 23.7 MB (from 140.1 MiB), `game_tracking_2023_sample`
+17.1 MB (from 93.7 MiB), `combine_tracking` 14.2 MB. The audit streams with DuckDB and never loads a full
+CSV into pandas. Full-run cost is dominated by converting the three ~2.9 GB tracking CSVs (disk-bound);
+re-measure on the big machine.

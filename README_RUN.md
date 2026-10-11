@@ -6,8 +6,8 @@
 > to Parquet once (checkpointed) and queried with DuckDB; **no full CSV is loaded into pandas**. Every
 > sample output is stamped `UNVALIDATED SAMPLE OUTPUT`.
 >
-> **Status:** Phase 0 only — the stage scripts below are **not implemented yet**. This file documents the
-> intended interface and local-run procedure.
+> **Status:** Phase 0 **done**; **Phase 1 audit implemented** (`src/01_audit.py`, run sample 2026-10-11).
+> Stages 02–05 are **not implemented yet**. See `notes/decisions.md` D27 for the audit findings.
 
 ## 1. Environment (ARM64 Pi / x86 Linux / Windows laptop)
 
@@ -32,9 +32,13 @@ the drive (or copy the CSVs to a laptop and point `data/raw` there) before any g
 ```
 
 ```bash
-# Phase 1 audit (go/no-go gate); game-side items c/d/e/h/i are full-run only
+# Phase 1 audit (go/no-go gate); frame-level game items (c/h/i speed+accel) are full-run only
 python src/01_audit.py --mode sample
 python src/01_audit.py --mode full          # needs the full game files
+# exercise the game-side code path on the committed synthetic fixture (planted ceiling; NOT a finding)
+python src/01_audit.py --synthetic --synthetic-regime binding
+# schema/behaviour tests (no pytest needed)
+python src/tests/test_audit.py
 
 # Phase 2 Combine envelope — the Combine file is COMPLETE, so this runs for real in both modes
 python src/02_combine_envelope.py --mode sample

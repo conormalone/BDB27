@@ -23,3 +23,9 @@ Trigger a blocker on:
    audit items (c/d/e/h/i) and Phases 3–5 are `PENDING FULL RUN` (expected, not blocking Phase 0).
 4. **`notes/prereg.md` is a skeleton.** Its values are `TBD`; it must be frozen **before** any full run —
    at that point, an unfrozen prereg is itself a blocker.
+5. **`route_ran` is categorical, not a flag** (audit d, 2026-10-11). Config key `game.route_snap_col`
+   still reads as a flag; *route snap* is defined as `route_ran IS NOT NULL`. Handled in code — documented
+   so nobody treats it as boolean. Not a blocker.
+6. **Thin Combine repeats → low/unestimated ICC** (audit g, 2026-10-11). 40-yd dash has ~2 attempts/player;
+   cutting drills mostly 1 (many features ICC≈0 or `UNESTIMABLE`). This is a design constraint for Phase-2
+   feature selection (reliable: `peak_speed`, `speed_at_10/20yd`, `env_vmax`), not a blocker.

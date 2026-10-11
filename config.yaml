@@ -19,6 +19,8 @@ paths:
   outputs: outputs
   figures: outputs/figures
   notes: notes
+  fixtures: fixtures            # committed synthetic fixtures (schema-compliant)
+  synthetic: fixtures/synthetic # synthetic fixture root (see src/synthetic_fixture.py)
 
 # --------------------------------------------------------------------------- #
 # Source filenames (keys are references used by src/common.py::csv_path)
@@ -75,6 +77,28 @@ audit:
   # --- drill families (audit) ---
   straight_line_drills: [FORTY_YARD_DASH]                  # -> envelope fit (Phase 2)
   cutting_drills: [THREE_CONE_DRILL, SHORT_SHUTTLE]        # -> cut metrics (Phase 2)
+  skill_drill_prefix: SKILL_DRILLS                         # heterogeneous position skill blocks (neither family)
+  # --- feature-extraction parameters (audit g; no magic numbers) ---
+  split_distances_yd: [10, 20]          # cumulative-path distances for timing/speed splits
+  speed_at_times_s: [1.0, 2.0]          # model-free speed-at-time samples (from movement onset)
+  movement_onset_speed_yds: 0.5         # speed above which the athlete is deemed moving (envelope t0)
+  onset_distance_yd: 0.5                # cumulative path distance defining drill start
+  decel_window_frames: 5                # smoothing window (frames) for deceleration metric
+  deep_pass_length_yd: 15               # pass_length >= this => "deep" route (audit i / h)
+  exceedance_margin_rel: 0.0            # relative margin defining "at/over ceiling" (prereg sec6; TBD)
+  icc_repeat_feature_drills: [FORTY_YARD_DASH, THREE_CONE_DRILL, SHORT_SHUTTLE]
+  icc_min_players_with_repeat: 5        # below this many players with >=2 attempts => ICC UNESTIMABLE
+  # --- synthetic fixture (schema-compliant; planted ceiling; NEVER a finding) ---
+  synthetic:
+    regime: binding                     # binding | null (null = no ceiling binding; Phase-5 null case)
+    seed: 424242
+    n_wr: 5
+    n_te: 3
+    n_plays_per_player: 8
+    frames_per_play: 15
+    planted_exceedance_rate: 0.10       # share of in-game efforts allowed to beat the planted ceiling
+    game_frame_width_yd: 53.3           # NFL field frame for synthetic game x,y
+    game_frame_length_yd: 120.0
 
 # --------------------------------------------------------------------------- #
 # Phase 2 — Combine envelope  (v(t) = vmax·(1 − exp(−t/tau)); a0 = vmax/tau)
