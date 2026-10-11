@@ -388,3 +388,85 @@ The declared metric panel was verified by an independent Reviewer+Validator (com
   robust slope signal. (ii) 2 of the 3 gate cells use `peak_accel_z`, whose Phase-2 definition
   (`peak_accel_yds2`) is the **instantaneous central-difference max**, not the ~0.3–0.5 s average assumed
   in the brief (Phase-2 committed at Cycle 4; flagged, not changed).
+
+---
+
+# Cycle 8 — Phase 3c null hardening (pre-registered)
+
+## D22 — Null-hardening protocol: positive control, detection bound, TOST / tau^2 posterior, smoothed peak-accel · DECLARED 2026-10-10T22:40:00Z (2026-10-10 23:40 IST)
+**Declaration order (no HARKing).** This entry and the `config.yaml` **`hardening:` block** were written to the
+working tree **BEFORE any Phase-3c result was computed or viewed**. All thresholds, effect sizes and
+simulation parameters below are **FIXED**; they are not tuned against results. Phase 3 reports a **NULL on
+the primary metric** (D20: reliability 0.0 → stop rule; the D21 panel is metric-robust). The job here is to
+make that null **bounded, mechanistically credible, and demonstrably not a broken pipeline**. No Phase-4/5
+work; `01`/`02`/`03`/`03b` behaviour and outputs must remain **byte-identical**.
+
+**Units convention.** All per-player slopes are expressed **z per SD of cumulative prior load** (dimensionless,
+comparable across load metrics), with conversions to z per 100 yd reported alongside. The real study frame's
+`SD(load)` is computed at runtime and reported; it is data, not a declared constant.
+
+### (1) Positive control — synthetic recovery on the REAL attempt/rest/session structure
+**Protocol.** Take the real DB study attempts (drill order, timings, effort costs, session boundaries,
+cumulative-load structure). For each synthetic player, borrow a real template, plant a known slope
+`b_i` (cycled from `pc_slopes`, `z per SD(load)`), delete `pc_delete_frac` of attempts at random (load-only
+imputation, exactly mirroring Phase-2 lost-attempt handling: imputed rows carry load but **no** performance),
+and generate the outcome as `perf = b_i * standardize(load_L) + intercept_i + N(0, pc_noise_sd²)`.
+**Scope.** The **full L1–L7 × O1–O3 panel (21 cells)**; each cell is run through the **SAME Phase-3 fallback
+chain** (`model.fallback_order`, incl. the LMM paths and the EB fallback — the estimator actually selected is
+recorded per cell). `pc_reps = 10` MC reps; `pc_perm_n = 0` (recovery needs no permutation).
+**Success criteria (per cell, aggregated over reps).** recovered-vs-planted Pearson `r ≥ pc_corr_min (0.7)`;
+calibration slope (OLS of recovered on planted) within `|slope − 1| ≤ pc_calib_tol (0.3)`; and, for `|b| > 0`,
+the reliability gate (`≥ model.reliability_stop_threshold`) passes. **Headline claim:** the method recovers a
+per-player slope of size δ **when present** (across the panel's load/outcome metrics and the fallback
+estimators), while on the **real** combine data it recovers zero.
+
+### (2) Power / detection bound (design-based Monte Carlo)
+Two power curves, both simulated on the **real** attempt structure with the same deletion/imputation, using
+the deterministic **EB inverse-variance meta-slope** (the estimator the real data selects; documented
+approximation for speed + determinism, `power_estimator: eb_meta`), `power_reps = 200`, `power_noise_sd = 0.6`.
+- **Curve A (homogeneous decline).** Every player shares slope δ; power = fraction of reps rejecting
+  `H0: population slope = 0` at `power_alpha = 0.05` (two-sided). Grid `power_slope_grid`.
+- **Curve B (between-player heterogeneity).** `b_i ~ N(0, τ²)`; power = fraction of reps with
+  EB reliability `≥ model.reliability_stop_threshold (0.2)` (the Phase-5 gate). Grid `power_tau_grid`.
+**Bound.** Report the smallest δ and smallest τ with power `≥ power_target (0.80)`. The real-data null is then
+reported as a **bound**: "any within-combine fatigue slope is smaller than the Curve-A δ*, and any
+between-player slope SD smaller than the Curve-B τ*."
+
+### (3a) TOST equivalence test on the population load slope
+Primary cell **L1 × O1** (`prior_load_yd`, `perf_z`); test statistic = the final estimator's population load
+coefficient with its SE (the EB inverse-variance meta-slope). **SESOI = `tost_sesoi_z_per_100yd = 0.10`
+z per 100 yd** (`= 0.001 z/yd`), two-sided, `tost_alpha = 0.05`; equivalence is declared iff the
+`(1 − 2·tost_alpha)` = 90% CI lies within `± SESOI` (equivalently both one-sided p-values `< tost_alpha`).
+Rationale for the SESOI: a per-100-yd within-combine fatigue effect smaller than 0.1 SD of standardized
+performance is below the smallest effect of practical interest for a Combine→NFL link.
+
+### (3b) Bayesian posterior on the between-player slope variance τ² (+ reliability)
+Random-effects meta-analysis on per-player OLS slopes with **known** within-player SEs:
+`s_i | θ_i ~ N(θ_i, se_i²)`, `θ_i ~ N(μ, τ²)`, `μ` flat, `τ ~ HalfNormal(scale)`. The marginal likelihood
+`L(τ)` integrates `θ` and `μ` **analytically** (standard normal-normal hierarchy), so the posterior
+`p(τ | s) ∝ HalfNormal(τ; scale) · L(τ)` is evaluated on a fixed `τ` grid (`tau2_grid_n = 2001`,
+`τ ∈ [0, tau2_grid_max = 2.0]`) and normalised — **deterministic, numpy/scipy only** (no MCMC). Primary
+prior scale `tau2_prior_scale_primary = 0.5` z per SD(load); sensitivity over `tau2_prior_scales =
+[0.25, 0.5, 1.0]`. Report the posterior median/mean and `tau2_cred = 0.95` equal-tailed credible interval
+for **τ²** (and τ), the posterior probability `P(τ < tau2_small_threshold = 0.1 z per SD)`, and the induced
+posterior on the **reliability** `R = τ²/(τ² + mean_i se_i²)` with a credible interval. The claim: the
+posterior for τ² is **concentrated near 0** (credible "no individual fatigue differences").
+
+### (4) Smoothed peak-accel outcome (O4)
+Phase-2 `peak_accel_z` is the **instantaneous** central-difference max (noisy at 10 Hz). Add **O4
+`peak_accel_sg_z`**: per attempt, Savitzky–Golay smooth `x`/`y` (`accel_smooth_window_frames = 5` = 0.5 s,
+`accel_smooth_polyorder = 3`), form signed acceleration from the smoothed speed (same construction as the
+panel's `attempt_metrics`), clip to `accel_clip_yds2 = 15.0`, take the peak signed acceleration, and
+standardise within `(drill_type, combine_position)` over observed attempts (Phase-2 rule). Re-run the
+**7 load metrics × O4** cells with the SAME cell rule (fallback chain + reliability + stop rule) and compare
+to the O2 (`peak_accel_z`) cells; report whether the accel-related **"rescue"** (D21: `prior_load_accel ×
+peak_accel_z` 0.5357, `prior_load_efforts × peak_accel_z` 0.5934) **survives** the smoothed outcome.
+
+### Outputs & gating
+New script `src/03c_null_hardening.py` (imports `03_combine_model` and `03b_metric_panel` helpers via
+`importlib`, exactly as `03b` does) writes `outputs/model/hardening_{positive_control,power,tost,tau2_posterior,
+peak_accel_panel}.{csv,json}` + `hardening_summary.json` + `SUMMARY_3c.md` + `PROVENANCE.txt`; new tests
+`src/tests/test_null_hardening.py`. Sample outputs carry `UNVALIDATED SAMPLE OUTPUT`. **Not committed until
+an independent Reviewer + Validator sign off.**
+
+**D22 — independent Reviewer + Validator sign-off · 2026-10-10.** _[to be filled in after review]_

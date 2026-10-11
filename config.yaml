@@ -207,6 +207,78 @@ panel:
   reliability_stop_threshold: 0.2
   reliability_min_players: 20
 
+# ---- Null hardening (Phase 3c) — PRE-REGISTERED (D22, 2026-10-10) ----
+# Declared BEFORE any Phase-3c result was computed or viewed (no HARKing). Purpose:
+# harden the Phase-3/3b null so it is (a) demonstrably not a broken pipeline (positive
+# control), (b) bounded (design-based detection limit), and (c) mechanistically credible
+# (TOST equivalence + Bayesian posterior on the between-player slope variance tau^2, and
+# a smoothed peak-accel outcome re-check of the 3b "rescue" cells). All thresholds/params
+# are FIXED here. No Phase-4/5 work; 01/02/03/03b behaviour and outputs must stay
+# byte-identical.
+hardening:
+  out_subdir: model            # new hardening_* files only; existing artefacts untouched
+  seed: 20270106               # global seed (mirrors project seed)
+  # --- (1) positive control: synthetic recovery on the REAL attempt/rest/session structure ---
+  # Planted per-player slopes (z per SD of cumulative prior load) cycled across players;
+  # outcome = b_i * standardize(load_L) + intercept_i + N(0, pc_noise_sd^2). Real attempt
+  # timings/loads/sessions; a fraction of attempts deleted (load-only imputation, no
+  # performance), exactly mirroring Phase-2 lost-attempt handling.
+  pc_n_players: 122            # match the real DB study N for realistic power
+  pc_slopes: [-0.8, -0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8]  # z per SD(load); incl. 0
+  pc_delete_frac: 0.2
+  pc_impute: true
+  pc_noise_sd: 0.6
+  pc_seed: 424242
+  pc_reps: 10                  # MC reps (each rep = pc_n_players over the real structure)
+  pc_perm_n: 0                 # recovery needs no permutation (0 => skip)
+  pc_corr_min: 0.7             # recovered-vs-planted Pearson r must be >= this
+  pc_calib_tol: 0.3            # |calibration slope - 1| <= this
+  pc_rel_min: 0.2              # reliability gate expected to PASS when |slope| > 0
+  pc_over_cells: true          # run the FULL L1-L7 x O1-O3 panel (21 cells)
+  # --- (2) power / detection bound (design-based Monte Carlo on the real structure) ---
+  # Curve A: homogeneous common per-player slope delta -> power to reject H0 (pop slope = 0)
+  #          at power_alpha (two-sided). Curve B: between-player slope SD tau (mean 0) ->
+  #          power that the EB reliability gate (>= model.reliability_stop_threshold)
+  #          passes. Smallest delta/tau with power >= power_target is the design's bound.
+  # Estimator on both curves = the deterministic EB inverse-variance meta-slope (the
+  # estimator the real data selects); documented approximation for speed + determinism.
+  power_estimator: eb_meta
+  power_slope_grid: [0.0, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5]  # z per SD(load)
+  power_tau_grid: [0.0, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0]           # z per SD(load)
+  power_alpha: 0.05
+  power_target: 0.8
+  power_reps: 200
+  power_seed: 808080
+  power_noise_sd: 0.6
+  # --- (3a) TOST equivalence test on the population load slope (primary cell L1 x O1) ---
+  # Smallest effect of interest (SESOI) on the population load slope. Two one-sided tests
+  # at tost_alpha; equivalence declared iff the (1-2*tost_alpha) CI lies within +/- SESOI.
+  # Units: z per 100 yd of cumulative prior load (== 0.001 z/yd). Reported also in z/SD.
+  tost_sesoi_z_per_100yd: 0.1
+  tost_alpha: 0.05
+  # --- (3b) Bayesian posterior on between-player slope variance tau^2 + reliability ---
+  # Random-effects meta-analysis on per-player OLS slopes with KNOWN within-player SEs:
+  #   s_i | theta_i ~ N(theta_i, se_i^2);  theta_i ~ N(mu, tau^2);  mu flat;  tau ~ HalfN(scale).
+  # Slopes are expressed z per SD(load); tau / prior scale in the same units. Marginal
+  # likelihood L(tau) is closed-form (theta, mu integrated analytically); posterior is
+  # evaluated on a tau grid and normalised (deterministic, numpy/scipy only).
+  tau2_prior_dist: halfnormal
+  tau2_prior_scales: [0.25, 0.5, 1.0]   # prior-sensitivity (z per SD(load))
+  tau2_prior_scale_primary: 0.5
+  tau2_grid_max: 2.0                    # tau grid upper bound (z per SD(load))
+  tau2_grid_n: 2001
+  tau2_cred: 0.95                       # equal-tailed credible level for tau, tau^2, reliability
+  tau2_small_threshold: 0.1             # "negligible" between-player slope SD (z per SD(load))
+  # --- (4) smoothed peak-accel outcome (O4) ---
+  # Per-attempt peak accel from Savitzky-Golay-smoothed positions (~0.5 s window),
+  # standardised within (drill_type, combine_position) over observed attempts (Phase-2 rule).
+  accel_smooth_window_frames: 5         # 0.5 s at 10 Hz
+  accel_smooth_polyorder: 3
+  accel_outcome_code: O4
+  accel_outcome_metric: peak_accel_sg_z
+  accel_dist_gap_max_s: 0.5             # same distance/segment basis as Phase 2
+  accel_clip_yds2: 15.0                 # clip BEFORE peak (matches panel accel_clip_mps2)
+
 # ---- Runtime ----
 runtime:
   duckdb_threads: 1   # single-threaded => bit-deterministic reductions (spec: same seed, identical outputs)
