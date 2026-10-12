@@ -2,9 +2,10 @@
 # All paths, thresholds, sizes and parameters live here (no magic numbers in code).
 # Binding spec: TASK.md  ·  Pre-registration: notes/prereg.md  ·  Decisions: notes/decisions.md
 #
-# Values marked `null` / `TBD` are NOT yet fixed. They must be filled in — and the corresponding
-# notes/prereg.md entries frozen — BEFORE a `--mode full` run of the stage that consumes them.
-# Sample mode may run with a-priori placeholders, always labelled `UNVALIDATED SAMPLE OUTPUT`.
+# Pre-registration FROZEN 2026-10-12 (Conor-approved values; see notes/prereg.md, notes/decisions.md D28).
+# No value below is `null`/`TBD`: a `--mode full` run is gated on this (src/gate.py) — all keys the
+# consuming stage needs must be non-null and notes/prereg.md must read FROZEN. Sample mode may run with
+# a-priori placeholders, always labelled `UNVALIDATED SAMPLE OUTPUT`.
 
 project: BDB27
 seed: 20270106            # fixed seed for any stochastic step
@@ -69,9 +70,9 @@ audit:
   sampling_rate_hz: 10              # nominal tracking rate (audit f)
   distance_rtol: 0.05               # provided-vs-recomputed distance rel. tolerance
   # --- go/no-go minima (FREEZE in prereg.md before a full run) ---
-  min_matched_wr: null              # matched WR (Combine -> NFL game tracking), audit gate
-  min_route_snaps_per_player: null  # route snaps/player (via route_ran), audit gate
-  min_icc: null                     # minimum per-feature ICC to keep a Combine feature (Phase 2 rule)
+  min_matched_wr: 60                # matched WR (Combine -> NFL game tracking), audit gate (prereg sec5)
+  min_route_snaps_per_player: 100   # route snaps/player (via route_ran), audit gate (prereg sec5)
+  min_icc: 0.5                      # minimum per-feature ICC to keep a Combine feature (prereg sec4)
   # --- item status (game-side c/d/e/h/i are PENDING FULL RUN; see notes/pending_full_run.md) ---
   game_side_items_pending_full_run: [c, d, e, h, i]
   # --- drill families (audit) ---
@@ -85,7 +86,8 @@ audit:
   onset_distance_yd: 0.5                # cumulative path distance defining drill start
   decel_window_frames: 5                # smoothing window (frames) for deceleration metric
   deep_pass_length_yd: 15               # pass_length >= this => "deep" route (audit i / h)
-  exceedance_margin_rel: 0.0            # relative margin defining "at/over ceiling" (prereg sec6; TBD)
+  exceedance_margin_rel: 0.0            # relative margin defining "at/over ceiling" (prereg sec6)
+  exceedance_reframe_rate: 0.25         # >25% exceedance => not binding => reframe as utilization (prereg sec6)
   icc_repeat_feature_drills: [FORTY_YARD_DASH, THREE_CONE_DRILL, SHORT_SHUTTLE]
   icc_min_players_with_repeat: 5        # below this many players with >=2 attempts => ICC UNESTIMABLE
   # --- synthetic fixture (schema-compliant; planted ceiling; NEVER a finding) ---
@@ -109,16 +111,35 @@ envelope:
   a0_definition: vmax_over_tau     # a0 = vmax / tau
   fit_drills: FORTY_YARD_DASH      # straight-line family used for the envelope fit
   # --- model-free features (per attempt + per player) ---
-  split_distances_yd: null         # e.g. [5, 10, 20] timing splits  (TBD)
-  speed_at_times_s: null           # model-free speed-at-time samples (TBD)
-  cut_metrics: null                # e.g. entry/exit speed, COD deficit  (TBD; cutting drills)
+  split_distances_yd: [5, 10, 20]  # timing/speed splits (prereg sec8)
+  speed_at_times_s: [1.0, 2.0]     # model-free speed-at-time samples (prereg sec8)
+  cut_metrics: [entry_speed, exit_speed, cod_deficit]  # cutting-drill metrics (prereg sec8; not headlined)
   # --- feature selection (FIXED in prereg.md before the full run) ---
   max_features: 3                  # <= 3 Combine features in the primary model
   selection_rule: [icc, vif]       # keep by ICC first, then prune by VIF
-  icc_min: null                    # ICC threshold (TBD in prereg.md)
-  vif_max: null                    # VIF ceiling (TBD in prereg.md)
+  icc_min: 0.5                     # ICC threshold, from prereg sec4 (= audit.min_icc)
+  vif_max: 5.0                     # VIF ceiling / redundancy-pruning trigger (prereg sec3, sec8)
   shrinkage: hierarchical           # per-player envelope parameters are hierarchically shrunk
-  min_attempts_per_player: null     # observed straight-line attempts needed to fit an envelope (TBD)
+  min_attempts_per_player: 1        # straight-line attempts needed to fit an envelope (prereg sec8; shrinkage)
+  # --- exponential-envelope fit parameters (config-driven; no magic numbers) ---
+  fit:
+    onset_speed_yds: 0.5            # speed above which the athlete is moving (= audit.movement_onset_speed_yds)
+    vmax_bounds: [0.0, 30.0]        # yd/s  (lower, upper) — audit-consistent bounds (prereg sec4 evidence)
+    tau_bounds: [0.05, 10.0]        # s     (lower, upper) — audit-consistent; wide => noisy thin attempts
+    p0_tau_s: 0.8                   # initial tau guess (initial vmax guess = observed peak)
+    maxfev: 5000                    # curve_fit iteration cap
+    min_points: 5                   # min positive-speed frames required to attempt a fit
+    min_speed_yds: 0.05             # frames with speed above this are 'positive' for the fit
+  # --- plausibility flag (prereg sec3.4 pattern: flag, never silently drop) ---
+  flag_vmax_over_peak: 1.5          # flag a player whose raw ceiling exceeds this x their mean peak speed
+  # --- analysis population for ICC/VIF feature selection (Combine side only; prereg sec3) ---
+  selection_positions: [WR, TE, DB, OL, DL, LB, RB, QB]  # all dash participants (ICC is computed over all)
+  # --- candidate Combine feature pool (prereg sec3); vendor s-derived features EXCLUDED ---
+  candidate_features: [peak_speed, speed_at_5yd, speed_at_10yd, speed_at_20yd,
+                       speed_at_t1.0s, speed_at_t2.0s, time_to_5yd, time_to_10yd, time_to_20yd,
+                       min_speed_after_peak, speed_deficit_after_peak, max_decel,
+                       env_vmax, env_tau, env_a0]
+  expected_features: [peak_speed, speed_at_20yd, env_vmax]  # pre-declared (prereg sec3) reliable set
 
 # --------------------------------------------------------------------------- #
 # Phase 3 — Game demand
@@ -128,36 +149,36 @@ game:
   thresholds_file: thresholds.json # outputs/thresholds.json (FULL in full mode; PLACEHOLDER in sample)
   route_snap_col: route_ran        # 'route ran' flag on player_play.csv
   # --- effort sampling ---
-  top_k_efforts: null              # top-k efforts per fixed route-snap count (TBD in prereg.md)
-  route_snap_count: null           # the fixed route-snap denominator (TBD in prereg.md)
+  top_k_efforts: 5                 # top-k efforts per fixed route-snap count (prereg sec2)
+  route_snap_count: 100            # the fixed route-snap denominator (prereg sec2)
   # --- per-effort features ---
   effort_metrics: [speed, accel]   # per-effort speed/accel (yard-space)
   envelope_fraction: max_over_ceiling  # per-effort envelope fraction (effort / player ceiling)
   # --- effort cut-offs (produced by 00_thresholds.py; never derived from the sample) ---
   thresholds:
     method: percentile             # percentile | fixed
-    high_speed_percentile: null    # (TBD)
-    accel_percentile: null         # (TBD)
+    high_speed_percentile: 0.90    # (prereg sec8)
+    accel_percentile: 0.90         # (prereg sec8)
   sample_placeholders:
-    high_speed_threshold_yds: null # a-priori placeholder ONLY (never set from the sample)
-    accel_threshold_yds2: null
+    high_speed_threshold_yds: 8.0  # a-priori placeholder ONLY (never set from the sample; prereg sec8)
+    accel_threshold_yds2: 3.0      # a-priori placeholder ONLY (never set from the sample; prereg sec8)
 
 # --------------------------------------------------------------------------- #
 # Phase 4 — Models
 # --------------------------------------------------------------------------- #
 models:
   out_subdir: models
-  quantiles: null                  # pre-registered tau set for quantile regression (TBD)
+  quantiles: [0.5, 0.75, 0.9, 0.99]  # pre-registered tau ladder (prereg sec1)
   level: effort                    # effort-level regression
   cluster: player                  # player-clustered bootstrap
-  bootstrap_reps: null             # (TBD)
+  bootstrap_reps: 1000             # player-clustered bootstrap reps (prereg sec8)
   bootstrap_seed_offset: 101
-  controls_without_draft: []       # controls excluding draft position (TBD)
-  controls_with_draft: [draft_position]   # controls including draft position (TBD)
+  controls_without_draft: [position, age, height, weight, bmi]  # controls excluding draft (prereg sec8)
+  controls_with_draft: [position, age, height, weight, bmi, draft_position]  # + draft; undrafted = level
   exceedance: true                 # model/measure the exceedance rate
   utilization: u                   # utilization covariate/quantity
   pooling: [pooled, WR, TE]        # pooled vs per-position
-  fallbacks: []                    # estimator fallbacks, logged in decisions.md (TBD)
+  fallbacks: [refit_increased_max_iter, adjacent_tau_report, pool_positions, report_null]  # prereg sec7
 
 # --------------------------------------------------------------------------- #
 # Phase 5 — Validation
@@ -165,13 +186,13 @@ models:
 validate:
   out_subdir: validate
   cv_grouping: player              # player-grouped CV
-  cv_folds: null                   # (TBD)
+  cv_folds: 5                      # player-grouped CV folds (prereg sec8)
   cv_seed: 20270106
   baseline: controls_only          # compare against a controls-only baseline
   permutation: true
-  perm_reps: null                  # (TBD)
-  measurement_error_correction: null  # (TBD; method fixed before full run)
-  sensitivity: null                # (TBD)
+  perm_reps: 1000                  # permutation reps (prereg sec8)
+  measurement_error_correction: icc_attenuation  # divide slope by reliability (prereg sec8)
+  sensitivity: [alt_quantiles, drop_thin_repeats, exclude_optouts, margin_grid]  # prereg sec8
 
 # --------------------------------------------------------------------------- #
 # Deliverables / sample discipline
