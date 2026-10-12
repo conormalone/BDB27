@@ -191,6 +191,17 @@ models:
   utilization: u                   # utilization covariate/quantity
   pooling: [pooled, WR, TE]        # pooled vs per-position
   fallbacks: [refit_increased_max_iter, adjacent_tau_report, pool_positions, report_null]  # prereg sec7
+  # --- model specification (implementation; frozen values above are untouched) ---
+  response: peak_speed             # in-game effort speed (yd/s) = the modelled outcome (efforts.csv)
+  primary_feature: env_vmax        # Combine ceiling feature (prereg sec3 retained set); maps to efforts.ceiling_speed_yds
+  bmi_constant: 703.0              # BMI = constant * weight_lb / height_in^2 (imperial)
+  fit_max_iter: 1000               # QuantReg IRLS iteration cap (base fit)
+  fit_max_iter_retry: 20000        # QuantReg iteration cap for the refit_increased_max_iter fallback
+  fit_p_tol: 1.0e-06               # QuantReg primal tolerance
+  bootstrap_ci: [0.025, 0.975]     # percentile CI for the player-clustered bootstrap
+  min_obs_per_stratum: 5           # below this a stratum reports a null (never a forced fit)
+  control_vif_max: 5.0             # drop near-collinear controls above this VIF (never the primary; = envelope.vif_max)
+  utilization_percentiles: [0.05, 0.5, 0.95]  # percentiles summarising the utilization u distribution
 
 # --------------------------------------------------------------------------- #
 # Phase 5 — Validation
@@ -203,8 +214,15 @@ validate:
   baseline: controls_only          # compare against a controls-only baseline
   permutation: true
   perm_reps: 1000                  # permutation reps (prereg sec8)
+  perm_tau: 0.9                    # tau at which the permutation null is computed
+  perm_seed_offset: 202            # permutation RNG seed = config seed + offset (config-driven)
   measurement_error_correction: icc_attenuation  # divide slope by reliability (prereg sec8)
+  measurement_error_feature: env_vmax  # feature whose ICC drives the attenuation correction
+  min_repeats_for_sensitivity: 2   # thin-repeat threshold (drop_thin_repeats sensitivity)
   sensitivity: [alt_quantiles, drop_thin_repeats, exclude_optouts, margin_grid]  # prereg sec8
+  sensitivity_alt_quantiles: [0.5, 0.8, 0.95]   # alt_quantiles sensitivity ladder
+  sensitivity_margin_grid: [0.0, 0.01, 0.02, 0.05]  # exceedance margin grid (margin_grid sensitivity)
+  optout_fields: [forty, ten_yd_split, combine_height, combine_weight]  # exclude_optouts fields
 
 # --------------------------------------------------------------------------- #
 # Deliverables / sample discipline

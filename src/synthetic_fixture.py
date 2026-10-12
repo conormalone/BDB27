@@ -260,6 +260,32 @@ def build_fixture(
                 )
             )
 
+    # ---------- Prospect identity (`players.csv`; schema-compliant; NO rng draws) ----------
+    # Deterministic per index so regeneration never perturbs the other files; supplies the
+    # Combine-era controls `age` (draft_year - birth_year) and `draft_position` (round tier,
+    # with `NA` -> the explicit `undrafted` level).
+    pl_rows: list[dict] = []
+    for pi in range(n_players):
+        age_at_combine = 21 + (pi % 4)              # 21..24
+        birth_year = int(draft_year[pi]) - age_at_combine
+        drafted = (pi % 3 != 0)                     # every 3rd prospect undrafted (explicit level)
+        rnd = (pi % 5) + 1 if drafted else None
+        pick = (pi % 32) + 1 if drafted else None
+        overall = ((rnd - 1) * 32 + pick) if drafted else None
+        pl_rows.append(dict(
+            nfl_id=int(nfl_ids[pi]),
+            display_name=f"Synthetic Prospect {pi:02d}",
+            draft_year=int(draft_year[pi]),
+            nfl_position=positions[pi],
+            birth_date=f"{birth_year}-04-15",
+            college_name="SYN University",
+            college_conference="SYN",
+            draft_round=(rnd if drafted else "NA"),
+            draft_pick_within_round=(pick if drafted else "NA"),
+            draft_overall_pick=(overall if drafted else "NA"),
+        ))
+    players = pd.DataFrame(pl_rows)
+
     games = pd.DataFrame(
         [dict(game_id=2025123400 + pl, game_key=90000 + pl, season=2025,
               season_type="REG", week=pl + 1, home_team_abbr="SYN", visitor_team_abbr="OPP")
@@ -277,12 +303,14 @@ def build_fixture(
         "game_tracking": out_dir / "game_tracking.csv",
         "player_play": out_dir / "player_play.csv",
         "games": out_dir / "games.csv",
+        "players": out_dir / "players.csv",
     }
     ct.to_csv(paths["combine_tracking"], index=False)
     cr.to_csv(paths["combine_results"], index=False)
     gt.to_csv(paths["game_tracking"], index=False)
     pp.to_csv(paths["player_play"], index=False)
     games.to_csv(paths["games"], index=False)
+    players.to_csv(paths["players"], index=False)
     return paths
 
 

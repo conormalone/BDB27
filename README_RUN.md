@@ -9,9 +9,9 @@
 > **Status:** Phase 0 **done**; **Phase 1 audit** implemented (D27); **pre-registration FROZEN** + freeze gate
 > implemented (D28); **Phase 2 Combine envelope implemented and run** (`src/02_combine_envelope.py`, D29);
 > **Phase 3a `00_thresholds`** and **Phase 3b `03_game_demand`** implemented and exercised on the synthetic
-> fixture (D30) — both are game-side, so their real `--mode full` run still needs the full tracking files.
-> The remaining stages (`04_models`, `05_validate`) are **not implemented yet**. See `notes/decisions.md`
-> for D27–D30.
+> fixture (D30); **Phase 4 `04_models`** and **Phase 5 `05_validate`** implemented and exercised on the
+> synthetic fixture (D31). The whole game-side pipeline is game-side, so every real `--mode full` run still
+> needs the full tracking files (`PENDING FULL RUN`). See `notes/decisions.md` for D27–D31.
 
 ## 1. Environment (ARM64 Pi / x86 Linux / Windows laptop)
 
@@ -59,13 +59,19 @@ python src/03_game_demand.py --mode sample
 python src/03_game_demand.py --synthetic --synthetic-regime binding   # or: null
 python src/03_game_demand.py --mode full         # needs the full game files
 
-# Phase 4 models, Phase 5 validation (full data only)
-python src/04_models.py --mode full
-python src/05_validate.py --mode full
+# Phase 4 models — consumes thresholds(FULL)+ceiling+efforts; game-side gated (freeze + audit go/no-go)
+python src/04_models.py --mode full          # needs the full game files
+python src/04_models.py --synthetic --synthetic-regime binding   # or: null (not a finding)
 
-# Phase 3 tests (no pytest needed)
+# Phase 5 validation — CV vs controls-only baseline; permutation; icc_attenuation; sensitivity
+python src/05_validate.py --mode full        # needs the full game files
+python src/05_validate.py --synthetic --synthetic-regime binding # or: null (not a finding)
+
+# Phase 3/4/5 tests (no pytest needed)
 python src/tests/test_thresholds.py
 python src/tests/test_game_demand.py
+python src/tests/test_models.py
+python src/tests/test_validate.py
 ```
 
 `--force` ignores stage checkpoints (stages otherwise skip finished work). Logs of wall time + peak RAM per

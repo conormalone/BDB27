@@ -1,0 +1,9 @@
+nfl_id,display_name,draft_year,nfl_position,birth_date,college_name,college_conference,draft_round,draft_pick_within_round,draft_overall_pick
+900001,Synthetic Prospect 00,2025,WR,2004-04-15,SYN University,SYN,NA,NA,NA
+900002,Synthetic Prospect 01,2025,WR,2003-04-15,SYN University,SYN,2,2,34
+900003,Synthetic Prospect 02,2025,WR,2002-04-15,SYN University,SYN,3,3,67
+900004,Synthetic Prospect 03,2025,WR,2001-04-15,SYN University,SYN,NA,NA,NA
+900005,Synthetic Prospect 04,2025,WR,2004-04-15,SYN University,SYN,5,5,133
+900006,Synthetic Prospect 05,2025,TE,2003-04-15,SYN University,SYN,1,6,6
+900007,Synthetic Prospect 06,2025,TE,2002-04-15,SYN University,SYN,NA,NA,NA
+900008,Synthetic Prospect 07,2025,TE,2001-04-15,SYN University,SYN,3,8,72

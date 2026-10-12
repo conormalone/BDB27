@@ -258,6 +258,62 @@ def load_ceilings(envelope_csv: Path, speed_col: str, accel_col: str) -> dict[in
     return out
 
 
+def combine_attempt_env(con, ct_paths: Sequence[Path] | Path, cfg: dict[str, Any]) -> dict[int, dict]:
+    """Per-player per-attempt Combine envelope values (straight-line drill).
+
+    Returns ``{nfl_id: {"vmax": [per-attempt env_vmax], "a0": [...], "n_attempts": int}}`` using the
+    shared Phase-2 fitter (``combine_features.fit_envelope``). Used by Phase-5 for the feature
+    reliability (ICC) and the thin-repeat sensitivity — never a finding on its own.
+    """
+    env = cfg["envelope"]
+    fit_ctx = env["fit"]
+    drills = env["fit_drills"]
+    drills = drills if isinstance(drills, list) else [drills]
+    dlist = ",".join(f"'{d}'" for d in drills)
+    arr = con.execute(f"""
+        SELECT nfl_id, event_id, x, y,
+               (epoch_ms(time) - min(epoch_ms(time)) OVER (PARTITION BY event_id)) / 1000.0 AS t
+        FROM {pq_list(ct_paths)}
+        WHERE entity_type = 'PLAYER' AND drill_type IN ({dlist})
+        ORDER BY nfl_id, event_id, t
+    """).fetchnumpy()
+
+    def _s(v):
+        return v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
+
+    per: dict[int, dict[str, list[float]]] = {}
+    n = len(arr["nfl_id"])
+    key, cur = None, None
+
+    def flush(k, c):
+        if c is None or len(c["x"]) < 2:
+            return
+        nid = int(k)
+        x = np.asarray(c["x"], float); y = np.asarray(c["y"], float); t = np.asarray(c["t"], float)
+        v, _ = cf._speed_path(x, y, t)
+        onset = float(fit_ctx["onset_speed_yds"])
+        idx = np.where(v >= onset)[0]
+        i0 = int(idx[0]) if len(idx) else 0
+        vmax, _tau, a0 = cf.fit_envelope(t - t[i0], v, cfg)
+        d = per.setdefault(nid, {"vmax": [], "a0": []})
+        d["vmax"].append(float(vmax) if np.isfinite(vmax) else float("nan"))
+        d["a0"].append(float(a0) if np.isfinite(a0) else float("nan"))
+
+    for i in range(n):
+        nid = int(arr["nfl_id"][i])
+        ev = _s(arr["event_id"][i])
+        if (nid, ev) != key:
+            flush(key[0] if key else None, cur)
+            key, cur = (nid, ev), {"x": [], "y": [], "t": []}
+        cur["x"].append(float(arr["x"][i]))
+        cur["y"].append(float(arr["y"][i]))
+        cur["t"].append(float(arr["t"][i]))
+    if key is not None:
+        flush(key[0], cur)
+
+    return {nid: {"vmax": d["vmax"], "a0": d["a0"], "n_attempts": len(d["vmax"])} for nid, d in per.items()}
+
+
 def combine_ceilings(con, ct_paths: Sequence[Path] | Path, cfg: dict[str, Any]) -> dict[int, dict[str, float]]:
     """Per-player Combine ceiling computed with the shared Phase-2 fitter (fixture path).
 

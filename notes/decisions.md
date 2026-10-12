@@ -199,3 +199,66 @@ PM+Coder+Reviewer+Validator), on the committed synthetic fixture, with **no froz
 
 **Evidence.** `src/{game_features,00_thresholds,03_game_demand}.py`, `src/tests/{test_thresholds,test_game_demand}.py`,
    `config.yaml`, `outputs/thresholds.json`, `outputs/game/synthetic/{binding,null}/*`, `outputs/run_log.csv`.
+
+---
+
+## D31 — Cycle 4: Phase 4 `04_models` + Phase 5 `05_validate` · 2026-10-12
+**Decision.** Built the last two stages in one session (single-session PM+Coder+Reviewer+Validator), on the
+committed synthetic fixture, **with no frozen value changed**.
+
+1. **`src/model_features.py` (new shared module).** Quantile-regression plumbing: per-player covariates
+   (`age` = `draft_year − birth_year`, `bmi` = `models.bmi_constant`·wt/ht², `draft_position` = draft round
+   tier with `undrafted` explicit), a config-driven **design matrix** (`[const, primary, controls]`; numeric
+   vs category-like controls auto-detected; **rank- and VIF-pruning of near-collinear controls — never the
+   primary**), a statsmodels `QuantReg` fit, a **player-clustered bootstrap**, the proper **pinball loss**,
+   and deterministic player-grouped folds.
+2. **`src/04_models.py` (Phase 4).** Reads the Phase-3 `efforts.csv` (effort-level, one row per route-snap
+   effort) + Phase-2/Combine covariates; models in-game effort speed on the Combine ceiling
+   (`models.primary_feature=env_vmax`) at the frozen τ ladder (`[0.5,0.75,0.9,0.99]`), **pooled vs WR/TE**,
+   **with/without draft**, **player-clustered bootstrap** (`models.bootstrap_reps`, seed = config `seed` +
+   `bootstrap_seed_offset`); reports the **exceedance rate** and **utilization `u`** and applies the
+   pre-declared ordered **fallback chain** (`models.fallbacks`), logging every firing. Outputs
+   `model_coefficients.csv`, `exceedance_utilization.csv`, `fallbacks_fired.csv`, `SUMMARY.{md,json}` — all
+   `provenance`-first.
+3. **`src/05_validate.py` (Phase 5).** **player-grouped CV** (`validate.cv_folds`, seed `cv_seed`) of the
+   model vs a **controls-only baseline** scored by **pinball loss** (mean + robust median over folds); a
+   player-level **permutation** null (`perm_reps`, `perm_tau`); **`icc_attenuation`** measurement-error
+   correction (slope ÷ reliability, reliability from the Phase-2 selection table or recomputed from the
+   Combine tracking); and the pre-declared **sensitivity** analyses (`alt_quantiles`, `drop_thin_repeats`,
+   `exclude_optouts`, `margin_grid`), plus a **power note** and **limitations**. Outputs `cv_results.csv`,
+   `permutation.csv`, `measurement_error.csv`, `sensitivity.csv`, `SUMMARY.{md,json}`.
+4. **Fixture exercise (NOT a finding).** On the committed synthetic fixture the planted ceiling is recovered
+   end-to-end: **binding** → exceedance **0.109** (planted 0.10), verdict `binding`, utilization `u` median
+   **0.93** (<1); **null** → exceedance **1.00**, verdict `not_binding_use_utilization`, `u` median **1.22**.
+   The thin fixture (8 players) is under-powered for a *controlled* quantile model, so the fallback chain
+   fires (e.g. pooled → `report_null`, extreme tail → `adjacent_tau_report`, per-position → `pool_positions`)
+   and nulls the reported estimate — exactly the prereg §7 behaviour; CV median improvement is small and the
+   mean is dominated by one exploding fold (fixture artefact, not a result).
+5. **New config keys** (`models.{response,primary_feature,bmi_constant,fit_max_iter,fit_max_iter_retry,
+   fit_p_tol,bootstrap_ci,min_obs_per_stratum,control_vif_max,utilization_percentiles}`;
+   `validate.{perm_tau,perm_seed_offset,measurement_error_feature,min_repeats_for_sensitivity,
+   sensitivity_alt_quantiles,sensitivity_margin_grid,optout_fields}`) — all config-driven, no magic numbers;
+   the frozen pre-registration values are untouched.
+6. **Fixture extended.** `src/synthetic_fixture.py` now also emits a schema-compliant `players.csv`
+   (identity + `birth_date` + `draft_round`) so `age`/`draft_position` are exercised; deterministic, no rng
+   draws before the existing files (the committed `game_tracking.csv` is byte-identical).
+
+**Rejected alternative.** Restricting the Phase-4 model to *eligible* players' top-k efforts (prereg §2) was
+rejected for the model sample: on the 8-player fixture **no** player is eligible (8 route snaps < 100), so the
+model would be empty and could not be exercised end-to-end. The **primary sample is effort-level over all
+route-snap efforts** (the natural reading of "effort-level"), with eligibility reported; the fixed-denominator
+top-k tail remains a Phase-3 descriptive summary. Documented in `notes/limitations.md`.
+
+**Tests.** `src/tests/test_models.py` (9) and `src/tests/test_validate.py` (9) added; **53/53** across
+`test_audit`(5)+`test_gate`(8)+`test_envelope`(9)+`test_thresholds`(6)+`test_game_demand`(7)+`test_models`(9)
++`test_validate`(9) all green. Covers planted-ceiling recovery **and** null reporting, the fallback chain
+(fires + nulls the reported estimate), `provenance`-first schema, the full-run freeze gate, the
+non-`FULL`-thresholds blocker, the sample placeholder, permutation p-value validity, the attenuation
+identity, all four sensitivity analyses, and determinism.
+
+**Remaining.** The **real** Phases 4–5 `--mode full` runs still need `game_tracking_{2023,24,25}.csv`
+(absent on this Pi) — `PENDING FULL RUN` (`notes/pending_full_run.md` P6/P7). **No active blockers.**
+
+**Evidence.** `src/{model_features,04_models,05_validate,game_features,synthetic_fixture}.py`,
+`src/tests/{test_models,test_validate}.py`, `config.yaml`, `fixtures/synthetic/*/players.csv`,
+`outputs/{models,validate}/synthetic/{binding,null}/*`, `outputs/run_log.csv`.

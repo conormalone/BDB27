@@ -3,8 +3,13 @@
 **Status: 0 ACTIVE.** Per `TASK.md`, a blocker stops work and must be written here. **Prior
 (combine-fatigue) blockers B1–B7 are archived at git tag `archive/combine-fatigue-v1`** (HEAD `fdc794c`).
 
-As of **2026-10-12 (Cycle 3)** there are **no active blockers**. `00_thresholds` and `03_game_demand`
-are now implemented and tested on the synthetic fixture (D30); their real `--mode full` execution remains
+As of **2026-10-12 (Cycle 4)** there are **no active blockers**. `04_models` and `05_validate` are now
+implemented and tested on the synthetic fixture (D31), completing the game-side pipeline; their real
+`--mode full` execution remains **data-blocked** by watch-item 3 below (the full game-tracking files are
+absent on this Pi).
+
+As of **2026-10-12 (Cycle 3)** there were **no active blockers**. `00_thresholds` and `03_game_demand`
+were implemented and tested on the synthetic fixture (D30); their real `--mode full` execution remained
 **data-blocked** by watch-item 3 below (the full game-tracking files are absent on this Pi).
 
 As of **2026-10-12 (Cycle 2)** there were **no active blockers**. The pre-registration blocker that gated the

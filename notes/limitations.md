@@ -78,3 +78,29 @@ archived at git tag `archive/combine-fatigue-v1`.
 15. **Line-count ≠ record-count for `player_play.csv`.** 11,234 quoted `play_description` fields contain
     embedded newlines; `wc -l` (327,019) over-counts the true 314,197 records. *Mitigation:* never size or
     count this file by lines; use a real CSV parser / DuckDB (audit-corrected `schema.md`).
+
+## Modelling & validation (Phases 4–5, D31 2026-10-12)
+
+16. **The Phase-4 unit of analysis is the in-game effort, over *all* route-snap efforts** (not only the
+    fixed-denominator top-k tail). The pre-registered top-k/`route_snap_count` tail (§2) is a Phase-3
+    **descriptive** summary; conditioning the *regression* on it would discard every player on the synthetic
+    fixture (< 100 route snaps), making the estimate unexercisable. Quantile regression at the τ ladder is
+    what isolates the upper tail of effort speeds. *Mitigation:* eligibility is reported per player; the
+    fallback chain and the τ-ladder read govern any tail claim.
+17. **Player-level controls can be near-collinear with the ceiling on a small sample.** Numeric controls
+    (`age, height, weight, bmi`) and the ceiling both vary mainly *between* players; with few players the
+    controlled model is weakly identified and a slope can be unstable. *Mitigation:* redundant controls are
+    **VIF-pruned** (`models.control_vif_max`), never the primary feature; the **player-clustered bootstrap**
+    flags instability (`boot_se > |estimate|`) and the pre-declared fallback chain (`notes/prereg.md` §7)
+    **nulls** the reported estimate rather than forcing a number. On the committed 8-player fixture the pooled
+    fit is unstable and correctly reports a null; the real run (~144 WR/TE) is the powered analysis.
+18. **Measurement error attenuates the slope.** The ceiling is estimated from thin Combine repeats (dash
+    median 2 attempts, `env_vmax` ICC ≈ 0.64). *Mitigation:* the `icc_attenuation` correction (Phase 5) divides
+    the slope by the feature reliability; the uncorrected and corrected slopes are both reported.
+19. **Draft position is a categorical control** (`draft_position` = draft round tier `R1..R7`, with
+    `undrafted` an explicit level); the models are fit **with and without** it, as pre-registered.
+20. **Synthetic-fixture numbers are never findings.** The binding/null fixture satisfies the schema and
+    recovers a *planted* ceiling (binding exceedance 0.109 vs planted 0.10), but at 8 players it is
+    under-powered for a controlled quantile fit; its CV improvement (mean dominated by one exploding fold;
+    robust **median** improvement small) is a fixture artefact. All fixture outputs are stamped
+    `SYNTHETIC FIXTURE (not a finding)`.
