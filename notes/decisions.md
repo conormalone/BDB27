@@ -114,3 +114,35 @@ the freeze gate **passes** with the frozen prereg and **blocks** an unfrozen ske
 
 ---
 
+
+## D29 — Cycle 2b: finish the freeze gate + Phase 2 Combine envelope · 2026-10-12
+**Decision.** Resumed the **stranded Cycle-2 run** and completed it in one session (single-session
+PM+Coder+Reviewer):
+
+1. **Freeze gate wired + tested.** `src/gate.py` (freeze-only for Combine-side; freeze **+** audit go/no-go for
+game-side) is now called by `01_audit` (full) and `02_combine_envelope` (full). `src/tests/test_gate.py`
+(8 suites) proves it **passes** with the frozen prereg and **blocks** an unfrozen/missing prereg, a null
+required key, and a non-passing audit decision, while sample mode is never gated.
+2. **Phase 2 built + run for real.** New `src/02_combine_envelope.py` + shared `src/combine_features.py`:
+per-attempt kinematics recomputed from `x,y`; envelope `v(t)=vmax(1-e^{-t/tau})` on `FORTY_YARD_DASH`
+(`a0=vmax/tau`); model-free split / speed-at-time features; cut metrics (`entry_speed`, `exit_speed`,
+`cod_deficit`) for the cutting drills; two-stage empirical-Bayes **hierarchical shrinkage**; **<=3 features by
+ICC then VIF**; per-player table **with SEs**. Config-driven, DuckDB-only (no pandas), run-logged,
+checkpointed. **Findings (FULL; Combine file complete):** 418 dash players / 793 attempts (43 single-attempt);
+positions {WR 94, TE 34, DB 102, DL 93, OL 95}. **Retained = `peak_speed`, `speed_at_20yd`, `env_vmax`** — the
+pre-declared set (prereg §3). ICC reproduces the audit exactly (`peak_speed` .9746, `speed_at_20yd` .9694,
+`speed_at_10yd` .8832, `env_vmax` .6425 retained; `env_tau` .0968, `env_a0` .3373 dropped). Residual VIF>5
+among retained: `peak_speed`, `speed_at_20yd` (flagged). WR shrunk ceilings: vmax median **11.67**
+(10.79–13.21), tau 1.36, a0 8.51; TE: vmax median **10.78**, tau 1.31.
+3. **Fit bounds kept audit-consistent.** The envelope bounds stay `vmax∈[0,30]`, `tau∈[0.05,10]` — the bounds
+behind the audit evidence cited in prereg §4 — so the freeze-consistent ICC/selection is reproduced. The wide
+`tau` bound admits a few noisy/thin attempts whose 2-parameter fit extrapolates implausibly (raw ceiling up to
+~18 yd/s): these are **flagged** (`env_vmax_implausible`, raw ceiling > `envelope.flag_vmax_over_peak`(1.5)x
+mean peak → **2 players**) rather than silently dropped (prereg §3.4 pattern); see `notes/limitations.md`.
+*Rejected alternative:* a physically-tighter fit bound tames the outliers but **flips the VIF pruning to drop
+`env_vmax`**, contradicting the frozen expected set — a HARKing risk — so the pre-registered configuration was
+kept. Also refactored `01_audit._features_for_attempt` to use `combine_features.fit_envelope` (one config-driven
+fitter, removing hardcoded bounds). **No frozen prereg value changed.**
+
+**Evidence.** `src/{gate,combine_features,02_combine_envelope}.py`, `src/tests/{test_gate,test_envelope}.py`
+(8+9 suites pass; audit 5/5 regression), `outputs/envelope/*` + `SUMMARY.md`, `outputs/run_log.csv`, `config.yaml`.

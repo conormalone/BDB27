@@ -35,6 +35,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
+import combine_features as cf
+import gate
 
 PENDING = "PENDING FULL RUN"
 PROV_SYNTH = "SYNTHETIC FIXTURE (not a finding)"
@@ -568,22 +570,9 @@ def _features_for_attempt(x, y, s, a, t, cfg) -> dict[str, float]:
     else:
         feats["min_speed_after_peak"] = np.nan
         feats["speed_deficit_after_peak"] = np.nan
-    # exponential envelope fit v(t)=vmax*(1-exp(-t/tau)) -> vmax, tau, a0=vmax/tau
-    try:
-        from scipy.optimize import curve_fit
-
-        pos_m = v > 0.05
-        if pos_m.sum() >= 5:
-            popt, _ = curve_fit(lambda tt, vmax, tau: vmax * (1 - np.exp(-tt / tau)),
-                                t_rel[pos_m], v[pos_m], p0=[float(max(v)), 0.8],
-                                bounds=([0.0, 0.05], [30.0, 10.0]), maxfev=5000)
-            feats["env_vmax"] = float(popt[0])
-            feats["env_tau"] = float(popt[1])
-            feats["env_a0"] = float(popt[0] / popt[1])
-        else:
-            feats["env_vmax"] = feats["env_tau"] = feats["env_a0"] = np.nan
-    except Exception:
-        feats["env_vmax"] = feats["env_tau"] = feats["env_a0"] = np.nan
+    # exponential envelope fit v(t)=vmax*(1-exp(-t/tau)) -> vmax, tau, a0=vmax/tau.
+    # Single config-driven fitter shared with Phase 2 (src/combine_features.py; no magic numbers).
+    feats["env_vmax"], feats["env_tau"], feats["env_a0"] = cf.fit_envelope(t_rel, v, cfg)
     return feats
 
 
@@ -840,6 +829,10 @@ def main() -> None:
 
     audit_dir = common.resolve(cfg, "outputs", cfg["audit"]["out_subdir"])
     audit_dir.mkdir(parents=True, exist_ok=True)
+
+    # Pre-registration freeze gate: a --mode full audit may not proceed on an unfrozen/missing prereg.
+    # (The audit itself produces the go/no-go decision, so only the freeze is required here.)
+    gate.enforce(cfg, mode, "01_audit", requires_game_side=False, logger=log)
 
     prov = PROV_SYNTH if args.synthetic else common.provenance(cfg, mode)
     ctx: dict[str, Any] = dict(cfg=cfg, mode=mode, prov=prov, con=con, logger=log, audit_dir=audit_dir)

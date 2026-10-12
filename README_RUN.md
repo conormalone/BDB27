@@ -6,8 +6,10 @@
 > to Parquet once (checkpointed) and queried with DuckDB; **no full CSV is loaded into pandas**. Every
 > sample output is stamped `UNVALIDATED SAMPLE OUTPUT`.
 >
-> **Status:** Phase 0 **done**; **Phase 1 audit implemented** (`src/01_audit.py`, run sample 2026-10-11).
-> Stages 02–05 are **not implemented yet**. See `notes/decisions.md` D27 for the audit findings.
+> **Status:** Phase 0 **done**; **Phase 1 audit** implemented (D27); **pre-registration FROZEN** + freeze gate
+> implemented (D28); **Phase 2 Combine envelope implemented and run** (`src/02_combine_envelope.py`, D29).
+> The remaining stages (`00_thresholds`, `03_game_demand`, `04_models`, `05_validate`) are **not implemented
+> yet** — they are game-side and need the full tracking files. See `notes/decisions.md` for D27/D28/D29.
 
 ## 1. Environment (ARM64 Pi / x86 Linux / Windows laptop)
 

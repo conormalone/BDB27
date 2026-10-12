@@ -35,6 +35,15 @@ archived at git tag `archive/combine-fatigue-v1`.
    (`time_to_10yd` 0.216, `time_to_20yd` 0.403) and cutting-drill metrics are unreliable (≈0.1–0.3).
    Because an x/y-derived peak is a **max over frames**, it is inflated by per-frame position noise —
    relevant to any ceiling/effort ratio (motivates the pre-registered margin in `prereg.md` §6).
+   - **Phase-2 envelope outliers (D29, 2026-10-12).** The 2-parameter envelope is unidentifiable on a few
+   noisy/thin 40-yd-dash attempts (slow start / tracking noise): the wide `tau` bound (0.05–10 s, kept
+   audit-consistent with prereg §4) lets the fitted ceiling extrapolate to ~18 yd/s. Affects **2/418 players**
+   (flagged `env_vmax_implausible` in the per-player table: raw ceiling > 1.5x the player's mean peak).
+   Reported with SEs and treated as a noisy reference, not ground truth; a physically-tighter bound was
+   rejected because it flips the pre-registered VIF selection (D29).
+   - **Residual collinearity among retained features (D29).** `peak_speed` and `speed_at_20yd` remain
+   collinear (VIF ≈ 17 within the retained set) — one construct (raw speed) at two scales; flagged per
+   prereg §3.4, not silently retained as independent evidence.
 
 ## Design & identification
 
