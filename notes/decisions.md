@@ -262,3 +262,43 @@ identity, all four sensitivity analyses, and determinism.
 **Evidence.** `src/{model_features,04_models,05_validate,game_features,synthetic_fixture}.py`,
 `src/tests/{test_models,test_validate}.py`, `config.yaml`, `fixtures/synthetic/*/players.csv`,
 `outputs/{models,validate}/synthetic/{binding,null}/*`, `outputs/run_log.csv`.
+
+---
+
+## D32 — Cycle 5: runnable deliverable notebook (`notebooks/bdb27_full_run.ipynb`) · 2026-10-12
+**Decision.** Built the **runnable deliverable notebook** — the point-and-click interface for the whole
+pipeline. The user sets `MODE` (`sample`/`full`) and — only if needed — `DATA_DIR` in the first code cell,
+then **Run All**; no terminal is required.
+
+1. **Thin notebook, engine in `src/`.** The notebook imports the existing engine (`src/common.py`) for
+   config/paths and drives each stage **through its own entry point** (`importlib` + `mod.main()` with the
+   right `sys.argv`), so every stage's `--mode`/`--force`/checkpoint behaviour **and** the pre-registration
+   freeze gate (`src/gate.py`) apply unchanged. No analysis logic is duplicated in the notebook.
+2. **Order.** `01_audit → 02_combine_envelope → 00_thresholds → 03_game_demand → 04_models → 05_validate`,
+   then the synthetic-fixture demonstration of the game-side path for the `binding` **and** `null` regimes.
+3. **Cross-platform + Kaggle.** `pathlib` only, no bash-only calls; auto-detects the dataset under
+   `/kaggle/input/…` (else `data/raw`); writes a scratch run-config (`bdb27_run/config.yaml`) that
+   overrides **only** `paths.raw`, so the repo `config.yaml` is never edited and nothing is written outside
+   `outputs/` plus the `data/interim` Parquet cache. Memory discipline holds: the notebook never loads the
+   large tracking CSVs into pandas (the `src/` stages stream via Parquet + DuckDB).
+4. **Graceful degradation.** A stage that needs absent data is caught and reported `PENDING FULL RUN`
+   (game-side), never crashing. The notebook prints an honest per-stage status read from each stage's own
+   outputs (placeholder `status`, `thresholds.json` provenance, `_DONE` mode). On this Pi (no full
+   `game_tracking_{2023,24,25}.csv`): all six stages run — `01_audit` → partial (game-side c/h/i pending),
+   `00/03/04/05` → `PENDING FULL RUN`; the synthetic demo completes both regimes.
+5. **≤5 writeup figures** rendered to `outputs/figures/` (and inline): (1) Combine envelope decay curves,
+   (2) ICC/VIF feature selection, (3) exceedance/utilization, (4) quantile slope vs τ, (5) validation
+   (player-grouped CV vs controls-only + measurement-error + permutation). Each carries a
+   Visualisation-Brief (`chart_type`, `data_source`, `columns_required`, `output_filename`) and its
+   provenance in the title. Game-side figures fall back to the labelled synthetic fixture until real
+   full-run outputs exist.
+6. **Figures committed.** The PNGs are **deterministic** (byte-identical across independent runs; verified
+   by sha256), so the 5 figures + `.gitkeep` are committed via a narrow `.gitignore` exception — **no data**.
+
+**Verification.** Notebook executed top-to-bottom via `jupyter nbconvert --execute` (sample mode,
+`RUN_SYNTHETIC_DEMO=True`): **24/24 cells, 0 errors**; all 6 sample stages + 4×2 synthetic stages `OK`;
+**5/5 figures** written, non-empty, byte-identical on re-run. `src/tests/*` unchanged: **53/53 green**. No
+frozen value changed; no data committed.
+
+**Evidence.** `notebooks/bdb27_full_run.ipynb`, `notebooks/README.md`, `README_RUN.md`, `.gitignore`,
+`outputs/figures/fig{1..5}_*.png`.

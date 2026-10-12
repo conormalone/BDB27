@@ -10,6 +10,11 @@ data/*
 outputs/*
 !outputs/.gitkeep
 
+# --- Writeup figures: the ≤5 deliverable figures are committed (small, deterministic PNGs; no data) ---
+!outputs/figures/
+!outputs/figures/*.png
+!outputs/figures/.gitkeep
+
 # --- Python ---
 __pycache__/
 *.py[cod]

@@ -10,8 +10,9 @@
 > implemented (D28); **Phase 2 Combine envelope implemented and run** (`src/02_combine_envelope.py`, D29);
 > **Phase 3a `00_thresholds`** and **Phase 3b `03_game_demand`** implemented and exercised on the synthetic
 > fixture (D30); **Phase 4 `04_models`** and **Phase 5 `05_validate`** implemented and exercised on the
-> synthetic fixture (D31). The whole game-side pipeline is game-side, so every real `--mode full` run still
-> needs the full tracking files (`PENDING FULL RUN`). See `notes/decisions.md` for D27–D31.
+> synthetic fixture (D31); **deliverable notebook** `notebooks/bdb27_full_run.ipynb` built (D32). The whole
+> game-side pipeline is game-side, so every real `--mode full` run still needs the full tracking files
+> (`PENDING FULL RUN`). See `notes/decisions.md` for D27–D32.
 
 ## 1. Environment (ARM64 Pi / x86 Linux / Windows laptop)
 
@@ -81,12 +82,22 @@ stage append to `outputs/run_log.csv`.
 filled, not the skeleton) and the audit go/no-go gate passes (matched WR count, route snaps/player, missing
 Combine fields, ICC). Otherwise → `notes/blockers.md`.
 
-## 4. Kaggle notebook deliverable
+## 4. Notebook deliverable (primary interface — no terminal needed)
 
-The competition requires a **public Kaggle notebook + writeup** (≤2,000 words, ≤5 figures). The notebook
-attaches the 2027 BDB dataset, runs the same `src/` stages end-to-end, and renders the writeup figures.
-Pre-full-run it renders `UNVALIDATED` placeholders. (The notebook build is a later cycle; `notebooks/`
-holds it.)
+`notebooks/bdb27_full_run.ipynb` is the runnable deliverable and runs the same `src/` engine end-to-end.
+Open it, set `MODE` (`sample` | `full`) and — only if the data is elsewhere — `DATA_DIR`, then **Run All**:
+
+- drives the stages in the frozen order `01_audit → 02_combine_envelope → 00_thresholds → 03_game_demand →
+  04_models → 05_validate` (each through its own entry point, so `--mode` / `--force` / checkpoints and the
+  pre-registration freeze gate all apply);
+- cross-platform (ARM64 Pi / Windows / macOS) and **Kaggle-ready** (auto-detects the dataset under
+  `/kaggle/input/…`, otherwise `data/raw`);
+- renders the ≤5 writeup figures into `outputs/figures/` and shows them inline;
+- with only partial data, runs everything it can and reports the game-side stages `PENDING FULL RUN`,
+  demonstrating the game-side path on the committed synthetic fixture (`binding` + `null`).
+
+Pre-full-run it renders `UNVALIDATED` placeholders. The `python src/…` commands in §3 are exactly what the
+notebook runs for you (kept for CI / power users).
 
 ## 5. Outputs
 
