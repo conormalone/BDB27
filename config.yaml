@@ -151,14 +151,26 @@ game:
   # --- effort sampling ---
   top_k_efforts: 5                 # top-k efforts per fixed route-snap count (prereg sec2)
   route_snap_count: 100            # the fixed route-snap denominator (prereg sec2)
+  top_k_metric: speed              # metric ranking top-k efforts within a player (speed | accel)
   # --- per-effort features ---
   effort_metrics: [speed, accel]   # per-effort speed/accel (yard-space)
   envelope_fraction: max_over_ceiling  # per-effort envelope fraction (effort / player ceiling)
+  # --- Phase-2 ceiling source (envelope fraction = effort / player ceiling) ---
+  ceiling:
+    source_subdir: envelope        # outputs/<source_subdir>/
+    file: per_player_envelope.csv  # per-player Phase-2 ceiling table
+    speed_column: env_vmax         # ceiling speed (yd/s)
+    accel_column: env_a0           # ceiling initial accel (yd/s^2)
   # --- effort cut-offs (produced by 00_thresholds.py; never derived from the sample) ---
   thresholds:
     method: percentile             # percentile | fixed
     high_speed_percentile: 0.90    # (prereg sec8)
     accel_percentile: 0.90         # (prereg sec8)
+    histogram:                     # streamed percentile accumulation (memory-bounded)
+      speed_bin_yds: 0.05
+      accel_bin_yds2: 0.05
+      max_speed_yds: 40.0
+      max_accel_yds2: 100.0
   sample_placeholders:
     high_speed_threshold_yds: 8.0  # a-priori placeholder ONLY (never set from the sample; prereg sec8)
     accel_threshold_yds2: 3.0      # a-priori placeholder ONLY (never set from the sample; prereg sec8)

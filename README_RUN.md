@@ -7,9 +7,11 @@
 > sample output is stamped `UNVALIDATED SAMPLE OUTPUT`.
 >
 > **Status:** Phase 0 **done**; **Phase 1 audit** implemented (D27); **pre-registration FROZEN** + freeze gate
-> implemented (D28); **Phase 2 Combine envelope implemented and run** (`src/02_combine_envelope.py`, D29).
-> The remaining stages (`00_thresholds`, `03_game_demand`, `04_models`, `05_validate`) are **not implemented
-> yet** — they are game-side and need the full tracking files. See `notes/decisions.md` for D27/D28/D29.
+> implemented (D28); **Phase 2 Combine envelope implemented and run** (`src/02_combine_envelope.py`, D29);
+> **Phase 3a `00_thresholds`** and **Phase 3b `03_game_demand`** implemented and exercised on the synthetic
+> fixture (D30) — both are game-side, so their real `--mode full` run still needs the full tracking files.
+> The remaining stages (`04_models`, `05_validate`) are **not implemented yet**. See `notes/decisions.md`
+> for D27–D30.
 
 ## 1. Environment (ARM64 Pi / x86 Linux / Windows laptop)
 
@@ -48,11 +50,22 @@ python src/02_combine_envelope.py --mode sample --force   # rebuild ignoring the
 
 # Phase 3 thresholds — SAMPLE writes a-priori PLACEHOLDER values; FULL derives from full game data
 python src/00_thresholds.py --mode sample
+python src/00_thresholds.py --mode full          # derives; needs the full game files
+# exercise the derivation on the committed synthetic fixture (planted ceiling; NOT a finding)
+python src/00_thresholds.py --synthetic --synthetic-regime binding
 
-# Phase 3 game demand, Phase 4 models, Phase 5 validation (full data only)
-python src/03_game_demand.py --mode full
+# Phase 3 game demand — SAMPLE emits a labelled PENDING placeholder; FULL consumes thresholds(FULL)+ceiling
+python src/03_game_demand.py --mode sample
+python src/03_game_demand.py --synthetic --synthetic-regime binding   # or: null
+python src/03_game_demand.py --mode full         # needs the full game files
+
+# Phase 4 models, Phase 5 validation (full data only)
 python src/04_models.py --mode full
 python src/05_validate.py --mode full
+
+# Phase 3 tests (no pytest needed)
+python src/tests/test_thresholds.py
+python src/tests/test_game_demand.py
 ```
 
 `--force` ignores stage checkpoints (stages otherwise skip finished work). Logs of wall time + peak RAM per

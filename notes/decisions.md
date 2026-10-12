@@ -146,3 +146,56 @@ fitter, removing hardcoded bounds). **No frozen prereg value changed.**
 
 **Evidence.** `src/{gate,combine_features,02_combine_envelope}.py`, `src/tests/{test_gate,test_envelope}.py`
 (8+9 suites pass; audit 5/5 regression), `outputs/envelope/*` + `SUMMARY.md`, `outputs/run_log.csv`, `config.yaml`.
+
+---
+
+## D30 — Cycle 3: Phase 3a `00_thresholds` + Phase 3b `03_game_demand` · 2026-10-12
+**Decision.** Built the **first two game-side stages** in one session (single-session
+PM+Coder+Reviewer+Validator), on the committed synthetic fixture, with **no frozen value changed**.
+
+1. **`src/game_features.py` (new shared module).** x/y-derived per-play effort kinematics (speed =
+   step/dt, accel = d(speed)/dt; one streaming DuckDB aggregation — no full CSV in pandas), route-snap
+   extraction (`route_ran IS NOT NULL`; it is **categorical**, not a flag — schema §7/audit d), a fixed-
+   width **histogram percentile** (memory-bounded, one pass), the **top-k tie rule** (ties at the k-th
+   value kept — prereg §2), and the Combine-ceiling helpers. `x,y` are downcast to `REAL` in the frame
+   scan.
+2. **`src/00_thresholds.py`.** `--mode sample` writes **a-priori PLACEHOLDER** cut-offs from
+   `game.sample_placeholders` (8.0 yd/s, 3.0 yd/s²), provenance `PLACEHOLDER` (+ `label=UNVALIDATED SAMPLE
+   OUTPUT`), **never derived from the sample**; `--mode full` streams the game data, accumulates the
+   per-effort peak speed/accel histograms, and writes `outputs/thresholds.json` with provenance `FULL` at the
+   frozen percentiles (`game.thresholds.*_percentile=0.90`). `--synthetic` runs the identical derivation on
+   the fixture. Full mode is gated (`gate.enforce(..., requires_game_side=True)`) and writes a blocker on
+   zero efforts.
+3. **`src/03_game_demand.py`.** Consumes `thresholds.json` + the Phase-2 ceiling table
+   (`outputs/envelope/per_player_envelope.csv`, `env_vmax`/`env_a0`); per route snap it computes
+   speed/accel efforts and the **envelope fraction** `max_over_ceiling = effort speed ÷ ceiling`; it takes
+   the **top-`k=5` efforts per player** from the fixed `route_snap_count=100` denominator (ties kept;
+   players with <100 snaps flagged ineligible, reported not pooled), and writes `efforts.csv`,
+   `top_k_efforts.csv`, `player_summary.csv`, `thresholds_applied.csv`, `SUMMARY.{md,json}` — every table
+   `provenance`-first. Full mode additionally **blocks when the thresholds provenance is not `FULL`**
+   (`TASK.md` blocker) or the Phase-2 ceiling table is missing. Sample mode emits a labelled
+   `PENDING FULL RUN` placeholder (game demand is full-only).
+4. **Fixture exercise (NOT a finding).** On the committed synthetic fixture the planted ceiling is
+   recovered end-to-end: **binding** overall exceedance **0.109** (planted 0.10; per-effort envelope
+   fractions ≈ 0.80–1.12) vs **null 1.00**. Ceilings for the fixture come from the shared Phase-2 fitter
+   (`combine_features.fit_envelope`); a full run reads the committed Phase-2 file.
+5. **New config keys** (`game.top_k_metric`, `game.ceiling.*`, `game.thresholds.histogram.*`) — all
+   config-driven, no magic numbers; the frozen pre-registration values are untouched.
+
+**Rejected alternative.** Doing the per-game loop (one DuckDB query per `game_id`) was rejected: it makes
+   the full 3-season scan O(#games × table) (a full re-scan per game). One streaming per-play aggregation
+   (as `01_audit`'s `_game_effort_peaks` already does) reads the Parquet **once** and lets DuckDB spill;
+   the percentile is then a single histogram pass.
+
+**Tests.** `src/tests/test_thresholds.py` (5) and `src/tests/test_game_demand.py` (6) added; **33/33**
+   across `test_audit`(5)+`test_gate`(8)+`test_envelope`(9)+`test_thresholds`(5)+`test_game_demand`(6) all
+   green. Covers placeholder-vs-derived, histogram exactness, top-k ties, planted-ceiling binding **and**
+   null recovery, `provenance`-first schema, the full-run freeze gate, the non-`FULL`-thresholds blocker,
+   the sample placeholder, and determinism.
+
+**Remaining.** `04_models` / `05_validate` are a later cycle. The **real** Phase-3 `--mode full` run still
+   needs `game_tracking_{2023,24,25}.csv` (absent on this Pi) — `PENDING FULL RUN`
+   (`notes/pending_full_run.md` P4/P5). **No active blockers.**
+
+**Evidence.** `src/{game_features,00_thresholds,03_game_demand}.py`, `src/tests/{test_thresholds,test_game_demand}.py`,
+   `config.yaml`, `outputs/thresholds.json`, `outputs/game/synthetic/{binding,null}/*`, `outputs/run_log.csv`.

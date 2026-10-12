@@ -3,7 +3,11 @@
 **Status: 0 ACTIVE.** Per `TASK.md`, a blocker stops work and must be written here. **Prior
 (combine-fatigue) blockers B1–B7 are archived at git tag `archive/combine-fatigue-v1`** (HEAD `fdc794c`).
 
-As of **2026-10-12 (Cycle 2)** there are **no active blockers**. The pre-registration blocker that gated the
+As of **2026-10-12 (Cycle 3)** there are **no active blockers**. `00_thresholds` and `03_game_demand`
+are now implemented and tested on the synthetic fixture (D30); their real `--mode full` execution remains
+**data-blocked** by watch-item 3 below (the full game-tracking files are absent on this Pi).
+
+As of **2026-10-12 (Cycle 2)** there were **no active blockers**. The pre-registration blocker that gated the
 full run has been **resolved**: `notes/prereg.md` is **FROZEN** (Conor-approved values; `notes/decisions.md`
 D28) and the freeze gate (`src/gate.py`) now passes for `--mode full` of the Combine-side stage
 (`02_combine_envelope`). Remaining obstacles to a *whole-pipeline* full run are the **game-tracking files
