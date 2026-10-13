@@ -3,6 +3,9 @@
 Runnable, self-contained `.ipynb` files. The **competition deliverable is a public Kaggle notebook +
 writeup** (≤2,000 words, ≤5 figures); this folder holds that notebook.
 
+**Minimum supported Python 3.12** (Kaggle currently ships 3.13); pinned deps and the `../src/` engine
+require it.
+
 ## Deliverable notebook — `bdb27_full_run.ipynb`
 
 **The primary interface; no terminal needed.** Open it, set `MODE` (`sample` | `full`) and — only if the

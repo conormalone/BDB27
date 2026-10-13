@@ -1,4 +1,5 @@
 # BDB27 pinned dependencies — verified working on ARM64 (Raspberry Pi OS, Python 3.13)
+# Minimum supported Python 3.12 (numpy==2.5.3 / scipy require >=3.12; Kaggle currently ships 3.13).
 # and expected to work on x86_64 Linux/macOS. Install into a venv:
 #   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 #

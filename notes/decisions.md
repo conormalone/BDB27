@@ -333,3 +333,43 @@ both **NOTEBOOK_EXEC_OK, 0 errors**; the blocked run logged `-1.0` for all 14 st
 
 **Evidence.** `src/common.py`, `src/tests/test_common_portability.py`, `README_RUN.md`, `notebooks/README.md`.
 No data committed (`.gitignore` unchanged); no new runtime dependency (`requirements.txt` unchanged).
+
+---
+
+## D34 — Fix: PEP 701 f-string (backslash in expression) + version-portability guard · 2026-10-13
+_(Task labelled this `D33`; `D33` above is the same-day peak-RAM fix — next free id is `D34`.)_
+**Decision.** Fixed the import-time crash introduced in `eca046e`: `src/model_features.py` line 105 put an
+escaped quote inside an **f-string expression** —
+`f"{', '.join('\"%s\"' % f for f in cfg['validate']['optout_fields'])}"` — which is legal only on
+CPython >= 3.12 (PEP 701). On <= 3.11 it is a hard `SyntaxError` ("f-string expression part cannot include a
+backslash"), raised the moment `04_models.py` / `05_validate.py` import `model_features`.
+
+1. **Fix.** The quoted opt-out column list is precomputed **outside** the f-string into a local
+   `optout_cols = ", ".join('"%s"' % f for f in cfg["validate"]["optout_fields"])`, then interpolated
+   into the SELECT. No backslash and no reused-quote appears in any f-string expression. The built SQL is
+   **byte-identical** to the pre-fix expression (verified for representative non-empty, singleton, empty,
+   and the real `config.yaml` opt-out lists — same `sha256` on every case).
+2. **Sweep.** A `tokenize`-based scanner (`FSTRING_START/MIDDLE/END`, brace-depth inside the f-string)
+   checked every `.py`/`.ipynb` in the repo (excl. `.git/.venv/__pycache__/bdb27_run/outputs/data`):
+   **22 files (21 `.py` + 1 notebook), 0 remaining violations** — line 105 was the **only** hit, now fixed.
+   Tokenize is the **primary** detector; `ast.parse(feature_version=(3,11))` is only a coarse secondary
+   check and (documented limitation) does **not** catch backslash-in-f-string on a 3.13 host.
+3. **Declared minimum.** **Python 3.12** is now stated identically (`Python 3.12`) in `README_RUN.md`,
+   `requirements.txt`, and `notebooks/README.md`. Rationale: pinned `numpy==2.5.3` + `scipy` need >= 3.12;
+   `pyarrow` 26 / `pandas` 3.0.6 / `scikit-learn` 1.9.1 / `matplotlib` 3.11.2 need >= 3.11; Kaggle ships 3.13.
+4. **Guard.** New `src/tests/test_portability_fstrings.py` (no pytest): `scan_source()` flags (a) backslash
+   in an f-string expression, (b) same-quote reuse, (c) not parsing on 3.12 (`feature_version`); tests assert
+   the pre-fix line-105 text is flagged (RED), `f"{m["k"]}"` is flagged, the whole repo + notebooks are
+   **clean** (GREEN), and the three declared-`Python 3.12` files agree + interpreter >= 3.12. Tiny CLI:
+   `python src/tests/test_portability_fstrings.py --scan <path|->` (exit 1 on any violation).
+
+**Verification.** RED: `git show eca046e:src/model_features.py | python src/tests/test_portability_fstrings.py
+--scan -` → `1 violation(s): <stdin>:105: [a] backslash in f-string expression` (exit 1). GREEN: fixed tree +
+repo+notebooks → `0 violations`. Full suite **63/63 green** (58 existing + 5 new guard tests). Deliverable
+notebook executed top-to-bottom via `nbclient` (kernel `python3`, cwd `notebooks/`): **24/24 cells, 0 errors,
+334 s** (sample mode + synthetic demo; `PENDING FULL RUN` game-side as documented); 5/5 figures regenerated
+**byte-identical** to the committed PNGs.
+
+**Evidence.** `src/model_features.py`, `src/tests/test_portability_fstrings.py`, `README_RUN.md`,
+`requirements.txt`, `notebooks/README.md`. No data committed (`.gitignore` unchanged); no new runtime
+dependency (stdlib `tokenize`/`ast`/`json` only).

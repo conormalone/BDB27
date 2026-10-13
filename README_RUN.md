@@ -16,6 +16,8 @@
 
 ## 1. Environment (ARM64 Pi / x86 Linux / Windows laptop)
 
+**Minimum supported Python 3.12.** The pinned dependencies require it (`numpy==2.5.3` and `scipy` need >= 3.12; `pyarrow` 26 / `pandas` 3.0.6 / `scikit-learn` 1.9.1 / `matplotlib` 3.11.2 need >= 3.11), and the pipeline uses PEP 701 f-strings — so Python 3.12 is the floor. Kaggle currently ships 3.13.
+
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate

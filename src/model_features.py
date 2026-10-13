@@ -100,9 +100,13 @@ def covariate_table(cr_records: Sequence[dict], player_records: Sequence[dict], 
 
 def load_covariates(con, cr_path, players_path, cfg: dict) -> dict[int, dict]:
     """Query `combine_results` + `players` (Parquet) and return the covariate table."""
+    # Precompute the quoted opt-out column list OUTSIDE any f-string: the escaped-quote form
+    # (``'"%s"' % f``) inside an f-string expression is a hard SyntaxError on CPython <= 3.11
+    # ("f-string expression part cannot include a backslash"; PEP 701 lifted this only in 3.12).
+    optout_cols = ", ".join('"%s"' % f for f in cfg["validate"]["optout_fields"])
     cr = con.execute(
         f"SELECT nfl_id, combine_position, combine_height, combine_weight, "
-        f"{', '.join('\"%s\"' % f for f in cfg['validate']['optout_fields'])} "
+        f"{optout_cols} "
         f"FROM {common.pq(cr_path)}").fetchall()
     cols = ["nfl_id", "combine_position", "combine_height", "combine_weight"] + list(cfg["validate"]["optout_fields"])
     cr_records = [dict(zip(cols, row)) for row in cr]
