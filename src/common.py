@@ -15,11 +15,16 @@ from __future__ import annotations
 import csv
 import logging
 import os
-import resource
+import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Sequence
+
+try:  # POSIX-only stdlib module — it does not exist on Windows.
+    import resource as _resource
+except ImportError:  # pragma: no cover - platform dependent (raises on win32)
+    _resource = None
 
 import duckdb
 import numpy as np
@@ -76,9 +81,91 @@ def seed_everything(seed: int) -> None:
 # --------------------------------------------------------------------------- #
 # Peak RAM + wall time
 # --------------------------------------------------------------------------- #
+# Documented sentinel written to `peak_ram_mb` in run_log.csv when no portable
+# measurement is available (e.g. an exotic platform where neither the POSIX
+# `resource` API nor the Windows psapi fallback can be used). A stage must NEVER
+# fail because memory measurement is unavailable (TASK.md logging contract), so
+# this is recorded instead of raising. Negative => "unknown", distinguishable
+# from a genuine 0 MiB reading.
+RAM_UNKNOWN_MB: float = -1.0
+
+
+def _peak_ram_mb_posix() -> float | None:
+    """Peak RSS in MiB via POSIX ``getrusage``, or ``None`` if unavailable.
+
+    ``ru_maxrss`` units are platform-specific: **KiB on Linux**, **bytes on
+    macOS/BSD**; both are normalised to MiB here.
+    """
+    if _resource is None:
+        return None
+    try:
+        raw = float(_resource.getrusage(_resource.RUSAGE_SELF).ru_maxrss)
+    except Exception:  # noqa: BLE001 - never let measurement kill a stage
+        return None
+    if sys.platform == "darwin":  # macOS/BSD report bytes
+        return raw / (1024.0 * 1024.0)
+    return raw / 1024.0  # Linux/other POSIX report KiB
+
+
+def _peak_ram_mb_windows() -> float | None:
+    """Peak working set in MiB via Windows ``psapi``, or ``None`` if unavailable.
+
+    Uses only the stdlib ``ctypes`` module (no new runtime dependency) and
+    returns ``None`` on non-Windows platforms or if the API call fails.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        counters = _PROCESS_MEMORY_COUNTERS()
+        counters.cb = ctypes.sizeof(_PROCESS_MEMORY_COUNTERS)
+        psapi = ctypes.WinDLL("psapi")  # type: ignore[attr-defined]
+        kernel32 = ctypes.WinDLL("kernel32")  # type: ignore[attr-defined]
+        ok = psapi.GetProcessMemoryInfo(
+            kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb
+        )
+        if not ok:
+            return None
+        return counters.PeakWorkingSetSize / (1024.0 * 1024.0)  # bytes -> MiB
+    except Exception:  # noqa: BLE001 - never let measurement kill a stage
+        return None
+
+
 def peak_ram_mb() -> float:
-    """Process peak resident set size in MiB (Linux ru_maxrss is in KiB)."""
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+    """Process peak memory footprint in MiB — portable across platforms.
+
+    Measurement chain (first success wins):
+
+    * **POSIX** (``resource.getrusage``; Linux/macOS) — KiB on Linux, bytes on
+      macOS/BSD, normalised to MiB.
+    * **Windows** (``psapi.GetProcessMemoryInfo`` via stdlib ``ctypes``) —
+      ``PeakWorkingSetSize`` in bytes, normalised to MiB.
+    * otherwise the documented sentinel :data:`RAM_UNKNOWN_MB` (``-1.0``).
+
+    Never raises: if every probe fails the sentinel is returned so a stage can
+    still log its run (wall time + a clearly labelled unknown RAM value).
+    """
+    for probe in (_peak_ram_mb_posix, _peak_ram_mb_windows):
+        value = probe()
+        if value is not None:
+            return value
+    return RAM_UNKNOWN_MB
 
 
 @contextmanager

@@ -302,3 +302,34 @@ frozen value changed; no data committed.
 
 **Evidence.** `notebooks/bdb27_full_run.ipynb`, `notebooks/README.md`, `README_RUN.md`, `.gitignore`,
 `outputs/figures/fig{1..5}_*.png`.
+
+---
+
+## D33 — Fix: portable peak-RAM probe (Windows `ModuleNotFoundError: resource`) · 2026-10-13
+**Decision.** Fixed the Windows blocker reported by Conor (2026-10-13): `src/common.py` imported the
+POSIX-only stdlib module `resource` at **module top level**, so `import common` — which the deliverable
+notebook's bootstrap cell does — raised `ModuleNotFoundError: No module named 'resource'` on Windows before
+any stage ran. This broke the documented cross-platform contract (README_RUN.md §1/§7, notebooks/README.md).
+
+1. **Guarded import.** `import resource as _resource` is now wrapped in `try/except ImportError` →
+   `_resource = None` on non-POSIX hosts; importing `common` no longer depends on a POSIX-only module.
+2. **Portable measurement (`peak_ram_mb`).** First-success probe chain: POSIX `resource.getrusage`
+   (KiB on **Linux**, bytes on **macOS/BSD** — normalised to MiB) → Windows
+   `psapi.GetProcessMemoryInfo().PeakWorkingSetSize` via **stdlib `ctypes`** (no new dependency) → the
+   documented sentinel **`RAM_UNKNOWN_MB = -1.0`**. `peak_ram_mb()` **never raises**; a stage can never fail
+   because memory measurement is unavailable (TASK.md logging contract).
+3. **Schema preserved.** `run_log.csv` columns/order unchanged (`timestamp, stage, mode, wall_s,
+   peak_ram_mb, error, notes`); the sentinel is written in the `peak_ram_mb` cell as a numeric value.
+4. **Audit.** Grepped `src/` + notebooks for POSIX-only modules (`resource/pwd/grp/termios/tty/fcntl/…`),
+   shell-outs (`os.system/popen/fork`, `subprocess`, bash), and hard-coded POSIX paths: **only `resource`
+   was found**; all other hits were comments. No other change needed.
+
+**Verification.** New regression test `src/tests/test_common_portability.py` (5 tests): import survives a
+blocked `resource`; a real stage (`00_thresholds --synthetic`) runs end-to-end with `resource` unimportable
+and logs a schema-exact row; sentinel when no probe is usable; Linux-KiB vs macOS-bytes unit handling;
+frozen run-log schema. Full suite: **58/58 green** (was 53/53). Deliverable notebook executed top-to-bottom
+**twice**: once normally, and once with `resource` **unimportable** (import blocker via `sitecustomize`) —
+both **NOTEBOOK_EXEC_OK, 0 errors**; the blocked run logged `-1.0` for all 14 stage rows.
+
+**Evidence.** `src/common.py`, `src/tests/test_common_portability.py`, `README_RUN.md`, `notebooks/README.md`.
+No data committed (`.gitignore` unchanged); no new runtime dependency (`requirements.txt` unchanged).

@@ -13,7 +13,9 @@ data is not in the usual place — `DATA_DIR`, then **Run All**. It:
   each stage through **its own entry point** (so `--mode` / `--force` / checkpoint behaviour and the
   pre-registration **freeze gate** all apply exactly as on the command line);
 - is **cross-platform** (ARM64 Pi, Windows, macOS) and **Kaggle-ready** (auto-detects the attached dataset
-  under `/kaggle/input/…`, otherwise uses `../data/raw`) — `pathlib` only, no bash-only calls;
+  under `/kaggle/input/…`, otherwise uses `../data/raw`) — `pathlib` only, no bash-only calls, and the
+  peak-RAM probe (`../src/common.py`) is portable too: POSIX `resource.getrusage` where present, a stdlib
+  `ctypes`/`psapi` fallback on Windows, and a documented `-1.0` sentinel if neither is available;
 - renders the **≤5 writeup figures** into `../outputs/figures/` and shows them inline;
 - **degrades gracefully**: with only partial data it runs everything it can and reports the game-side
   stages as `PENDING FULL RUN`, demonstrating the game-side path on the committed synthetic fixture

@@ -101,7 +101,11 @@ notebook runs for you (kept for CI / power users).
 
 ## 5. Outputs
 
-- `outputs/run_log.csv` — wall time + peak RAM per stage.
+- `outputs/run_log.csv` — wall time + peak RAM per stage (columns, in order: `timestamp, stage, mode,
+  wall_s, peak_ram_mb, error, notes`). Peak RAM is measured **portably**: POSIX `resource.getrusage`
+  (KiB on Linux, bytes on macOS) or, on Windows, `psapi.GetProcessMemoryInfo` via stdlib `ctypes`. If no
+  measurement is available the documented sentinel **`-1.0`** is logged — a stage **never** fails because
+  memory measurement is unavailable.
 - `outputs/figures/` — the ≤5 writeup figures.
 - Per-stage summary tables under `outputs/` (gitignored). Every table's **first** column is `provenance`
   (`UNVALIDATED SAMPLE OUTPUT` in sample mode, `FULL` in full mode).
@@ -116,7 +120,9 @@ seasons) is the scale driver and must stream per game/player.
 ## 7. Local run on Windows / laptop
 
 The pipeline is cross-platform (Windows, macOS, Linux): stage scripts use `pathlib`, no bash-only calls, and
-accept Windows paths. On Windows:
+accept Windows paths. Memory logging is portable too — the peak-RAM probe uses POSIX `resource.getrusage`
+where present and falls back to the Windows `psapi` API via stdlib `ctypes` (logging the `-1.0` sentinel if
+neither is available), so importing `src/common.py` never depends on a POSIX-only module. On Windows:
 
 ```powershell
 py -3.12 -m venv .venv
