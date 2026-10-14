@@ -28,7 +28,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 import duckdb
 import numpy as np
@@ -36,6 +36,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
 import combine_features as cf
+import game_features as gf
 import gate
 
 PENDING = "PENDING FULL RUN"
@@ -61,8 +62,30 @@ COMBINE_TRACKING_COLS = [
 # --------------------------------------------------------------------------- #
 # ctx / plumbing
 # --------------------------------------------------------------------------- #
-def _pq(path: Path) -> str:
+def _pq(path: Path | Sequence[Path]) -> str:
+    """DuckDB ``read_parquet`` call string for a single Parquet path or a list of them.
+
+    Full mode exposes a *union* of the per-season `game_tracking` parquets, so callers may pass a
+    sequence (see `game_features.pq_list`)."""
+    if isinstance(path, (list, tuple)):
+        return gf.pq_list(path)
     return common.pq(path)
+
+
+def _parquet_full(con, cfg: dict, name: str, force: bool, log) -> list[Path]:
+    """Materialise every raw file listed under ``cfg['files'][name]`` and return the Parquet paths.
+
+    Mirrors the helper used by `00_thresholds.py` / `03_game_demand.py` so full-mode multi-file
+    inputs share one code path; a missing raw file is a blocker."""
+    parq = common.resolve(cfg, "parquet")
+    out = []
+    for fn in cfg["files"][name]:
+        src = common.resolve(cfg, "raw", fn)
+        if not src.exists():
+            raise FileNotFoundError(f"full mode requires {src} (absent on this Pi) -> notes/blockers.md")
+        dst = parq / (Path(fn).stem + ".parquet")
+        out.append(common.to_parquet(con, src, dst, force=force, logger=log))
+    return out
 
 
 def emit(ctx: dict, name: str, rows: Iterable[dict], subdir: str | None = None) -> Path:
@@ -862,16 +885,10 @@ def main() -> None:
                 common.to_parquet(con, src, dst, force=args.force, logger=log)
                 tables[name] = dst
             if mode == "full":
-                gt_files = cfg["files"]["game_tracking_full"]
-                for i, fn in enumerate(gt_files):
-                    src = common.resolve(cfg, "raw", fn)
-                    if not src.exists():
-                        raise FileNotFoundError(
-                            f"full mode requires {src} (absent on this Pi) -> notes/blockers.md")
-                    dst = parq / (Path(fn).stem + ".parquet")
-                    common.to_parquet(con, src, dst, force=args.force, logger=log)
-                    tables[f"game_tracking_{i}"] = dst
-                ctx["game_dataset"] = "full"
+                # Expose ONE normalised `game_tracking` entry = the union of the per-season parquets,
+                # so assert_schemas + items c/d/f/h/i see all seasons through the single key.
+                tables["game_tracking"] = _parquet_full(con, cfg, "game_tracking_full", args.force, log)
+                ctx["game_dataset"] = "game_tracking_2023/24/25 (full)"
                 ctx["game_side_status"] = "AVAILABLE"
                 ctx["game_side_available"] = True
             else:
