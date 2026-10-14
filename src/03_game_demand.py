@@ -117,8 +117,14 @@ def thresholds_path(cfg: dict, synthetic: bool, regime: str) -> Path:
 
 
 def ceilings_path(cfg: dict) -> Path:
+    """Path to the Phase-2 per-player ceiling table: ``outputs/<source_subdir>/<file>``.
+
+    ``common.resolve`` takes at most one ``extra`` path component, so the config's
+    ``game.ceiling.source_subdir`` and ``game.ceiling.file`` are joined explicitly here
+    (config-driven; no magic path literals).
+    """
     c = cfg["game"]["ceiling"]
-    return common.resolve(cfg, "outputs", c["source_subdir"], c["file"])
+    return common.resolve(cfg, "outputs") / c["source_subdir"] / c["file"]
 
 
 # --------------------------------------------------------------------------- #
