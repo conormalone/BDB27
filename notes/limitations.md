@@ -104,3 +104,25 @@ archived at git tag `archive/combine-fatigue-v1`.
     under-powered for a controlled quantile fit; its CV improvement (mean dominated by one exploding fold;
     robust **median** improvement small) is a fixture artefact. All fixture outputs are stamped
     `SYNTHETIC FIXTURE (not a finding)`.
+
+## Data quality (D35, 2026-10-15)
+
+21. **Game tracking-speed contamination in the top tail — impossible per-frame samples
+    despiked, the effort retained.** `peak_speed` is a `max()` over per-frame speed (`step distance / dt`, recomputed
+    from `x,y`); a single noisy or duplicated frame inflates the effort's peak far above any human
+    speed. On the real data this produced impossible peaks concentrated in the fastest efforts: **351
+    efforts had a `> 12.5 yd/s` peak**, and for **78 of the 101 eligible players** the single fastest
+    effort was such a spike — i.e. exactly the top-k tail that drives the exceedance verdict (pooled
+    exceedance 0.75%, top-5 tail ~56%, which crosses the 0.25 reframe threshold and flips the verdict).
+    *Mitigation:* a config-driven frame-level **despike** at `game.speed_cap_yds` (12.5 yd/s = 25.6 mph,
+    above every real in-game route speed; NGS in-game tops ~21–22 mph) applied in the shared kinematics
+    SQL (game side only). A greedy forward scan **discards only the impossible speed sample** and
+    re-measures the next frame from the last *retained* frame, then recomputes the peak and accel from
+    the retained frames. The **effort is always kept** (a degenerate effort with <2 retained frames
+    reports 0.0), so no effort is lost.
+    *Honest residual:* removal is **per-frame and greedy** — a corrupted frame is skipped and its
+    neighbour is re-measured from the last good frame, **not** dropped, so a genuinely fast neighbour
+    keeps its (valid) speed and any surviving exceedance in the top tail is therefore **conservative**
+    (the despike cannot inflate the exceedance rate). The bound is a physically-justified data-QC
+    bound, **not** an analysis knob, and is never tuned to change a result (`notes/decisions.md` D35;
+    `notes/prereg.md` stays FROZEN).

@@ -373,3 +373,102 @@ notebook executed top-to-bottom via `nbclient` (kernel `python3`, cwd `notebooks
 **Evidence.** `src/model_features.py`, `src/tests/test_portability_fstrings.py`, `README_RUN.md`,
 `requirements.txt`, `notebooks/README.md`. No data committed (`.gitignore` unchanged); no new runtime
 dependency (stdlib `tokenize`/`ast`/`json` only).
+
+---
+
+## D35 — Post-freeze data-QC: frame-level **despike** of impossible game-tracked speeds at 12.5 yd/s · 2026-10-15
+_(Spec header labelled this `D36`; the last entry above is `D34`, so the next free id is `D35`.)_
+
+**Decision (revision 3 — the final mechanism).** **Discard impossible per-frame game-tracked speed
+samples** and recompute the per-effort peak from the **retained (valid) frames only**, bounded by a
+config-driven threshold **`game.speed_cap_yds: 12.5`** (yd/s). The mechanism is a **frame-level greedy
+forward despike** — *not* a clamp and *not* a row drop (see "Superseded revisions" below). The effort
+is always **kept**: "just discard the bad samples, not the whole effort" (Conor 2026-10-15). This is a
+**post-freeze data-QC change**: `notes/prereg.md` stays **FROZEN**; the pre-registered values are
+untouched.
+
+1. **Config-driven, no magic numbers.** The bound lives only in `config.yaml`
+   (`game.speed_cap_yds: 12.5`, commented as a data-QC per-frame validity bound). Code reads it from
+   config at every game-side recompute site — never a literal.
+
+2. **The despike (greedy forward scan)** — `src/game_features.py::_despike_scan_sql` (used by
+   `effort_kinematics_sql`, shared by `00_thresholds` and `03_game_demand`) and
+   `src/01_audit.py::_game_effort_peaks` (items h/i). Within each effort (one player on one play,
+   ordered by time):
+   * the **first** frame is always retained and becomes the "last good frame" (it has no incoming
+     sample);
+   * each later frame's **sample** = step distance / dt from the **last retained frame**;
+   * a sample `<= cap` — or `dt <= 0`, which stays NULL and is not a sample — **retains** the frame
+     and makes it the new last-good frame;
+   * a sample `> cap` **discards only that sample**; the last-good frame is unchanged, so the **next**
+     frame is re-measured from the *same* last-good frame (the spike is skipped; its valid neighbour
+     is **not** contaminated by it and is **not** dropped — the trajectory is effectively compressed);
+   * `peak_speed` = max over the retained samples; `peak_accel` = `d(speed)/dt` over the retained speed
+     series. Because the last-good frame is always `<= cap` away, **every** retained sample is
+     `<= cap` by construction, so no emitted `peak_speed` can exceed the bound.
+
+3. **The effort is always KEPT.** An effort whose old peak came from a spike now reports its genuine
+   peak from the valid frames; an effort whose samples are all valid is **byte-identical** to the
+   pre-change behaviour (same `n_frames`, `peak_speed`, `peak_accel`).
+   **Degenerate edge case:** if an effort has **<2 retained frames** (no speed sample can be derived —
+   e.g. a single frame, or every post-first frame is impossible) the effort is still emitted with
+   `peak_speed = 0.0` and `peak_accel = 0.0` (the empty `max()` is coalesced to `0.0`) — never dropped,
+   never NULL.
+   **Null-safety:** a `dt = 0` frame yields a NULL speed; it stays NULL (never treated as a violation,
+   never a fabricated value) — the first frame anchors the effort. (`n_frames` keeps its pre-change
+   meaning: the number of retained frames carrying an incoming sample, i.e. retained frames other than
+   the anchor.)
+
+4. **Every game-side recompute site is despiked** (threaded from config): `game_features.py::`
+   `effort_kinematics_sql` and `01_audit.py::_game_effort_peaks`. The **Combine side is NOT bounded**
+   (`combine_features`, `02_combine_envelope`, `01_audit._combine_ceiling`) — the bound is game-side
+   only. `00_thresholds` flows through the shared `extract_efforts`, so its cut-offs are derived on the
+   despiked peaks automatically; no code change beyond the shared scan. No separate accel cap
+   (scope-tight): the speed bound implicitly bounds the speed-derived accel.
+
+**Physical justification.** `peak_speed` is a `max()` over per-frame speed; a human cannot run a route
+at 26+ mph. NGS in-game route speeds top out at ~21–22 mph. **12.5 yd/s = 25.6 mph** sits above every
+real in-game route speed, so the despike removes only physically-impossible samples — it is not a
+smoothing or analysis parameter.
+
+**Pre-change behaviour (the diagnosed contamination).** Before the despike the per-effort `peak_speed`
+was `max()` over the **raw** frame steps. On the real game-tracking data **351 efforts had a
+`> 12.5 yd/s` peak**, and for **78 of the 101 eligible players** the single fastest effort was such a
+spike — i.e. the contamination sits exactly in the top-k (exceedance) tail, where one noisy/duplicated
+frame defines the effort's peak. Pooled exceedance was **0.75%** and the **top-5 tail ~56%**; the top-5
+value crosses the pre-registered **0.25 reframe threshold** and **flips the verdict**.
+
+**Expected effect (exact numbers from the re-run).** Removing only the impossible samples and
+recomputing from the valid frames moves pooled exceedance **0.75% → ~0.12%** and the top-5 tail
+**~56% → ~11%** — i.e. the binding verdict is restored *without dropping a single effort*.
+
+**Superseded revisions (why revision 3).** Two earlier mechanisms were considered and rejected:
+*R1 (clamp)* — `LEAST(spd, cap)` replaces a spike with the cap (12.5) instead of removing it, and so
+**fabricates** a value; *R2 (row drop)* — discarding **every raw frame** whose speed `> cap` (or the
+whole effort) would wrongly discard the valid **neighbour** that the spike corrupted, and would drop
+genuine efforts. Revision 3 (the greedy despike) is the PM's binding methodology: a spike frame is
+skipped and its neighbour is re-measured from the last good frame, which is better than "drop every raw
+frame whose speed > cap".
+
+**Governance note.** `notes/prereg.md` stays **FROZEN**; `audit.exceedance_margin_rel` (**0.0**) and
+`audit.exceedance_reframe_rate` (**0.25**) are **untouched**. This is a **data-QC bound, not analysis
+tuning**: it is justified physically (above every real route speed) and is **never** tuned to improve
+the result. Had the bound been an analysis knob, changing it after seeing results would be HARKing; it
+is instead a declared data-quality bound recorded here (and in `notes/limitations.md`) with the
+pre-change behaviour.
+
+**Rerun requirement.** Game-side speed is now despiked, so the game chain must be re-run with `--force`:
+`00_thresholds → 03_game_demand → 04_models → 05_validate` (Combine `02` unchanged).
+
+**Verification.** `src/tests/test_speed_despike.py` (unit + e2e): a planted ~50 yd/s single-frame spike
+is **discarded** and the genuine ~8 yd/s peak is emitted (never 50, never 12.5) with the effort
+retained; **neighbour recovery** (A → spike S → genuine fast B) keeps B re-measured from A (not
+dropped); a clean sub-cap effort is byte-identical to the pre-change behaviour; a `dt=0` frame stays
+NULL; a degenerate effort is kept with `0.0`; the bound is config-driven (a lower cap discards more, a
+cap above the spike is inert); `01_audit._game_effort_peaks` obeys the same despike; no emitted
+`efforts.csv` (binding + null + full-mode e2e) exceeds the cap; determinism; fixture non-collision
+(binding planted max ~10.97 stays below the bound; the null verdict is unchanged).
+
+**Evidence.** `config.yaml`, `src/game_features.py`, `src/01_audit.py`, `src/tests/test_speed_despike.py`,
+`notes/decisions.md`, `notes/limitations.md`, `README_RUN.md`, `notebooks/bdb27_full_run.ipynb`.
+Post-freeze **data-QC** change (not a pre-registration edit); no new runtime dependency.

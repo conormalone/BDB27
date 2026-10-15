@@ -147,6 +147,15 @@ envelope:
 game:
   out_subdir: game
   thresholds_file: thresholds.json # outputs/thresholds.json (FULL in full mode; PLACEHOLDER in sample)
+  # --- data-QC per-frame speed validity bound (game side only; notes/decisions.md D35) ---
+  # `peak_speed` is max() over per-frame speed = step distance / dt (recomputed from x,y); one
+  # noisy/duplicated frame can define a physically-impossible peak. This is the frame-level DESPIKE
+  # bound (yd/s): impossible per-frame samples (speed > cap) are DISCARDED and the per-effort peak
+  # and accel are recomputed from the RETAINED (valid) frames only — the effort itself is kept.
+  # 12.5 yd/s = 25.6 mph — ABOVE every real in-game route speed (NGS in-game tops ~21-22 mph), so it
+  # removes ONLY impossible samples. This is a DATA-QC bound, NOT an analysis knob (never tuned to a
+  # result); post-freeze (prereg.md stays FROZEN; the margin 0.0 / reframe rate 0.25 are untouched).
+  speed_cap_yds: 12.5
   route_snap_col: route_ran        # 'route ran' flag on player_play.csv
   # --- effort sampling ---
   top_k_efforts: 5                 # top-k efforts per fixed route-snap count (prereg sec2)

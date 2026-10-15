@@ -721,14 +721,21 @@ def _combine_ceiling(ctx: dict) -> dict[int, float]:
 
 
 def _game_effort_peaks(ctx: dict) -> list[tuple]:
+    """Per (game,play,player) peak x/y-derived **game** speed under the frame-level despike.
+
+    Shares the SAME greedy forward despike as ``game_features.effort_kinematics_sql`` (revision 3,
+    D35): an impossible per-frame speed sample (> ``game.speed_cap_yds``) is **discarded** and the
+    peak is recomputed from the **retained** frames, so the audit exceedance (items h/i) is not
+    contaminated by impossible tracking spikes. The effort is never dropped; a degenerate effort
+    (<2 retained frames) is kept with peak ``0.0`` (the empty max is coalesced). The Combine side
+    (``_combine_ceiling``) is deliberately NOT bounded — the speed bound is game-side only.
+    """
     GT = _pq(ctx["tables"]["game_tracking"])
-    return ctx["con"].execute(f"""
-        WITH f AS (SELECT game_id, play_id, nfl_id, x, y, epoch_ms(time) t,
-                          lag(x) OVER w lx, lag(y) OVER w ly, lag(epoch_ms(time)) OVER w lt
-                   FROM {GT} WINDOW w AS (PARTITION BY game_id, play_id, nfl_id ORDER BY time))
-        SELECT game_id, play_id, nfl_id,
-               max(sqrt((x-lx)^2+(y-ly)^2)/NULLIF((t-lt)/1000.0,0)) peak_speed
-        FROM f WHERE lx IS NOT NULL GROUP BY 1,2,3""").fetchall()
+    cap = float(ctx["cfg"]["game"]["speed_cap_yds"])
+    scan = gf._despike_scan_sql(GT, cap)
+    return ctx["con"].execute(scan + """
+        SELECT game_id, play_id, nfl_id, COALESCE(max(spd), 0.0) peak_speed
+        FROM scan WHERE kept GROUP BY 1, 2, 3""").fetchall()
 
 
 def _route_efforts(ctx: dict) -> dict[int, list[tuple]]:

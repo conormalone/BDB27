@@ -63,30 +63,105 @@ def _kinematics_cte(gt_expr: str) -> str:
     """
 
 
-def effort_kinematics_sql(gt_expr: str) -> str:
+def _despike_scan_sql(gt_expr: str, cap: float) -> str:
+    """`WITH RECURSIVE ... scan AS (...)` prefix for the frame-level **greedy forward despike**.
+
+    Revision 3 of the game-side speed QC (see `notes/decisions.md` D35): rather than clamping a
+    spike *to* the cap (which keeps a fabricated value) or dropping the whole effort (which loses a
+    genuine effort), we **discard only the impossible per-frame speed sample** and re-measure the
+    next frame from the last *retained* frame.
+
+    Each effort (one player on one play) is scanned in time order, carrying the **last retained
+    frame** forward:
+
+    * the **first** frame is always retained (it has no incoming sample);
+    * for each later frame the sample = ``step distance / dt`` from the last retained frame;
+    * if that sample is ``<= cap`` (``game.speed_cap_yds``) — or ``dt <= 0`` (undefined, kept as
+      NULL, *not* a violation) — the frame is **retained** and becomes the new last-good frame;
+    * otherwise the frame is **discarded** and the last-good frame is left unchanged, so the *next*
+      frame is re-measured from the same last-good frame (the spike is skipped, its valid neighbour
+      is not contaminated by it and is **not** dropped).
+
+    By construction every retained sample is ``<= cap``, so no emitted ``peak_speed`` can exceed the
+    cap; a clean effort below the cap is left byte-for-byte unchanged. A truly degenerate effort
+    (no post-first frame can be retained) is still **kept** with ``peak_speed = 0.0`` (the caller
+    ``COALESCE``s the empty max). The prefix exposes the ``scan`` CTE (one row per frame, with
+    ``kept`` / ``spd`` / the running last-good coords ``ct,cx,cy``); callers append their own SELECT.
+    """
+    f = _kinematics_cte(gt_expr)
+    cap_sql = float(cap)
+    # distance from the last retained frame (o) to the candidate frame (s carries last-good coords)
+    dist = "sqrt((o.x-s.cx)*(o.x-s.cx) + (o.y-s.cy)*(o.y-s.cy))"
+    dt_ms = "(o.t - s.ct)"
+    spd = f"CASE WHEN o.t > s.ct THEN {dist} / ({dt_ms}/1000.0) END"
+    # NOTE: a recursive term cannot reference its own select-list aliases, so <kept> is repeated.
+    kept = (
+        "CASE WHEN s.ct IS NULL THEN TRUE "
+        "WHEN o.t <= s.ct THEN TRUE "
+        f"WHEN {dist} / ({dt_ms}/1000.0) <= {cap_sql} THEN TRUE "
+        "ELSE FALSE END"
+    )
+    return f"""
+        WITH RECURSIVE f AS ({f}),
+        ord AS (
+            SELECT game_id, play_id, nfl_id, t, x, y,
+                   row_number() OVER (PARTITION BY game_id, play_id, nfl_id ORDER BY t) AS rn
+            FROM f
+        ),
+        scan AS (
+            -- anchor: the first frame is always retained; no incoming sample (spd NULL)
+            SELECT game_id, play_id, nfl_id, rn, t, x, y,
+                   CAST(NULL AS BIGINT) AS pt, CAST(NULL AS REAL) AS px, CAST(NULL AS REAL) AS py,
+                   TRUE AS kept, CAST(NULL AS DOUBLE) AS spd,
+                   t AS ct, x AS cx, y AS cy
+            FROM ord WHERE rn = 1
+            UNION ALL
+            -- step: measure the next frame from the last retained frame (s), then decide kept
+            SELECT o.game_id, o.play_id, o.nfl_id, o.rn, o.t, o.x, o.y,
+                   s.ct, s.cx, s.cy,
+                   {kept},
+                   {spd},
+                   CASE WHEN {kept} THEN o.t ELSE s.ct END,
+                   CASE WHEN {kept} THEN o.x ELSE s.cx END,
+                   CASE WHEN {kept} THEN o.y ELSE s.cy END
+            FROM scan s
+            JOIN ord o
+              ON o.game_id = s.game_id AND o.play_id = s.play_id AND o.nfl_id = s.nfl_id
+             AND o.rn = s.rn + 1
+        )
+    """
+
+
+def effort_kinematics_sql(gt_expr: str, cap: float) -> str:
     """Per (game_id, play_id, nfl_id): peak x/y-derived speed and peak x/y-derived acceleration.
 
     Speed = step distance / dt (yd/s); accel = d(speed)/dt (yd/s^2). Both are recomputed from
     x,y — the vendor `s`/`a` columns are NOT used (audit f).
+
+    ``cap`` is the **data-QC speed bound** (yd/s; ``game.speed_cap_yds``, 12.5 = 25.6 mph). It is
+    enforced by the frame-level **greedy despike** in :func:`_despike_scan_sql`: impossible
+    per-frame speed samples (> cap) are **discarded** and the peak/accel are recomputed from the
+    retained (valid) frames only. The effort is always kept; a clean effort below the cap is
+    untouched. Peak accel is ``d(speed)/dt`` over the retained frames only (derived from the
+    retained speed series), and the empty case is coalesced to ``0.0``.
+
+    ``n_frames`` keeps its pre-change meaning = the number of retained frames carrying an incoming
+    sample (retained frames other than the anchor), so a clean effort is byte-identical to the
+    previous behaviour. Null-safety: a ``dt=0`` frame yields a NULL speed; it stays NULL (never a
+    sample, never a fabricated value) — the first frame anchors the effort.
     """
-    f = _kinematics_cte(gt_expr)
-    return f"""
-        WITH f AS ({f}),
-        v AS (
-            SELECT game_id, play_id, nfl_id, t,
-                   sqrt((x-lx)*(x-lx) + (y-ly)*(y-ly)) / NULLIF((t-lt)/1000.0, 0) AS spd
-            FROM f WHERE lx IS NOT NULL
-        ),
-        va AS (
-            SELECT game_id, play_id, nfl_id, t, spd,
+    scan = _despike_scan_sql(gt_expr, cap)
+    return scan + f"""
+        , va AS (
+            SELECT game_id, play_id, nfl_id, t, rn, spd,
                    (spd - lag(spd) OVER w2) / NULLIF((t - lag(t) OVER w2)/1000.0, 0) AS acc
-            FROM v
-            WINDOW w2 AS (PARTITION BY game_id, play_id, nfl_id ORDER BY t)
+            FROM scan WHERE kept
+            WINDOW w2 AS (PARTITION BY game_id, play_id, nfl_id ORDER BY t, rn)
         )
         SELECT game_id, play_id, nfl_id,
-               count(*) AS n_frames,
-               max(spd) AS peak_speed,
-               max(acc) AS peak_accel
+               count(*) FILTER (WHERE rn > 1) AS n_frames,
+               COALESCE(max(spd), 0.0) AS peak_speed,
+               COALESCE(max(acc), 0.0) AS peak_accel
         FROM va GROUP BY 1, 2, 3
     """
 
@@ -106,7 +181,7 @@ def extract_efforts(
     """
     gt = pq_list(gt_paths)
     pp = common.pq(pp_path)
-    kin = effort_kinematics_sql(gt)
+    kin = effort_kinematics_sql(gt, cfg["game"]["speed_cap_yds"])
     if cr_path is not None:
         cr_join = f"LEFT JOIN {common.pq(cr_path)} cr ON cr.nfl_id = pp.nfl_id"
         cr_sel = "cr.combine_position"

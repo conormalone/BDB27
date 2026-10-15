@@ -80,6 +80,18 @@ python src/tests/test_validate.py
 `--force` ignores stage checkpoints (stages otherwise skip finished work). Logs of wall time + peak RAM per
 stage append to `outputs/run_log.csv`.
 
+**Data-QC note — game-side frame-level speed despike (D35).** Game-side per-frame speed is despiked at
+`game.speed_cap_yds` (**12.5 yd/s** = 25.6 mph, above every real in-game route speed): **impossible
+per-frame samples** (`> cap`, e.g. from a single noisy or duplicated frame) are **discarded** and the
+per-effort `peak_speed` / `peak_accel` are recomputed from the **retained** frames via a greedy forward
+scan. The **effort is always kept** (a degenerate effort with <2 retained frames reports 0.0) — we
+discard the bad *sample*, not the whole effort. This stops the top-k (exceedance) tail being
+contaminated by impossible samples. Applied at the frame level in the shared kinematics SQL (game side
+only — the Combine side is untouched). After this change the game chain must be re-run with `--force`:
+`00_thresholds → 03_game_demand → 04_models → 05_validate` (Combine `02` is unchanged). The notebook
+does this for you via its `FORCE` / `CLEAN` switches (Set `FORCE=True` and/or `CLEAN=True`, then Run
+All). See `notes/decisions.md` D35 and `notes/limitations.md` §21.
+
 **Pre-full-run gate.** A `--mode full` run may not start until `notes/prereg.md` is **frozen** (values
 filled, not the skeleton) and the audit go/no-go gate passes (matched WR count, route snaps/player, missing
 Combine fields, ICC). Otherwise → `notes/blockers.md`.
