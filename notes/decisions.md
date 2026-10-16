@@ -511,4 +511,4 @@ the unchanged `test_gate.py` and `test_models.py`).
 **not** alter the FROZEN model specification (`notes/prereg.md` untouched) to add the EDP covariate — that
 is a pre-registration decision to be taken (if at all) with Conor, and is moot until real GTM data exists.
 
-**Commit.** `PHASE05_SHA` on `main` (code/config/tests/notes/fixtures only — no data).
+**Commit.** `b247648` on `main` (code/config/tests/notes/fixtures only — no data).
