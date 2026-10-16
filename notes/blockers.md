@@ -48,3 +48,29 @@ Trigger a blocker on:
    feature selection (reliable: `peak_speed`, `speed_at_10/20yd`, `env_vmax`), not a blocker. **Frozen
    threshold** `envelope.icc_min=0.5` (prereg §4); residue: the two retained raw-speed features remain
    collinear (VIF>5) — flagged, not a blocker (`notes/limitations.md`).
+
+---
+
+## Phase 0.5 — External pre-Combine expectation proxy · 2026-10-16
+
+**Status: DATA BLOCKER.** The Phase 0.5 spec requires the external **Grinding The Mocks (GTM)**
+expected-draft-position export. It is **not machine-obtainable** from this host via any bounded,
+policy-compliant route (full route table + access dates in `notes/external_data_manifest.md`):
+
+- Direct `grindingthemocks.com` — DNS resolves (216.92.3.120); HTTPS (:443) TCP connect **times out**;
+  HTTP (:80) returns **301** → `https://grindingthemocks.shinyapps.io/Dashboard`.
+- Redirect target `grindingthemocks.shinyapps.io/Dashboard/` is **reachable** but is an interactive **Shiny
+  websocket** app (no static export; `robots.txt` = `User-agent: * / Disallow: /` → not crawled). A
+  third-party renderer (`r.jina.ai`) returns the landing shell only — the data table loads lazily.
+- **No GitHub mirror** (repo search returns 0 relevant; code search needs auth — none available, none
+  invented). **Wayback** holds only the ~2020–2024 app shell; the CDX endpoint 429s/times out. Static
+  export probes (`/Dashboard/data.csv`, `www/data.csv`, …) → **404**.
+
+**Action taken:** per the spec we **do not fabricate data** and **do not substitute a source** (the
+non-GTM fallback covers only 2025/26 and is out of spec; CFBD is out of scope). The Phase 0.5 pipeline
+(`src/00b_external_proxies.py`) is **built and fully exercised** end-to-end against a schema-compliant
+synthetic GTM fixture (`src/synthetic_gtm_fixture.py`, `fixtures/synthetic/gtm/`); its real `--mode full`
+execution is **BLOCKED (data)** until a raw GTM export is supplied under `data/raw/external/gtm/`.
+
+**Resume condition:** drop the raw GTM mock-history export (canonical `gtm_mock_history.csv`) into
+`data/raw/external/gtm/`, then run `python src/00b_external_proxies.py --mode full`.

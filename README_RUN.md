@@ -10,9 +10,12 @@
 > implemented (D28); **Phase 2 Combine envelope implemented and run** (`src/02_combine_envelope.py`, D29);
 > **Phase 3a `00_thresholds`** and **Phase 3b `03_game_demand`** implemented and exercised on the synthetic
 > fixture (D30); **Phase 4 `04_models`** and **Phase 5 `05_validate`** implemented and exercised on the
-> synthetic fixture (D31); **deliverable notebook** `notebooks/bdb27_full_run.ipynb` built (D32). The whole
-> game-side pipeline is game-side, so every real `--mode full` run still needs the full tracking files
-> (`PENDING FULL RUN`). See `notes/decisions.md` for D27–D32.
+> synthetic fixture (D31); **deliverable notebook** `notebooks/bdb27_full_run.ipynb` built (D32);
+> **Phase 0.5 external proxies** (`src/00b_external_proxies.py`, D36) implemented and exercised on a
+> synthetic GTM fixture — its real `--mode full` run is **BLOCKED (data)** (GTM export not machine-
+> obtainable; see `notes/blockers.md` / `notes/external_data_manifest.md`), and it **gates Phase 4**
+> (existence + schema). The whole game-side pipeline is game-side, so every real `--mode full` run still
+> needs the full tracking files (`PENDING FULL RUN`). See `notes/decisions.md` for D27–D36.
 
 ## 1. Environment (ARM64 Pi / x86 Linux / Windows laptop)
 
@@ -35,7 +38,7 @@ the drive (or copy the CSVs to a laptop and point `data/raw` there) before any g
 ## 3. Run order
 
 ```
-01_audit → 02_combine_envelope → 00_thresholds → 03_game_demand → 04_models → 05_validate
+01_audit → 02_combine_envelope → 00_thresholds → 03_game_demand → 00b_external_proxies → 04_models → 05_validate
 ```
 
 ```bash
@@ -63,8 +66,16 @@ python src/03_game_demand.py --synthetic --synthetic-regime binding   # or: null
 python src/03_game_demand.py --mode full         # needs the full game files
 
 # Phase 4 models — consumes thresholds(FULL)+ceiling+efforts; game-side gated (freeze + audit go/no-go)
-python src/04_models.py --mode full          # needs the full game files
+#   and now ALSO gated on the Phase 0.5 external proxy (existence + schema)
+python src/04_models.py --mode full          # needs the full game files AND outputs/pre_combine_expectation.parquet
 python src/04_models.py --synthetic --synthetic-regime binding   # or: null (not a finding)
+
+# Phase 0.5 external proxies — pre-Combine Expected Draft Position (Grinding The Mocks) -> gates Phase 4
+python src/synthetic_gtm_fixture.py                       # (re)build the committed synthetic GTM fixture
+python src/00b_external_proxies.py --mode sample          # exhibits the pipeline on the fixture (UNVALIDATED)
+python src/00b_external_proxies.py --synthetic             # identical path on the fixture (not a finding)
+python src/00b_external_proxies.py --mode full            # needs a raw GTM export in data/raw/external/gtm/
+#   (GTM is currently NOT machine-obtainable -> --mode full stops with a data blocker; notes/blockers.md)
 
 # Phase 5 validation — CV vs controls-only baseline; permutation; icc_attenuation; sensitivity
 python src/05_validate.py --mode full        # needs the full game files
@@ -75,6 +86,8 @@ python src/tests/test_thresholds.py
 python src/tests/test_game_demand.py
 python src/tests/test_models.py
 python src/tests/test_validate.py
+# Phase 0.5 tests
+python src/tests/test_external_proxies.py
 ```
 
 `--force` ignores stage checkpoints (stages otherwise skip finished work). Logs of wall time + peak RAM per
@@ -124,6 +137,12 @@ notebook runs for you (kept for CI / power users).
 - Per-stage summary tables under `outputs/` (gitignored). Every table's **first** column is `provenance`
   (`UNVALIDATED SAMPLE OUTPUT` in sample mode, `FULL` in full mode).
 - `outputs/thresholds.json` — route-effort cut-offs (`FULL` provenance in full mode; `PLACEHOLDER` in sample).
+- `outputs/pre_combine_expectation.parquet` — Phase 0.5 deliverable: maps Kaggle `nflId` to
+  `Pre_Combine_EDP` + `match_confidence_score` (EXACT schema asserted). Written by
+  `src/00b_external_proxies.py --mode full`; **required** by `04_models --mode full` (Phase-4 gate). Also
+  `outputs/unmatched_external_ids.csv` (sub-threshold matches) and `notes/external_data_manifest.md`
+  (external-data compliance record). Sample/synthetic runs write these under `outputs/external/` with a
+  `UNVALIDATED SAMPLE OUTPUT` / `SYNTHETIC FIXTURE` label.
 
 ## 6. Expected cost
 

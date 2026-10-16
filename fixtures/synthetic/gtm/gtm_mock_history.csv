@@ -1,0 +1,103 @@
+mock_id,mock_source,snapshot_date,draft_year,prospect_name,position,college,projected_pick
+GTM000001,MockSource_A,2023-02-05,2023,Jordan Bllake,WR,Alabama,16
+GTM000002,MockSource_B,2023-02-06,2023,Jordan Bllake,WR,Alabama,20
+GTM000003,MockSource_C,2023-02-07,2023,Jordan Bllake,WR,Alabama,14
+GTM000004,MockSource_D,2023-02-08,2023,Jordan Bllake,WR,Alabama,19
+GTM000005,MockSource_E,2023-02-09,2023,Jordan Bllake,WR,Alabama,22
+GTM000006,MockSource_A,2023-02-10,2023,Jordan Bllake,WR,Alabama,25
+GTM000007,MockSource_B,2023-01-15,2023,Jordan Bllake,WR,Alabama,110
+GTM000008,MockSource_C,2023-03-10,2023,Jordan Bllake,WR,Alabama,5
+GTM000009,MockSource_A,2024-02-05,2024,Xavier Whitfiel,TE,Ohio State,40
+GTM000010,MockSource_B,2024-02-06,2024,Xavier Whitfiel,TE,Ohio State,26
+GTM000011,MockSource_C,2024-02-07,2024,Xavier Whitfiel,TE,Ohio State,38
+GTM000012,MockSource_D,2024-02-08,2024,Xavier Whitfiel,TE,Ohio State,35
+GTM000013,MockSource_E,2024-02-09,2024,Xavier Whitfiel,TE,Ohio State,34
+GTM000014,MockSource_A,2024-02-10,2024,Xavier Whitfiel,TE,Ohio State,28
+GTM000015,MockSource_B,2024-01-15,2024,Xavier Whitfiel,TE,Ohio State,122
+GTM000016,MockSource_C,2024-03-10,2024,Xavier Whitfiel,TE,Ohio State,17
+GTM000017,MockSource_A,2025-02-05,2025,Malik Okafor,WR,Georgia,38
+GTM000018,MockSource_B,2025-02-06,2025,Malik Okafor,WR,Georgia,39
+GTM000019,MockSource_C,2025-02-07,2025,Malik Okafor,WR,Georgia,40
+GTM000020,MockSource_D,2025-02-08,2025,Malik Okafor,WR,Georgia,52
+GTM000021,MockSource_E,2025-02-09,2025,Malik Okafor,WR,Georgia,43
+GTM000022,MockSource_A,2025-02-10,2025,Malik Okafor,WR,Georgia,39
+GTM000023,MockSource_B,2025-01-15,2025,Malik Okafor,WR,Georgia,134
+GTM000024,MockSource_C,2025-03-10,2025,Malik Okafor,WR,Georgia,29
+GTM000025,MockSource_A,2023-02-05,2023,Tyree Reyes,TE,Michigan,53
+GTM000026,MockSource_B,2023-02-06,2023,Tyree Reyes,TE,Michigan,48
+GTM000027,MockSource_C,2023-02-07,2023,Tyree Reyes,TE,Michigan,48
+GTM000028,MockSource_D,2023-02-08,2023,Tyree Reyes,TE,Michigan,48
+GTM000029,MockSource_E,2023-02-09,2023,Tyree Reyes,TE,Michigan,56
+GTM000030,MockSource_A,2023-02-10,2023,Tyree Reyes,TE,Michigan,60
+GTM000031,MockSource_B,2023-01-15,2023,Tyree Reyes,TE,Michigan,146
+GTM000032,MockSource_C,2023-03-10,2023,Tyree Reyes,TE,Michigan,41
+GTM000033,MockSource_A,2024-02-05,2024,Cameron Mensah,WR,LSU,60
+GTM000034,MockSource_B,2024-02-06,2024,Cameron Mensah,WR,LSU,65
+GTM000035,MockSource_C,2024-02-07,2024,Cameron Mensah,WR,LSU,70
+GTM000036,MockSource_D,2024-02-08,2024,Cameron Mensah,WR,LSU,71
+GTM000037,MockSource_E,2024-02-09,2024,Cameron Mensah,WR,LSU,70
+GTM000038,MockSource_A,2024-02-10,2024,Cameron Mensah,WR,LSU,67
+GTM000039,MockSource_B,2024-01-15,2024,Cameron Mensah,WR,LSU,158
+GTM000040,MockSource_C,2024-03-10,2024,Cameron Mensah,WR,LSU,53
+GTM000041,MockSource_A,2025-02-05,2025,Devin Delgado,TE,Clemson,83
+GTM000042,MockSource_B,2025-02-06,2025,Devin Delgado,TE,Clemson,88
+GTM000043,MockSource_C,2025-02-07,2025,Devin Delgado,TE,Clemson,87
+GTM000044,MockSource_D,2025-02-08,2025,Devin Delgado,TE,Clemson,81
+GTM000045,MockSource_E,2025-02-09,2025,Devin Delgado,TE,Clemson,87
+GTM000046,MockSource_A,2025-02-10,2025,Devin Delgado,TE,Clemson,76
+GTM000047,MockSource_B,2025-01-15,2025,Devin Delgado,TE,Clemson,170
+GTM000048,MockSource_C,2025-03-10,2025,Devin Delgado,TE,Clemson,65
+GTM000049,MockSource_A,2023-02-05,2023,Elijah Fontenot,WR,Oregon,85
+GTM000050,MockSource_B,2023-02-06,2023,Elijah Fontenot,WR,Oregon,90
+GTM000051,MockSource_C,2023-02-07,2023,Elijah Fontenot,WR,Oregon,84
+GTM000052,MockSource_D,2023-02-08,2023,Elijah Fontenot,WR,Oregon,85
+GTM000053,MockSource_E,2023-02-09,2023,Elijah Fontenot,WR,Oregon,95
+GTM000054,MockSource_A,2023-02-10,2023,Elijah Fontenot,WR,Oregon,90
+GTM000055,MockSource_B,2023-01-15,2023,Elijah Fontenot,WR,Oregon,182
+GTM000056,MockSource_C,2023-03-10,2023,Elijah Fontenot,WR,Oregon,77
+GTM000057,MockSource_A,2024-02-05,2024,Romeo Achebe,TE,Notre Dame,106
+GTM000058,MockSource_B,2024-02-06,2024,Romeo Achebe,TE,Notre Dame,112
+GTM000059,MockSource_C,2024-02-07,2024,Romeo Achebe,TE,Notre Dame,105
+GTM000060,MockSource_D,2024-02-08,2024,Romeo Achebe,TE,Notre Dame,108
+GTM000061,MockSource_E,2024-02-09,2024,Romeo Achebe,TE,Notre Dame,107
+GTM000062,MockSource_A,2024-02-10,2024,Romeo Achebe,TE,Notre Dame,99
+GTM000063,MockSource_B,2024-01-15,2024,Romeo Achebe,TE,Notre Dame,194
+GTM000064,MockSource_C,2024-03-10,2024,Romeo Achebe,TE,Notre Dame,89
+GTM000065,MockSource_A,2025-02-05,2025,Kendall Sorensen,WR,Texas,116
+GTM000066,MockSource_B,2025-02-06,2025,Kendall Sorensen,WR,Texas,124
+GTM000067,MockSource_C,2025-02-07,2025,Kendall Sorensen,WR,Texas,116
+GTM000068,MockSource_D,2025-02-08,2025,Kendall Sorensen,WR,Texas,114
+GTM000069,MockSource_E,2025-02-09,2025,Kendall Sorensen,WR,Texas,120
+GTM000070,MockSource_A,2025-02-10,2025,Kendall Sorensen,WR,Texas,114
+GTM000071,MockSource_B,2025-01-15,2025,Kendall Sorensen,WR,Texas,206
+GTM000072,MockSource_C,2025-03-10,2025,Kendall Sorensen,WR,Texas,101
+GTM000073,MockSource_A,2023-02-05,2023,Amari Villanueva,TE,Penn State,132
+GTM000074,MockSource_B,2023-02-06,2023,Amari Villanueva,TE,Penn State,127
+GTM000075,MockSource_C,2023-02-07,2023,Amari Villanueva,TE,Penn State,129
+GTM000076,MockSource_D,2023-02-08,2023,Amari Villanueva,TE,Penn State,132
+GTM000077,MockSource_E,2023-02-09,2023,Amari Villanueva,TE,Penn State,126
+GTM000078,MockSource_A,2023-02-10,2023,Amari Villanueva,TE,Penn State,129
+GTM000079,MockSource_B,2023-01-15,2023,Amari Villanueva,TE,Penn State,218
+GTM000080,MockSource_C,2023-03-10,2023,Amari Villanueva,TE,Penn State,113
+GTM000081,MockSource_A,2024-02-05,2024,Jonah Kowalski,WR,Florida State,138
+GTM000082,MockSource_B,2024-02-06,2024,Jonah Kowalski,WR,Florida State,146
+GTM000083,MockSource_C,2024-02-07,2024,Jonah Kowalski,WR,Florida State,135
+GTM000084,MockSource_D,2024-02-08,2024,Jonah Kowalski,WR,Florida State,140
+GTM000085,MockSource_E,2024-02-09,2024,Jonah Kowalski,WR,Florida State,146
+GTM000086,MockSource_A,2024-02-10,2024,Jonah Kowalski,WR,Florida State,144
+GTM000087,MockSource_B,2024-01-15,2024,Jonah Kowalski,WR,Florida State,230
+GTM000088,MockSource_C,2024-03-10,2024,Jonah Kowalski,WR,Florida State,125
+GTM000089,MockSource_A,2025-02-05,2025,Trey Baptiste,TE,Iowa,154
+GTM000090,MockSource_B,2025-02-06,2025,Trey Baptiste,TE,Iowa,154
+GTM000091,MockSource_C,2025-02-07,2025,Trey Baptiste,TE,Iowa,151
+GTM000092,MockSource_D,2025-02-08,2025,Trey Baptiste,TE,Iowa,149
+GTM000093,MockSource_E,2025-02-09,2025,Trey Baptiste,TE,Iowa,160
+GTM000094,MockSource_A,2025-02-10,2025,Trey Baptiste,TE,Iowa,152
+GTM000095,MockSource_B,2025-01-15,2025,Trey Baptiste,TE,Iowa,242
+GTM000096,MockSource_C,2025-03-10,2025,Trey Baptiste,TE,Iowa,137
+GTM000097,MockSource_A,2023-02-10,2023,Zephyr Nightingale,WR,Nowhere State,150
+GTM000098,MockSource_B,2023-02-11,2023,Zephyr Nightingale,WR,Nowhere State,151
+GTM000099,MockSource_A,2024-02-10,2024,Quillon Castellanos,TE,Nowhere State,170
+GTM000100,MockSource_B,2024-02-11,2024,Quillon Castellanos,TE,Nowhere State,171
+GTM000101,MockSource_A,2025-02-10,2025,Obadiah Featherstone,WR,Nowhere State,190
+GTM000102,MockSource_B,2025-02-11,2025,Obadiah Featherstone,WR,Nowhere State,191

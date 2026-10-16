@@ -234,6 +234,64 @@ validate:
   optout_fields: [forty, ten_yd_split, combine_height, combine_weight]  # exclude_optouts fields
 
 # --------------------------------------------------------------------------- #
+# Phase 0.5 — External pre-Combine expectation proxies (Grinding The Mocks)
+# --------------------------------------------------------------------------- #
+# Source of truth: the Phase 0.5 spec in notes/phase-0.5-external-proxies.md. The task is to map
+# Kaggle `nflId` to a Pre-Combine Expected Draft Position (EDP), filtered to February mock-draft
+# snapshots so the EDP is uncontaminated by Combine performance. GTM is the SOLE external source.
+# All paths/thresholds/parameters live here (no magic numbers in code).
+external:
+  enabled: true
+  source: gtm                        # Grinding The Mocks (the only in-scope external source)
+  out_subdir: external               # outputs/external/ (sample + synthetic labels)
+  proxy_file: pre_combine_expectation.parquet   # full run writes outputs/pre_combine_expectation.parquet
+  unmatched_file: unmatched_external_ids.csv
+  manifest_file: external_data_manifest.md      # written under notes/ (compliance / Kaggle forum)
+  raw_cache_dir: external            # data/raw/external/ (raw GTM responses cached before processing)
+  years: [2023, 2024, 2025]          # draft classes represented in the Kaggle players.csv
+  positions: [WR, TE]                # match-rate assertion population (spec: drafted WRs/TEs)
+  require_for_phase4: true           # 04_models --mode full requires the proxy (existence + schema)
+  # --- strict deliverable schema (EXACT names + order; asserted on write) ---
+  schema: [nflId, Pre_Combine_EDP, match_confidence_score]
+  # --- API pacing / bounded acquisition (spec: strict rate limiting) ---
+  request_sleep_s: 0.5               # sleep between live calls (rate limit)
+  max_retries: 2                     # bounded retries per source beyond the first attempt
+  connect_timeout_s: 8
+  read_timeout_s: 12
+  gtm:
+    # Endpoints/URLs attempted (each result + access date logged to notes/external_data_manifest.md).
+    endpoints:
+      - https://grindingthemocks.com/
+      - https://grindingthemocks.shinyapps.io/Dashboard/
+    # Raw file(s) expected once an export is obtained; cached under data/raw/external/gtm/.
+    raw_files: [gtm_mock_history.csv]
+  # --- February snapshot filter (spec Step 1: pre-Combine, uncontaminated by Combine perf) ---
+  snapshot:
+    month: 2                         # February only (Combine runs late-Feb/early-March)
+  # --- EDP aggregation across the retained February snapshots (spec: median/mean per player) ---
+  aggregation: median                # median | mean (median is the pre-registered choice)
+  # --- fuzzy ID resolution (string similarity on Name + Draft Year + Position + College) ---
+  fuzzy:
+    name_weight: 0.6                 # weights combine into match_confidence_score in [0,1]
+    college_weight: 0.25
+    position_weight: 0.15
+    year_weight: 0.0                 # draft year is a HARD filter, not a soft weight
+    min_score: 0.90                  # accept a match at/above this combined score
+    min_name_score: 0.80             # guard: names must be at least this similar
+  # --- spec threshold: halt if the drafted WR/TE match rate is not ABOVE this ---
+  min_match_rate: 0.85
+  # --- synthetic GTM fixture (schema-compliant; NEVER a finding) ---
+  synthetic:
+    fixture_dir: synthetic/gtm       # under fixtures/ (see src/synthetic_gtm_fixture.py)
+    players_file: kaggle_players.csv # fixture players table (schema-compliant subset)
+    gtm_file: gtm_mock_history.csv   # fixture raw GTM mock history
+    seed: 770077
+    n_players: 12
+    n_mocks_per_player: 6            # February snapshots per player
+    n_unmatched_gtm: 3               # GTM prospects with NO Kaggle player (exercise unmatched)
+    n_near_miss: 2                   # deliberate spelling perturbations (exercise fuzzy matching)
+
+# --------------------------------------------------------------------------- #
 # Deliverables / sample discipline
 # --------------------------------------------------------------------------- #
 deliverables:

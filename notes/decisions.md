@@ -472,3 +472,43 @@ cap above the spike is inert); `01_audit._game_effort_peaks` obeys the same desp
 **Evidence.** `config.yaml`, `src/game_features.py`, `src/01_audit.py`, `src/tests/test_speed_despike.py`,
 `notes/decisions.md`, `notes/limitations.md`, `README_RUN.md`, `notebooks/bdb27_full_run.ipynb`.
 Post-freeze **data-QC** change (not a pre-registration edit); no new runtime dependency.
+
+---
+
+## D36 — Phase 0.5: pre-Combine expectation proxies (Grinding The Mocks) + Phase-4 gate · 2026-10-16
+**Decision.** Added an additive **Phase 0.5** (external data) to the ceiling-binding project: build
+`src/00b_external_proxies.py` to map Kaggle `nflId` → **Pre-Combine Expected Draft Position** (EDP) from
+**Grinding The Mocks** mock-draft history, filtered to **February** snapshots (pre-Combine), aggregated per
+prospect (median; `mean` supported), fuzzy-matched on Name + Draft Year (hard filter) + Position + College,
+and written to `outputs/pre_combine_expectation.parquet` with **exactly** `nflId, Pre_Combine_EDP,
+match_confidence_score` (schema asserted). Spec persisted (unmodified) at
+`notes/phase-0.5-external-proxies.md`; `config.yaml` gained an `external:` section (config-driven, no magic
+numbers). The Phase-4 gate was extended (`src/gate.py::external_proxy_gate_ok`) so `04_models.py --mode
+full` requires the proxy (existence + exact schema) when `external.require_for_phase4` is true; `--mode
+sample` is never gated.
+
+**Why (acquisition outcome).** The live GTM export is **not machine-obtainable** from this host: HTTPS
+direct times out; HTTP 301s to a **reachable Shiny websocket app** (`grindingthemocks.shinyapps.io`) that
+has no static export and whose `robots.txt` disallows crawling; no GitHub mirror (repo search 0; code
+search needs auth — none available); Wayback holds only the app shell; static probes 404. Per the spec we
+**do not fabricate data** and **do not substitute a source** (the non-GTM fallback covers only 2025/26;
+CFBD is out of scope). Full route table + access dates: `notes/external_data_manifest.md`; blocker appended
+to `notes/blockers.md`.
+
+**Evidence / verification.** `src/synthetic_gtm_fixture.py` builds a committed, schema-compliant synthetic
+GTM fixture (`fixtures/synthetic/gtm/`: players subset + raw mock history), deterministic given the seed,
+that exercises the February filter (with Jan/Mar outliers), near-miss fuzzy matching, and unmatched cases.
+`src/tests/test_external_proxies.py` (10 suites) proves: fixture end-to-end with the EXACT parquet schema
+and provenance labelling; the February filter controls the EDP (median recomputed independently); fuzzy
+matching resolves near-misses one-to-one and leaves unknowns unmatched; the **> 0.85 drafted WR/TE
+match-rate gate halts + writes a blocker**; the schema assertion rejects wrong column sets/orders; the
+**Phase-4 gate** blocks on a missing/wrong-schema proxy and passes on a valid one (and never gates sample);
+`--mode full` with no cached GTM stops with a data-availability blocker (no proxy written, nothing
+fabricated); sample-mode labelling + determinism + checkpoint/skip. Full standalone suite green (includes
+the unchanged `test_gate.py` and `test_models.py`).
+
+**Scope note (Phase-4 consumption).** This cycle wires the **gate** and makes the proxy available; it does
+**not** alter the FROZEN model specification (`notes/prereg.md` untouched) to add the EDP covariate — that
+is a pre-registration decision to be taken (if at all) with Conor, and is moot until real GTM data exists.
+
+**Commit.** `PHASE05_SHA` on `main` (code/config/tests/notes/fixtures only — no data).

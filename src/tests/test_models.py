@@ -69,6 +69,18 @@ def _frozen_prereg(d: Path) -> Path:
     return d
 
 
+def _write_proxy(outputs: Path) -> None:
+    """Phase 0.5 deliverable the Phase-4 full-mode gate requires (existence + exact schema)."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    schema = pa.schema([("nflId", pa.int64()), ("Pre_Combine_EDP", pa.float64()),
+                        ("match_confidence_score", pa.float64())])
+    tbl = pa.Table.from_pylist(
+        [{"nflId": 1, "Pre_Combine_EDP": 12.5, "match_confidence_score": 1.0}], schema=schema)
+    pq.write_table(tbl, outputs / common.load_config()["external"]["proxy_file"])
+
+
 def _rows(path: Path) -> list[dict]:
     with open(path, newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
@@ -165,6 +177,7 @@ def test_full_blocked_on_non_full_thresholds():
     (out / "audit" / "audit_decision.json").write_text(
         json.dumps({"decision": "GO — matched WR OK, route snaps OK, fields present, ICC OK"}))
     (out / "thresholds.json").write_text(json.dumps({"provenance": "PLACEHOLDER"}))
+    _write_proxy(out)  # satisfy the Phase-0.5 gate so the run reaches the thresholds check
     cfg = _cfg(out, notes=notes)
     r = _run(MODELS, ["--mode", "full", "--force"], cfg)
     assert r.returncode == 2, f"non-FULL thresholds not blocked:\n{r.stdout}\n{r.stderr}"

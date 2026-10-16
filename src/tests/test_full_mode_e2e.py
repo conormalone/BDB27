@@ -166,6 +166,23 @@ def _write_ceiling_table(raw: Path, out_env: Path, cfg: dict) -> None:
                      fieldnames=["provenance", "nfl_id", "env_vmax", "env_a0"])
 
 
+def _write_proxy(outputs: Path) -> None:
+    """Provide the Phase 0.5 deliverable that the Phase-4 full-mode gate now requires.
+
+    Phase 0.5 (`src/00b_external_proxies.py`) gates `04_models --mode full` on the proxy parquet
+    (existence + exact schema). A hermetic full-mode run must therefore supply one; GTM is not
+    used here — a schema-only stand-in is sufficient (the test asserts the pipeline mechanics).
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    schema = pa.schema([("nflId", pa.int64()), ("Pre_Combine_EDP", pa.float64()),
+                        ("match_confidence_score", pa.float64())])
+    tbl = pa.Table.from_pylist(
+        [{"nflId": 1, "Pre_Combine_EDP": 12.5, "match_confidence_score": 1.0}], schema=schema)
+    pq.write_table(tbl, outputs / common.load_config()["external"]["proxy_file"])
+
+
 def _build_inputs(tmp: Path) -> Path:
     raw, parquet, outputs = tmp / "raw", tmp / "parquet", tmp / "outputs"
     for d in (raw, parquet, outputs):
@@ -202,6 +219,7 @@ def _build_inputs(tmp: Path) -> Path:
     cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
 
     _write_ceiling_table(raw, outputs / "envelope", cfg)
+    _write_proxy(outputs)   # Phase-4 full-mode gate: proxy parquet (existence + schema)
     return cfg_path
 
 

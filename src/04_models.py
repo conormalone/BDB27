@@ -19,7 +19,8 @@ Response / predictor (config-driven): ``response = models.response`` (in-game ef
 
 Run modes / provenance:
 
-* ``--mode full`` — gated on the pre-registration freeze **and** the audit go/no-go (`src/gate.py`);
+* ``--mode full`` — gated on the pre-registration freeze **and** the audit go/no-go (`src/gate.py`)
+  **and** the Phase 0.5 external proxy (existence + exact schema; `external.require_for_phase4`);
   requires ``outputs/game/efforts.csv`` and ``outputs/thresholds.json`` with provenance ``FULL``.
 * ``--mode sample`` — game demand is full-only → writes a labelled ``UNVALIDATED SAMPLE OUTPUT``
   placeholder (``PENDING FULL RUN``), never fabricated numbers.
@@ -438,7 +439,8 @@ def main() -> None:
     common.seed_everything(cfg["seed"])
     log = common.get_logger()
 
-    gate.enforce(cfg, mode, "04_models", requires_game_side=True, logger=log)
+    gate.enforce(cfg, mode, "04_models", requires_game_side=True, requires_external_proxy=True,
+                 logger=log)
 
     sub = cfg["models"]["out_subdir"]
     if args.synthetic:
