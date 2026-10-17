@@ -31,8 +31,9 @@ data is not in the usual place — `DATA_DIR`, then **Run All**. It:
 thresholds and security outputs are `FULL`; otherwise it shows the preview banner and suppresses it.
 
 **Checkpoints.** `CLEAN=False` (default) keeps existing stage outputs; `FORCE_STAGES=["…"]` rebuilds
-only the named stages; `CLEAN=True` deletes outputs first — including the Combine envelope — and so
-forces a full ceiling refit (the slowest stage).
+only the named stages. `CLEAN=True` is inert unless `CLEAN_CONFIRM="DELETE"`; when armed it deletes
+every stage output under `outputs/` — including the Combine envelope — and so forces a full ceiling
+refit (the slowest stage). It prints the directories and file counts before deleting.
 
 ## Conventions
 - **Self-contained**: each notebook opens with its imports + data paths and runs top-to-bottom, no hidden state.
