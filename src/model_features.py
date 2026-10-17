@@ -93,6 +93,7 @@ def covariate_table(cr_records: Sequence[dict], player_records: Sequence[dict], 
         out[nid] = dict(
             position=(str(r.get("combine_position")) if r.get("combine_position") is not None else None),
             height=height, weight=weight, age=age, draft_position=draft_position,
+            draft_year=(dy if np.isfinite(dy) else float("nan")),
             bmi=bmi(height, weight, float(m["bmi_constant"])), optout=bool(optout),
         )
     return out

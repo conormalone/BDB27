@@ -16,6 +16,13 @@
 > obtainable; see `notes/blockers.md` / `notes/external_data_manifest.md`), and it **gates Phase 4**
 > (existence + schema). The whole game-side pipeline is game-side, so every real `--mode full` run still
 > needs the full tracking files (`PENDING FULL RUN`). See `notes/decisions.md` for D27–D36.
+>
+> **Cycle 2 (D37–D39).** `06_security` (EDP-board exposures + Analysis A) and the **new**
+> `07_security_models` (Phase 5 B–G: the **incentive-exposure** two-group contrast) are implemented and
+> exercised on committed fixtures. **D38 retires Analysis A as a headline gate** — it is now a short
+> attenuation-corrected appendix, and the paper's spine is incentive exposure (`moved_down` vs
+> `high_secure`, assigned from **pre-Combine** EDP only). The real game-side runs remain
+> **`PENDING FULL RUN`** (no `game_tracking_{2023,24,25}.csv` on this Pi).
 
 ## 1. Environment (ARM64 Pi / x86 Linux / Windows laptop)
 
@@ -38,7 +45,7 @@ the drive (or copy the CSVs to a laptop and point `data/raw` there) before any g
 ## 3. Run order
 
 ```
-01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 00b_external_proxies → 04_models → 05_validate
+01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 07_security_models → 00b_external_proxies → 04_models → 05_validate
 ```
 
 ```bash
@@ -83,12 +90,25 @@ python src/05_validate.py --synthetic --synthetic-regime binding # or: null (not
 
 # Phase 4 SECURITY — pre-Combine EDP-board exposures + Analysis A (the early headline gate; board+Combine
 #   only, so it runs for real on this Pi). Reads external.board (permitted; notes/rules.md §6) + the Phase-2
-#   envelope; writes outputs/security/{security_exposure.parquet,analysis_a.json,SUMMARY.md}.
+#   envelope; writes outputs/security/{security_exposure.parquet,analysis_a.json,
+#   analysis_a_attenuation.csv,SUMMARY.md}. D38: Analysis A is APPENDIX-ONLY (its gate is retired).
 python src/synthetic_security_fixture.py                    # (re)build the committed synthetic security fixture
 python src/06_security.py --mode full --force                # real board + envelope (Analysis A gate)
 python src/06_security.py --mode sample                      # labelled UNVALIDATED SAMPLE OUTPUT
 python src/06_security.py --synthetic --synthetic-regime planted   # planted effect (not a finding)
 python src/06_security.py --synthetic --synthetic-regime null      # null case (not a finding)
+
+# Phase 5 B–G SECURITY MODELS — the incentive-exposure spine (D38). Needs the Phase-3 game tables, the
+#   Phase-4 security exposure table, the Phase-2 envelope + FULL thresholds. Writes
+#   outputs/security_models/{SUMMARY.md,SUMMARY.json,group_assignment.csv,b_primary.csv,b_group_means.csv,
+#   c_end.csv,c_exceedance.csv,d_skippers.csv,e_selection.csv,e_ipw.csv,falsification.csv,g_tail.csv,
+#   g_tail_summary.csv,_DONE.json}.
+python src/synthetic_security_game_fixture.py                 # (re)build the committed game-side fixture
+python src/07_security_models.py --mode sample                # labelled PENDING FULL RUN placeholder (exit 0)
+python src/07_security_models.py --mode full                  # real estimates (needs the full game files)
+python src/07_security_models.py --synthetic --synthetic-regime planted    # planted effect
+python src/07_security_models.py --synthetic --synthetic-regime null       # null case
+python src/07_security_models.py --synthetic --synthetic-regime selection  # selection + IPW
 
 # Phase 3/4/5 tests (no pytest needed)
 python src/tests/test_thresholds.py
@@ -100,6 +120,8 @@ python src/tests/test_external_proxies.py
 # Phase 4 security tests
 python src/tests/test_security.py
 python src/tests/test_security_audit.py
+# Phase 5 B–G security-model tests (sort key, post-Combine invariance, recovery/null/selection, CLI)
+python src/tests/test_security_models.py
 ```
 
 `--force` ignores stage checkpoints (stages otherwise skip finished work). Logs of wall time + peak RAM per
@@ -156,11 +178,28 @@ notebook runs for you (kept for CI / power users).
   (external-data compliance record). Sample/synthetic runs write these under `outputs/external/` with a
   `UNVALIDATED SAMPLE OUTPUT` / `SYNTHETIC FIXTURE` label.
 
-## 6. Expected cost
+## 6. Expected cost (measured on the Pi, ARM64 / Python 3.13)
 
-To be measured once the stages exist (see `notes/scale.md`). Known: the whole Combine side is a **compute**
-problem on a small (14.2 MB Parquet) file and runs on the Pi; the **game side** (~2.9 GB over three
-seasons) is the scale driver and must stream per game/player.
+Wall time and peak RAM are appended per stage to `outputs/run_log.csv` (`common.timed_stage`). The table is
+**measured on the synthetic fixtures**; the real `--mode full` cost is `PENDING FULL RUN` (P8/P16 in
+`notes/pending_full_run.md`) and is dominated by the Phase-3 streaming pass over ~2.9 GB of game tracking.
+
+| Stage | Fixture / mode | Wall time (median) | Peak RAM | Notes |
+|---|---|---:|---:|---|
+| `01_audit` | synthetic (small) / sample | 0.9 s / 21 s | 144 / 387 MB | sample mode scans the 2²⁰-row game prefix |
+| `02_combine_envelope` | sample (complete Combine file) | 3.0 s | 280 MB | real: Combine side is complete on this Pi |
+| `06_security` | real board + envelope | 2.2 s | 281 MB | Analysis A + attenuation appendix (appendix-only, D38) |
+| `00_thresholds` | synthetic | 0.17 s | 280 MB | streams the efforts once |
+| `03_game_demand` | synthetic | 0.7 s | 280 MB | real: the per-game streaming pass (scale driver) |
+| `07_security_models` | synthetic, 3 regimes | **6.2 s** (max 22.8 s with the repo bootstrap reps) | **267 MB** | B/C/E/F/G; the G quantile bootstrap is the cost driver |
+| `00b_external_proxies` | sample (fixture) | 0.3 s | 162 MB | real `full` is data-blocked (GTM not obtainable) |
+| `04_models` | synthetic (8 players) | 7.2 s | 280 MB | 1000-rep quantile bootstrap |
+| `05_validate` | synthetic (8 players) | 4.9 s | 280 MB | CV + permutation + sensitivities |
+
+`07_security_models` bootstrap knobs: `security_models.primary.attenuation_reps` (200) and
+`security_models.g.bootstrap_reps` (60). Raise them on the big machine if tighter tail intervals are wanted;
+the estimate is unchanged. The synthetic fixture is 198 players / ~1.7k efforts; the real full run is the
+same code path with the real Phase-3 tables.
 
 ## 7. Local run on Windows / laptop
 

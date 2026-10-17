@@ -160,3 +160,9 @@ fields, ICC) to pass.
 - Nothing in this file may be edited **after** results for the corresponding stage are first computed.
 - Any change after freezing is recorded as a dated `notes/decisions.md` entry **with the reason** and the
   pre-change value, and flagged in `notes/limitations.md`.
+
+---
+
+**Deviations (post-freeze, D38 2026-10-17):** the headline-gate condition 4 (Analysis A) is retired and the
+primary estimand is the pre-Combine two-group contrast; see `notes/prereg-deviations.md` and
+`notes/decisions.md` D38. **No frozen value above has been changed** and this file remains **FROZEN**.

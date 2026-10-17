@@ -126,3 +126,52 @@ archived at git tag `archive/combine-fatigue-v1`.
     (the despike cannot inflate the exceedance rate). The bound is a physically-justified data-QC
     bound, **not** an analysis knob, and is never tuned to change a result (`notes/decisions.md` D35;
     `notes/prereg.md` stays FROZEN).
+
+## Security / incentive exposure (D38, 2026-10-17)
+
+22. **Incentive exposure is not measured intent.** The design operationalises *incentive exposure* — a
+    slipping draft stock gives a stronger **reason** to invest in the speed mechanism. It cannot observe
+    whether anyone actually invested more, tried harder, or intended to. *Mitigation:* the copy is fixed by
+    D38: "incentive exposure" and "consistent with an incentive mechanism" are allowed; "tried harder",
+    "intended to", "motivated to" and "gamed the Combine" are **not**. Any causal language is off-limits.
+23. **The sort key is a pre-Combine construction, not a random assignment.** `moved_down` vs `high_secure`
+    is defined from the EDP trend (1wk-pre − 2wk-pre) or, absent a trend, from within-position tertiles of
+    `log(EDP_pre)`. The two groups therefore differ in *level* as well as in *movement*, and players are not
+    randomised to them. *Mitigation:* the assignment is deterministic and pre-Combine only (never the game
+    outcome), the pooled model carries a **stratum fixed effect**, and trend-only / level-only panels are
+    reported separately. It is a contrast, not a causal effect.
+24. **Level-fallback is a declared second rule.** No 2-week snapshot ⇒ the group comes from a tertile of the
+    pre-Combine EDP level, so about half the sample is classified by a different rule than the other half.
+    *Mitigation:* every output labels the stratum; cutoffs and counts are reported; the middle tertile is
+    `unclassified` and excluded from the contrast (retained in the continuous model so no information is
+    thrown away). A player near a tertile boundary can flip with a small EDP change.
+25. **Selection on being drafted (and on playing).** Game tracking exists only for players who reached the
+    NFL and appeared in games. At-risk players are less likely to appear, and appearance can correlate with
+    the outcome. *Mitigation:* the appearance model + IPW refit (E) with a truncation grid; the estimate is
+    reported with and without weights, and the truncation sensitivity shows how much the answer depends on
+    the tails. IPW corrects only for selection on **observables** (pre-Combine EDP, position, size, Combine
+    speed); selection on unobservables is not identified. H1 stays exploratory unless E supports it.
+26. **Post-Combine information is an outcome, never an exposure.** Post-Combine EDP and the pre→post change
+    reflect the Combine itself. *Mitigation:* a runtime assertion refuses them in the assignment path; the
+    only place they appear is the labelled exploratory Analysis-A appendix.
+27. **Measurement error in the Combine feature attenuates the group and speed coefficients.** `env_vmax`
+    has test–retest ICC ≈ 0.64 (the least reliable retained feature); `peak_speed`/`speed_at_20yd` ≈ 0.97.
+    *Mitigation:* both naive and ICC-attenuation-corrected estimates are reported (FWL + moment-matrix
+    correction with a player-clustered bootstrap SE), never a silent replacement. The correction is an
+    approximation and depends on the pre-declared ICC; with attenuation the **group** coefficient is only
+    partially identified.
+28. **Multiple comparisons.** B has 3 scopes × 4 specs; C 3 scopes; F 5 tests; G 3 scopes × 4 τ. *Mitigation:*
+    the headline is the single pre-declared WR primary coefficient; everything else is a labelled panel. No
+    multiplicity-adjusted claim is made for the exploratory panels; treat their p-values as descriptive.
+29. **Small groups in the replication and in the split strata.** TE and the level-fallback stratum can fall
+    below `security_models.sort.min_group_n` (15). *Mitigation:* thin populations are reported with a note
+    rather than fitted silently; heterogeneous effects are not claimed from a thin group.
+30. **Ceiling reliability limits the gap definition.** The gap uses `env_vmax`, whose error is largest for
+    thin 40-yd-dash repeats. *Mitigation:* utilisation tails (G) and the exceedance rate are reported with
+    Wilson CIs; the ceiling is treated as a noisy reference, not ground truth.
+31. **Skipper analysis (D) is exploratory and thin.** Skipping is voluntary and rare; the size+drills
+    prediction cannot separate injury skips from strategic ones. *Mitigation:* reported as exploratory, null
+    with a reason below `min_n`, and never used as evidence for the incentive mechanism.
+32. **Synthetic fixture numbers are never findings.** The planted/null/selection regimes prove the plumbing
+    and the sign conventions only. The fixture's declared ICC file is a pipeline input, not a property of
+    the fixture, so the attenuation correction is expected to overshoot there.

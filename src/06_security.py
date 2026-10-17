@@ -229,18 +229,77 @@ def analysis_a(board_rows: list[dict], testing_days: dict, envelope: dict[int, d
                                        "speed_p": r["z_speed"]["pvalue"],
                                        "interaction_coef": r["z_speed_x_logedp"]["coef"],
                                        "interaction_p": r["z_speed_x_logedp"]["pvalue"]})
+    # full panel (includes the PRIMARY feature) for the D38 attenuation appendix
+    panel = []
+    features = list(dict.fromkeys([primary_feature] + list(acfg.get("robustness_features", []))))
+    for feat in features:
+        for scope, sub in (("all", recs), ("WR", [r for r in recs if r["position_group"] == "WR"])):
+            for out_name in ("edp_change", "edp_log_change"):
+                r = _fit(sub, feat, out_name)
+                if r:
+                    panel.append({"feature": feat, "outcome": out_name, "scope": scope,
+                                  "n": r["n"], "speed_coef": r["z_speed"]["coef"],
+                                  "speed_p": r["z_speed"]["pvalue"],
+                                  "interaction_coef": r["z_speed_x_logedp"]["coef"],
+                                  "interaction_p": r["z_speed_x_logedp"]["pvalue"]})
     summary.update(
         speed_coef=speed_c, interaction_coef=inter_c, r2=primary["r2"],
         market_responded_to_speed=responded, rewarded_more_for_at_risk=inter_sig,
         gate_pass=bool(responded), robustness=robustness,
+        panel=panel,
         note=("market rewarded speed (p<alpha, expected sign)" if responded
               else "no significant speed response at alpha for the pre-declared primary spec"),
     )
     return summary
 
 
-def _write_analysis_a(sec_dir: Path, summary: dict, prov: str, log) -> None:
+def attenuation_panel(cfg: dict, summary: dict) -> list[dict]:
+    """D38 appendix: attenuation-corrected Analysis-A coefficients (approximate, clearly labelled).
+
+    The correction is the pre-registered ``icc_attenuation`` convention (divide the raw coefficient by
+    the feature's test–retest ICC). It is an **approximation** (no SE/p correction is propagated; the
+    corrected p-value is deliberately left null rather than fabricated).
+    """
+    acfg = cfg["security"]["analysis_a"]
+    icc = sf.load_feature_icc(cfg)
+    min_n = int(acfg.get("attenuation_min_n", acfg["min_n"]))
+    panel = summary.get("panel") or []
+    if not panel:
+        return [dict(feature=None, outcome=acfg["outcome"], scope=None, n=summary.get("n"),
+                     raw_speed_coef=None, raw_speed_p=None, reliability_icc=None,
+                     reliability_source=None, corrected_speed_coef=None,
+                     raw_interaction_coef=None, raw_interaction_p=None,
+                     corrected_interaction_coef=None, method="icc_attenuation",
+                     note="reported null: Analysis A underpowered/unavailable")]
+    def _r(v):
+        try:
+            return round(float(v), 6)
+        except (TypeError, ValueError):
+            return v
+    rows = []
+    for r in panel:
+        rel = icc.get(r["feature"]) or {}
+        lam = rel.get("icc")
+        raw_s, raw_i = r["speed_coef"], r["interaction_coef"]
+        ok = lam is not None and 0 < float(lam) <= 1 and r["n"] >= min_n
+        rows.append(dict(
+            feature=r["feature"], outcome=r["outcome"], scope=r["scope"], n=r["n"],
+            raw_speed_coef=_r(raw_s), raw_speed_p=_r(r["speed_p"]),
+            reliability_icc=_r(lam), reliability_source=rel.get("source"),
+            corrected_speed_coef=(_r(raw_s / float(lam)) if ok else None),
+            raw_interaction_coef=_r(raw_i), raw_interaction_p=_r(r["interaction_p"]),
+            corrected_interaction_coef=(_r(raw_i / float(lam)) if ok else None),
+            method="icc_attenuation",
+            note=("approximate: corrected = raw / ICC (pre-registered icc_attenuation; no SE/p "
+                  "propagated)") if ok else
+                 (f"reported null: ICC unavailable for {r['feature']}" if lam is None
+                  else f"reported null: n={r['n']} < attenuation_min_n={min_n}")))
+    return rows
+
+
+def _write_analysis_a(cfg: dict, sec_dir: Path, summary: dict, prov: str, log) -> None:
     sec_dir.mkdir(parents=True, exist_ok=True)
+    att = attenuation_panel(cfg, summary) if cfg["security"]["analysis_a"].get("attenuation") else []
     summary = dict(provenance=prov, **summary)
     (sec_dir / "analysis_a.json").write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
     rows = []
@@ -252,6 +311,16 @@ def _write_analysis_a(sec_dir: Path, summary: dict, prov: str, log) -> None:
         rows = [dict(term="none", coef="", se="", pvalue="", note=summary.get("note"))]
     common.write_csv(sec_dir / "analysis_a.csv",
                      [dict(provenance=prov, **r) for r in rows], fieldnames=["provenance", "term", "coef", "se", "pvalue"])
+    if att:
+        common.write_csv(sec_dir / "analysis_a_attenuation.csv",
+                         [dict(provenance=prov, **r) for r in att],
+                         fieldnames=["provenance", "feature", "outcome", "scope", "n",
+                                     "raw_speed_coef", "raw_speed_p", "reliability_icc",
+                                     "reliability_source", "corrected_speed_coef",
+                                     "raw_interaction_coef", "raw_interaction_p",
+                                     "corrected_interaction_coef", "method", "note"])
+        log.info("analysis A attenuation appendix: %d rows -> %s", len(att),
+                 sec_dir / "analysis_a_attenuation.csv")
     log.info("analysis A: n=%s gate_pass=%s speed_coef=%s", summary.get("n"), summary.get("gate_pass"),
              summary.get("speed_coef"))
 
@@ -278,7 +347,7 @@ def run(cfg: dict, mode: str, synthetic: bool, sec_regime: str, force: bool, log
 
     envelope = load_envelope(con, cfg, synthetic, sec_regime)
     a_summary = analysis_a(board_rows, testing, envelope, cfg)
-    _write_analysis_a(sec_dir, a_summary, prov, log)
+    _write_analysis_a(cfg, sec_dir, a_summary, prov, log)
 
     summary = dict(provenance=prov, mode=mode, synthetic=synthetic, board_source=meta.get("source"),
                    n_board_rows=len(board_rows), n_board_players=len(sf.board_players(board_rows)),
@@ -302,7 +371,14 @@ def _render(s: dict) -> str:
                  f"**exposures:** {s['n_exposures']}  ·  **no 1-week-pre (dropped from B):** {s['n_dropped_no_primary']}")
     lines.append(f"- **Combine speed available (Phase-2 envelope):** {s['n_combine_speed']}")
     lines.append("")
-    lines.append("## Analysis A (early gate: did the market reward speed?)")
+    lines.append("## Analysis A — APPENDIX ONLY (the headline gate is RETIRED by D38)")
+    lines.append("")
+    lines.append("**D38 (PI override):** Analysis A is **not** a gate and **not** part of the paper "
+                 "argument. Headline-gate condition 4 (\"analysis A shows the market responded to "
+                 "speed\") is **dropped**. Analysis A survives only as this short descriptive "
+                 "appendix; the gate fields below are retained unchanged for provenance. The new "
+                 "spine is **incentive exposure** (`src/07_security_models.py`).")
+    lines.append("")
     lines.append(f"- n = {a.get('n')}  ·  gate_pass = **{a.get('gate_pass')}**  ·  "
                  f"market_responded_to_speed = {a.get('market_responded_to_speed')}  ·  "
                  f"rewarded_more_for_at_risk = {a.get('rewarded_more_for_at_risk')}")
@@ -311,6 +387,12 @@ def _render(s: dict) -> str:
         if isinstance(c, dict):
             lines.append(f"- `{name}`: coef={c['coef']:.4f}, se={c['se']:.4f}, p={c['pvalue']:.4g}")
     lines.append(f"- note: {a.get('note')}")
+    lines.append("")
+    lines.append("### Attenuation-corrected panel (approximate; `analysis_a_attenuation.csv`)")
+    lines.append("Corrected coefficient = raw coefficient ÷ the feature's pre-declared test–retest "
+                 "ICC (`validate.measurement_error_correction = icc_attenuation`). The correction is "
+                 "an approximation: no standard error or p-value is propagated, so the corrected "
+                 "p-value is left null rather than fabricated.")
     lines.append("")
     lines.append(s.get("note", ""))
     lines.append("")

@@ -361,6 +361,11 @@ security:
     speed_effect_sign: negative    # faster -> lower EDP (market reward) is the expected sign
     # robustness panel: refit the same spec across shrunken speed features (sign-stability check)
     robustness_features: [env_vmax, peak_speed, speed_at_20yd]
+    # --- D38: Analysis A is appendix-only (the gate is retired); this is the attenuation panel ---
+    attenuation: true             # write outputs/security/analysis_a_attenuation.csv
+    reliability_features: [env_vmax, peak_speed, speed_at_20yd]
+    attenuation_min_n: 40         # below this a feature's attenuation row is a reported null
+    attenuation_note: "approximate classical measurement-error correction: corrected = raw / ICC (prereg validate.measurement_error_correction=icc_attenuation)"
   # --- item (l) power calculation inputs ---
   power:
     alpha: 0.05
@@ -368,6 +373,161 @@ security:
     residual_sd_log_speed: 0.20   # assumed residual SD of log(game top-k speed)
     exposure_sd_log_edp: 0.70     # assumed SD of log(pre-Combine EDP) (a-priori; sample-labelled)
     min_detectable_effect_abs: 0.0  # headline gate: an MDE above this is 'undetectable at any plausible size'
+
+# --------------------------------------------------------------------------- #
+# Phase 5 B–G — security / incentive-exposure models (src/07_security_models.py)
+# D38: the spine is INCENTIVE EXPOSURE (a slipping draft stock => a stronger reason to invest in the
+# speed mechanism => a SMALLER Combine→game gap). Group assignment uses PRE-COMBINE information ONLY:
+# the 1wk-pre vs 2wk-pre EDP trend where available, else within-position tertiles of log(EDP_pre).
+# Post-Combine EDP / pre→post change are NEVER used for assignment or any primary model.
+# Sign convention: a NEGATIVE `group_coef` means moved_down sits further below its ceiling (a LARGER
+# gap) i.e. AGAINST the incentive hypothesis; the hypothesis predicts POSITIVE.
+# --------------------------------------------------------------------------- #
+security_models:
+  out_subdir: security_models
+  # --- input filenames (real: outputs/game|security|envelope; synthetic: the fixture dir) ---
+  inputs:
+    efforts: efforts.csv
+    top_k_efforts: top_k_efforts.csv
+    player_summary: player_summary.csv
+    thresholds_applied: thresholds_applied.csv
+    security_exposure: security_exposure.parquet       # real path (outputs/security/)
+    security_exposure_csv: security_exposure.csv       # synthetic fixture path
+    per_player_envelope: per_player_envelope.csv
+    attempt_features: attempt_features.csv
+    selection_pool: selection_pool.csv                 # synthetic fixture only (transparency)
+    covariates: covariates.csv                         # synthetic fixture only
+    reliability: feature_reliability.csv               # synthetic fixture only
+    meta: meta.json                                    # synthetic fixture only
+  # --- the PRE-COMBINE sort key (D38) ---
+  sort:
+    trend_epsilon: 0.0              # moved_down iff edp_trend > epsilon (edp_trend = 1wk-pre - 2wk-pre)
+    trend_epsilon_grid: [0.0, 0.5, 1.0]   # descriptive sensitivity on the group counts only
+    level_fallback: true            # has_trend=false & has_primary=true -> within-position tertiles
+    level_tertiles: [0.3333333333, 0.6666666667]  # bottom = high_secure, top = moved_down
+    min_group_n: 15                 # below this a group/scatter is reported as thin (never forced)
+    groups: [moved_down, high_secure]        # the two-group contrast (order = sign convention)
+    unclassified_label: unclassified
+  # --- B: effort-level primary model ---
+  primary:
+    response: log_peak_speed        # log(in-game top-k effort peak speed)
+    speed_feature: env_vmax         # primary Combine feature (config: models.primary_feature)
+    robustness_features: [peak_speed, speed_at_20yd]
+    controls: [route_family, pass_length, snap_share, position, height, weight, years_since_combine]
+    cluster: player                 # statsmodels OLS cov_type="cluster", groups=nfl_id
+    attenuation: true               # FWL + ICC moment-matrix correction (both estimates reported)
+    attenuation_reps: 200           # player-clustered bootstrap reps for the corrected group SE
+    attenuation_seed_offset: 303
+    snap_share_clip: 1.0            # snap_share = min(n_route_snaps / route_snap_count, clip)
+    min_obs: 40
+    scopes: [WR, TE, pooled]
+    stratum_fe: true                # headline = pooled two-group split WITH a stratum fixed effect
+    panels: [trend_only, level_fallback]   # pre-declared sensitivity panels (one stratum each)
+    topk_mean_variant: true         # per-player log(top-k mean speed) variant (HC1)
+    route_family_map:
+      GO: VERTICAL
+      POST: VERTICAL
+      CORNER: VERTICAL
+      WHEEL: VERTICAL
+      CROSS: BREAK_IN
+      IN: BREAK_IN
+      SLANT: BREAK_IN
+      ANGLE: BREAK_IN
+      OUT: BREAK_OUT
+      FLAT: BREAK_OUT
+      HITCH: SHORT
+      SCREEN: SHORT
+    route_family_default: OTHER
+    season_digits: 4                # season = leading 4 digits of game_id (NFL game ids)
+    season_min: 1999
+    season_max: 2100
+  # --- C: which end drives it (continuous log-EDP piecewise model) ---
+  c:
+    scopes: [WR, TE, pooled]
+    security_percentiles: [0.1, 0.5, 0.9]
+    knot_percentiles: [0.3333333333, 0.6666666667]   # piecewise-linear knots in log(EDP_pre)
+    min_obs: 40
+    wilson_z: 1.959963984540054     # 95% Wilson interval
+  # --- D: skippers (exploratory) ---
+  d:
+    min_n: 15
+    alpha: 0.05
+    skipper_patterns: [cut_only, no_speed_drills]
+    dash_patterns: [dash_only, dash_and_cut]
+  # --- E: selection + IPW ---
+  e:
+    min_n: 60
+    min_appeared: 30
+    weight_trim: [0.01, 0.99]        # w clipped to these weight percentiles
+    weight_grid: [[0.0, 1.0], [0.01, 0.99], [0.05, 0.95]]   # truncation sensitivity grid
+    max_iter: 200
+    cluster: player
+  # --- F: falsification ---
+  f:
+    placebo: [height, weight]        # standardized placebos in place of the group term
+    effort_split_k: 5               # bottom-k low-effort placebo (top-k is the primary)
+    min_obs: 40
+  # --- G: ceiling / tail ---
+  g:
+    quantile_source: models.quantiles   # the FROZEN prereg tau ladder
+    scopes: [WR, TE, pooled]
+    bootstrap_reps: 60              # config reps (player-clustered); full runs may raise this
+    seed_offset: 404
+    max_iter: 400                   # QR iteration cap for the point fit + bootstrap
+    p_tol: 1.0e-05
+    instability_ratio: 1.0          # boot_se > ratio * |estimate| => reported null
+    min_obs: 40
+    utilization_percentiles: [0.5, 0.9, 0.99]
+  # --- selection-model population floor (E) ---
+  selection:
+    min_n: 60
+  # --- committed synthetic game-side fixture (NEVER a finding) ---
+  synthetic:
+    root: synthetic/security_game
+    regimes: [planted, null, selection]
+    seed_offset: 909
+    n_wr: 140                       # >=120 WR (brief minimum)
+    n_te: 50                        # >=40 TE
+    n_edge: 8                       # forced edge-case players (documented in meta.json)
+    route_snaps_min: 100            # main population: >=100 route snaps (the fixed denominator)
+    route_snaps_max: 170
+    low_snap_min: 25                # forced <100-snap edge players
+    low_snap_max: 60
+    k_top: 5
+    k_bottom: 5
+    base_gap_log: -0.24             # E[log(game speed) - log(ceiling)] (≈21% below the ceiling)
+    gap_player_sd: 0.015
+    gap_noise_sd: 0.030
+    bottom_gap_offset: 0.14         # low-effort placebo sits clearly below the top-k
+    delta: 0.08                     # planted moved_down advantage (log units); null regime = 0
+    delta_null: 0.0
+    delta_selection: 0.08
+    dose_gamma: 0.08                # continuous log(EDP) gradient (at-risk -> smaller gap)
+    measurement_noise_sd: 0.02      # env_vmax = true ceiling * exp(noise)
+    log_edp_mu: 3.70
+    log_edp_sd: 0.75
+    combine_speed_mu: 8.90
+    combine_speed_sd: 0.75
+    trend_share: 0.50               # share with a 2-week snapshot (trend stratum)
+    trend_sd_edp: 4.0
+    trend_level_corr: 0.60          # at-risk drift correlates with the EDP level (realistic)
+    absence_rate: 0.10              # base no-game-data rate (planted/null regimes)
+    selection_log_edp_slope: -3.00  # selection regime: at-risk less likely to appear
+    selection_speed_slope: 0.45     # better Combine speed -> slightly more likely to appear
+    selection_intercept: 1.10
+    selection_te_shift: -0.25
+    skipper_rate: 0.12              # share of high_secure forced into cut_only/no_speed_drills
+    one_effort_players: 2
+    low_snap_players: 6
+    missing_covariate_players: 2
+    no_primary_players: 1
+    speed_at_20yd_ratio: 0.94
+    attempt_sd: 0.02
+    icc: {env_vmax: 0.64, peak_speed: 0.97, speed_at_20yd: 0.97}
+    height_mu: 73.0
+    height_sd: 2.6
+    weight_mu: 200.0
+    weight_sd: 16.0
 
 # --------------------------------------------------------------------------- #
 # Deliverables / sample discipline

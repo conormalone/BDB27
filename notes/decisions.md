@@ -581,3 +581,147 @@ Full standalone suite green (all 15 test files).
 `src/synthetic_security_fixture.py`, `fixtures/synthetic/security/{planted,null}/`, new tests, and the notes
 above. **Commit.** this cycle on `main` — code/config/tests/notes/fixtures only (no data, no generated
 outputs).
+
+---
+
+## D38 — Cycle 2 (PI override): Analysis A gate RETIRED; the spine becomes **incentive exposure**; two-group pre-Combine sort key · 2026-10-17
+**Decision (binding for this cycle).** The PI directed a change of argument. **Analysis A is not a gate and is
+not part of the paper argument.** Headline-gate **condition 4 is dropped**. Analysis A survives only as a
+short **descriptive appendix**, now with an attenuation-corrected panel. The paper's spine is
+**incentive exposure**: a player whose draft stock is *slipping* entering the Combine has a stronger reason to
+invest in the speed mechanism, so he should show a **smaller** Combine→game gap (higher ceiling
+realisation / exceedance) than a high/secure player. This is operationalised **strictly as incentive
+exposure — never as measured belief or intent**. The writeup may say "consistent with an incentive
+mechanism"; it must **never** say players tried harder, intended to, or gamed the Combine.
+
+**Exact pre-change gate wording (quoted before the change, for the record).** `TASK.md` §Headline gate read:
+
+> The security question leads the paper only if: external data is permitted; each security group meets the
+> prereg minimum matched-receiver count; Combine ceiling reliability passes; and **analysis A shows the market
+> responded to speed**. Fix these before any full-data run. If any fails, fall back to the ceiling and tail
+> design as the paper's main framing and report security as exploratory.
+
+The fourth clause ("analysis A shows the market responded to speed") is the condition retired here. The other
+three clauses are unchanged and remain informational gate checks.
+
+**Two-group pre-Combine sort key (replaces continuous log-EDP as the primary exposure).**
+`security_features.assign_security_groups`:
+
+1. **trend stratum** (`has_trend == true`): `edp_trend = edp_pre(1wk) − edp_pre(2wk)`; `moved_down` iff
+   `edp_trend > trend_epsilon` (config, default **0.0**), else `high_secure`. Positive trend = EDP rose =
+   worse / less secure.
+2. **level-fallback stratum** (`has_trend == false`, `has_primary == true`): tertiles of `log(EDP_pre)`
+   computed **within position group** (WR and TE separately); bottom tertile = `high_secure`, top tertile =
+   `moved_down`, **middle = `unclassified`** (excluded from the two-group contrast, retained in the
+   continuous model). Cutoffs (q_lo, q_hi) and counts are reported in `SUMMARY.json`/`SUMMARY.md`.
+3. otherwise `unclassified` (basis `no_pre_combine`).
+
+**Non-circularity (why this is not HARKing a result).** The assignment is a deterministic function of
+**pre-Combine** board snapshots only, with **no reference to any game outcome**. The tertile cut-offs are
+computed over the pre-Combine pool (board players with a 1-week-pre snapshot and no trend), **not** over the
+appeared/game sample, so selection on being drafted cannot move a player between groups. The pipeline
+hard-asserts this: `security_features.assert_pre_combine_only` raises if any post-Combine EDP column
+(`edp_post`, `edp_change`, `edp_log_change`, …) is present in the assignment input, and the assignment path
+projects onto a pre-Combine whitelist, so mutating a post-Combine value cannot change a single assignment
+(tested byte-for-byte). Post-Combine EDP / pre→post change remain **outcomes**, appear only in the
+exploratory Analysis-A appendix, and are never used for assignment or any primary model.
+
+**Sign convention (stated in every output).** A **NEGATIVE** group coefficient means `moved_down` sits further
+below its ceiling (a **larger** gap) — **against** the incentive hypothesis. The hypothesis predicts a
+**POSITIVE** coefficient (`moved_down` has a **smaller** gap / higher realisation).
+
+**Level fallback rationale.** About half the board players lack a 2-week snapshot, so a trend-only key would
+silently drop them (and bias the sample toward players with two snapshots). The within-position tertile
+fallback keeps them with a declared, pre-Combine rule; it is labelled as a separate stratum everywhere and the
+headline model includes a **stratum fixed effect** (trend + level-fallback pooled, with trend-only and
+level-only reported as pre-declared sensitivity panels).
+
+**Language rule (binding on the copy).** "Incentive exposure" / "consistent with an incentive mechanism" are
+permitted; "tried harder", "intended to", "motivated to", "gamed the Combine" are **not**.
+
+**Files.** `config.yaml` (`security_models:` + `security.analysis_a.attenuation`), `src/security_features.py`
+(`assign_security_groups`, `group_counts_by_epsilon`, `assert_pre_combine_only`, `load_feature_icc`),
+`src/07_security_models.py`, `src/06_security.py` (attenuation appendix + retired-gate summary),
+`src/synthetic_security_game_fixture.py`, `notes/prereg-deviations.md`, `notes/prereg.md` (pointer line only;
+**no frozen value changed**), `notes/limitations.md`, `notes/pending_full_run.md`, `README_RUN.md`,
+`notebooks/bdb27_full_run.ipynb`, `src/tests/test_security_models.py`.
+
+---
+
+## D39 — Cycle 2 implementation: Phase 5 B–G stage, attenuation method, synthetic fixture, fallbacks · 2026-10-17
+**What was built.** `src/07_security_models.py` — one code path for `--mode sample|full` and
+`--synthetic --synthetic-regime planted|null|selection`, gated with
+`gate.enforce(cfg, mode, "07_security_models", requires_game_side=True)`.
+
+* **Inputs** (DuckDB, explicit column lists; no full CSV into pandas): `outputs/game/{efforts,top_k_efforts,
+  player_summary,thresholds_applied}.csv`, `outputs/security/security_exposure.parquet`,
+  `outputs/envelope/{per_player_envelope,attempt_features}.csv`, covariates via
+  `model_features.load_covariates`, and the selection pool = board players **with Combine tracking**
+  (exposure table ∩ envelope; `appeared` = `nfl_id` in `player_summary.csv`). A missing required column
+  raises `AssertionError` (`assert_input_columns`) rather than silently dropping a field.
+* **B (primary)** — effort-level OLS on the top-k efforts, `log(peak_speed)` on `log(shrunken Combine speed)`
+  + `moved_down` + route family + pass length + snap share (`n_route_snaps / route_snap_count`, clipped) +
+  position + height + weight + years-since-Combine; **player-clustered SEs** (`cov_type="cluster"`,
+  `groups=nfl_id`). The **headline is the pooled two-group split with a `stratum` fixed effect**
+  (`.security_models.primary.stratum_fe`), plus the pre-declared one-stratum sensitivity panels
+  `panel_trend_only` / `panel_level_fallback`. Scopes WR (primary) / TE (replication) / pooled (secondary);
+  robustness panel over `peak_speed` and `speed_at_20yd`; a per-player `log(top-k mean speed)` variant with
+  HC1. Also `b_group_means.csv` (mean log game speed, log ceiling, gap, utilisation by group).
+* **Attenuation (both estimates always reported).** Frisch–Waugh: residualise `y, x, g` on the controls;
+  with `S` the 2-regressor moment matrix and `λ` the pre-declared ICC, `β = S⁻¹s` (naive) and
+  `S* = [[λ·Var(x), Cov(x,g)], [Cov(x,g), Var(g)]]`, `β* = S*⁻¹s` (corrected). The corrected **group** SE/p
+  come from a **player-clustered bootstrap** of `β*` (config `attenuation_reps`, seed + offset) — no
+  fabricated precision. `speed_coef_corrected = speed_coef / λ` is emitted for continuity with the
+  pre-registered `icc_attenuation` convention. ICC source: `outputs/envelope/feature_selection.csv` →
+  `outputs/audit/g_feature_icc.csv` (fit drill) → `outputs/envelope/selection.json`; **if no ICC is
+  available the corrected value is null with the reason recorded**.
+* **C** — piecewise-linear model in `log(EDP_pre)` (knots at config percentiles), same controls; fitted gap
+  at the 10th/50th/90th percentile **at the mean ceiling** and **within-player (own ceiling)**, with delta-
+  method SEs from the clustered covariance. Exceedance is reported **overall first** (Wilson CI), then by
+  group.
+* **D** — skippers (exploratory): `high_secure` players with `cut_only`/`no_speed_drills` vs a size +
+  completed-drills prediction fitted on dash players; n, mean residual, CI; **null with a reason when
+  `n < d.min_n`**.
+* **E** — logistic appearance model (`z_log_edp_pre` + `z_log_combine_speed` + height + weight + position;
+  the two log predictors are standardised so the reported ORs are per SD) reporting coefs/SEs/ORs, then a
+  stabilised, trimmed IPW refit of B plus a truncation grid (`e_ipw.csv`).
+* **F** — (1) standardised height/weight placebos in place of the group term; (2) top-k vs **bottom-k**
+  low-effort placebo; (3) Combine peaking marker (`best − mean` attempt speed) × group at the player level.
+* **G** — quantile regressions on the **frozen** `models.quantiles` ladder with the player-clustered
+  bootstrap (`g.bootstrap_reps`, seed + offset); an estimate whose `boot_se > instability_ratio·|estimate|`
+  is **reported as a null** (never forced), with the pre-declared action recorded. Tail utilisation
+  P50/P90/P99 by group.
+* **Outputs** (`outputs/security_models/`; synthetic under `…/synthetic/<regime>/`): `SUMMARY.{md,json}`,
+  `group_assignment.csv`, `b_primary.csv`, `b_group_means.csv`, `c_end.csv`, `c_exceedance.csv`,
+  `d_skippers.csv`, `e_selection.csv`, `e_ipw.csv`, `falsification.csv`, `g_tail.csv`, `g_tail_summary.csv`,
+  `_DONE.json`. Every CSV's **first column is `provenance`**. Sample mode writes a labelled
+  `PENDING FULL RUN` / `UNVALIDATED SAMPLE OUTPUT` placeholder and exits 0; checkpoint + `--force` as usual.
+  Wall time + peak RAM go through `common.timed_stage`.
+
+**Fixture (`src/synthetic_security_game_fixture.py`, committed under `fixtures/synthetic/security_game/`).**
+Deterministic given the seed; the **same population and RNG stream across regimes**, so planted-vs-null is an
+exact counterfactual. 140 WR + 50 TE + 8 forced edge players. `planted`: `+δ` (0.08 log units) on
+`moved_down` plus a continuous `dose_gamma` (0.08) gradient in `log(EDP_pre)` ⇒ a smaller gap and a
+**positive** group coefficient. `null`: δ = 0 **and** γ = 0. `selection`: planted signal **plus** appearance
+probability falling in `log(EDP_pre)`. The top-k efforts carry the planted effect; the **bottom-k efforts
+carry neither δ nor the dose** (the F2 placebo). Forced edge players: no 2-week snapshot (level fallback),
+one effort, <100 route snaps, no game data, missing size covariates, no 1-week-pre snapshot. Group
+assignment in the fixture calls the **same** `security_features.assign_security_groups`, and the ground-truth
+groups/δ/target contrast are written to `meta.json` so tests assert against truth.
+
+**Brief deviation (sign of the planted effect).** The brief's illustrative expression
+`log game speed = log ceiling + gap0 − delta` for `moved_down` would give `moved_down` a **larger** gap and a
+**negative** group coefficient — contradicting both the brief's own "Sign convention" paragraph and the PI
+hypothesis. Implemented as `+δ` (smaller gap ⇒ **positive** coefficient), matching the stated expected sign;
+recorded in the fixture `meta.json` and here. No other deviation.
+
+**Fixtures are tuned; the analysis is not.** The δ, γ, selection slope and noise levels were chosen so the
+recovery / null / selection tests are deterministic and robust. Nothing in `src/07_security_models.py` was
+tuned to a fixture result; all thresholds live in `config.yaml`.
+
+**Verification.** `src/tests/test_security_models.py` (16 suites, standalone runner + pytest-collectable):
+schema/units fail-loud, sort-key sign/tertiles/middle-exclusion/cutoffs, post-Combine mutation invariance
+(byte-identical assignment from a mutated table) + a source guard, planted recovery (positive, CI excludes 0,
+all three scopes), monotone dose-response, null not recovered with nulls written as null, selection bias +
+IPW move toward the planted target, edge cases, determinism, sample placeholder + checkpoint, and the CLI on
+all three regimes. Full standalone suite green.

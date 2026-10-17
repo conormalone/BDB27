@@ -29,3 +29,20 @@ go/no-go gate (P1 matched-WR count, P2 route snaps, missing Combine fields, ICC)
 exercising each end-to-end for the planted-ceiling **binding** *and* **null** regimes. Only their real
 `--mode full` execution (P4/P5/P6/P7) remains **data-blocked** by the absent `game_tracking_{2023,24,25}.csv`.
 The full game-side pipeline (`03 → 04 → 05`) is ready to run as soon as the tracking files are mounted.
+
+## Cycle 2 — security / incentive-exposure models (D38/D39), all `PENDING FULL RUN`
+
+| # | Question | Stage | Notes |
+|---|---|---|---|
+| P12 | **Real group counts** — how many WR/TE fall in `moved_down` / `high_secure` under the pre-Combine sort key (trend vs level-fallback stratum, per ε), and are both groups above `min_group_n=15`? | `07_security_models` | The whole two-group contrast is underpowered if a group is thin. Reported in `SUMMARY.json::sort.counts` + `group_assignment.csv`. Synthetic fixture only proves the rule. |
+| P13 | **B (primary)** — does `moved_down` show a **smaller** Combine→game gap (positive `group_coef`) in WR, TE and pooled, with player-clustered SEs and the ICC-attenuation correction? | `07_security_models` (B) | Needs the full game tracking (top-k efforts) + `FULL` thresholds + the EDP board. Both naive and corrected coefficients are emitted; the corrected group SE comes from the player-clustered bootstrap. |
+| P14 | **C** — is there a monotone continuous `log(EDP_pre)` gradient, and what are the fitted gaps at P10/P50/P90 (mean ceiling and within-player)? What is the **overall** top-k exceedance rate (Wilson CI) and by group? | `07_security_models` (C) | Overall exceedance is reported first; >0.25 would trigger the pre-registered utilisation reframe (prereg §6). |
+| P15 | **D/E/F/G** — skipper residual (D), appearance model + IPW vs unweighted (E), falsification panels (F), tail quantile coefficients and utilisation P50/P90/P99 (G). | `07_security_models` (D–G) | D and the E/H1 link stay exploratory unless E supports it. G nulls unstable τ estimates rather than forcing them. |
+| P16 | **Runtime + peak RAM** of `07_security_models` on the full data (3 scopes × 4 specs + C + E logit/IPW + G quantile bootstrap). | `07_security_models` | The Pi cannot measure it (no full game tracking). The G bootstrap is the cost driver; `security_models.g.bootstrap_reps` is config-driven (60 now) and may be raised on the big machine. |
+| P17 | **Analysis-A attenuation appendix on the full board** — already computed (Combine-side complete): `outputs/security/analysis_a_attenuation.csv`. Needs no further full run. | `06_security` | `env_vmax` ICC 0.6425 → corrected speed coef 6.74 (p unchanged, approximate). Kept **appendix-only** by D38. |
+
+**Stage status (2026-10-17, D39):** `07_security_models` is **implemented and tested** end-to-end on the
+committed game-side fixture for the **planted**, **null** and **selection** regimes; the real `--mode full`
+run (P12–P16) is **data-blocked** by the absent `game_tracking_{2023,24,25}.csv`. Run order:
+`01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 07_security_models →
+00b_external_proxies → 04_models → 05_validate`.

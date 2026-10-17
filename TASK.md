@@ -91,6 +91,11 @@ Fallbacks if estimation is unstable: top-k mean regression with cluster bootstra
 **7. Deliverables.** Public Kaggle notebook and writeup within official limits (placeholders for results until the full run), max 5 figures. Sections: problem, data audit, method, ceiling and exceedance, security effect, limitations. /notes/limitations.md lists every threat and mitigation (selection on being drafted, regression to the mean, opportunity differences by tier, snap-count effects on maxima, Combine-specific preparation, small groups, forking paths).
 
 ## Headline gate
+> **D38 (2026-10-17) — condition 4 retired.** Analysis A is **not** a gate and **not** part of the paper
+> argument; it survives only as a descriptive appendix. The spine is **incentive exposure** (a slipping
+> draft stock ⇒ a smaller Combine→game gap), tested as a **pre-Combine** two-group contrast. See
+> `notes/decisions.md` D38 and `notes/prereg-deviations.md`; the wording below is kept for the record.
+
 The security question leads the paper only if: external data is permitted; each security group meets the prereg minimum matched-receiver count; Combine ceiling reliability passes; and analysis A shows the market responded to speed. Fix these before any full-data run. If any fails, fall back to the ceiling and tail design as the paper's main framing and report security as exploratory.
 
 ## Tests before handoff
