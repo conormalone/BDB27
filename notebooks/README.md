@@ -30,6 +30,10 @@ data is not in the usual place — `DATA_DIR`, then **Run All**. It:
 `SYNTHETIC FIXTURE (not a finding)`. §8 computes the verdict only when `MODE="full"` **and** the
 thresholds and security outputs are `FULL`; otherwise it shows the preview banner and suppresses it.
 
+**Checkpoints.** `CLEAN=False` (default) keeps existing stage outputs; `FORCE_STAGES=["…"]` rebuilds
+only the named stages; `CLEAN=True` deletes outputs first — including the Combine envelope — and so
+forces a full ceiling refit (the slowest stage).
+
 ## Conventions
 - **Self-contained**: each notebook opens with its imports + data paths and runs top-to-bottom, no hidden state.
 - **Data path** points at `../data/raw` (symlink to the mounted drive) — never commit data.
