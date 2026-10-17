@@ -38,6 +38,7 @@ import common
 import combine_features as cf
 import game_features as gf
 import gate
+import security_audit as sa
 
 PENDING = "PENDING FULL RUN"
 PROV_SYNTH = "SYNTHETIC FIXTURE (not a finding)"
@@ -865,7 +866,9 @@ def main() -> None:
     gate.enforce(cfg, mode, "01_audit", requires_game_side=False, logger=log)
 
     prov = PROV_SYNTH if args.synthetic else common.provenance(cfg, mode)
-    ctx: dict[str, Any] = dict(cfg=cfg, mode=mode, prov=prov, con=con, logger=log, audit_dir=audit_dir)
+    ctx: dict[str, Any] = dict(cfg=cfg, mode=mode, prov=prov, con=con, logger=log, audit_dir=audit_dir,
+                               synthetic=bool(args.synthetic),
+                               synthetic_regime=args.synthetic_regime)
 
     # ---- resolve tables (identical code path; synthetic swaps the game + combine inputs) ----
     tables = {}
@@ -921,6 +924,20 @@ def main() -> None:
         results["h"] = item_h(ctx)
         results["i"] = item_i(ctx)
         dec = decide(ctx, results)
+        # ---- Phase-1 board/security audit extension (additive; never alters a-i) ----
+        try:
+            sec = sa.run(ctx, results)
+        except Exception as exc:  # noqa: BLE001 - extension must never kill the audit
+            log.error("security audit extension error: %s: %s", type(exc).__name__, exc)
+            sec = {"gate": {"evaluated": False, "note": f"extension error: {exc}"}}
+        results["security"] = sec
+        dec["security_gate"] = sec.get("gate")
+        dec["board_source"] = ctx.get("board_source")
+        # The security HEADLINE gate is informational: a failure demotes the security story to
+        # exploratory (TASK.md "Headline gate" -> fall back to the ceiling design), it does NOT stop
+        # the pipeline. Only a HARD stop (external board data not permitted) downgrades the decision.
+        if sec.get("gate", {}).get("blocking"):
+            dec["decision"] = "NO-GO — " + sec["gate"].get("block_reason", "headline gate")
 
     # ---- SUMMARY.md ----
     out_dir = (audit_dir / ctx["subdir"]) if ctx.get("subdir") else audit_dir
@@ -982,7 +999,20 @@ def render_summary(ctx: dict, results: dict, dec: dict) -> str:
     lines.append(f"- gates: `{dec['gates']}`  (frozen: {dec['frozen_gates'] or 'none'})")
     lines.append(f"- missing required fields: {dec['missing_fields'] or 'none'}")
     lines.append(f"- ICC: {dec['n_icc_estimated']} estimated, {dec['n_icc_unestimable']} unestimable")
-    lines.append("")
+    sec = results.get("security") or {}
+    if sec:
+        gate = sec.get("gate") or {}
+        lines.append("")
+        lines.append("## board/security audit extension (Phase 1, items c/d/e/h/l)")
+        lines.append(f"- board source: `{sec.get('board_source', ctx.get('board_source'))}`")
+        lines.append(f"- board rows: {sec.get('n_board_rows')}  ·  board players (nfl_id): {sec.get('n_board_players')}")
+        lines.append(f"- item row counts: `{sec.get('items')}`")
+        lines.append(f"- merged headline gate (full-mode only): evaluated={gate.get('evaluated')} "
+                     f"blocking={gate.get('blocking')} failed={gate.get('failed')} "
+                     f"note={gate.get('note', '')}")
+        lines.append("- tables: `outputs/audit/security/{c_snapshot_timing,c_testing_windows,"
+                     "c_player_testing_days,d_match_rates,e_prospect_pool,h_security_groups,l_power}.csv`")
+        lines.append("")
     lines.append("## Note on synthetic fixtures")
     lines.append("Game-side items that need full data are `PENDING FULL RUN`. If run with `--synthetic`, "
                  "outputs go to `outputs/audit/synthetic/` and are stamped "

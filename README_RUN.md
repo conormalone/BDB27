@@ -38,7 +38,7 @@ the drive (or copy the CSVs to a laptop and point `data/raw` there) before any g
 ## 3. Run order
 
 ```
-01_audit → 02_combine_envelope → 00_thresholds → 03_game_demand → 00b_external_proxies → 04_models → 05_validate
+01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 00b_external_proxies → 04_models → 05_validate
 ```
 
 ```bash
@@ -81,6 +81,15 @@ python src/00b_external_proxies.py --mode full            # needs a raw GTM expo
 python src/05_validate.py --mode full        # needs the full game files
 python src/05_validate.py --synthetic --synthetic-regime binding # or: null (not a finding)
 
+# Phase 4 SECURITY — pre-Combine EDP-board exposures + Analysis A (the early headline gate; board+Combine
+#   only, so it runs for real on this Pi). Reads external.board (permitted; notes/rules.md §6) + the Phase-2
+#   envelope; writes outputs/security/{security_exposure.parquet,analysis_a.json,SUMMARY.md}.
+python src/synthetic_security_fixture.py                    # (re)build the committed synthetic security fixture
+python src/06_security.py --mode full --force                # real board + envelope (Analysis A gate)
+python src/06_security.py --mode sample                      # labelled UNVALIDATED SAMPLE OUTPUT
+python src/06_security.py --synthetic --synthetic-regime planted   # planted effect (not a finding)
+python src/06_security.py --synthetic --synthetic-regime null      # null case (not a finding)
+
 # Phase 3/4/5 tests (no pytest needed)
 python src/tests/test_thresholds.py
 python src/tests/test_game_demand.py
@@ -88,6 +97,9 @@ python src/tests/test_models.py
 python src/tests/test_validate.py
 # Phase 0.5 tests
 python src/tests/test_external_proxies.py
+# Phase 4 security tests
+python src/tests/test_security.py
+python src/tests/test_security_audit.py
 ```
 
 `--force` ignores stage checkpoints (stages otherwise skip finished work). Logs of wall time + peak RAM per

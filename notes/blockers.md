@@ -74,3 +74,16 @@ execution is **BLOCKED (data)** until a raw GTM export is supplied under `data/r
 
 **Resume condition:** drop the raw GTM mock-history export (canonical `gtm_mock_history.csv`) into
 `data/raw/external/gtm/`, then run `python src/00b_external_proxies.py --mode full`.
+
+---
+
+## Security EDP board — AVAILABLE (not a blocker) · 2026-10-17
+
+The **Phase-4 security axis** does **not** use the blocked GTM fuzzy proxy. It uses a separately supplied
+**EDP board** export (`data/raw/external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv`, sha256 `4664b369…63b4`),
+which is **present and permitted** (Conor 2026-10-17; `notes/rules.md` §6). The Phase-4 stage
+(`src/06_security.py`) and the Phase-1 board audit extension therefore run for real on this Pi; their
+`--mode full` execution is **not** data-blocked. **One open caveat** (documented, not a blocker): the
+board→Combine exact `nfl_id` WR/TE match rate is ≈0.757, below `external.board.min_match_rate` (0.85), because
+the board spans a broader prospect pool than the 2027 subset — logged in `notes/decisions.md` D37 for the
+cycle-2 validator; the implemented go/no-go minima are evaluated separately.

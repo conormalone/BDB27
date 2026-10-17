@@ -512,3 +512,72 @@ the unchanged `test_gate.py` and `test_models.py`).
 is a pre-registration decision to be taken (if at all) with Conor, and is moot until real GTM data exists.
 
 **Commit.** `b247648` on `main` (code/config/tests/notes/fixtures only — no data).
+
+---
+
+## D37 — Cycle 1 (security/stakes): EDP board external data + Phase-1 board audit extension + Phase-4 security stage & Analysis A · 2026-10-17
+**Decision.** Wire the **stakes/security axis** into the pipeline (binding spec `TASK.md` Phase 4 + Headline
+gate): (a) accept the **external pre-Combine EDP board** as a permitted source; (b) add an **additive
+Phase-1 board/security audit extension** (`src/security_audit.py`, wired into `01_audit.py`) covering items
+c/d/e/h/l and the merged headline gate; (c) add the **Phase-4 security stage** `src/06_security.py` —
+the pre-Combine-only **exposure table** + **Analysis A** (the early gate); (d) add the **synthetic security
+fixture** (`src/synthetic_security_fixture.py`) with a **planted** and a **null** regime; (e) add the missing
+**security tests**. No game-side security models (5B–5G), Phase-3 work or notebook/writeup this cycle.
+
+**Board external data (Phase 0).** `GTM_BDB_EDP_Snapshots_20261016.csv` under `data/raw/external/gtm/`
+(sha256 `4664b369…63b4`, 3,625 rows × 13 cols, `DD/MM/YYYY` dates). **Permitted** (competition External Data
+section; Conor confirmed 2026-10-17); **not committed** (`data/` gitignored). Recorded in `notes/rules.md` §6,
+`notes/schema.md` §9, `notes/external_data_manifest.md`; asserted in code
+(`security_features.verify_board`). The board **supersedes** the earlier hypothetical GTM *fuzzy-name*
+mapping for the security axis: joins are on **`nfl_id`** directly.
+
+**Immutability / pre-Combine rule.** Exposures are the **2-weeks- and 1-week-pre** snapshots only
+(primary = `log(EDP)` at 1-week-pre); a snapshot counts only if **strictly before the player's own Combine
+testing day**. `Combine Week` and the post-Combine snapshots are **never** exposures — the 1-week-post EDP is
+an **outcome** (the Analysis-A pre→post change). Enforced and tested.
+
+**Analysis A result (the early headline gate; board + Phase-2 envelope only, no game data).** Population =
+board players with Combine tracking: **n = 280**. Pre-registered primary spec uses `env_vmax` (the repo's
+declared primary Combine feature; `security.analysis_a.speed_feature`, `models.primary_feature`) and controls
+position/year: **speed coef = +4.33 (se 5.83, p = 0.458)**, **speed×log(EDP) coef = +1.70 (se 2.57,
+p = 0.508)** → **no significant speed response; the gate FAILS** (`gate_pass=False`). Robustness panel (same
+spec, other shrunken speed features) **does** show a significant *negative* speed response (market reward):
+`peak_speed` −9.73 (p = 0.0063, raw EDP-change) and `speed_at_20yd` −11.16 (p = 0.0012); in the log-ratio
+outcome p = 8.0e-5 and 1.7e-5. **The interaction ("rewarded more for at-risk players") is not significant in
+any spec** (all-scope p ≈ 0.5–0.6); in the WR-only scope it is marginal and *wrong-signed* (negative,
+p ≈ 0.06).
+
+**Why the sign flips between `env_vmax` and the raw-speed features (reliability).** `env_vmax` is the
+**fitted envelope ceiling** and is the **least reliable** retained feature (test-retest **ICC ≈ 0.64**), while
+`peak_speed` and `speed_at_20yd` are near-perfectly reliable (**ICC ≈ 0.97 / 0.97**; `notes/prereg.md` §4,
+audit g). A noisy regressor attenuates its coefficient and can flip/obscure a real market response. **We do
+NOT change the pre-registered primary post hoc** — `env_vmax` stays primary and the gate result stands; the
+`peak_speed`/`speed_at_20yd` sensitivity is reported **honestly as a robustness caveat** (it is a legitimate
+warning that the *ceiling* construct, not the *speed* construct, may be the weak link).
+
+**Headline-gate outcome.** Per `TASK.md`, a failed headline gate means the security question does **not** lead
+the paper: **fall back to the ceiling/tail framing and report security as exploratory**. It is **not** a
+pipeline stop. Fix (this cycle): `security_audit.merged_gate` now separates **`headline_pass`** (the security
+gate, *informational*) from **`blocking`** (reserved for the spec's one hard stop — external board data **not
+permitted**); `01_audit.py` only downgrades the audit decision on a genuine block. (Before this fix the
+extension set the audit decision to `NO-GO` on *any* headline failure, which wrongly halted the whole
+full-mode chain — caught by `test_full_mode_e2e`/`test_speed_despike` and fixed without touching stages a–i.)
+
+**Open caveat (flag for the cycle-2 validator).** The board→Combine **exact `nfl_id`** match rate for WR/TE is
+**0.757** (115/152) — below `external.board.min_match_rate` (0.85) — because the board covers a **broader**
+prospect pool (783 board players; 413 with Combine tracking) than the 2027 competition subset. That threshold
+is currently **not wired** into the merged gate; it is logged here rather than silently ignored (no blocker:
+the implemented go/no-go minima — matched WR, route snaps, ICC, security tiers — are evaluated separately).
+
+**Tests.** New `src/tests/test_security.py` (16) + `src/tests/test_security_audit.py` (8): exposure-table
+schema/dtypes/units (fail-loud), pre-Combine-only + strict-before-testing rule, synthetic **recovery**
+(planted effect recovered; null case **not** recovered; across-seed size/power), edge cases (no 1-week-pre
+rows, players absent from the board, duplicate snapshot rows, blank `nfl_id`), determinism, board
+sha256/row/permission checks, sign convention, the merged-gate semantics, and CLI provenance/checkpoint.
+Full standalone suite green (all 15 test files).
+
+**Files.** `config.yaml` (board + security sections), `TASK.md` (new binding spec), `src/01_audit.py`
+(+extension), `src/security_audit.py`, `src/security_features.py`, `src/06_security.py`,
+`src/synthetic_security_fixture.py`, `fixtures/synthetic/security/{planted,null}/`, new tests, and the notes
+above. **Commit.** this cycle on `main` — code/config/tests/notes/fixtures only (no data, no generated
+outputs).

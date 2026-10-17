@@ -148,3 +148,42 @@ Plus the join/context keys: `game_id, play_id, nfl_id, down, yards_to_go, play_d
   nearest-defender/ball-distance controls, or ball location; all such checks are `PENDING FULL RUN`. The file
   also uses the NFL game frame (`x≈[-5.9,123.3]`, `y≈[-6.1,60.7]`; players out of bounds allowed), unlike the
   Combine local frame.
+
+## 9. External EDP board — `GTM_BDB_EDP_Snapshots_20261016.csv` (security/stakes axis, Phase 4)
+
+**Source:** `data/raw/external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv` (external data, permitted —
+`notes/rules.md` §6; **not committed**). **Verified 2026-10-17.**
+sha256 `4664b369e56dfcbe62de678932059695c2c5b8b128989fa5a9068994857563b4` · **3,625 data rows × 13 cols**
+(the `.xlsx` twin is ignored). Dates are **`DD/MM/YYYY`** and are parsed with an explicit
+`dateformat` (the 14/21/28 day values force DMY). The exact column order below is asserted on read
+(`src/security_features.py`) and the exposure-table schema on write (`security.schema`).
+
+| # | Column | Type (DuckDB) | Units / meaning |
+|---:|---|---|---|
+| 1 | `draft_year` | BIGINT | combine class (2023/2024/2025) |
+| 2 | `name` | VARCHAR | prospect name (for display only; **never** a join key) |
+| 3 | `position` | VARCHAR | board position (WR/TE/CB/S/EDGE/DT/LB/OT/G/C/QB/RB/ST; one `CB/WR`) |
+| 4 | `school` | VARCHAR | college |
+| 5 | `type` | VARCHAR | always `All` (consensus filter) |
+| 6 | `nfl_id` | BIGINT | **exact join key** to the competition tables (blank on 142 rows → counted, never invented) |
+| 7 | `n_total` | BIGINT | mock-draft pool size at the snapshot |
+| 8 | `n` | BIGINT | consensus share numerator (`n/n_total` = consensus share) |
+| 9 | `edp` | DOUBLE | expected draft position (**lower = more secure**) |
+| 10 | `edp_rank` | BIGINT | EDP rank |
+| 11 | `pos_rank` | VARCHAR | position label + rank (e.g. `WR1`) |
+| 12 | `snapshot_date` | DATE | snapshot date (parsed `DD/MM/YYYY`) |
+| 13 | `snapshot_note` | VARCHAR | snapshot vocabulary — see below |
+
+**`snapshot_note` vocabulary** (the ONLY pre-Combine exposures are the two “Pre-Combine” labels):
+
+| `snapshot_note` | Role | Exposure? |
+|---|---|---|
+| `2 Weeks Pre-Combine` | trend base | **yes** (pre-Combine) |
+| `1 Week Pre-Combine` | **primary exposure** `log(EDP)` | **yes** (pre-Combine) |
+| `Combine Week` | — | **never** (may reflect Combine results) |
+| `1 Week Post-Combine` | Analysis-A **outcome** (pre→post EDP change) | **never** (outcome) |
+| `2 Weeks Post-Combine` | — | **never** |
+
+A pre-Combine snapshot counts only when its `snapshot_date` is **strictly before the player’s own Combine
+testing day** (from `combine_tracking.time`). Board positions map to competition position groups via
+`external.board.position_map` (e.g. `CB/S → DB`, `EDGE/DT → DL`, `OT/G/C → OL`).

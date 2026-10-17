@@ -5,7 +5,28 @@ outcomes of every route attempted to obtain the external pre-Combine expectation
 
 **Source in scope:** Grinding The Mocks (GTM) — the SOLE external source for Phase 0.5 (CFBD references
 were cut by Conor and are out of scope). **Status: UNAVAILABLE** (see `notes/blockers.md`); the pipeline
-is built and exercised against a schema-compliant synthetic fixture pending data access.
+is built and exercised against a schema-compliant synthetic fixture pending data access. The **security
+EDP board** (Phase 4) is a *separate*, supplied static export and is **PERMITTED** — see
+“Security/stakes EDP board” below.
+
+## Security/stakes EDP board (Phase 4) — permission + provenance  ·  2026-10-17
+
+The stakes task consumes a **pre-Combine expected-draft-position (EDP) board** — an EDP-snapshots export
+supplied to Conor on **2026-10-16** and placed under `data/raw/external/gtm/`.
+
+| Item | Value |
+|---|---|
+| File | `data/raw/external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv` (a `.xlsx` twin exists; only the CSV is read) |
+| sha256 | `4664b369e56dfcbe62de678932059695c2c5b8b128989fa5a9068994857563b4` |
+| Rows / cols | 3,625 data rows · 13 cols (schema + order pinned in `config.yaml`; asserted on read) |
+| Accessed | 2026-10-16 (file mtime) · verified 2026-10-17 (sha256 + row count) |
+| **Permission** | **PERMITTED** — the Competition Rules’ External Data section permits external data with citation/obligations; **Conor confirmed 2026-10-17**. Recorded in `config.yaml` (`external.board.permitted: true`) and `notes/rules.md` §6. |
+| Redistribution | **NOT committed** (`data/` gitignored) — do not ship the board file. |
+
+The board supersedes the earlier hypothetical GTM **fuzzy-name** mapping for the security axis: new security
+code joins on **`nfl_id` directly** (`notes/decisions.md` D37). Unlike the Phase-0.5 GTM proxy (whose live
+route is a blocked Shiny app — see below), the board is a **supplied static export**, so it is present and
+usable. The Phase-0.5 GTM fuzzy pipeline remains blocked and is not the board’s acquisition route.
 
 ## Bounded acquisition attempt (manual, 2026-10-16)
 
@@ -31,5 +52,6 @@ is built and exercised against a schema-compliant synthetic fixture pending data
 <!-- AUTO-MANIFEST:START -->
 | source | url | access_date | result |
 |---|---|---|---|
+| board | /home/conormalone/.openclaw/workspace/BDB27/data/raw/external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv | 2026-10-17 | PERMITTED (Conor 2026-10-17); sha256 4664b369…63b4; 3625 rows |
 | fixture | /home/conormalone/.openclaw/workspace/BDB27/fixtures/synthetic/gtm/gtm_mock_history.csv | 2026-10-16 | SYNTHETIC FIXTURE (not a finding) |
 <!-- AUTO-MANIFEST:END -->

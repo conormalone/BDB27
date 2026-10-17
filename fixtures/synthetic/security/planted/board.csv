@@ -1,0 +1,304 @@
+draft_year,name,position,school,type,nfl_id,n_total,n,edp,edp_rank,pos_rank,snapshot_date,snapshot_note
+2023,Amari Baptiste,TE,Michigan,All,800028,243,242,51.764692,28,TE28,07/03/2023,1 Week Post-Combine
+2023,Amari Baptiste,TE,Michigan,All,800028,243,242,50.326326,28,TE28,21/02/2023,1 Week Pre-Combine
+2023,Amari Baptiste,TE,Michigan,All,800028,243,242,51.142464,28,TE28,14/03/2023,2 Weeks Post-Combine
+2023,Amari Baptiste,TE,Michigan,All,800028,243,242,49.519993,28,TE28,14/02/2023,2 Weeks Pre-Combine
+2023,Amari Baptiste,TE,Michigan,All,800028,243,242,51.045509,28,TE28,28/02/2023,Combine Week
+2023,Amari Nakamura,WR,Clemson,All,800046,474,453,8.831922,46,WR46,07/03/2023,1 Week Post-Combine
+2023,Amari Nakamura,WR,Clemson,All,800046,474,453,9.242861,46,WR46,21/02/2023,1 Week Pre-Combine
+2023,Amari Nakamura,WR,Clemson,All,800046,474,453,9.264676,46,WR46,14/03/2023,2 Weeks Post-Combine
+2023,Amari Nakamura,WR,Clemson,All,800046,474,453,8.620868,46,WR46,14/02/2023,2 Weeks Pre-Combine
+2023,Amari Nakamura,WR,Clemson,All,800046,474,453,9.037391,46,WR46,28/02/2023,Combine Week
+2023,Amari Villanueva,WR,Ohio State,All,800010,310,276,24.561991,10,WR10,07/03/2023,1 Week Post-Combine
+2023,Amari Villanueva,WR,Ohio State,All,800010,310,276,21.222084,10,WR10,21/02/2023,1 Week Pre-Combine
+2023,Amari Villanueva,WR,Ohio State,All,800010,310,276,24.826789,10,WR10,14/03/2023,2 Weeks Post-Combine
+2023,Amari Villanueva,WR,Ohio State,All,800010,310,276,21.238402,10,WR10,14/02/2023,2 Weeks Pre-Combine
+2023,Amari Villanueva,WR,Ohio State,All,800010,310,276,22.892038,10,WR10,28/02/2023,Combine Week
+2023,Elijah Fontenot,TE,Oregon,All,800007,391,357,18.968112,7,TE7,07/03/2023,1 Week Post-Combine
+2023,Elijah Fontenot,TE,Oregon,All,800007,391,357,20.451471,7,TE7,21/02/2023,1 Week Pre-Combine
+2023,Elijah Fontenot,TE,Oregon,All,800007,391,357,19.094026,7,TE7,14/03/2023,2 Weeks Post-Combine
+2023,Elijah Fontenot,TE,Oregon,All,800007,391,357,19.773312,7,TE7,14/02/2023,2 Weeks Pre-Combine
+2023,Elijah Fontenot,TE,Oregon,All,800007,391,357,19.709791,7,TE7,28/02/2023,Combine Week
+2023,Elijah Kowalski,WR,Georgia,All,800043,268,263,12.621654,43,WR43,07/03/2023,1 Week Post-Combine
+2023,Elijah Kowalski,WR,Georgia,All,800043,268,263,14.123633,43,WR43,21/02/2023,1 Week Pre-Combine
+2023,Elijah Kowalski,WR,Georgia,All,800043,268,263,12.212592,43,WR43,14/03/2023,2 Weeks Post-Combine
+2023,Elijah Kowalski,WR,Georgia,All,800043,268,263,14.421268,43,WR43,14/02/2023,2 Weeks Pre-Combine
+2023,Elijah Kowalski,WR,Georgia,All,800043,268,263,13.372643,43,WR43,28/02/2023,Combine Week
+2023,Elijah Sorensen,WR,Alabama,All,800025,365,326,31.869333,25,WR25,07/03/2023,1 Week Post-Combine
+2023,Elijah Sorensen,WR,Alabama,All,800025,365,326,32.691653,25,WR25,21/02/2023,1 Week Pre-Combine
+2023,Elijah Sorensen,WR,Alabama,All,800025,365,326,31.654767,25,WR25,14/03/2023,2 Weeks Post-Combine
+2023,Elijah Sorensen,WR,Alabama,All,800025,365,326,33.030324,25,WR25,14/02/2023,2 Weeks Pre-Combine
+2023,Elijah Sorensen,WR,Alabama,All,800025,365,326,32.280493,25,WR25,28/02/2023,Combine Week
+2023,Jordan Blake,WR,Alabama,All,800001,431,393,11.212679,1,WR1,07/03/2023,1 Week Post-Combine
+2023,Jordan Blake,WR,Alabama,All,800001,431,393,10.728657,1,WR1,21/02/2023,1 Week Pre-Combine
+2023,Jordan Blake,WR,Alabama,All,800001,431,393,10.847022,1,WR1,14/03/2023,2 Weeks Post-Combine
+2023,Jordan Blake,WR,Alabama,All,800001,431,393,10.022892,1,WR1,14/02/2023,2 Weeks Pre-Combine
+2023,Jordan Blake,WR,Alabama,All,800001,431,393,10.970668,1,WR1,28/02/2023,Combine Week
+2023,Jordan Fontenot,WR,Oregon,All,800055,405,386,57.669062,55,WR55,07/03/2023,1 Week Post-Combine
+2023,Jordan Fontenot,WR,Oregon,All,800055,405,386,54.667032,55,WR55,21/02/2023,1 Week Pre-Combine
+2023,Jordan Fontenot,WR,Oregon,All,800055,405,386,57.930162,55,WR55,14/03/2023,2 Weeks Post-Combine
+2023,Jordan Fontenot,WR,Oregon,All,800055,405,386,54.40849,55,WR55,14/02/2023,2 Weeks Pre-Combine
+2023,Jordan Fontenot,WR,Oregon,All,800055,405,386,56.168047,55,WR55,28/02/2023,Combine Week
+2023,Jordan Mensah,WR,LSU,All,800037,373,365,7.064585,37,WR37,07/03/2023,1 Week Post-Combine
+2023,Jordan Mensah,WR,LSU,All,800037,373,365,4.073257,37,WR37,21/02/2023,1 Week Pre-Combine
+2023,Jordan Mensah,WR,LSU,All,800037,373,365,7.231702,37,WR37,14/03/2023,2 Weeks Post-Combine
+2023,Jordan Mensah,WR,LSU,All,800037,373,365,3.641411,37,WR37,14/02/2023,2 Weeks Pre-Combine
+2023,Jordan Mensah,WR,LSU,All,800037,373,365,5.568921,37,WR37,28/02/2023,Combine Week
+2023,Jordan Okafor,WR,Georgia,All,800019,276,263,14.619102,19,WR19,07/03/2023,1 Week Post-Combine
+2023,Jordan Okafor,WR,Georgia,All,800019,276,263,14.023904,19,WR19,21/02/2023,1 Week Pre-Combine
+2023,Jordan Okafor,WR,Georgia,All,800019,276,263,14.698221,19,WR19,14/03/2023,2 Weeks Post-Combine
+2023,Jordan Okafor,WR,Georgia,All,800019,276,263,14.849634,19,WR19,14/02/2023,2 Weeks Pre-Combine
+2023,Jordan Okafor,WR,Georgia,All,800019,276,263,14.321503,19,WR19,28/02/2023,Combine Week
+2023,Kai Reyes,WR,Michigan,All,800052,449,445,10.287164,52,WR52,07/03/2023,1 Week Post-Combine
+2023,Kai Reyes,WR,Michigan,All,800052,449,445,11.145978,52,WR52,21/02/2023,1 Week Pre-Combine
+2023,Kai Reyes,WR,Michigan,All,800052,449,445,10.666695,52,WR52,14/03/2023,2 Weeks Post-Combine
+2023,Kai Reyes,WR,Michigan,All,800052,449,445,11.55158,52,WR52,14/02/2023,2 Weeks Pre-Combine
+2023,Kai Reyes,WR,Michigan,All,800052,449,445,10.716571,52,WR52,28/02/2023,Combine Week
+2023,Kai Rudd,WR,Texas,All,800016,275,267,88.346917,16,WR16,07/03/2023,1 Week Post-Combine
+2023,Kai Rudd,WR,Texas,All,800016,275,267,77.701318,16,WR16,21/02/2023,1 Week Pre-Combine
+2023,Kai Rudd,WR,Texas,All,800016,275,267,87.756582,16,WR16,14/03/2023,2 Weeks Post-Combine
+2023,Kai Rudd,WR,Texas,All,800016,275,267,77.465856,16,WR16,14/02/2023,2 Weeks Pre-Combine
+2023,Kai Rudd,WR,Texas,All,800016,275,267,83.024118,16,WR16,28/02/2023,Combine Week
+2023,Kai Whitfield,TE,Ohio State,All,800034,418,407,16.038453,34,TE34,07/03/2023,1 Week Post-Combine
+2023,Kai Whitfield,TE,Ohio State,All,800034,418,407,18.03531,34,TE34,21/02/2023,1 Week Pre-Combine
+2023,Kai Whitfield,TE,Ohio State,All,800034,418,407,15.946041,34,TE34,14/03/2023,2 Weeks Post-Combine
+2023,Kai Whitfield,TE,Ohio State,All,800034,418,407,18.202308,34,TE34,14/02/2023,2 Weeks Pre-Combine
+2023,Kai Whitfield,TE,Ohio State,All,800034,418,407,17.036881,34,TE34,28/02/2023,Combine Week
+2023,Nico Blake,WR,Alabama,All,800049,452,447,14.680131,49,WR49,07/03/2023,1 Week Post-Combine
+2023,Nico Blake,WR,Alabama,All,800049,452,447,15.92052,49,WR49,21/02/2023,1 Week Pre-Combine
+2023,Nico Blake,WR,Alabama,All,800049,452,447,15.02731,49,WR49,14/03/2023,2 Weeks Post-Combine
+2023,Nico Blake,WR,Alabama,All,800049,452,447,16.669264,49,WR49,14/02/2023,2 Weeks Pre-Combine
+2023,Nico Blake,WR,Alabama,All,800049,452,447,15.300326,49,WR49,28/02/2023,Combine Week
+2023,Nico Ferreira,WR,LSU,All,800013,394,359,6.721479,13,WR13,07/03/2023,1 Week Post-Combine
+2023,Nico Ferreira,WR,LSU,All,800013,394,359,9.795388,13,WR13,21/02/2023,1 Week Pre-Combine
+2023,Nico Ferreira,WR,LSU,All,800013,394,359,6.946579,13,WR13,14/03/2023,2 Weeks Post-Combine
+2023,Nico Ferreira,WR,LSU,All,800013,394,359,9.765194,13,WR13,14/02/2023,2 Weeks Pre-Combine
+2023,Nico Ferreira,WR,LSU,All,800013,394,359,8.258433,13,WR13,28/02/2023,Combine Week
+2023,Nico Hollis,WR,Oregon,All,800031,342,320,13.92798,31,WR31,07/03/2023,1 Week Post-Combine
+2023,Nico Hollis,WR,Oregon,All,800031,342,320,8.623415,31,WR31,21/02/2023,1 Week Pre-Combine
+2023,Nico Hollis,WR,Oregon,All,800031,342,320,13.654472,31,WR31,14/03/2023,2 Weeks Post-Combine
+2023,Nico Hollis,WR,Oregon,All,800031,342,320,8.463548,31,WR31,14/02/2023,2 Weeks Pre-Combine
+2023,Nico Hollis,WR,Oregon,All,800031,342,320,11.275698,31,WR31,28/02/2023,Combine Week
+2023,Tyree Achebe,WR,Texas,All,800040,252,219,36.578645,40,WR40,07/03/2023,1 Week Post-Combine
+2023,Tyree Achebe,WR,Texas,All,800040,252,219,33.574153,40,WR40,21/02/2023,1 Week Pre-Combine
+2023,Tyree Achebe,WR,Texas,All,800040,252,219,36.787648,40,WR40,14/03/2023,2 Weeks Post-Combine
+2023,Tyree Achebe,WR,Texas,All,800040,252,219,32.783021,40,WR40,14/02/2023,2 Weeks Pre-Combine
+2023,Tyree Achebe,WR,Texas,All,800040,252,219,35.076399,40,WR40,28/02/2023,Combine Week
+2023,Tyree Delgado,TE,Clemson,All,800022,483,451,34.252253,22,TE22,07/03/2023,1 Week Post-Combine
+2023,Tyree Delgado,TE,Clemson,All,800022,483,451,38.881605,22,TE22,21/02/2023,1 Week Pre-Combine
+2023,Tyree Delgado,TE,Clemson,All,800022,483,451,33.996829,22,TE22,14/03/2023,2 Weeks Post-Combine
+2023,Tyree Delgado,TE,Clemson,All,800022,483,451,38.207821,22,TE22,14/02/2023,2 Weeks Pre-Combine
+2023,Tyree Delgado,TE,Clemson,All,800022,483,451,36.566929,22,TE22,28/02/2023,Combine Week
+2023,Tyree Reyes,WR,Michigan,All,800004,240,237,23.293195,4,WR4,07/03/2023,1 Week Post-Combine
+2023,Tyree Reyes,WR,Michigan,All,800004,240,237,26.84709,4,WR4,21/02/2023,1 Week Pre-Combine
+2023,Tyree Reyes,WR,Michigan,All,800004,240,237,23.944721,4,WR4,14/03/2023,2 Weeks Post-Combine
+2023,Tyree Reyes,WR,Michigan,All,800004,240,237,26.786062,4,WR4,14/02/2023,2 Weeks Pre-Combine
+2023,Tyree Reyes,WR,Michigan,All,800004,240,237,25.070143,4,WR4,28/02/2023,Combine Week
+2023,Tyree Villanueva,WR,Ohio State,All,800058,227,199,10.545537,58,WR58,07/03/2023,1 Week Post-Combine
+2023,Tyree Villanueva,WR,Ohio State,All,800058,227,199,10.202162,58,WR58,21/02/2023,1 Week Pre-Combine
+2023,Tyree Villanueva,WR,Ohio State,All,800058,227,199,10.328507,58,WR58,14/03/2023,2 Weeks Post-Combine
+2023,Tyree Villanueva,WR,Ohio State,All,800058,227,199,8.835993,58,WR58,14/02/2023,2 Weeks Pre-Combine
+2023,Tyree Villanueva,WR,Ohio State,All,800058,227,199,10.37385,58,WR58,28/02/2023,Combine Week
+2023,Unknown 0,WR,Nowhere State,All,,431,393,150.0,900,UNK,21/02/2023,1 Week Pre-Combine
+2024,Cameron Fontenot,WR,Oregon,All,800023,300,272,30.657859,23,WR23,05/03/2024,1 Week Post-Combine
+2024,Cameron Fontenot,WR,Oregon,All,800023,300,272,40.443078,23,WR23,20/02/2024,1 Week Pre-Combine
+2024,Cameron Fontenot,WR,Oregon,All,800023,300,272,30.489179,23,WR23,12/03/2024,2 Weeks Post-Combine
+2024,Cameron Fontenot,WR,Oregon,All,800023,300,272,41.072134,23,WR23,13/02/2024,2 Weeks Pre-Combine
+2024,Cameron Fontenot,WR,Oregon,All,800023,300,272,35.550469,23,WR23,27/02/2024,Combine Week
+2024,Cameron Kowalski,TE,Georgia,All,800059,461,451,15.024662,59,TE59,05/03/2024,1 Week Post-Combine
+2024,Cameron Kowalski,TE,Georgia,All,800059,461,451,15.170833,59,TE59,20/02/2024,1 Week Pre-Combine
+2024,Cameron Kowalski,TE,Georgia,All,800059,461,451,15.73385,59,TE59,12/03/2024,2 Weeks Post-Combine
+2024,Cameron Kowalski,TE,Georgia,All,800059,461,451,16.100472,59,TE59,13/02/2024,2 Weeks Pre-Combine
+2024,Cameron Kowalski,TE,Georgia,All,800059,461,451,15.097748,59,TE59,27/02/2024,Combine Week
+2024,Cameron Mensah,TE,LSU,All,800005,375,363,103.563865,5,TE5,05/03/2024,1 Week Post-Combine
+2024,Cameron Mensah,TE,LSU,All,800005,375,363,93.432339,5,TE5,20/02/2024,1 Week Pre-Combine
+2024,Cameron Mensah,TE,LSU,All,800005,375,363,103.075646,5,TE5,12/03/2024,2 Weeks Post-Combine
+2024,Cameron Mensah,TE,LSU,All,800005,375,363,93.65585,5,TE5,13/02/2024,2 Weeks Pre-Combine
+2024,Cameron Mensah,TE,LSU,All,800005,375,363,98.498102,5,TE5,27/02/2024,Combine Week
+2024,Cameron Sorensen,WR,Alabama,All,800041,279,250,28.608539,41,WR41,05/03/2024,1 Week Post-Combine
+2024,Cameron Sorensen,WR,Alabama,All,800041,279,250,25.563904,41,WR41,20/02/2024,1 Week Pre-Combine
+2024,Cameron Sorensen,WR,Alabama,All,800041,279,250,28.853093,41,WR41,12/03/2024,2 Weeks Post-Combine
+2024,Cameron Sorensen,WR,Alabama,All,800041,279,250,25.15069,41,WR41,13/02/2024,2 Weeks Pre-Combine
+2024,Cameron Sorensen,WR,Alabama,All,800041,279,250,27.086222,41,WR41,27/02/2024,Combine Week
+2024,Isaiah Nakamura,WR,Clemson,All,800014,340,327,56.567265,14,WR14,05/03/2024,1 Week Post-Combine
+2024,Isaiah Nakamura,WR,Clemson,All,800014,340,327,61.825436,14,WR14,20/02/2024,1 Week Pre-Combine
+2024,Isaiah Nakamura,WR,Clemson,All,800014,340,327,56.341585,14,WR14,12/03/2024,2 Weeks Post-Combine
+2024,Isaiah Nakamura,WR,Clemson,All,800014,340,327,62.61851,14,WR14,13/02/2024,2 Weeks Pre-Combine
+2024,Isaiah Nakamura,WR,Clemson,All,800014,340,327,59.196351,14,WR14,27/02/2024,Combine Week
+2024,Isaiah Rudd,WR,Texas,All,800032,340,334,7.351171,32,WR32,05/03/2024,1 Week Post-Combine
+2024,Isaiah Rudd,WR,Texas,All,800032,340,334,6.962257,32,WR32,20/02/2024,1 Week Pre-Combine
+2024,Isaiah Rudd,WR,Texas,All,800032,340,334,7.142858,32,WR32,12/03/2024,2 Weeks Post-Combine
+2024,Isaiah Rudd,WR,Texas,All,800032,340,334,8.055442,32,WR32,13/02/2024,2 Weeks Pre-Combine
+2024,Isaiah Rudd,WR,Texas,All,800032,340,334,7.156714,32,WR32,27/02/2024,Combine Week
+2024,Isaiah Whitfield,TE,Ohio State,All,800050,388,387,45.074812,50,TE50,05/03/2024,1 Week Post-Combine
+2024,Isaiah Whitfield,TE,Ohio State,All,800050,388,387,39.086655,50,TE50,20/02/2024,1 Week Pre-Combine
+2024,Isaiah Whitfield,TE,Ohio State,All,800050,388,387,44.572556,50,TE50,12/03/2024,2 Weeks Post-Combine
+2024,Isaiah Whitfield,TE,Ohio State,All,800050,388,387,39.551492,50,TE50,13/02/2024,2 Weeks Pre-Combine
+2024,Isaiah Whitfield,TE,Ohio State,All,800050,388,387,42.080734,50,TE50,27/02/2024,Combine Week
+2024,Jonah Ferreira,TE,LSU,All,800029,253,231,6.352887,29,TE29,05/03/2024,1 Week Post-Combine
+2024,Jonah Ferreira,TE,LSU,All,800029,253,231,4.163939,29,TE29,20/02/2024,1 Week Pre-Combine
+2024,Jonah Ferreira,TE,LSU,All,800029,253,231,5.720472,29,TE29,12/03/2024,2 Weeks Post-Combine
+2024,Jonah Ferreira,TE,LSU,All,800029,253,231,4.404309,29,TE29,13/02/2024,2 Weeks Pre-Combine
+2024,Jonah Ferreira,TE,LSU,All,800029,253,231,5.258413,29,TE29,27/02/2024,Combine Week
+2024,Jonah Hollis,TE,Oregon,All,800047,370,356,7.631751,47,TE47,05/03/2024,1 Week Post-Combine
+2024,Jonah Hollis,TE,Oregon,All,800047,370,356,6.795313,47,TE47,20/02/2024,1 Week Pre-Combine
+2024,Jonah Hollis,TE,Oregon,All,800047,370,356,7.421705,47,TE47,12/03/2024,2 Weeks Post-Combine
+2024,Jonah Hollis,TE,Oregon,All,800047,370,356,7.066736,47,TE47,13/02/2024,2 Weeks Pre-Combine
+2024,Jonah Hollis,TE,Oregon,All,800047,370,356,7.213532,47,TE47,27/02/2024,Combine Week
+2024,Jonah Kowalski,WR,Georgia,All,800011,480,468,46.49149,11,WR11,05/03/2024,1 Week Post-Combine
+2024,Jonah Kowalski,WR,Georgia,All,800011,480,468,38.980614,11,WR11,20/02/2024,1 Week Pre-Combine
+2024,Jonah Kowalski,WR,Georgia,All,800011,480,468,46.561684,11,WR11,12/03/2024,2 Weeks Post-Combine
+2024,Jonah Kowalski,WR,Georgia,All,800011,480,468,38.909745,11,WR11,13/02/2024,2 Weeks Pre-Combine
+2024,Jonah Kowalski,WR,Georgia,All,800011,480,468,42.736052,11,WR11,27/02/2024,Combine Week
+2024,Marco Blake,TE,Alabama,All,800017,404,372,38.570836,17,TE17,05/03/2024,1 Week Post-Combine
+2024,Marco Blake,TE,Alabama,All,800017,404,372,34.786537,17,TE17,20/02/2024,1 Week Pre-Combine
+2024,Marco Blake,TE,Alabama,All,800017,404,372,38.441439,17,TE17,12/03/2024,2 Weeks Post-Combine
+2024,Marco Blake,TE,Alabama,All,800017,404,372,34.556446,17,TE17,13/02/2024,2 Weeks Pre-Combine
+2024,Marco Blake,TE,Alabama,All,800017,404,372,36.678687,17,TE17,27/02/2024,Combine Week
+2024,Marco Mensah,WR,LSU,All,800053,352,335,6.19875,53,WR53,05/03/2024,1 Week Post-Combine
+2024,Marco Mensah,WR,LSU,All,800053,352,335,8.814686,53,WR53,20/02/2024,1 Week Pre-Combine
+2024,Marco Mensah,WR,LSU,All,800053,352,335,6.226126,53,WR53,12/03/2024,2 Weeks Post-Combine
+2024,Marco Mensah,WR,LSU,All,800053,352,335,8.359726,53,WR53,13/02/2024,2 Weeks Pre-Combine
+2024,Marco Mensah,WR,LSU,All,800053,352,335,7.506718,53,WR53,27/02/2024,Combine Week
+2024,Marco Okafor,WR,Georgia,All,800035,285,285,8.137533,35,WR35,05/03/2024,1 Week Post-Combine
+2024,Marco Okafor,WR,Georgia,All,800035,285,285,11.848333,35,WR35,20/02/2024,1 Week Pre-Combine
+2024,Marco Okafor,WR,Georgia,All,800035,285,285,8.012251,35,WR35,12/03/2024,2 Weeks Post-Combine
+2024,Marco Okafor,WR,Georgia,All,800035,285,285,12.271036,35,WR35,13/02/2024,2 Weeks Pre-Combine
+2024,Marco Okafor,WR,Georgia,All,800035,285,285,9.992933,35,WR35,27/02/2024,Combine Week
+2024,Romeo Achebe,WR,Texas,All,800008,259,235,21.73142,8,WR8,05/03/2024,1 Week Post-Combine
+2024,Romeo Achebe,WR,Texas,All,800008,259,235,15.386322,8,WR8,20/02/2024,1 Week Pre-Combine
+2024,Romeo Achebe,WR,Texas,All,800008,259,235,21.975837,8,WR8,12/03/2024,2 Weeks Post-Combine
+2024,Romeo Achebe,WR,Texas,All,800008,259,235,14.953471,8,WR8,13/02/2024,2 Weeks Pre-Combine
+2024,Romeo Achebe,WR,Texas,All,800008,259,235,18.558871,8,WR8,27/02/2024,Combine Week
+2024,Romeo Baptiste,WR,Michigan,All,800044,347,326,51.803452,44,WR44,05/03/2024,1 Week Post-Combine
+2024,Romeo Baptiste,WR,Michigan,All,800044,347,326,58.360346,44,WR44,20/02/2024,1 Week Pre-Combine
+2024,Romeo Baptiste,WR,Michigan,All,800044,347,326,52.18211,44,WR44,12/03/2024,2 Weeks Post-Combine
+2024,Romeo Baptiste,WR,Michigan,All,800044,347,326,58.917478,44,WR44,13/02/2024,2 Weeks Pre-Combine
+2024,Romeo Baptiste,WR,Michigan,All,800044,347,326,55.081899,44,WR44,27/02/2024,Combine Week
+2024,Romeo Villanueva,WR,Ohio State,All,800026,379,378,46.096482,26,WR26,05/03/2024,1 Week Post-Combine
+2024,Romeo Villanueva,WR,Ohio State,All,800026,379,378,51.978761,26,WR26,20/02/2024,1 Week Pre-Combine
+2024,Romeo Villanueva,WR,Ohio State,All,800026,379,378,45.670588,26,WR26,12/03/2024,2 Weeks Post-Combine
+2024,Romeo Villanueva,WR,Ohio State,All,800026,379,378,51.218377,26,WR26,13/02/2024,2 Weeks Pre-Combine
+2024,Romeo Villanueva,WR,Ohio State,All,800026,379,378,49.037622,26,WR26,27/02/2024,Combine Week
+2024,Unknown 25,WR,Nowhere State,All,,379,378,175.0,925,UNK,20/02/2024,1 Week Pre-Combine
+2024,Xavier Achebe,WR,Texas,All,800056,386,369,26.725737,56,WR56,05/03/2024,1 Week Post-Combine
+2024,Xavier Achebe,WR,Texas,All,800056,386,369,25.463279,56,WR56,20/02/2024,1 Week Pre-Combine
+2024,Xavier Achebe,WR,Texas,All,800056,386,369,26.256816,56,WR56,12/03/2024,2 Weeks Post-Combine
+2024,Xavier Achebe,WR,Texas,All,800056,386,369,26.200062,56,WR56,13/02/2024,2 Weeks Pre-Combine
+2024,Xavier Achebe,WR,Texas,All,800056,386,369,26.094508,56,WR56,27/02/2024,Combine Week
+2024,Xavier Delgado,TE,Clemson,All,800038,412,393,32.968355,38,TE38,05/03/2024,1 Week Post-Combine
+2024,Xavier Delgado,TE,Clemson,All,800038,412,393,30.164032,38,TE38,20/02/2024,1 Week Pre-Combine
+2024,Xavier Delgado,TE,Clemson,All,800038,412,393,33.653529,38,TE38,12/03/2024,2 Weeks Post-Combine
+2024,Xavier Delgado,TE,Clemson,All,800038,412,393,29.333665,38,TE38,13/02/2024,2 Weeks Pre-Combine
+2024,Xavier Delgado,TE,Clemson,All,800038,412,393,31.566194,38,TE38,27/02/2024,Combine Week
+2024,Xavier Reyes,TE,Michigan,All,800020,414,409,15.32957,20,TE20,05/03/2024,1 Week Post-Combine
+2024,Xavier Reyes,TE,Michigan,All,800020,414,409,14.754528,20,TE20,20/02/2024,1 Week Pre-Combine
+2024,Xavier Reyes,TE,Michigan,All,800020,414,409,15.858509,20,TE20,12/03/2024,2 Weeks Post-Combine
+2024,Xavier Reyes,TE,Michigan,All,800020,414,409,14.307378,20,TE20,13/02/2024,2 Weeks Pre-Combine
+2024,Xavier Reyes,TE,Michigan,All,800020,414,409,15.042049,20,TE20,27/02/2024,Combine Week
+2024,Xavier Whitfield,WR,Ohio State,All,800002,260,237,14.48193,2,WR2,05/03/2024,1 Week Post-Combine
+2024,Xavier Whitfield,WR,Ohio State,All,800002,260,237,13.695893,2,WR2,20/02/2024,1 Week Pre-Combine
+2024,Xavier Whitfield,WR,Ohio State,All,800002,260,237,14.124973,2,WR2,12/03/2024,2 Weeks Post-Combine
+2024,Xavier Whitfield,WR,Ohio State,All,800002,260,237,13.999955,2,WR2,13/02/2024,2 Weeks Pre-Combine
+2024,Xavier Whitfield,WR,Ohio State,All,800002,260,237,14.088912,2,WR2,27/02/2024,Combine Week
+2025,Brennan Blake,WR,Alabama,All,800033,428,408,20.129932,33,WR33,04/03/2025,1 Week Post-Combine
+2025,Brennan Blake,WR,Alabama,All,800033,428,408,23.079504,33,WR33,18/02/2025,1 Week Pre-Combine
+2025,Brennan Blake,WR,Alabama,All,800033,428,408,19.919448,33,WR33,11/03/2025,2 Weeks Post-Combine
+2025,Brennan Blake,WR,Alabama,All,800033,428,408,23.412558,33,WR33,11/02/2025,2 Weeks Pre-Combine
+2025,Brennan Blake,WR,Alabama,All,800033,428,408,21.604718,33,WR33,25/02/2025,Combine Week
+2025,Brennan Hollis,TE,Oregon,All,800015,382,369,102.895475,15,TE15,04/03/2025,1 Week Post-Combine
+2025,Brennan Hollis,TE,Oregon,All,800015,382,369,99.429175,15,TE15,18/02/2025,1 Week Pre-Combine
+2025,Brennan Hollis,TE,Oregon,All,800015,382,369,102.641185,15,TE15,11/03/2025,2 Weeks Post-Combine
+2025,Brennan Hollis,TE,Oregon,All,800015,382,369,98.206138,15,TE15,11/02/2025,2 Weeks Pre-Combine
+2025,Brennan Hollis,TE,Oregon,All,800015,382,369,101.162325,15,TE15,25/02/2025,Combine Week
+2025,Brennan Okafor,TE,Georgia,All,800051,454,441,17.788363,51,TE51,04/03/2025,1 Week Post-Combine
+2025,Brennan Okafor,TE,Georgia,All,800051,454,441,18.781523,51,TE51,18/02/2025,1 Week Pre-Combine
+2025,Brennan Okafor,TE,Georgia,All,800051,454,441,18.720251,51,TE51,11/03/2025,2 Weeks Post-Combine
+2025,Brennan Okafor,TE,Georgia,All,800051,454,441,18.544876,51,TE51,11/02/2025,2 Weeks Pre-Combine
+2025,Brennan Okafor,TE,Georgia,All,800051,454,441,18.284943,51,TE51,25/02/2025,Combine Week
+2025,Dante Delgado,WR,Clemson,All,800054,283,252,111.96411,54,WR54,04/03/2025,1 Week Post-Combine
+2025,Dante Delgado,WR,Clemson,All,800054,283,252,103.122266,54,WR54,18/02/2025,1 Week Pre-Combine
+2025,Dante Delgado,WR,Clemson,All,800054,283,252,111.819248,54,WR54,11/03/2025,2 Weeks Post-Combine
+2025,Dante Delgado,WR,Clemson,All,800054,283,252,103.306311,54,WR54,11/02/2025,2 Weeks Pre-Combine
+2025,Dante Delgado,WR,Clemson,All,800054,283,252,107.543188,54,WR54,25/02/2025,Combine Week
+2025,Dante Reyes,WR,Michigan,All,800036,472,447,33.371089,36,WR36,04/03/2025,1 Week Post-Combine
+2025,Dante Reyes,WR,Michigan,All,800036,472,447,27.846712,36,WR36,18/02/2025,1 Week Pre-Combine
+2025,Dante Reyes,WR,Michigan,All,800036,472,447,33.029413,36,WR36,11/03/2025,2 Weeks Post-Combine
+2025,Dante Reyes,WR,Michigan,All,800036,472,447,27.89366,36,WR36,11/02/2025,2 Weeks Pre-Combine
+2025,Dante Reyes,WR,Michigan,All,800036,472,447,30.6089,36,WR36,25/02/2025,Combine Week
+2025,Dante Whitfield,TE,Ohio State,All,800018,254,219,19.960197,18,TE18,04/03/2025,1 Week Post-Combine
+2025,Dante Whitfield,TE,Ohio State,All,800018,254,219,21.270559,18,TE18,18/02/2025,1 Week Pre-Combine
+2025,Dante Whitfield,TE,Ohio State,All,800018,254,219,20.610002,18,TE18,11/03/2025,2 Weeks Post-Combine
+2025,Dante Whitfield,TE,Ohio State,All,800018,254,219,21.272288,18,TE18,11/02/2025,2 Weeks Pre-Combine
+2025,Dante Whitfield,TE,Ohio State,All,800018,254,219,20.615378,18,TE18,25/02/2025,Combine Week
+2025,Devin Achebe,WR,Texas,All,800024,256,245,8.047702,24,WR24,04/03/2025,1 Week Post-Combine
+2025,Devin Achebe,WR,Texas,All,800024,256,245,8.108457,24,WR24,18/02/2025,1 Week Pre-Combine
+2025,Devin Achebe,WR,Texas,All,800024,256,245,7.700301,24,WR24,11/03/2025,2 Weeks Post-Combine
+2025,Devin Achebe,WR,Texas,All,800024,256,245,8.713353,24,WR24,11/02/2025,2 Weeks Pre-Combine
+2025,Devin Achebe,WR,Texas,All,800024,256,245,8.07808,24,WR24,25/02/2025,Combine Week
+2025,Devin Baptiste,WR,Michigan,All,800060,259,248,69.152616,60,WR60,04/03/2025,1 Week Post-Combine
+2025,Devin Baptiste,WR,Michigan,All,800060,259,248,66.432429,60,WR60,18/02/2025,1 Week Pre-Combine
+2025,Devin Baptiste,WR,Michigan,All,800060,259,248,68.462971,60,WR60,11/03/2025,2 Weeks Post-Combine
+2025,Devin Baptiste,WR,Michigan,All,800060,259,248,65.781563,60,WR60,11/02/2025,2 Weeks Pre-Combine
+2025,Devin Baptiste,WR,Michigan,All,800060,259,248,67.792523,60,WR60,25/02/2025,Combine Week
+2025,Devin Delgado,WR,Clemson,All,800006,220,210,21.949147,6,WR6,04/03/2025,1 Week Post-Combine
+2025,Devin Delgado,WR,Clemson,All,800006,220,210,22.114956,6,WR6,18/02/2025,1 Week Pre-Combine
+2025,Devin Delgado,WR,Clemson,All,800006,220,210,22.580542,6,WR6,11/03/2025,2 Weeks Post-Combine
+2025,Devin Delgado,WR,Clemson,All,800006,220,210,23.103661,6,WR6,11/02/2025,2 Weeks Pre-Combine
+2025,Devin Delgado,WR,Clemson,All,800006,220,210,22.032052,6,WR6,25/02/2025,Combine Week
+2025,Devin Villanueva,WR,Ohio State,All,800042,259,243,9.937686,42,WR42,04/03/2025,1 Week Post-Combine
+2025,Devin Villanueva,WR,Ohio State,All,800042,259,243,11.049882,42,WR42,18/02/2025,1 Week Pre-Combine
+2025,Devin Villanueva,WR,Ohio State,All,800042,259,243,10.656935,42,WR42,11/03/2025,2 Weeks Post-Combine
+2025,Devin Villanueva,WR,Ohio State,All,800042,259,243,11.73428,42,WR42,11/02/2025,2 Weeks Pre-Combine
+2025,Devin Villanueva,WR,Ohio State,All,800042,259,243,10.493784,42,WR42,25/02/2025,Combine Week
+2025,Kendall Ferreira,WR,LSU,All,800045,256,235,29.844887,45,WR45,04/03/2025,1 Week Post-Combine
+2025,Kendall Ferreira,WR,LSU,All,800045,256,235,27.759575,45,WR45,18/02/2025,1 Week Pre-Combine
+2025,Kendall Ferreira,WR,LSU,All,800045,256,235,29.955355,45,WR45,11/03/2025,2 Weeks Post-Combine
+2025,Kendall Ferreira,WR,LSU,All,800045,256,235,27.984569,45,WR45,11/02/2025,2 Weeks Pre-Combine
+2025,Kendall Ferreira,WR,LSU,All,800045,256,235,28.802231,45,WR45,25/02/2025,Combine Week
+2025,Kendall Kowalski,WR,Georgia,All,800027,496,488,38.469894,27,WR27,04/03/2025,1 Week Post-Combine
+2025,Kendall Kowalski,WR,Georgia,All,800027,496,488,37.93594,27,WR27,18/02/2025,1 Week Pre-Combine
+2025,Kendall Kowalski,WR,Georgia,All,800027,496,488,38.526219,27,WR27,11/03/2025,2 Weeks Post-Combine
+2025,Kendall Kowalski,WR,Georgia,All,800027,496,488,38.184194,27,WR27,11/02/2025,2 Weeks Pre-Combine
+2025,Kendall Kowalski,WR,Georgia,All,800027,496,488,38.202917,27,WR27,25/02/2025,Combine Week
+2025,Kendall Sorensen,WR,Alabama,All,800009,353,318,14.306468,9,WR9,04/03/2025,1 Week Post-Combine
+2025,Kendall Sorensen,WR,Alabama,All,800009,353,318,12.984819,9,WR9,18/02/2025,1 Week Pre-Combine
+2025,Kendall Sorensen,WR,Alabama,All,800009,353,318,14.493312,9,WR9,11/03/2025,2 Weeks Post-Combine
+2025,Kendall Sorensen,WR,Alabama,All,800009,353,318,12.027385,9,WR9,11/02/2025,2 Weeks Pre-Combine
+2025,Kendall Sorensen,WR,Alabama,All,800009,353,318,13.645644,9,WR9,25/02/2025,Combine Week
+2025,Malik Fontenot,WR,Oregon,All,800039,372,337,18.755009,39,WR39,04/03/2025,1 Week Post-Combine
+2025,Malik Fontenot,WR,Oregon,All,800039,372,337,17.396038,39,WR39,18/02/2025,1 Week Pre-Combine
+2025,Malik Fontenot,WR,Oregon,All,800039,372,337,18.710992,39,WR39,11/03/2025,2 Weeks Post-Combine
+2025,Malik Fontenot,WR,Oregon,All,800039,372,337,18.323054,39,WR39,11/02/2025,2 Weeks Pre-Combine
+2025,Malik Fontenot,WR,Oregon,All,800039,372,337,18.075523,39,WR39,25/02/2025,Combine Week
+2025,Malik Mensah,TE,LSU,All,800021,341,308,50.648932,21,TE21,04/03/2025,1 Week Post-Combine
+2025,Malik Mensah,TE,LSU,All,800021,341,308,48.782014,21,TE21,18/02/2025,1 Week Pre-Combine
+2025,Malik Mensah,TE,LSU,All,800021,341,308,50.857092,21,TE21,11/03/2025,2 Weeks Post-Combine
+2025,Malik Mensah,TE,LSU,All,800021,341,308,49.015126,21,TE21,11/02/2025,2 Weeks Pre-Combine
+2025,Malik Mensah,TE,LSU,All,800021,341,308,49.715473,21,TE21,25/02/2025,Combine Week
+2025,Malik Okafor,TE,Georgia,All,800003,407,369,32.466754,3,TE3,04/03/2025,1 Week Post-Combine
+2025,Malik Okafor,TE,Georgia,All,800003,407,369,27.2678,3,TE3,18/02/2025,1 Week Pre-Combine
+2025,Malik Okafor,TE,Georgia,All,800003,407,369,32.64908,3,TE3,11/03/2025,2 Weeks Post-Combine
+2025,Malik Okafor,TE,Georgia,All,800003,407,369,27.761915,3,TE3,11/02/2025,2 Weeks Pre-Combine
+2025,Malik Okafor,TE,Georgia,All,800003,407,369,29.867277,3,TE3,25/02/2025,Combine Week
+2025,Malik Sorensen,TE,Alabama,All,800057,381,373,14.297515,57,TE57,04/03/2025,1 Week Post-Combine
+2025,Malik Sorensen,TE,Alabama,All,800057,381,373,13.555532,57,TE57,18/02/2025,1 Week Pre-Combine
+2025,Malik Sorensen,TE,Alabama,All,800057,381,373,14.038258,57,TE57,11/03/2025,2 Weeks Post-Combine
+2025,Malik Sorensen,TE,Alabama,All,800057,381,373,12.707389,57,TE57,11/02/2025,2 Weeks Pre-Combine
+2025,Malik Sorensen,TE,Alabama,All,800057,381,373,13.926524,57,TE57,25/02/2025,Combine Week
+2025,Trey Baptiste,WR,Michigan,All,800012,339,320,33.790286,12,WR12,04/03/2025,1 Week Post-Combine
+2025,Trey Baptiste,WR,Michigan,All,800012,339,320,28.974596,12,WR12,18/02/2025,1 Week Pre-Combine
+2025,Trey Baptiste,WR,Michigan,All,800012,339,320,33.808881,12,WR12,11/03/2025,2 Weeks Post-Combine
+2025,Trey Baptiste,WR,Michigan,All,800012,339,320,29.178134,12,WR12,11/02/2025,2 Weeks Pre-Combine
+2025,Trey Baptiste,WR,Michigan,All,800012,339,320,31.382441,12,WR12,25/02/2025,Combine Week
+2025,Trey Nakamura,WR,Clemson,All,800030,389,350,17.396025,30,WR30,04/03/2025,1 Week Post-Combine
+2025,Trey Nakamura,WR,Clemson,All,800030,389,350,24.255633,30,WR30,18/02/2025,1 Week Pre-Combine
+2025,Trey Nakamura,WR,Clemson,All,800030,389,350,16.60167,30,WR30,11/03/2025,2 Weeks Post-Combine
+2025,Trey Nakamura,WR,Clemson,All,800030,389,350,24.287439,30,WR30,11/02/2025,2 Weeks Pre-Combine
+2025,Trey Nakamura,WR,Clemson,All,800030,389,350,20.825829,30,WR30,25/02/2025,Combine Week
+2025,Trey Rudd,WR,Texas,All,800048,423,421,40.09842,48,WR48,04/03/2025,1 Week Post-Combine
+2025,Trey Rudd,WR,Texas,All,800048,423,421,38.000453,48,WR48,18/02/2025,1 Week Pre-Combine
+2025,Trey Rudd,WR,Texas,All,800048,423,421,40.094371,48,WR48,11/03/2025,2 Weeks Post-Combine
+2025,Trey Rudd,WR,Texas,All,800048,423,421,37.358288,48,WR48,11/02/2025,2 Weeks Pre-Combine
+2025,Trey Rudd,WR,Texas,All,800048,423,421,39.049436,48,WR48,25/02/2025,Combine Week
+2025,Unknown 50,TE,Nowhere State,All,,454,441,200.0,950,UNK,18/02/2025,1 Week Pre-Combine

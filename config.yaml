@@ -291,6 +291,84 @@ external:
     n_unmatched_gtm: 3               # GTM prospects with NO Kaggle player (exercise unmatched)
     n_near_miss: 2                   # deliberate spelling perturbations (exercise fuzzy matching)
 
+  # ------------------------------------------------------------------------- #
+  # Security / stakes BOARD (Phase 0 external data — EDP snapshots export).
+  # The REAL board schema (below) SUPERSEDES the hypothetical GTM mapping above
+  # (notes/decisions.md D37): new security code joins the board on `nfl_id` directly.
+  # Permission: the competition's External Data section permits external data (with
+  # citation/obligations); Conor confirmed the board is permitted (2026-10-17).
+  # Provenance + sha256 are recorded in notes/rules.md and notes/external_data_manifest.md.
+  # The board file is NOT committed (data/ is gitignored).
+  # ------------------------------------------------------------------------- #
+  board:
+    enabled: true
+    permitted: true                  # Conor 2026-10-17: competition External Data permits it
+    # Path is relative to data/raw/ (the mounted drive); the .xlsx twin is ignored.
+    file: external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv
+    sha256: 4664b369e56dfcbe62de678932059695c2c5b8b128989fa5a9068994857563b4
+    n_rows_expected: 3625
+    csv_delim: ","
+    date_format: "%d/%m/%Y"          # DD/MM/YYYY (raw strings; day values 14/21/28 force DMY)
+    # EXACT columns (order as in the file); asserted on read.
+    columns: [draft_year, name, position, school, type, nfl_id, n_total, n, edp, edp_rank,
+              pos_rank, snapshot_date, snapshot_note]
+    type_value: "All"
+    # snapshot_note vocabulary and the ONLY pre-Combine exposures (post/week-of never used).
+    snapshot_pre: ["2 Weeks Pre-Combine", "1 Week Pre-Combine"]
+    snapshot_primary: "1 Week Pre-Combine"
+    snapshot_trend_base: "2 Weeks Pre-Combine"
+    snapshot_post: ["1 Week Post-Combine", "2 Weeks Post-Combine"]
+    snapshot_combine_week: "Combine Week"
+    # Board position -> competition (combine) position group (audit d position-mismatch check).
+    position_map: {WR: WR, TE: TE, CB: DB, S: DB, EDGE: DL, DT: DL, LB: LB,
+                   OT: OL, G: OL, C: OL, QB: QB, RB: RB, ST: ST}
+    min_match_rate: 0.85             # halt if board->Combine nfl_id match rate (WR/TE) <= this
+
+# --------------------------------------------------------------------------- #
+# Security / stakes analysis (Phase 4 — src/06_security.py) — the new primary axis.
+# Pre-Combine information ONLY as exposures (post-Combine / week-of are outcomes).
+# Cutoffs/thresholds are fixed in notes/prereg.md before the first full-data run.
+# --------------------------------------------------------------------------- #
+security:
+  out_subdir: security
+  exposures_file: security_exposure.parquet  # per-player security exposure table (Phase 4)
+  analysis_a_file: analysis_a.json
+  primary_position: WR
+  replication_position: TE
+  drop_missing_primary: true       # Conor: players with NO 1-week-pre snapshot are dropped from B
+  # --- legacy mapping (kept for provenance): the old canonical exposure names ---
+  edp_column: edp
+  consensus_n_column: n
+  consensus_total_column: n_total
+  # --- primary-model population minima (the merged headline gate) ---
+  min_matched_receivers_per_tier: 15   # min matched receivers in each security tier (prereg)
+  # --- security tiers (a SENSITIVITY check only; cutoffs fixed from COUNTS in prereg) ---
+  tier_method: quantile            # quantile | fixed
+  tier_quantiles: [0.3333, 0.6667] # low/mid/high split of log(EDP) (VIF-safe default)
+  tier_cutoffs: null               # frozen in prereg before a full run (counts-based)
+  # --- exposure table schema (EXACT names + order; asserted on write) ---
+  schema: [nfl_id, draft_year, position, position_group, edp_pre, log_edp_pre, edp_trend,
+           consensus_share, n_snapshots, has_primary, has_trend, participation_pattern, n_drills]
+  # --- analysis A (5A): pre->post-Combine EDP change ~ speed x pre-Combine EDP ---
+  analysis_a:
+    outcome: edp_change           # post - pre EDP (positive = fell / less secure)
+    speed_feature: env_vmax       # shrunken Combine ceiling speed (Phase-2 output)
+    standardize_speed: true
+    controls: [position_group, draft_year]
+    cluster: false                # one row per player; robust (HC1) SEs when clustering is off
+    alpha: 0.05
+    min_n: 40                     # below this, analysis A is reported as underpowered
+    speed_effect_sign: negative    # faster -> lower EDP (market reward) is the expected sign
+    # robustness panel: refit the same spec across shrunken speed features (sign-stability check)
+    robustness_features: [env_vmax, peak_speed, speed_at_20yd]
+  # --- item (l) power calculation inputs ---
+  power:
+    alpha: 0.05
+    power: 0.80
+    residual_sd_log_speed: 0.20   # assumed residual SD of log(game top-k speed)
+    exposure_sd_log_edp: 0.70     # assumed SD of log(pre-Combine EDP) (a-priori; sample-labelled)
+    min_detectable_effect_abs: 0.0  # headline gate: an MDE above this is 'undetectable at any plausible size'
+
 # --------------------------------------------------------------------------- #
 # Deliverables / sample discipline
 # --------------------------------------------------------------------------- #

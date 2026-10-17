@@ -2,7 +2,8 @@
 
 **Purpose:** Phase 0 summary of the competition's rules, limits and requirements that constrain this project.
 **Captured:** 2026-10-09 (combine-fatigue task); **retained 2026-10-11** for the ceiling-binding task — the
-competition rules are unchanged. **Binding internal spec = `TASK.md`.**
+competition rules are unchanged. **Binding internal spec = `TASK.md`.** **Updated 2026-10-17** to record the
+**security/stakes EDP board** external data (provenance, sha256, permission) — see §7.
 
 > ⚠️ Kaggle competition pages are JS-rendered and returned no body to `web_fetch`; the exact
 > official text below was captured from the **live Kaggle page content surfaced via search-result
@@ -68,7 +69,30 @@ competition rules are unchanged. **Binding internal spec = `TASK.md`.**
 - Deadline **2027-01-06 23:59 UTC**; as of this restructure (2026-10-11) → **~87 days** remaining.
 - Two tracks to enter (Open and University); we target **Open** (mixed/unknown eligibility — confirm).
 
-## 6. Open items to confirm at entry time (do not assume)
+## 6. External data — the EDP **board** (security/stakes axis) + permission  ·  2026-10-17
+
+The stakes task (`TASK.md`, Phase 4) needs a **pre-Combine expected-draft-position (EDP) board** to build the
+security exposures. It is external data (see §4) and is **permitted**.
+
+| Item | Value |
+|---|---|
+| Local file | `data/raw/external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv` (a `.xlsx` twin exists; only the CSV is read) |
+| sha256 | `4664b369e56dfcbe62de678932059695c2c5b8b128989fa5a9068994857563b4` |
+| Rows / cols | 3,625 data rows · 13 columns (order pinned in `config.yaml`, asserted on read) |
+| Date format | `DD/MM/YYYY` (day values 14/21/28 force DMY; parsed with an explicit `dateformat`) |
+| Scope | draft years 2023–2025; `snapshot_note` ∈ {2 Weeks Pre-Combine, 1 Week Pre-Combine, Combine Week, 1 Week Post-Combine, 2 Weeks Post-Combine} |
+| Join key | `nfl_id` (exact join only — **never** fuzzy-name matching) |
+
+- **Permission:** the official Competition Rules have an **External Data** section permitting external data
+  with citation/obligations (§4 above). **Conor confirmed the board is permitted (2026-10-17).** Recorded in
+  `config.yaml` (`external.board.permitted: true`) and `notes/external_data_manifest.md`.
+- **Redistribution:** the board file is **NOT committed** (`data/` is gitignored); the spec says do not commit
+  the board if redistribution is restricted. Only code, config, notes, tests and synthetic fixtures are shipped.
+- **Use:** pre-Combine snapshots only as exposures (2-weeks- and 1-week-before); `Combine Week` and the
+  post-Combine snapshots are **outcomes**, never exposures. Provenance/sha256 are asserted in code
+  (`src/security_features.py::verify_board`) and recorded in `notes/schema.md` §9.
+
+## 7. Open items to confirm at entry time (do not assume)
 
 1. Exact 2027 wording of the word/figure caps (we hold ≤2,000 words, ≤5 figures to be safe).
 2. Whether the rubric weighting is unchanged for 2027.
