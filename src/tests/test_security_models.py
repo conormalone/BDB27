@@ -201,19 +201,23 @@ def test_output_tables_schema():
     d = _run("planted")
     expect = {
         "group_assignment.csv": ["provenance", "nfl_id", "position_group", "edp_pre", "log_edp_pre",
-                                 "edp_trend", "has_trend", "stratum", "group", "basis"],
+                                 "edp_trend", "has_trend", "stratum", "group", "basis",
+                                 "block_status"],
         "b_primary.csv": ["provenance", "spec", "scope", "n_obs", "n_players",
                           "n_players_moved_down", "n_players_high_secure", "thin",
                           "group_coef", "group_se", "group_p", "group_ci_lo", "group_ci_hi", "speed_coef",
                           "speed_se", "speed_p", "speed_coef_corrected", "group_coef_corrected",
                           "group_se_corrected", "group_p_corrected", "reliability_icc",
-                          "reliability_source", "r2", "method", "note"],
+                          "reliability_source", "r2", "method", "note", "block_status"],
     }
     for name, cols in expect.items():
         assert _header(d / name) == cols, (name, _header(d / name))
     for f in d.glob("*.csv"):
         assert _header(f)[0] == "provenance", f"{f.name}: first column is not provenance"
-        assert all(r["provenance"] == PROV_SYNTH for r in _rows(f)), f.name
+        assert _header(f)[-1] == "block_status", f"{f.name}: last column is not block_status"
+        rows_f = _rows(f)
+        assert all(r["provenance"] == PROV_SYNTH for r in rows_f), f.name
+        assert all(r["block_status"] == "OK" for r in rows_f), f.name
     for f in ("SUMMARY.md", "SUMMARY.json", "_DONE.json"):
         assert (d / f).exists(), f
 
@@ -467,6 +471,77 @@ def test_selection_ipw_moves_toward_planted():
     # truncation grid present and ordered
     grid = [r for r in rows if r["weighting"] == "ipw"]
     assert len(grid) >= len(cfg["security_models"]["e"]["weight_grid"])
+
+
+# --------------------------------------------------------------------------- #
+# 6b. separation guard (D43) — a separating predictor must never crash the stage
+# --------------------------------------------------------------------------- #
+def _separating_pool(n: int = 80) -> list[dict]:
+    """`appeared` is perfectly predicted by log_edp_pre (no overlap) -> logit separation."""
+    pool = []
+    for i in range(n):
+        appeared = (i % 2 == 0)
+        log_edp = (3.0 + i * 1e-3) if appeared else (1.0 + i * 1e-3)
+        pool.append(dict(nfl_id=i, position_group="WR", position="WR", edp_pre=math.exp(log_edp),
+                         log_edp_pre=log_edp, edp_trend=None, has_trend=False, has_primary=True,
+                         participation_pattern="full", height=72.0, weight=200.0 + i,
+                         log_combine_speed=4.4, draft_year=2024, appeared=appeared))
+    return pool
+
+
+def test_separation_reports_null_e_not_crash():
+    cfg = _cfg_dict()
+    sel, ipw, meta = SM.run_e(_separating_pool(), [], cfg)   # must not raise OverflowError
+    assert sel and sel[0]["term"] == "unavailable", sel
+    assert sel[0]["odds_ratio"] in (None, ""), sel[0]
+    assert "reported null" in sel[0]["note"], sel[0]
+    assert any(tok in sel[0]["note"].lower() for tok in ("separation", "did not converge",
+                                                          "logit failed")), sel[0]
+    assert ipw and ipw[0]["weighting"] == "unavailable", ipw
+    assert meta["n_pool"] == 80 and meta["n_appeared"] == 40, meta
+
+
+def test_safe_odds_ratio_clips_instead_of_overflowing():
+    clip = float(_cfg_dict()["security_models"]["e"]["or_exponent_clip"])
+    assert SM._safe_exp(1.0, clip) == math.e
+    assert SM._safe_exp(clip + 50.0, clip) == float("inf")      # would be OverflowError
+    assert SM._safe_exp(-(clip + 50.0), clip) == 0.0
+    val, note = SM._odds_ratio(clip + 50.0, clip)
+    assert val == float("inf") and "1e300" in note and "clipped" in note, (val, note)
+    lo_val, _ = SM._odds_ratio(-(clip + 50.0), clip)
+    assert lo_val == 0.0
+
+
+def test_e_failure_is_non_fatal_and_b_primary_still_written():
+    """An unexpected E blow-up becomes a reported null; B/C/D/F/G still write (D43)."""
+    cfg = _cfg_dict()
+    cfg["security_models"]["primary"]["attenuation_reps"] = 10
+    cfg["security_models"]["g"]["bootstrap_reps"] = 5
+    _fixture("planted")
+    out = TMP / "out_fatal_e"
+    log = common.get_logger()
+
+    def _boom(*_a, **_k):
+        raise OverflowError("math range error (simulated)")
+
+    orig = SM.run_e
+    SM.run_e = _boom
+    try:
+        SM.run(cfg, "sample", True, "planted", out, PROV_SYNTH, log)
+    finally:
+        SM.run_e = orig
+    assert (out / "b_primary.csv").exists(), "b_primary.csv was not emitted"
+    for name in ("c_end.csv", "d_skippers.csv", "falsification.csv", "g_tail.csv"):
+        assert (out / name).exists(), f"{name} was not emitted"
+    sel = _rows(out / "e_selection.csv")
+    assert sel[0]["term"] == "unavailable", sel
+    assert "OverflowError" in sel[0]["reason"] and "simulated" in sel[0]["reason"], sel
+    assert sel[0]["block_status"] == "FAILED", sel
+    # the failure is loud: summary JSON + SUMMARY.md both list the block and the reason
+    s = json.loads((out / "SUMMARY.json").read_text(encoding="utf-8"))
+    assert "E" in s["failed_blocks"] and "OverflowError" in s["failed_blocks"]["E"], s["failed_blocks"]
+    md = (out / "SUMMARY.md").read_text(encoding="utf-8")
+    assert "FAILED BLOCKS" in md and "**E: FAILED**" in md, md[-1200:]
 
 
 # --------------------------------------------------------------------------- #
@@ -729,6 +804,9 @@ def main() -> int:
              test_planted_effect_recovered, test_dose_response_monotone,
              test_null_not_recovered_and_nulls_written_as_null,
              test_selection_ipw_moves_toward_planted, test_edge_cases_present_and_handled,
+             test_separation_reports_null_e_not_crash,
+             test_safe_odds_ratio_clips_instead_of_overflowing,
+             test_e_failure_is_non_fatal_and_b_primary_still_written,
              test_determinism_same_seed_identical, test_sample_mode_placeholder_and_checkpoint,
              test_cli_all_regimes_exit_zero, test_attenuation_null_without_icc,
              test_panel_rows_use_primary_feature_not_leftover_xkey,

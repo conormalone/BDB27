@@ -19,9 +19,9 @@ Response / predictor (config-driven): ``response = models.response`` (in-game ef
 
 Run modes / provenance:
 
-* ``--mode full`` — gated on the pre-registration freeze **and** the audit go/no-go (`src/gate.py`)
-  **and** the Phase 0.5 external proxy (existence + exact schema; `external.require_for_phase4`);
+* ``--mode full`` — gated on the pre-registration freeze **and** the audit go/no-go (`src/gate.py`);
   requires ``outputs/game/efforts.csv`` and ``outputs/thresholds.json`` with provenance ``FULL``.
+  (The Phase-0.5 GTM proxy gate was dropped in D43: the proxy is not an input to this model.)
 * ``--mode sample`` — game demand is full-only → writes a labelled ``UNVALIDATED SAMPLE OUTPUT``
   placeholder (``PENDING FULL RUN``), never fabricated numbers.
 * ``--synthetic`` — identical code path on the committed synthetic fixture (planted ceiling;
@@ -439,8 +439,9 @@ def main() -> None:
     common.seed_everything(cfg["seed"])
     log = common.get_logger()
 
-    gate.enforce(cfg, mode, "04_models", requires_game_side=True, requires_external_proxy=True,
-                 logger=log)
+    # D43: the Phase-0.5 GTM proxy is not used by this model; its gate was the only dependency and
+    # was blocking the stage. The board export (06_security) is the exposure source.
+    gate.enforce(cfg, mode, "04_models", requires_game_side=True, logger=log)
 
     sub = cfg["models"]["out_subdir"]
     if args.synthetic:

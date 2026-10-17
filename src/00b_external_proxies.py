@@ -11,8 +11,9 @@ Maps Kaggle ``nflId`` to a **Pre-Combine Expected Draft Position** (EDP). Per th
    dependency); write sub-threshold cases to ``unmatched_external_ids.csv``; **assert a match rate >
    ``external.min_match_rate``** (0.85) for drafted WRs/TEs, else halt + write ``notes/blockers.md``.
 3. **Checkpoint & deliverable** — join to Kaggle ``nflId``; write ``outputs/pre_combine_expectation.parquet``
-   with **exactly** ``nflId, Pre_Combine_EDP, match_confidence_score`` (schema asserted). This file **gates
-   Phase 4** (``04_models.py``, existence + schema; see ``src/gate.py``).
+   with **exactly** ``nflId, Pre_Combine_EDP, match_confidence_score`` (schema asserted). This file gated
+   Phase 4 historically; **D43 retired that gate** — the board export is the exposure source and
+   ``external.enabled`` is false, so this stage is a no-op in a real run.
 
 Data availability. The live GTM export is currently **not machine-obtainable** (Shiny websocket app;
 ``robots.txt`` Disallow; no static export / mirror / usable capture). We therefore **never fabricate data**:
@@ -373,6 +374,13 @@ def write_label(path: Path, prov: str) -> None:
 # --------------------------------------------------------------------------- #
 def run(cfg: dict, mode: str, synthetic: bool, force: bool, log) -> None:
     ext = cfg["external"]
+    if not bool(ext.get("enabled", True)) and not synthetic:
+        # D43: the board export is the exposure source. The live scraper is a RETIRED fallback and
+        # must not touch the network in this state. (--synthetic still exercises the fixture pipeline,
+        # which never touches the network.)
+        log.info("external proxy acquisition disabled (board export in use) — no network access; "
+                 "00b_external_proxies is a no-op")
+        return
     con = common.connect(cfg["runtime"]["duckdb_threads"])
 
     raw_paths, entries, using_fixture = acquire_gtm(cfg, mode, synthetic, log)
@@ -444,6 +452,16 @@ def main() -> None:
     mode = args.mode or cfg["mode"]["default"]
     common.seed_everything(cfg["seed"])
     log = common.get_logger()
+
+    if not bool(cfg["external"].get("enabled", True)) and not args.synthetic:
+        # D43: board export supersedes live GTM acquisition; exit 0 before any gate/checkpoint work
+        # and before any network access. --synthetic is exempt (fixture only, no network).
+        stage = f"00b_external_proxies[{mode}{'-synthetic' if args.synthetic else ''}]"
+        log.info("external proxy acquisition disabled (board export in use) — no network access; "
+                 "00b_external_proxies is a no-op")
+        common.append_run_log(cfg, stage, mode, 0.0, common.peak_ram_mb(), "",
+                              {"skipped": "external proxy acquisition disabled"})
+        return
 
     gate.enforce(cfg, mode, "00b_external_proxies", requires_game_side=True, logger=log)
 

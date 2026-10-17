@@ -857,3 +857,69 @@ sample mode)` and leaves the marker byte-identical. Provenance is mode-derived a
 this downgrade path; `synthetic`/`regime` still must match. `--force` overrides everything. Regression
 test `test_envelope.py::test_sample_run_never_downgrades_full_checkpoint` covers all four cases and
 asserts the FULL marker is byte-identical after the sample run.
+
+---
+
+## D43 — Retire the GTM runtime scraper; safe odds ratios in E · 2026-10-17
+
+**Problem.** Two blockers in the first full real-data run. (1) `07_security_models` died 3.3 s in with
+`OverflowError: math range error` and wrote nothing: the logit fit was inside a `try`, but the odds-ratio
+computation (`math.exp(res.params[i])`, `math.exp(ci[i, 0/1])`) sat outside it. On real data the appearance
+model (quasi-)separates, the coefficients explode, and `exp()` overflows — killing B/C/D/F/G with it.
+(2) `00b_external_proxies` spent 40 s trying to fetch Grinding The Mocks over the network and then failed,
+and its failure blocked `04_models` through `external.require_for_phase4: true` and stalled
+`05_validate` on a stale checkpoint.
+
+**Decision.**
+
+* **GTM runtime scraper retired.** We hold the board snapshot export
+  (`data/raw/external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv`), which `06_security` uses for all 783
+  exposures. The 00b live-acquisition path is a leftover from when we thought no export existed. It is now
+  a **retired fallback**: `external.enabled: false` and `external.require_for_phase4: false`, with 00b
+  exiting 0 and logging `external proxy acquisition disabled (board export in use)` **before any network
+  access** (any `--synthetic` fixture run is exempt and never touches the network). `04_models` no longer
+  passes `requires_external_proxy=True` — the proxy was never an input to that model; the gate was the
+  only dependency. The gate implementation itself is kept for the day the fallback is revived.
+* **E is non-fatal and separation-aware.** A `_safe_odds_ratio` helper clips the exponent at ±700
+  (`security_models.e.or_exponent_clip`) and reports `inf` / `OR > 1e300 (exponent clipped…)` explicitly
+  instead of raising. `_separation_reason` flags non-convergence, non-finite coefficients, `|coef| > 20`
+  or `se > 50` (`e.separation_max_coef` / `e.separation_max_se`) and returns E as a labelled null with the
+  reason, exactly as the fit-exception path already did. The `run_e(...)` call in `run()` is additionally
+  wrapped so any unexpected exception becomes a reported-null E block and B/C/D/F/G still write.
+
+**Why.** E is a secondary selection check. A numerical failure in it must never destroy the primary
+tables, and an unidentified (separated) logistic OR must be reported as unavailable, not as a number or a
+crash. The board export is the pre-registered exposure source (D37); live scraping was only ever a
+contingency.
+
+**Structural hardening (the point is that one bug cannot destroy a run again).**
+
+* **Incremental emission.** `run()` no longer computes B..G and writes at the end. Each block's files are
+  written immediately after that block completes: `group_assignment` before B, then
+  `b_primary`/`b_group_means`, `c_end`/`c_exceedance`, `d_skippers`, `e_selection`/`e_ipw`,
+  `falsification`, `g_tail`/`g_tail_summary`. A later failure leaves every earlier file on disk, valid.
+* **Per-block isolation, loudly.** B/C/D/E/F/G each run inside their own `try/except`. A failed
+  exploratory block writes that block's file(s) with a single labelled row
+  (`term`/`weighting='unavailable'`, `reason='<ExceptionType>: <msg>'`, `block_status='FAILED'`), is
+  logged at ERROR, and is listed in `SUMMARY.json::failed_blocks` and in a `## ⚠ FAILED BLOCKS` section of
+  `SUMMARY.md` — never swallowed. Every successful row carries `block_status='OK'` (last column, after the
+  mandatory leading `provenance`). **B is the headline**: a B failure writes the labelled FAILED row and
+  then raises `RuntimeError("primary block B failed (...)")` so the stage exits non-zero; it never
+  fabricates a null primary estimate.
+* **Hostile-input tests.** `src/tests/test_security_models_hostile.py` feeds (a) a perfectly separating
+  predictor for the selection logit, (b) a constant/zero-variance covariate, (c) extreme outliers in
+  `log_edp_pre` and Combine speed, and (d) NaN/blank cells in optional covariates. It asserts no uncaught
+  exception, every expected output file present, failed blocks labelled with a reason, earlier files
+  surviving a later G blow-up, the B hard-fail path, and that the primary B result is either present or the
+  stage exits non-zero with an explicit message.
+
+**Evidence.** Regression tests: `test_security_models.py::test_separation_reports_null_e_not_crash`
+(perfectly-predicted `appeared` ⇒ no exception, `term=unavailable`, reason recorded),
+`::test_safe_odds_ratio_clips_instead_of_overflowing`, and
+`::test_e_failure_is_non_fatal_and_b_primary_still_written` (E raises `OverflowError`; `b_primary.csv`,
+`c_end.csv`, `d_skippers.csv`, `falsification.csv`, `g_tail.csv` all emitted and E labelled FAILED).
+`test_security_models_hostile.py`: 4/4 (separation end-to-end, constant covariate + outliers + blanks,
+incremental emission through a simulated G failure, B hard-fail).
+`test_external_proxies.py::test_external_disabled_no_network_exit_zero` runs 00b with every socket denied
+and asserts exit 0 plus the disabled log line; `::test_models_not_gated_on_proxy` asserts 04 no longer
+references the flag and both config switches are false. Full suite: 17 files, 151 tests, all passing.

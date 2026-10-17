@@ -196,3 +196,12 @@ archived at git tag `archive/combine-fatigue-v1`.
     Combine number). *Mitigation:* the **peaking markers** (best-minus-mean attempt gap, attempt count)
     enter model F; a positive `group_coef` with quiet peaking markers is the cleaner incentive evidence,
     and the writeup must not read a negative sign as one mechanism.
+
+35. **E (selection) can be unidentified, and is then reported as a labelled null.** The appearance logit
+    can separate or nearly separate — at-risk players are systematically less likely to appear — which
+    makes the coefficients and odds ratios explode or become non-finite. *Mitigation (D43):* the odds
+    ratios are computed through a clipping helper (exponent ±700, overflow reported as `inf` / `>1e300`),
+    and `|coef| > 20`, `se > 50`, non-convergence or a non-finite coefficient turn E into a labelled null
+    with the reason (the IPW refit is reported unavailable rather than forced). E is non-fatal by design:
+    B/C/D/F/G are written regardless. A null E means the selection correction is **not** available for that
+    run, so the unweighted estimate stands and H1's selection caveat (limitation 25) applies in full.

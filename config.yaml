@@ -241,7 +241,12 @@ validate:
 # snapshots so the EDP is uncontaminated by Combine performance. GTM is the SOLE external source.
 # All paths/thresholds/parameters live here (no magic numbers in code).
 external:
-  enabled: true
+  # RETIRED live acquisition (D43). The board export below
+  # (`data/raw/external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv`) is the exposure source for all
+  # 783 exposures in 06_security. The GTM runtime scraper in 00b is a leftover from when we
+  # thought no export existed: it is now a RETIRED FALLBACK and must never touch the network.
+  # Keep this false. Set true only if the board export is ever lost and a live route is revived.
+  enabled: false
   source: gtm                        # Grinding The Mocks (the only in-scope external source)
   out_subdir: external               # outputs/external/ (sample + synthetic labels)
   proxy_file: pre_combine_expectation.parquet   # full run writes outputs/pre_combine_expectation.parquet
@@ -250,7 +255,7 @@ external:
   raw_cache_dir: external            # data/raw/external/ (raw GTM responses cached before processing)
   years: [2023, 2024, 2025]          # draft classes represented in the Kaggle players.csv
   positions: [WR, TE]                # match-rate assertion population (spec: drafted WRs/TEs)
-  require_for_phase4: true           # 04_models --mode full requires the proxy (existence + schema)
+  require_for_phase4: false          # the proxy is NOT used by the model; board export supersedes it (D43)
   # --- strict deliverable schema (EXACT names + order; asserted on write) ---
   schema: [nflId, Pre_Combine_EDP, match_confidence_score]
   # --- API pacing / bounded acquisition (spec: strict rate limiting) ---
@@ -466,6 +471,11 @@ security_models:
     weight_grid: [[0.0, 1.0], [0.01, 0.99], [0.05, 0.95]]   # truncation sensitivity grid
     max_iter: 200
     cluster: player
+    # separation / non-convergence guards: the odds ratios are reported as a labelled null rather
+    # than letting math.exp overflow when a predictor separates (D43).
+    separation_max_coef: 20.0        # |coef| above this => separation suspected
+    separation_max_se: 50.0          # se above this => separation suspected
+    or_exponent_clip: 700.0          # exp() exponent clipped here; overflow reported explicitly
   # --- F: falsification ---
   f:
     placebo: [height, weight]        # standardized placebos in place of the group term

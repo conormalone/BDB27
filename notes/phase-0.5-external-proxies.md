@@ -73,8 +73,9 @@ available for the utilization (u_i) interaction term.
   write. A sidecar `<file>.parquet.provenance.txt` carries the run label (the strict schema forbids a
   provenance column).
 - **Phase-4 gate** — `src/gate.py::external_proxy_gate_ok` requires the proxy to **exist** with **exactly**
-  the configured schema when `external.require_for_phase4` is true; `04_models.py --mode full` is wired to
-  require it. `--mode sample` is never gated.
+  the configured schema when `external.require_for_phase4` is true. **Retired by D43:** the switch is now
+  false and `04_models.py` no longer passes `requires_external_proxy` (the proxy was never an input to that
+  model); the gate code remains for a future revival. `--mode sample` is never gated.
 
 ## Data availability
 

@@ -116,23 +116,35 @@ def _f(x: Any) -> Any:
     return x
 
 
-def _emit(path: Path, rows: Sequence[dict], prov: str, log) -> None:
+def _emit(path: Path, rows: Sequence[dict], prov: str, log, block_status: str = "OK") -> None:
+    """Write one block's CSV immediately (D43: no end-of-run batch that a later bug can destroy).
+
+    Every row carries ``block_status`` (``OK`` / ``FAILED``); a failed block is a single labelled row
+    with ``term``/``weighting='unavailable'`` and the reason string, never an empty file.
+    """
     rows = [dict(r) for r in rows] or [{}]
     fields: list[str] = []
     for r in rows:
         for k in r:
             if k not in fields:
                 fields.append(k)
-    fields = ["provenance"] + [f for f in fields if f != "provenance"]
+    fields = ["provenance"] + [f for f in fields if f not in ("provenance", "block_status")]
     norm = []
     for r in rows:
         d = {"provenance": prov}
         for k, v in r.items():
-            if k != "provenance":
+            if k not in ("provenance", "block_status"):
                 d[k] = _f(v)
+        d["block_status"] = str(r.get("block_status", block_status))
         norm.append(d)
+    fields.append("block_status")
     common.write_csv(path, norm, fieldnames=fields)
-    log.info("wrote %s (%d rows)", path.name, len(norm))
+    log.info("wrote %s (%d rows, %s)", path.name, len(norm), block_status)
+
+
+def _fail_row(reason: str, key: str = "term") -> dict:
+    """The single labelled row written when a block fails (D43)."""
+    return {key: "unavailable", "note": reason, "reason": reason, "block_status": "FAILED"}
 
 
 def record_blocker(cfg: dict, msg: str, log=None) -> None:
@@ -1127,6 +1139,73 @@ def build_selection_pool(exposures: dict[int, dict], envelope: dict[int, dict],
     return out
 
 
+def _safe_exp(x: float, clip: float = 700.0) -> float:
+    """exp() that saturates instead of raising ``OverflowError``.
+
+    A logit that (quasi-)separates produces enormous coefficients / CIs. ``math.exp(710)`` raises
+    ``OverflowError: math range error`` and used to kill the whole stage before B/C/D/F/G were
+    written. We clip the exponent at +/-``clip`` and return ``inf`` (huge positive) / ``0.0`` (huge
+    negative) so the caller can report the overflow explicitly instead of crashing.
+    """
+    x = float(x)
+    if math.isnan(x):
+        return float("nan")
+    if x > clip:
+        return float("inf")
+    if x < -clip:
+        return 0.0
+    return float(math.exp(x))
+
+
+def _odds_ratio(x: float, clip: float = 700.0) -> tuple[float, str]:
+    """Safe odds ratio + an explicit note when the exponent had to be clipped (see ``_safe_exp``)."""
+    val = _safe_exp(x, clip)
+    if math.isinf(val):
+        return val, f"OR > 1e300 (exponent clipped at +{clip:g}; separation suspected)"
+    if math.isfinite(val) and val == 0.0 and float(x) < -clip:
+        return val, f"OR < 1e-300 (exponent clipped at -{clip:g}; separation suspected)"
+    return val, ""
+
+
+def _e_null(reason: str, n_obs: int, n_appeared: int,
+            meta: dict | None = None) -> tuple[list[dict], list[dict], dict]:
+    """The labelled-null E block (one selection row + one IPW row + meta)."""
+    return ([dict(term="unavailable", coef=None, se=None, z=None, p=None, odds_ratio=None,
+                  or_ci_lo=None, or_ci_hi=None, n_obs=n_obs, n_appeared=n_appeared,
+                  note=f"reported null: {reason}")],
+            [dict(weighting="unavailable", group_coef=None, group_se=None, group_p=None,
+                  n_obs=0, n_players=0, trim_lo=None, trim_hi=None,
+                  note=f"reported null: selection model unavailable ({reason})")],
+            meta if meta is not None else dict(n_pool=n_obs, n_appeared=n_appeared,
+                                               unavailable=reason))
+
+
+def _separation_reason(res, names: list[str], cfg: dict) -> str | None:
+    """Detect non-convergence / (quasi-)separation from the fitted logit; None when it looks sane."""
+    e = cfg["security_models"]["e"]
+    max_coef = float(e.get("separation_max_coef", 20.0))
+    max_se = float(e.get("separation_max_se", 50.0))
+    try:
+        converged = bool(getattr(res, "mle_retvals", {}).get("converged", True))
+    except Exception:  # noqa: BLE001 - a missing retvals block is not itself a failure
+        converged = True
+    if not converged:
+        return "logit did not converge (mle_retvals.converged=False)"
+    params = np.asarray(res.params, float)
+    ses = np.asarray(res.bse, float)
+    if not np.all(np.isfinite(params)):
+        return "logit produced a non-finite coefficient"
+    worst = float(np.max(np.abs(params))) if params.size else 0.0
+    if worst > max_coef:
+        return (f"separation suspected: max |coef|={worst:.1f} > separation_max_coef={max_coef:g} "
+                f"(perfect/quasi-perfect prediction of appearance)")
+    finite_se = ses[np.isfinite(ses)]
+    worst_se = float(np.max(finite_se)) if finite_se.size else 0.0
+    if worst_se > max_se:
+        return (f"separation suspected: max se={worst_se:.1f} > separation_max_se={max_se:g}")
+    return None
+
+
 def run_e(pool: list[dict], rows: list[dict], cfg: dict) -> tuple[list[dict], list[dict], dict]:
     e = cfg["security_models"]["e"]
     p = cfg["security_models"]["primary"]
@@ -1136,12 +1215,7 @@ def run_e(pool: list[dict], rows: list[dict], cfg: dict) -> tuple[list[dict], li
     meta = dict(n_pool=len(fin), n_appeared=n_app, min_n=e["min_n"], min_appeared=e["min_appeared"])
     pool_floor = int(cfg["security_models"]["selection"]["min_n"])
     if len(fin) < pool_floor or n_app < int(e["min_appeared"]):
-        return ([dict(term="unavailable", coef=None, se=None, z=None, p=None, odds_ratio=None,
-                      or_ci_lo=None, or_ci_hi=None, n_obs=len(fin), n_appeared=n_app,
-                      note=f"reported null: pool={len(fin)}, appeared={n_app} below floors")],
-                [dict(weighting="unavailable", group_coef=None, group_se=None, group_p=None,
-                      n_obs=0, n_players=0, trim_lo=None, trim_hi=None,
-                      note="reported null: selection model unavailable")], meta)
+        return _e_null(f"pool={len(fin)}, appeared={n_app} below floors", len(fin), n_app, meta)
     try:
         import statsmodels.api as sm
         # standardize the two log predictors so the reported odds ratios are per SD (the fitted
@@ -1157,25 +1231,29 @@ def run_e(pool: list[dict], rows: list[dict], cfg: dict) -> tuple[list[dict], li
         y = np.array([1.0 if r["appeared"] else 0.0 for r in fin], float)
         res = sm.Logit(y, X).fit(disp=0, maxiter=int(e["max_iter"]))
     except Exception as exc:  # noqa: BLE001 - separation / non-convergence -> reported null
-        return ([dict(term="unavailable", coef=None, se=None, z=None, p=None, odds_ratio=None,
-                      or_ci_lo=None, or_ci_hi=None, n_obs=len(fin), n_appeared=n_app,
-                      note=f"reported null: logit failed ({type(exc).__name__}: {exc})")],
-                [dict(weighting="unavailable", group_coef=None, group_se=None, group_p=None,
-                      n_obs=0, n_players=0, trim_lo=None, trim_hi=None,
-                      note="reported null: selection model unavailable")], meta)
+        return _e_null(f"logit failed ({type(exc).__name__}: {exc})", len(fin), n_app, meta)
+
+    sep = _separation_reason(res, names, cfg)
+    if sep is not None:
+        return _e_null(sep, len(fin), n_app, meta)
+
+    clip = float(e.get("or_exponent_clip", 700.0))
     ci = np.asarray(res.conf_int(), float)
     sel_rows = []
     for i, nm in enumerate(names):
         if nm == "const":
             continue
+        or_val, or_note = _odds_ratio(res.params[i], clip)
+        lo_val, lo_note = _odds_ratio(ci[i, 0], clip)
+        hi_val, hi_note = _odds_ratio(ci[i, 1], clip)
+        notes = [("standardized predictor (OR per SD)" if nm.startswith("z_") else "raw units")]
+        notes += list(dict.fromkeys(n for n in (or_note, lo_note, hi_note) if n))
+        if dr:
+            notes.append("dropped: " + ";".join(f"{a}:{b}" for a, b in dr))
         sel_rows.append(dict(term=nm, coef=float(res.params[i]), se=float(res.bse[i]),
                              z=float(res.tvalues[i]), p=float(res.pvalues[i]),
-                             odds_ratio=float(math.exp(res.params[i])),
-                             or_ci_lo=float(math.exp(ci[i, 0])), or_ci_hi=float(math.exp(ci[i, 1])),
-                             n_obs=len(fin), n_appeared=n_app,
-                             note=("standardized predictor (OR per SD)" if nm.startswith("z_")
-                                   else "raw units")
-                             + (("; dropped: " + ";".join(f"{a}:{b}" for a, b in dr)) if dr else "")))
+                             odds_ratio=or_val, or_ci_lo=lo_val, or_ci_hi=hi_val,
+                             n_obs=len(fin), n_appeared=n_app, note="; ".join(notes)))
     p_hat = np.clip(np.asarray(res.predict(X), float), 1e-6, 1 - 1e-6)
     prob = {r["nfl_id"]: float(ph) for r, ph in zip(fin, p_hat)}
     w_raw = {nid: 1.0 / ph for nid, ph in prob.items()}
@@ -1486,6 +1564,7 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
              prov, len(exposures), len(envelope), len(topk), len(efforts), len(cov))
 
     # ---- group assignment (pre-Combine only) ----
+    out_dir.mkdir(parents=True, exist_ok=True)
     pool_rows = [dict(nfl_id=nid, position_group=ex["position_group"], edp_pre=ex["edp_pre"],
                       log_edp_pre=ex["log_edp_pre"], edp_trend=ex["edp_trend"],
                       has_trend=ex["has_trend"], has_primary=ex["has_primary"])
@@ -1515,14 +1594,80 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
              "(dropped reasons: %s); players with a missing size covariate: %d",
              len(rows), len(rows_all) - len(rows), dropped or "none", dropped_cov)
 
-    b_rows, b_means, _ = run_b(rows, cov, rel, cfg, dropped, alt_rows=rows_t5)
-    c_end, c_exc = run_c(rows_all, topk, envelope, assign, cfg)
-    d_rows = run_d(rows, exposures, cfg)
+    # ---- compute + EMIT each block immediately (D43: a later failure must not lose earlier work) ----
+    # B is the headline: a failure there is a hard stop (never a fabricated null). C/D/E/F/G are
+    # exploratory: a failure writes one labelled FAILED row, is listed in failed_blocks + SUMMARY.md,
+    # and the remaining blocks still run. Per-block try/except everywhere — nothing is swallowed
+    # silently.
+    failed_blocks: dict[str, str] = {}
+
+    def _block_failed(block: str, exc: Exception, files: dict[str, str]) -> None:
+        reason = f"{type(exc).__name__}: {exc}"
+        failed_blocks[block] = reason
+        log.error("%s: block %s FAILED — %s", prov, block, reason)
+        for fname, key in files.items():
+            _emit(out_dir / fname, [_fail_row(reason, key)], prov, log, block_status="FAILED")
+
+    _emit(out_dir / "group_assignment.csv", assign["assignments"], prov, log)
+
+    try:
+        b_rows, b_means, _ = run_b(rows, cov, rel, cfg, dropped, alt_rows=rows_t5)
+    except Exception as exc:  # noqa: BLE001 - the PRIMARY test must fail loudly, not fake a null
+        _block_failed("B", exc, {"b_primary.csv": "term", "b_group_means.csv": "term"})
+        record_blocker(cfg, f"primary block B failed: {failed_blocks['B']}", log)
+        raise RuntimeError(
+            f"primary block B failed ({failed_blocks['B']}) — no primary result was produced; "
+            f"see {out_dir / 'b_primary.csv'}") from exc
+    _emit(out_dir / "b_primary.csv", b_rows, prov, log)
+    _emit(out_dir / "b_group_means.csv", b_means, prov, log)
+
+    try:
+        c_end, c_exc = run_c(rows_all, topk, envelope, assign, cfg)
+    except Exception as exc:  # noqa: BLE001 - exploratory block
+        c_end, c_exc = [], []
+        _block_failed("C", exc, {"c_end.csv": "term", "c_exceedance.csv": "term"})
+    else:
+        _emit(out_dir / "c_end.csv", c_end, prov, log)
+        _emit(out_dir / "c_exceedance.csv", c_exc, prov, log)
+
+    try:
+        d_rows = run_d(rows, exposures, cfg)
+    except Exception as exc:  # noqa: BLE001 - exploratory block
+        d_rows = []
+        _block_failed("D", exc, {"d_skippers.csv": "term"})
+    else:
+        _emit(out_dir / "d_skippers.csv", d_rows, prov, log)
+
     pool = build_selection_pool(exposures, envelope, cov, set(psum.keys()), cfg)
-    e_sel, e_ipw, e_meta = run_e(pool, rows, cfg)
-    top_keys = {(int(e["nfl_id"]), int(e["game_id"]), int(e["play_id"])) for e in topk}
-    f_rows = run_f(rows, all_rows, top_keys, attempts, cfg)
-    g_rows, g_tail = run_g(rows, cfg)
+    try:
+        e_sel, e_ipw, e_meta = run_e(pool, rows, cfg)
+    except Exception as exc:  # noqa: BLE001 - exploratory block
+        e_sel, e_ipw = [], []
+        e_meta = dict(n_pool=len(pool),
+                      n_appeared=sum(1 for r in pool if r.get("appeared")),
+                      unavailable=f"{type(exc).__name__}: {exc}")
+        _block_failed("E", exc, {"e_selection.csv": "term", "e_ipw.csv": "weighting"})
+    else:
+        _emit(out_dir / "e_selection.csv", e_sel, prov, log)
+        _emit(out_dir / "e_ipw.csv", e_ipw, prov, log)
+
+    try:
+        top_keys = {(int(e["nfl_id"]), int(e["game_id"]), int(e["play_id"])) for e in topk}
+        f_rows = run_f(rows, all_rows, top_keys, attempts, cfg)
+    except Exception as exc:  # noqa: BLE001 - exploratory block
+        f_rows = []
+        _block_failed("F", exc, {"falsification.csv": "term"})
+    else:
+        _emit(out_dir / "falsification.csv", f_rows, prov, log)
+
+    try:
+        g_rows, g_tail = run_g(rows, cfg)
+    except Exception as exc:  # noqa: BLE001 - exploratory block
+        g_rows, g_tail = [], []
+        _block_failed("G", exc, {"g_tail.csv": "term", "g_tail_summary.csv": "term"})
+    else:
+        _emit(out_dir / "g_tail.csv", g_rows, prov, log)
+        _emit(out_dir / "g_tail_summary.csv", g_tail, prov, log)
 
     # ---- ground truth for the synthetic fixture only (never a result) ----
     ground = None
@@ -1539,19 +1684,7 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
         except (ValueError, OSError):
             ground = None
 
-    # ---- persist ----
-    out_dir.mkdir(parents=True, exist_ok=True)
-    _emit(out_dir / "group_assignment.csv", assign["assignments"], prov, log)
-    _emit(out_dir / "b_primary.csv", b_rows, prov, log)
-    _emit(out_dir / "b_group_means.csv", b_means, prov, log)
-    _emit(out_dir / "c_end.csv", c_end, prov, log)
-    _emit(out_dir / "c_exceedance.csv", c_exc, prov, log)
-    _emit(out_dir / "d_skippers.csv", d_rows, prov, log)
-    _emit(out_dir / "e_selection.csv", e_sel, prov, log)
-    _emit(out_dir / "e_ipw.csv", e_ipw, prov, log)
-    _emit(out_dir / "falsification.csv", f_rows, prov, log)
-    _emit(out_dir / "g_tail.csv", g_rows, prov, log)
-    _emit(out_dir / "g_tail_summary.csv", g_tail, prov, log)
+    # ---- persist the summary (every data file was already written block-by-block above) ----
 
     primary_wr = next((r for r in b_rows if r["scope"] == "WR"
                        and r["spec"] == "primary_env_vmax"), {})
@@ -1593,6 +1726,7 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
                   by_position_threshold_T5=assign_t5["by_position"],
                   counts_by_threshold=threshold_counts),
         reliability=rel,
+        failed_blocks=failed_blocks,
         primary_wr=primary_wr,
         b_primary=b_rows, b_group_means=b_means,
         c_end=c_end, c_exceedance=c_exc, d_skippers=d_rows,
@@ -1632,6 +1766,10 @@ def render_summary(s: dict) -> str:
              f"{s['synthetic']}")
     L.append(f"- **Analysis A:** {s['analysis_a_status']}")
     L.append(f"- **Sign convention:** {s['sign_convention']}.")
+    if s.get("failed_blocks"):
+        L.append(f"- **FAILED BLOCKS:** " + "; ".join(
+            f"{b} ({why})" for b, why in s["failed_blocks"].items()) +
+            " — see the labelled FAILED rows in the block's CSV.")
     L.append(f"- **Population:** exposures {s['n_exposures']} · with Combine speed "
              f"{s['n_with_combine_speed']} · in game data {s['n_players_in_game']} · "
              f"two-group effort rows {s['n_effort_rows']} ({s['n_model_players']} players) · "
@@ -1639,6 +1777,11 @@ def render_summary(s: dict) -> str:
              f"{s['n_unclassified_players_c']} unclassified retained: "
              f"{s['n_unclassified_rows_c']} efforts)")
     L.append("")
+    if s.get("failed_blocks"):
+        L.append("## ⚠ FAILED BLOCKS (D43)")
+        for block, why in s["failed_blocks"].items():
+            L.append(f"- **{block}: FAILED** — {why} (labelled `block_status=FAILED` in the CSVs)")
+        L.append("")
     # group assignment
     L.append("## Group assignment (pre-Combine sort key)")
     L.append(f"- **D40 asymmetric threshold:** `moved_down` iff `edp_trend >= "

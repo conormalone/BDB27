@@ -224,6 +224,8 @@ def test_gate_requires_external_proxy():
     out = tmp / "out"
     _audit_go(out)
     cfg = copy.deepcopy(common.load_config())
+    cfg["external"]["enabled"] = True          # exercise the gate itself (config default is retired)
+    cfg["external"]["require_for_phase4"] = True
     cfg["paths"]["notes"] = str(notes)
     cfg["paths"]["outputs"] = str(out)
 
@@ -256,11 +258,53 @@ def test_gate_requires_external_proxy():
     assert rep["passed"]
 
 
-def test_models_full_mode_requires_proxy_config_knob():
-    """04_models must be wired to require the proxy in full mode (config-driven knob present)."""
+def test_models_not_gated_on_proxy():
+    """D43: 04_models no longer requires the retired GTM proxy; the config knob is off."""
     src = (REPO / "src" / "04_models.py").read_text(encoding="utf-8")
-    assert "requires_external_proxy=True" in src
-    assert common.load_config()["external"]["require_for_phase4"] is True
+    assert "requires_external_proxy" not in src
+    ext = common.load_config()["external"]
+    assert ext["enabled"] is False and ext["require_for_phase4"] is False
+
+
+# --------------------------------------------------------------------------- #
+# disabled external acquisition (D43) -> no-op, NO network access at all
+# --------------------------------------------------------------------------- #
+def test_external_disabled_no_network_exit_zero():
+    tmp = Path(tempfile.mkdtemp())
+    notes = _frozen_prereg(tmp / "notes")
+    out = tmp / "out"
+    raw = tmp / "raw"
+    raw.mkdir()
+    # config default is enabled:false; keep endpoints in place so a live attempt would be possible
+    cfg = _cfg(tmp, notes=notes, raw=raw, outputs=out, **{"external.enabled": False})
+
+    # Deny every socket in the child interpreter: any network access becomes a hard failure.
+    blocker = tmp / "blocknet"
+    blocker.mkdir()
+    (blocker / "sitecustomize.py").write_text(
+        "import socket\n"
+        "def _deny(*a, **k):\n"
+        "    raise RuntimeError('network access attempted while external.enabled=false')\n"
+        "socket.socket.connect = _deny\n"
+        "socket.socket.connect_ex = _deny\n"
+        "socket.create_connection = _deny\n"
+        "socket.getaddrinfo = _deny\n"
+        "socket.gethostbyname = _deny\n", encoding="utf-8")
+    import os
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(blocker) + (os.pathsep + env["PYTHONPATH"]
+                                        if env.get("PYTHONPATH") else "")
+    r = subprocess.run([sys.executable, str(SCRIPT), "--mode", "full", "--force",
+                        "--config", str(cfg)], cwd=str(REPO), capture_output=True, text=True,
+                       env=env)
+    assert r.returncode == 0, f"disabled 00b did not exit 0:\n{r.stdout}\n{r.stderr[-2000:]}"
+    combined = r.stdout + r.stderr
+    assert "external proxy acquisition disabled (board export in use)" in combined, combined[-800:]
+    assert "network access attempted" not in combined, combined[-800:]
+    # nothing written, and no blocker recorded for a disabled stage
+    assert not (out / "pre_combine_expectation.parquet").exists()
+    assert not (notes / "blockers.md").exists() or "UNAVAILABLE" not in (
+        notes / "blockers.md").read_text()
 
 
 # --------------------------------------------------------------------------- #
@@ -274,7 +318,9 @@ def test_full_mode_blocked_without_gtm_cache():
     raw = tmp / "raw"
     raw.mkdir()
     cfg = _cfg(tmp, notes=notes, raw=raw, outputs=out, **{
-        "external.gtm.endpoints": [],          # no live calls in the test -> no cached raw either
+        "external.enabled": True,             # revive the retired fallback for this blocker test
+        "external.require_for_phase4": True,
+        "external.gtm.endpoints": [],         # no live calls in the test -> no cached raw either
     })
     r = _run(["--mode", "full", "--force"], cfg)
     assert r.returncode == 2, f"full run not blocked:\n{r.stdout}\n{r.stderr}"
@@ -289,7 +335,8 @@ def test_full_mode_blocked_without_gtm_cache():
 # --------------------------------------------------------------------------- #
 def test_sample_mode_labelled_and_deterministic():
     tmp = Path(tempfile.mkdtemp())
-    cfg = _cfg(tmp, fixtures=REPO / "fixtures", raw=tmp / "raw")
+    # sample mode still exercises the LEGACY fixture fallback -> opt the retired pipeline back in
+    cfg = _cfg(tmp, fixtures=REPO / "fixtures", raw=tmp / "raw", **{"external.enabled": True})
     r = _run(["--mode", "sample", "--force"], cfg)
     assert r.returncode == 0, r.stderr[-1500:]
     pp = tmp / "out" / "external" / "sample" / "pre_combine_expectation.parquet"
@@ -317,7 +364,8 @@ def main() -> int:
     tests = [test_synthetic_pipeline_end_to_end, test_february_filter_controls_edp,
              test_fuzzy_matching_near_miss_and_unmatched, test_match_rate_gate_halts_and_writes_blocker,
              test_proxy_schema_assertion, test_gate_requires_external_proxy,
-             test_models_full_mode_requires_proxy_config_knob, test_full_mode_blocked_without_gtm_cache,
+             test_models_not_gated_on_proxy, test_external_disabled_no_network_exit_zero,
+             test_full_mode_blocked_without_gtm_cache,
              test_sample_mode_labelled_and_deterministic, test_checkpoint_skips_finished_run]
     failed = 0
     for t in tests:
