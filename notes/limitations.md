@@ -136,10 +136,11 @@ archived at git tag `archive/combine-fatigue-v1`.
     "intended to", "motivated to" and "gamed the Combine" are **not**. Any causal language is off-limits.
 23. **The sort key is a pre-Combine construction, not a random assignment.** `moved_down` vs `high_secure`
     is defined from the EDP trend (1wk-pre − 2wk-pre) or, absent a trend, from within-position tertiles of
-    `log(EDP_pre)`. The two groups therefore differ in *level* as well as in *movement*, and players are not
-    randomised to them. *Mitigation:* the assignment is deterministic and pre-Combine only (never the game
-    outcome), the pooled model carries a **stratum fixed effect**, and trend-only / level-only panels are
-    reported separately. It is a contrast, not a causal effect.
+    `log(EDP_pre)`. In the **trend stratum the sort key is movement only** — the pre-Combine *level* is not
+    used — so a player slipping from 1st to 2nd and a stable 2nd-rounder can sit in different groups at
+    similar levels. Players are not randomised. *Mitigation:* the assignment is deterministic and
+    pre-Combine only (never the game outcome), the pooled model carries a **stratum fixed effect**, and
+    trend-only / level-only panels are reported separately. It is a contrast, not a causal effect.
 24. **Level-fallback is a declared second rule.** No 2-week snapshot ⇒ the group comes from a tertile of the
     pre-Combine EDP level, so about half the sample is classified by a different rule than the other half.
     *Mitigation:* every output labels the stratum; cutoffs and counts are reported; the middle tertile is
@@ -175,3 +176,16 @@ archived at git tag `archive/combine-fatigue-v1`.
 32. **Synthetic fixture numbers are never findings.** The planted/null/selection regimes prove the plumbing
     and the sign conventions only. The fixture's declared ICC file is a pipeline input, not a property of
     the fixture, so the attenuation correction is expected to overshoot there.
+33. **Opportunity/role differences are a *level* threat, not a movement one.** The "fringe guy gets fewer
+    max-effort routes" story applies when groups differ in *level*. The primary contrast sorts on
+    pre-Combine **movement**, so both groups can be starter-calibre — a player slipping from 1st to 2nd
+    keeps his reps, especially with an elite 40. *Mitigation:* snap share, route family and depth are
+    controls; the trend-only panel is free of the level confound; the level-fallback stratum is where the
+    confound can bite, which is why it is a separate, labelled panel and never the headline.
+34. **Combine peaking inflates the ceiling (the denominator).** The gap is game speed relative to a
+    Combine-measured ceiling, so a player who invests in the Combine itself — tapers, nails the start —
+    raises his own ceiling and *widens* the gap with no change in game ability. A negative `group_coef` is
+    therefore consistent with two stories (pressure hurts game output, or pressure produced a bigger
+    Combine number). *Mitigation:* the **peaking markers** (best-minus-mean attempt gap, attempt count)
+    enter model F; a positive `group_coef` with quiet peaking markers is the cleaner incentive evidence,
+    and the writeup must not read a negative sign as one mechanism.

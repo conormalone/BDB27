@@ -2,10 +2,11 @@
 NFL Big Data Bowl 2027 (Kaggle), deadline Jan 6, 2027 23:59 UTC.
 
 ## Goal
-Among receivers who reached the NFL, test whether pre-Combine draft security (from expected draft position, EDP) predicts how much of their Combine speed ceiling shows up in games.
-- **H1:** players under pressure (high EDP, falling, in danger of going undrafted) sit further below their Combine speed in games.
-- **H2:** secure players (low EDP, rising, or skipping events) reach or exceed their Combine ceiling in games more often.
-H1 and H2 are the two ends of one relationship (same sign of the security effect). Test it once as the pre-registered primary result, then examine which end drives it. Primary group: WR. Replication: TE (pass-route snaps only).
+Among receivers who reached the NFL, test whether **pre-Combine movement in draft stock** (expected draft position, EDP) predicts how much of their Combine speed ceiling shows up in games.
+- **H1:** players whose stock is slipping entering the Combine (`moved_down`) realise a **higher** share of their Combine speed ceiling in games — a **smaller** Combine-to-game gap — consistent with a stronger incentive to invest in the speed mechanism.
+- **H2:** high/secure players (stable or rising stock, low EDP) realise **less** of their ceiling — consistent with a weaker incentive.
+H1 and H2 are the two ends of one relationship: a **positive** `group_coef` (`moved_down` − `high_secure`) means `moved_down` sits closer to its ceiling. The sign convention is fixed in `config.yaml::security_models` and stated in every output. Test it once as the pre-registered primary result, then examine which end drives it. Primary group: WR. Replication: TE (pass-route snaps only).
+**The exposure is movement, not level.** The sort key is the pre-Combine EDP trend (or, absent a trend, within-position tertiles of the level). A player slipping from 1st to 2nd is still an elite prospect who can hold starter reps, especially if he tests at elite speed — the contrast is not a proxy for "fringe vs secure". Role and opportunity differences are controlled with snap share, route family and depth, not assumed away.
 Claims are limited to players who reached the NFL (only draftees have game tracking). Interpret any finding as a Combine-to-game measurement gap whose causes include effort, preparation and day-level luck. Never claim intent, motivation or "gaming the Combine".
 
 ## Environment

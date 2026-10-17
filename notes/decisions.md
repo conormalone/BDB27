@@ -725,3 +725,17 @@ schema/units fail-loud, sort-key sign/tertiles/middle-exclusion/cutoffs, post-Co
 all three scopes), monotone dose-response, null not recovered with nulls written as null, selection bias +
 IPW move toward the planted target, edge cases, determinism, sample placeholder + checkpoint, and the CLI on
 all three regimes. Full standalone suite green.
+
+## D39 — H1/H2 reworded to the incentive direction; exposure is movement, not level (2026-10-17, Conor)
+
+Conor confirmed the D38 framing stands after review. **Documentation only** — no code, config, thresholds
+or prereg values changed; the pipeline and sign convention were already correct.
+
+- `TASK.md` H1/H2 now state the incentive prediction: `moved_down` realises a **higher** share of its
+  Combine ceiling (smaller gap), and a **positive** `group_coef` supports it.
+- Clarified that the **trend stratum sorts on movement only**; level enters solely through the level-fallback
+  tertiles. A 1st-to-2nd slider is still starter-calibre, so the "fringe/depth" opportunity story is a
+  *level* confound, not a movement one. Snap share, route family and depth are the controls.
+- Added limitations 33 (opportunity is a level threat) and 34 (Combine peaking inflates the ceiling; the F
+  peaking markers discriminate; a negative sign is not evidence for a single mechanism).
+- The sign convention stated in every output is unchanged: positive = `moved_down` closer to ceiling.
