@@ -233,8 +233,12 @@ def snapshot_edp(board_rows: list[dict], note: str, cfg: dict,
     """Mean ``edp`` per ``nfl_id`` over rows with ``snapshot_note == note``.
 
     When ``strict_pre`` is set, a row counts only if its ``snapshot_date`` is strictly before the
-    player's own testing day (``testing_days``); players without a known testing day are **not**
-    silently accepted as pre-Combine (they have no Combine record).
+    player's own testing day (``testing_days``) **where that day is known**. The board's
+    ``snapshot_note`` is itself the authoritative pre-/post-Combine label (the pre snapshots are
+    fixed calendar dates one and two weeks before the Combine window), so a player with no
+    Combine-tracking record keeps that label rather than being dropped: an unknown testing day is
+    not evidence that the snapshot is post-Combine. (Verified on the real board: every pre-named
+    snapshot row for a player with a known testing day precedes it.)
     """
     acc: dict[int, list[float]] = {}
     for r in board_rows:
@@ -243,7 +247,7 @@ def snapshot_edp(board_rows: list[dict], note: str, cfg: dict,
         nid = int(r["nfl_id"])
         if strict_pre:
             td = (testing_days or {}).get(nid)
-            if td is None or not (r["snapshot_date"] < td):
+            if td is not None and not (r["snapshot_date"] < td):
                 continue
         acc.setdefault(nid, []).append(float(r["edp"]))
     return {nid: float(sum(v) / len(v)) for nid, v in acc.items()}
@@ -252,9 +256,10 @@ def snapshot_edp(board_rows: list[dict], note: str, cfg: dict,
 def pre_post_edp(board_rows: list[dict], cfg: dict, testing_days: dict[int, date]) -> dict[int, dict]:
     """Per-player ``{edp_pre, edp_post, edp_trend, has_primary, has_trend, has_post}``.
 
-    ``edp_pre`` = 1-week-pre (strictly before testing); ``edp_post`` = 1-week-post (an **outcome**);
-    ``edp_trend`` = 1-week-pre − 2-weeks-pre (both strictly pre-Combine). Pre-Combine is defined as
-    *strictly before the player's own testing day*.
+    ``edp_pre`` = 1-week-pre; ``edp_post`` = 1-week-post (an **outcome**);
+    ``edp_trend`` = 1-week-pre − 2-weeks-pre. Pre-Combine is the board's explicit pre-Combine
+    snapshot label, additionally required to be *strictly before the player's own testing day*
+    where that day is known (see ``snapshot_edp``).
     """
     b = cfg["external"]["board"]
     pre_primary = snapshot_edp(board_rows, b["snapshot_primary"], cfg, testing_days, strict_pre=True)
@@ -351,7 +356,7 @@ def write_exposure_parquet(path: Path, rows: list[dict], cfg: dict) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# D38 — PRE-COMBINE two-group sort key (moved_down vs high_secure)
+# D38/D40 — PRE-COMBINE two-group sort key (moved_down vs high_secure)
 # --------------------------------------------------------------------------- #
 # The group assignment may read ONLY these columns. Everything else — in particular the post-Combine
 # EDP and the pre->post change — is forbidden by construction (``assert_pre_combine_only``) and by
@@ -393,22 +398,30 @@ def _num_or_none(v: Any) -> float | None:
     return x if math.isfinite(x) else None
 
 
-def assign_security_groups(pool_rows: list[dict], cfg: dict) -> dict:
-    """Assign the D38 two-group pre-Combine sort key. Pure; pre-Combine information ONLY.
+def assign_security_groups(pool_rows: list[dict], cfg: dict,
+                           threshold: float | None = None) -> dict:
+    """Assign the D38/D40 two-group pre-Combine sort key. Pure; pre-Combine information ONLY.
 
-    * **trend stratum** (``has_trend``): ``moved_down`` iff ``edp_trend > trend_epsilon``
-      (``edp_trend`` = 1-week-pre − 2-weeks-pre; positive = worse/less secure), else ``high_secure``.
+    * **trend stratum** (``has_trend``): ``moved_down`` iff ``edp_trend >= fall_threshold``
+      (``edp_trend`` = 1-week-pre − 2-weeks-pre; positive = EDP number rose = worse/less secure).
+      **D40 asymmetric rule:** the primary threshold is **+3.0 EDP spots** — a player must have
+      actually fallen 3+ spots to count as ``moved_down``. ``high_secure`` is **everyone else with a
+      trend** (``edp_trend < +3.0``), i.e. stable *or* rising; there is no unclassified middle in
+      the trend stratum. The declared sensitivity re-runs the same rule at **+5.0**.
     * **level-fallback stratum** (no trend, ``has_primary``): tertiles of ``log_edp_pre`` computed
       **within position group**; bottom tertile = ``high_secure``, top = ``moved_down``, middle =
       ``unclassified`` (excluded from the two-group contrast, retained in the continuous model).
     * otherwise ``unclassified`` with basis ``no_pre_combine``.
 
-    Returns ``{"assignments": [...], "cutoffs": {...}, "counts": {...}, "trend_epsilon": eps}``.
+    ``threshold`` overrides ``config.yaml::security_models.sort.fall_threshold`` for the declared
+    sensitivity run only (the fixture builder / tests use it); the default is always the config value.
+
+    Returns ``{"assignments": [...], "cutoffs": {...}, "counts": {...}, "fall_threshold": thr}``.
     The tertile population is every pool row with ``has_primary`` and no trend, **independent of game
     appearance** — so selection cannot move a player between groups.
     """
     sort = cfg["security_models"]["sort"]
-    eps = float(sort["trend_epsilon"])
+    thr = float(sort["fall_threshold"] if threshold is None else threshold)
     qs = [float(q) for q in sort["level_tertiles"]]
     if len(qs) != 2:
         raise ValueError("security_models.sort.level_tertiles must hold exactly two quantiles")
@@ -455,12 +468,12 @@ def assign_security_groups(pool_rows: list[dict], cfg: dict) -> dict:
                     log_edp_pre=_num_or_none(r.get("log_edp_pre")), edp_trend=trend,
                     has_trend=has_trend)
         if has_trend and trend is not None:
-            if trend > eps:
+            if trend >= thr:
                 out.append(dict(base, stratum="trend", group="moved_down",
-                                basis=f"edp_trend>{eps:g}"))
+                                basis=f"edp_trend>={thr:g}"))
             else:
                 out.append(dict(base, stratum="trend", group="high_secure",
-                                basis=f"edp_trend<={eps:g}"))
+                                basis=f"edp_trend<{thr:g}"))
             continue
         x = base["log_edp_pre"]
         if fallback and has_primary and x is not None and pos in cutoffs:
@@ -484,21 +497,24 @@ def assign_security_groups(pool_rows: list[dict], cfg: dict) -> dict:
         by_pos_counts.setdefault(r["position_group"], {}).setdefault(r["group"], 0)
         by_pos_counts[r["position_group"]][r["group"]] += 1
     return {"assignments": out, "cutoffs": cutoffs, "counts": counts,
-            "by_position": by_pos_counts, "trend_epsilon": eps,
+            "by_position": by_pos_counts, "fall_threshold": thr,
             "level_tertiles": qs}
 
 
-def group_counts_by_epsilon(pool_rows: list[dict], cfg: dict) -> list[dict]:
-    """Descriptive sensitivity of the group COUNTS to ``trend_epsilon`` (never used to pick one)."""
+def group_counts_by_threshold(pool_rows: list[dict], cfg: dict) -> list[dict]:
+    """Group counts under the primary threshold and the declared T=5 sensitivity (never tuned).
+
+    Both thresholds are fixed in ``config.yaml`` before the full run (D40); the T=5 row is a
+    declared sensitivity, not a search over cutoffs.
+    """
     out: list[dict] = []
-    base_eps = float(cfg["security_models"]["sort"]["trend_epsilon"])
-    for eps in [float(e) for e in cfg["security_models"]["sort"]["trend_epsilon_grid"]]:
-        cfg2 = dict(cfg)
-        cfg2["security_models"] = dict(cfg["security_models"])
-        cfg2["security_models"]["sort"] = dict(cfg["security_models"]["sort"])
-        cfg2["security_models"]["sort"]["trend_epsilon"] = eps
-        res = assign_security_groups(pool_rows, cfg2)
-        row = {"trend_epsilon": eps, "is_primary_epsilon": bool(abs(eps - base_eps) < 1e-12)}
+    sort = cfg["security_models"]["sort"]
+    base_thr = float(sort["fall_threshold"])
+    panels = (("primary", base_thr), ("sensitivity", float(sort["sensitivity_threshold"])))
+    for panel, thr in panels:
+        res = assign_security_groups(pool_rows, cfg, threshold=thr)
+        row = {"panel": panel, "threshold": thr,
+               "is_primary_threshold": bool(abs(thr - base_thr) < 1e-12)}
         for stratum, groups in res["counts"].items():
             for group, n in groups.items():
                 row[f"{stratum}:{group}"] = n

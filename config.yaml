@@ -399,10 +399,14 @@ security_models:
     covariates: covariates.csv                         # synthetic fixture only
     reliability: feature_reliability.csv               # synthetic fixture only
     meta: meta.json                                    # synthetic fixture only
-  # --- the PRE-COMBINE sort key (D38) ---
+  # --- the PRE-COMBINE sort key (D38; thresholded by D40) ---
   sort:
-    trend_epsilon: 0.0              # moved_down iff edp_trend > epsilon (edp_trend = 1wk-pre - 2wk-pre)
-    trend_epsilon_grid: [0.0, 0.5, 1.0]   # descriptive sensitivity on the group counts only
+    # ASYMMETRIC THRESHOLD (D40): edp_trend = 1wk-pre - 2wk-pre (positive = EDP number rose = worse).
+    # moved_down iff edp_trend >= fall_threshold -- a real fall of 3+ EDP spots, not any movement.
+    # high_secure = every other player WITH a trend (edp_trend < threshold) = stable OR rising.
+    # There is NO unclassified middle in the trend stratum: a stable player is high_secure by design.
+    fall_threshold: 3.0             # PRIMARY: moved_down iff the player fell >= 3 EDP spots
+    sensitivity_threshold: 5.0      # DECLARED SENSITIVITY panel (panel_threshold_T5); never tuned
     level_fallback: true            # has_trend=false & has_primary=true -> within-position tertiles
     level_tertiles: [0.3333333333, 0.6666666667]  # bottom = high_secure, top = moved_down
     min_group_n: 15                 # below this a group/scatter is reported as thin (never forced)
@@ -487,7 +491,7 @@ security_models:
     regimes: [planted, null, selection]
     seed_offset: 909
     n_wr: 140                       # >=120 WR (brief minimum)
-    n_te: 50                        # >=40 TE
+    n_te: 110                       # >=40 TE (raised for the D40 threshold rule: enough TE moved_down)
     n_edge: 8                       # forced edge-case players (documented in meta.json)
     route_snaps_min: 100            # main population: >=100 route snaps (the fixed denominator)
     route_snaps_max: 170
@@ -509,7 +513,7 @@ security_models:
     combine_speed_mu: 8.90
     combine_speed_sd: 0.75
     trend_share: 0.50               # share with a 2-week snapshot (trend stratum)
-    trend_sd_edp: 4.0
+    trend_sd_edp: 10.0              # EDP-point SD of the pre-Combine drift (D40: ~38% fall 3+ spots)
     trend_level_corr: 0.60          # at-risk drift correlates with the EDP level (realistic)
     absence_rate: 0.10              # base no-game-data rate (planted/null regimes)
     selection_log_edp_slope: -3.00  # selection regime: at-risk less likely to appear

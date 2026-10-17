@@ -406,7 +406,8 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
             appeared=[p["nfl_id"] for p in players if p["appeared"]],
             edge_players={str(p["nfl_id"]): sorted(p["flags"]) for p in players if p["flags"]},
             counts=assign["counts"], cutoffs=assign["cutoffs"],
-            trend_epsilon=assign["trend_epsilon"]))
+            fall_threshold=assign["fall_threshold"],
+            sensitivity_threshold=float(cfg["security_models"]["sort"]["sensitivity_threshold"])))
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
     return {"dir": out_dir, "meta": meta, "n_efforts": len(efforts), "n_topk": len(topk),
             "n_players": len(players), "n_appeared": sum(1 for p in players if p["appeared"])}

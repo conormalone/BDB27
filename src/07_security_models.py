@@ -12,8 +12,11 @@ mechanism"; it must never say players tried harder, intended to, or gamed the Co
 
 **Sort key (pre-Combine information ONLY).** ``security_features.assign_security_groups``:
 
-* trend stratum (``has_trend``): ``moved_down`` iff ``edp_trend > trend_epsilon``
-  (``edp_trend`` = 1-week-pre − 2-weeks-pre; positive = worse / less secure), else ``high_secure``;
+* trend stratum (``has_trend``): **D40 asymmetric threshold** — ``moved_down`` iff
+  ``edp_trend >= fall_threshold`` (primary **+3.0** EDP spots; ``edp_trend`` = 1-week-pre −
+  2-weeks-pre, positive = worse / less secure), else ``high_secure``. ``high_secure`` is therefore
+  **not falling 3+ (stable or rising)** — deliberately *not* a "low EDP" or "no movement" group.
+  The declared sensitivity re-runs the same rule at **+5.0** (`panel_threshold_T5`);
 * level-fallback stratum (no trend, ``has_primary``): tertiles of ``log_edp_pre`` **within position
   group**; bottom = ``high_secure``, top = ``moved_down``, middle = ``unclassified`` (excluded from
   the two-group contrast, retained in the continuous model);
@@ -659,7 +662,8 @@ def _complete(rows: Iterable[dict], keys: Sequence[str]) -> list[dict]:
 # B — primary effort-level model (+ attenuation + group means)
 # --------------------------------------------------------------------------- #
 def run_b(rows: list[dict], cov: dict[int, dict], rel: dict[str, dict], cfg: dict,
-          dropped: dict) -> tuple[list[dict], list[dict], dict]:
+          dropped: dict, alt_rows: list[dict] | None = None,
+          alt_spec: str = "threshold_T5") -> tuple[list[dict], list[dict], dict]:
     p = cfg["security_models"]["primary"]
     scopes = list(p["scopes"])
     min_obs = int(p["min_obs"])
@@ -755,6 +759,55 @@ def run_b(rows: list[dict], cov: dict[int, dict], rel: dict[str, dict], cfg: dic
                        reliability_source=panel_icc.get("source"),
                        r2=None, method="ols_cluster" if p["cluster"] == "player" else "ols_hc1",
                        note=f"sensitivity panel: {stratum} stratum only")
+            thin = _mark_thin(rec, fin, groups, min_group_n)
+            if thin:
+                rec["note"] += f" | {thin}"
+                out.append(rec)
+                continue
+            if rec["n_obs"] < min_obs:
+                rec["note"] += f" | underpowered: n_obs={rec['n_obs']} < min_obs={min_obs}"
+                out.append(rec)
+                continue
+            try:
+                X, names, dr = design(fin, [panel_xkey, "moved_down"] + num_controls,
+                                      cat_controls, focal=[panel_xkey, "moved_down"])
+                y = np.array([r["y"] for r in fin], float)
+                res = ols(y, X, clusters=np.array([r["nfl_id"] for r in fin])
+                          if p["cluster"] == "player" else None)
+                gc, sc = _coef(res, names, "moved_down"), _coef(res, names, panel_xkey)
+                rec.update(n_obs=int(res.nobs), group_coef=gc["coef"], group_se=gc["se"],
+                           group_p=gc["p"], group_ci_lo=gc["ci_lo"], group_ci_hi=gc["ci_hi"],
+                           speed_coef=sc["coef"], speed_se=sc["se"], speed_p=sc["p"],
+                           r2=float(res.rsquared))
+                if dr:
+                    rec["note"] += " | dropped controls: " + "; ".join(f"{a}:{b}" for a, b in dr)
+                _apply_attenuation(rec, fin, panel_xkey, y, X, names, panel_icc,
+                                   num_controls, cat_controls, p, cfg,
+                                   feature=p["speed_feature"])
+            except ValueError as exc:
+                rec["note"] += f" | design failed: {exc}"
+            out.append(rec)
+        # ---- D40 declared sensitivity: the SAME primary specification at the T=5 threshold ----
+        # This changes the GROUP DEFINITION (moved_down iff edp_trend >= 5.0), not the estimator:
+        # same feature, controls, scope population and stratum fixed effect as the primary.
+        if alt_rows is not None:
+            sort = cfg["security_models"]["sort"]
+            alt_keys = [panel_xkey if k == "log_ceiling" else k for k in req]
+            rows_a = [r for r in _scope_rows(scope, alt_rows) if r.get("group") in set(groups)]
+            fin = _complete(rows_a, alt_keys)
+            rec = dict(spec=f"panel_{alt_spec}", scope=scope, n_obs=len(fin),
+                       n_players=len({r["nfl_id"] for r in fin}),
+                       n_players_moved_down=0, n_players_high_secure=0, thin=False,
+                       group_coef=None, group_se=None,
+                       group_p=None, group_ci_lo=None, group_ci_hi=None, speed_coef=None,
+                       speed_se=None, speed_p=None, speed_coef_corrected=None,
+                       group_coef_corrected=None, group_se_corrected=None, group_p_corrected=None,
+                       reliability_icc=panel_icc.get("icc"),
+                       reliability_source=panel_icc.get("source"),
+                       r2=None, method="ols_cluster" if p["cluster"] == "player" else "ols_hc1",
+                       note=(f"declared D40 sensitivity: moved_down iff edp_trend >= "
+                             f"{float(sort['sensitivity_threshold']):g} (primary T="
+                             f"{float(sort['fall_threshold']):g})"))
             thin = _mark_thin(rec, fin, groups, min_group_n)
             if thin:
                 rec["note"] += f" | {thin}"
@@ -1438,8 +1491,11 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
                       has_trend=ex["has_trend"], has_primary=ex["has_primary"])
                  for nid, ex in sorted(exposures.items())]
     assign = sf.assign_security_groups(pool_rows, cfg)
-    eps_counts = sf.group_counts_by_epsilon(pool_rows, cfg)
+    threshold_counts = sf.group_counts_by_threshold(pool_rows, cfg)
     amap = _assign_map(assign)
+    # D40 declared sensitivity: the same pre-Combine rule at the T=5 threshold.
+    alt_threshold = float(cfg["security_models"]["sort"]["sensitivity_threshold"])
+    assign_t5 = sf.assign_security_groups(pool_rows, cfg, threshold=alt_threshold)
 
     # ---- model rows ----
     # C's continuous dose-response keeps the middle tertile; the two-group models (B, D–G) do not.
@@ -1447,6 +1503,7 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
                                           keep_unclassified=True)
     contrast = set(cfg["security_models"]["sort"]["groups"])
     rows = [r for r in rows_all if r["group"] in contrast]
+    rows_t5, dropped_t5 = build_effort_rows(topk, assign_t5, envelope, cov, psum, cfg)
     all_rows, dropped_all = build_effort_rows(efforts, assign, envelope, cov, psum, cfg)
     # attach the per-player top-k mean (from player_summary) for the per-player variant
     for r in rows_all + all_rows:
@@ -1458,7 +1515,7 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
              "(dropped reasons: %s); players with a missing size covariate: %d",
              len(rows), len(rows_all) - len(rows), dropped or "none", dropped_cov)
 
-    b_rows, b_means, _ = run_b(rows, cov, rel, cfg, dropped)
+    b_rows, b_means, _ = run_b(rows, cov, rel, cfg, dropped, alt_rows=rows_t5)
     c_end, c_exc = run_c(rows_all, topk, envelope, assign, cfg)
     d_rows = run_d(rows, exposures, cfg)
     pool = build_selection_pool(exposures, envelope, cov, set(psum.keys()), cfg)
@@ -1522,12 +1579,19 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
         n_all_effort_rows=len(all_rows),
         n_topk_rows=len(topk), n_efforts_tracked=len(efforts),
         dropped_reasons=dropped, dropped_reasons_all_efforts=dropped_all,
+        dropped_reasons_threshold_T5=dropped_t5,
         n_missing_size_covariate_players=dropped_cov,
-        sort=dict(trend_epsilon=assign["trend_epsilon"], level_tertiles=assign["level_tertiles"],
+        sort=dict(fall_threshold=assign["fall_threshold"],
+                  sensitivity_threshold=alt_threshold,
+                  group_semantics=("moved_down = edp_trend >= fall_threshold (fell 3+ EDP spots); "
+                                   "high_secure = not falling 3+ (stable or rising)"),
+                  level_tertiles=assign["level_tertiles"],
                   cutoffs=assign["cutoffs"], counts=assign["counts"],
                   group_totals=group_totals, min_group_n=min_group_n,
                   thin_groups=thin_groups,
-                  by_position=assign["by_position"], counts_by_epsilon=eps_counts),
+                  by_position=assign["by_position"],
+                  by_position_threshold_T5=assign_t5["by_position"],
+                  counts_by_threshold=threshold_counts),
         reliability=rel,
         primary_wr=primary_wr,
         b_primary=b_rows, b_group_means=b_means,
@@ -1577,8 +1641,14 @@ def render_summary(s: dict) -> str:
     L.append("")
     # group assignment
     L.append("## Group assignment (pre-Combine sort key)")
-    L.append(f"- trend ε = {s['sort']['trend_epsilon']} · level tertiles "
-             f"{s['sort']['level_tertiles']} (within position group)")
+    L.append(f"- **D40 asymmetric threshold:** `moved_down` iff `edp_trend >= "
+             f"+{s['sort']['fall_threshold']:g}` EDP spots (fell 3+ between the 2-week and 1-week "
+             f"pre-Combine snapshots).")
+    L.append(f"- **`high_secure` = not falling 3+ (stable or rising)** — it is deliberately *not* a "
+             f"\"low EDP\" or \"no movement\" group.")
+    L.append(f"- Declared sensitivity: the same rule at +{s['sort']['sensitivity_threshold']:g} "
+             f"(`panel_threshold_T5`). Level tertiles {s['sort']['level_tertiles']} "
+             f"(within position group) for players with no 2-week snapshot.")
     if s["sort"]["cutoffs"]:
         L.append("")
         L.append("| position_group | q_lo | q_hi | n (level stratum) |")
@@ -1592,6 +1662,16 @@ def render_summary(s: dict) -> str:
         for group in sorted(s["sort"]["counts"][stratum]):
             L.append(f"| {stratum} | {group} | {s['sort']['counts'][stratum][group]} |")
     L.append("")
+    cbt = s["sort"].get("counts_by_threshold") or []
+    if cbt:
+        keys = sorted({k for r in cbt for k in r if ":" in k})
+        L.append("| threshold | panel | " + " | ".join(keys) + " |")
+        L.append("|---:|---|---:|" if len(keys) == 1 else
+                 "|---:|---|" + "|".join("---:" for _ in keys) + "|")
+        for r in cbt:
+            L.append(f"| +{r['threshold']:g} | {r['panel']} | "
+                     + " | ".join(str(r.get(k, "—")) for k in keys) + " |")
+        L.append("")
     if s["sort"].get("thin_groups"):
         L.append(f"> ⚠ **THIN GROUP(S):** {', '.join(s['sort']['thin_groups'])} below "
                  f"`min_group_n={s['sort']['min_group_n']}` — the two-group contrast is "
@@ -1623,7 +1703,8 @@ def render_summary(s: dict) -> str:
              "`group_coef` = moved_down has a **smaller** gap (supports the incentive hypothesis).")
     L.append("The headline is the **pooled two-group split with a stratum fixed effect** "
              "(`stratum_fe`); `panel_trend_only` and `panel_level_fallback` are the pre-declared "
-             "one-stratum sensitivity panels (a panel below `min_group_n` is reported as a null).")
+             "one-stratum sensitivity panels and `panel_threshold_T5` re-runs the primary spec at "
+             "the declared +5 threshold (a panel below `min_group_n` is reported as a null).")
     L.append("")
     L.append("### group means (top-k efforts)")
     L.append("| scope | group | n_obs | n_players | mean log game speed | mean log ceiling | "

@@ -135,14 +135,19 @@ archived at git tag `archive/combine-fatigue-v1`.
     D38: "incentive exposure" and "consistent with an incentive mechanism" are allowed; "tried harder",
     "intended to", "motivated to" and "gamed the Combine" are **not**. Any causal language is off-limits.
 23. **The sort key is a pre-Combine construction, not a random assignment.** `moved_down` vs `high_secure`
-    is defined from the EDP trend (1wk-pre − 2wk-pre) or, absent a trend, from within-position tertiles of
-    `log(EDP_pre)`. In the **trend stratum the sort key is movement only** — the pre-Combine *level* is not
-    used — so a player slipping from 1st to 2nd and a stable 2nd-rounder can sit in different groups at
-    similar levels. Players are not randomised. *Mitigation:* the assignment is deterministic and
-    pre-Combine only (never the game outcome), the pooled model carries a **stratum fixed effect**, and
-    trend-only / level-only panels are reported separately. It is a contrast, not a causal effect.
+    is defined from the EDP trend (1wk-pre − 2wk-pre) with the **D40 asymmetric threshold** — `moved_down`
+    iff the player fell **3+ EDP spots** — or, absent a trend, from within-position tertiles of
+    `log(EDP_pre)`. `high_secure` is **everyone else with a trend: stable *or* rising**, so it mixes
+    flat and rising players and is **not** a "low EDP" group. In the trend stratum the sort key is
+    movement only — the pre-Combine *level* is not used — so a 1-spot faller, a flat player and a riser
+    can sit in `high_secure` at very different EDP levels, while a 3-spot faller is `moved_down`.
+    Players are not randomised. *Mitigation:* the assignment is deterministic and pre-Combine only
+    (never the game outcome), a +5 threshold is reported as a declared sensitivity, the pooled model
+    carries a **stratum fixed effect**, and trend-only / level-only panels are reported separately.
+    It is a contrast, not a causal effect.
 24. **Level-fallback is a declared second rule.** No 2-week snapshot ⇒ the group comes from a tertile of the
-    pre-Combine EDP level, so about half the sample is classified by a different rule than the other half.
+    pre-Combine EDP level, so a minority of the board is classified by a different rule than the rest
+    (164/783 players have a 1-week-pre snapshot but no 2-week baseline; 127 have neither pre snapshot).
     *Mitigation:* every output labels the stratum; cutoffs and counts are reported; the middle tertile is
     `unclassified` and excluded from the contrast (retained in the continuous model so no information is
     thrown away). A player near a tertile boundary can flip with a small EDP change.
@@ -178,10 +183,12 @@ archived at git tag `archive/combine-fatigue-v1`.
     the fixture, so the attenuation correction is expected to overshoot there.
 33. **Opportunity/role differences are a *level* threat, not a movement one.** The "fringe guy gets fewer
     max-effort routes" story applies when groups differ in *level*. The primary contrast sorts on
-    pre-Combine **movement**, so both groups can be starter-calibre — a player slipping from 1st to 2nd
-    keeps his reps, especially with an elite 40. *Mitigation:* snap share, route family and depth are
-    controls; the trend-only panel is free of the level confound; the level-fallback stratum is where the
-    confound can bite, which is why it is a separate, labelled panel and never the headline.
+    pre-Combine **movement** (D40: a fall of 3+ EDP spots vs stable-or-rising), so both groups can be
+    starter-calibre — a player slipping 3 spots keeps his reps, especially with an elite 40.
+    *Mitigation:* snap share, route family and depth are controls; the trend-only panel is free of the
+    level confound; the level-fallback stratum is where the confound can bite, which is why it is a
+    separate, labelled panel and never the headline. Note that `high_secure` mixes stable and rising
+    players, so it is a "not falling 3+" group rather than a like-for-like "no news" control.
 34. **Combine peaking inflates the ceiling (the denominator).** The gap is game speed relative to a
     Combine-measured ceiling, so a player who invests in the Combine itself — tapers, nails the start —
     raises his own ceiling and *widens* the gap with no change in game ability. A negative `group_coef` is

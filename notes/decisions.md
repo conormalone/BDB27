@@ -739,3 +739,61 @@ or prereg values changed; the pipeline and sign convention were already correct.
 - Added limitations 33 (opportunity is a level threat) and 34 (Combine peaking inflates the ceiling; the F
   peaking markers discriminate; a negative sign is not evidence for a single mechanism).
 - The sign convention stated in every output is unchanged: positive = `moved_down` closer to ceiling.
+
+---
+
+## D40 — Replace the sign split with an asymmetric threshold (T=3 primary, T=5 sensitivity) · 2026-10-17
+**Decision.** The **D38 sign split** (`moved_down` iff `edp_trend > 0.0`, i.e. *any* downward movement) is
+**replaced** by an **asymmetric threshold** on the same pre-Combine trend, agreed with Conor after he saw
+the movement distribution. The sort key is now:
+
+* **PRIMARY (T=3):** `moved_down` iff `edp_trend >= +3.0` — the player fell **3 or more EDP spots**
+  between the 2-week and 1-week pre-Combine snapshots (`edp_trend = 1wk-pre − 2wk-pre`; positive = the
+  EDP number rose = worse/less secure). `high_secure` = **everyone else with a trend** (`edp_trend <
+  +3.0`), i.e. **stable or rising**. There is **no `unclassified` middle in the trend stratum**.
+* **SENSITIVITY (T=5):** the identical rule at `edp_trend >= +5.0`, emitted as the declared
+  `panel_threshold_T5` alongside `panel_trend_only` / `panel_level_fallback`. It is declared, not a
+  search over cutoffs.
+* **Level fallback (unchanged):** with no 2-week snapshot, within-position tertiles of `log_edp_pre`;
+  the middle tertile stays `unclassified`.
+* **Sign convention unchanged:** positive `group_coef` = `moved_down` closer to its ceiling = supports H1.
+
+**Why the sign split was rejected.** Almost every player moves by *some* amount between the two snapshots,
+so `moved_down` (any fall) vs `high_secure` (any rise/flat) split the sample at a knife-edge that is
+mostly **measurement noise around a wide movement distribution** (observed interquartile range of
+`edp_trend`: **WR 11.3, TE 18.1** EDP spots). A one-spot move — well inside the noise — was being treated
+as a regime change, and the split mixed genuinely falling players with tiny wobbles. The asymmetric cut
+asks the substantive question — did the player **actually fall several spots**? — and puts stable and
+rising players together in the comparison group. This also removes the odd implication that a stable
+player and a one-spot faller belong on opposite sides of the incentive story.
+
+**Board counts this rule produces** (trend stratum; players with both pre-Combine snapshots):
+
+| threshold | WR moved_down / high_secure | TE moved_down / high_secure | pooled WR+TE |
+|---|---|---|---|
+| **T=3 (primary)** | **31 / 52** | **16 / 20** | **47 / 72** |
+| **T=5 (sensitivity)** | **28 / 55** | **14 / 22** | **42 / 77** |
+
+**`high_secure` is "not falling 3+ (stable or rising)", not "low EDP" and not "no movement".** The copy in
+`TASK.md`, `notes/limitations.md`, the stage `SUMMARY.md`/`JSON` and the notebook must say so; risers are
+never silently relabelled "secure" in the low-EDP sense.
+
+**Exposure-table detail.** A snapshot counts as pre-Combine under the board's explicit pre-Combine label
+and is additionally required to precede the player's own testing day **where that day is known** (all such
+rows pass on the real board). Players with no Combine-tracking record are no longer dropped from the
+exposure table on that basis alone — the label is authoritative, and they are dropped later at the
+Combine-envelope join if they have no ceiling. This is what puts the whole board's trend stratum in the
+counts above (`has_primary` 656 / `has_trend` 619 of 783 board players).
+
+**Files.** `config.yaml` (`security_models.sort`: `fall_threshold: 3.0`, `sensitivity_threshold: 5.0`;
+the old `trend_epsilon` / `trend_epsilon_grid` are removed — no second live rule), `src/security_features.py`
+(`assign_security_groups` uses `>=`; `group_counts_by_threshold` replaces `group_counts_by_epsilon`),
+`src/07_security_models.py` (primary T=3 + `panel_threshold_T5`; SUMMARY labels the semantics),
+`src/synthetic_security_game_fixture.py` (fixture re-tuned: `n_te=110`, `trend_sd_edp=10` so the TE
+contrast clears `min_group_n=15` under the stricter rule), `src/tests/test_security_models.py`,
+`notes/prereg-deviations.md` (DV-8), `notes/limitations.md` items 23/24/33, `TASK.md` H1/H2 + sort key,
+`notebooks/bdb27_full_run.ipynb` §5/§8.
+
+**Deviation status.** `notes/prereg.md` stays **FROZEN**; the change is recorded as DV-8. The threshold
+was fixed from the movement distribution before any game-side result was inspected (game data is still
+absent on this Pi), so this is not a results-driven cut.
