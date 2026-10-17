@@ -230,14 +230,34 @@ def read_done_marker(path: Path | str) -> dict:
 
 
 def checkpoint_match(rec: dict, *, mode: str, provenance: str | None = None,
-                     synthetic: bool | None = None, regime: str | None = None) -> bool:
+                     synthetic: bool | None = None, regime: str | None = None,
+                     path: Path | str | None = None) -> bool:
     """True only when the recorded marker matches the requested run exactly.
 
     Mode is always required. A legacy/plain-text marker (parsed as ``{}``) never matches, so the
     stage rebuilds instead of silently reusing outputs of unknown provenance.
+
+    Asymmetric mode rule (D42): a **FULL** checkpoint satisfies a ``--mode sample`` request and is
+    reused untouched — a sample run must never overwrite/downgrade FULL outputs. The reverse (a
+    sample marker satisfying ``--mode full``) stays a rebuild. Provenance is mode-derived and is
+    therefore not compared on the downgrade path; ``synthetic``/``regime`` still are.
     """
-    if not isinstance(rec, dict) or rec.get("mode") != mode:
+    if not isinstance(rec, dict):
         return False
+    recorded = rec.get("mode")
+    downgrade = recorded == "full" and mode == "sample"
+    if recorded != mode and not downgrade:
+        return False
+    if downgrade:
+        if synthetic is not None and bool(rec.get("synthetic")) != bool(synthetic):
+            return False
+        if regime is not None and rec.get("regime") != regime:
+            return False
+        logging.getLogger(_LOGGER_NAME).info(
+            "FULL checkpoint at %s satisfies --mode sample — reusing FULL outputs "
+            "(set --force to rebuild in sample mode)",
+            path if path is not None else (rec.get("stage") or "<marker>"))
+        return True
     if provenance is not None and rec.get("provenance") != provenance:
         return False
     if synthetic is not None and bool(rec.get("synthetic")) != bool(synthetic):

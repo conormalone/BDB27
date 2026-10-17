@@ -403,7 +403,7 @@ def main() -> None:
     done = out_dir / "_DONE"
     if done.exists() and not args.force:
         rec = common.read_done_marker(done)
-        if common.checkpoint_match(rec, mode=mode, provenance=prov):
+        if common.checkpoint_match(rec, mode=mode, provenance=prov, path=done):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done.name)
             common.append_run_log(cfg, f"02_combine_envelope[{mode}]", mode, 0.0,
                                   common.peak_ram_mb(), "", {"skipped": "checkpoint"})

@@ -1809,7 +1809,7 @@ def sample_placeholder(cfg: dict, prov: str, out_dir: Path, log) -> None:
 def _done_ok(done: Path, mode: str, prov: str, synthetic: bool, regime: str) -> bool:
     """Checkpoint hit only on an exact mode/provenance/synthetic/regime marker match."""
     return common.checkpoint_match(common.read_done_marker(done), mode=mode, provenance=prov,
-                                   synthetic=synthetic, regime=regime)
+                                   synthetic=synthetic, regime=regime, path=done)
 
 
 def main() -> None:

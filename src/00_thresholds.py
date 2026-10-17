@@ -161,13 +161,11 @@ def main() -> None:
                                                        common.provenance(cfg, mode))
 
     # checkpoint: skip a finished run unless --force. A marker must match BOTH the requested mode and
-    # its provenance: a sample/placeholder marker never satisfies a full run (and vice versa).
+    # its provenance: a sample/placeholder marker never satisfies a full run. The reverse is allowed
+    # (D42): a FULL marker satisfies --mode sample, so a sample run never downgrades FULL thresholds.
     if out_path.exists() and not args.force:
-        try:
-            rec = json.loads(out_path.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            rec = {}
-        if rec.get("provenance") == expected_prov and rec.get("mode") == mode_label:
+        rec = common.read_done_marker(out_path)
+        if common.checkpoint_match(rec, mode=mode_label, provenance=expected_prov, path=out_path):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", out_path)
             common.append_run_log(cfg, stage, mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
             return

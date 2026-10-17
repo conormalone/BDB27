@@ -253,6 +253,54 @@ def test_checkpoint_is_mode_aware():
     assert "checkpoint hit" in r3.stderr, r3.stderr[-1500:]
 
 
+def test_sample_run_never_downgrades_full_checkpoint():
+    """REGRESSION (D42): ``--mode sample`` must reuse, never overwrite, a FULL checkpoint.
+
+    Covers all four cases through the central ``common.checkpoint_match`` helper:
+      * same mode          -> skip;
+      * sample marker, full request -> rebuild;
+      * FULL marker, sample request -> skip, marker left byte-identical;
+      * ``--force``        -> overrides everything.
+    """
+    tmp = Path(tempfile.mkdtemp())
+    cfg_path = _cfg(tmp / "out")
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    cfg["paths"]["raw"] = str(REPO / "fixtures" / "synthetic" / "binding")
+    cfg["paths"]["parquet"] = str(tmp / "parquet")
+    cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+    marker = tmp / "out" / "envelope" / "_DONE"
+
+    # 1) same mode: a second sample run skips.
+    r = _run(["--mode", "sample"], cfg_path)
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert json.loads(marker.read_text(encoding="utf-8"))["mode"] == "sample"
+    r = _run(["--mode", "sample"], cfg_path)
+    assert r.returncode == 0, r.stderr[-1500:]
+    assert "checkpoint hit" in r.stderr, r.stderr[-1500:]
+
+    # 2) sample marker, full request: rebuild (unchanged D40 behaviour).
+    r = _run(["--mode", "full"], cfg_path)
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert "rebuilding" in r.stderr, r.stderr[-1500:]
+    assert json.loads(marker.read_text(encoding="utf-8"))["mode"] == "full"
+    full_bytes = marker.read_bytes()
+
+    # 3) FULL marker, sample request: skip and leave the FULL checkpoint untouched.
+    r = _run(["--mode", "sample"], cfg_path)
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert "checkpoint hit" in r.stderr, r.stderr[-1500:]
+    expected = (f"FULL checkpoint at {marker} satisfies --mode sample — reusing FULL outputs "
+                "(set --force to rebuild in sample mode)")
+    assert expected in r.stderr, r.stderr[-1500:]
+    assert marker.read_bytes() == full_bytes, "a sample run modified the FULL checkpoint"
+    assert json.loads(marker.read_text(encoding="utf-8"))["mode"] == "full"
+
+    # 4) --force overrides the reuse rule.
+    r = _run(["--mode", "sample", "--force"], cfg_path)
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert json.loads(marker.read_text(encoding="utf-8"))["mode"] == "sample"
+
+
 # --------------------------------------------------------------------------- #
 # dependency-free runner
 # --------------------------------------------------------------------------- #
@@ -261,7 +309,7 @@ def main() -> int:
              test_icc_unestimable_on_thin_repeats, test_vif_detects_collinearity,
              test_hierarchical_shrinkage_pulls_toward_grand_mean, test_stage_outputs_and_selection,
              test_icc_matches_audit_sample, test_determinism, test_full_run_blocked_without_freeze,
-             test_checkpoint_is_mode_aware]
+             test_checkpoint_is_mode_aware, test_sample_run_never_downgrades_full_checkpoint]
     failed = 0
     for t in tests:
         try:

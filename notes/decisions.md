@@ -839,3 +839,21 @@ a repeat sample run skipped `02_combine_envelope` on its checkpoint and `outputs
 **Pre-existing, unchanged here.** A sample-mode Run All still rebuilds `02_combine_envelope` and
 `06_security` when the on-disk marker is `full` (D40 requires an exact mode match), which relabels those
 outputs as sample. On a checkout holding `FULL` outputs, run the notebook in `full` mode.
+**Closed by D42 (2026-10-17):** a `--mode sample` run now skips and reuses FULL checkpoints, so it can no
+longer relabel or overwrite them.
+
+## D42 — A sample run never downgrades FULL stage outputs · 2026-10-17
+
+**Problem.** D40 made stage checkpoints exact-mode, which correctly stopped a sample marker satisfying a
+full run, but created the reverse hazard: on a checkout holding FULL outputs (the multi-hour Combine
+envelope, the real security table), `--mode sample` found no exact-mode match and rebuilt every stage,
+overwriting the FULL outputs with sample-provenance ones.
+
+**Decision.** The central helper `common.checkpoint_match` is now asymmetric and every stage goes through
+it (`00_thresholds` included, replacing its inline marker check): same mode skips as before; a `sample`
+marker never satisfies a `full` request; a `full` marker satisfies a `sample` request, which logs
+`FULL checkpoint at <path> satisfies --mode sample — reusing FULL outputs (set --force to rebuild in
+sample mode)` and leaves the marker byte-identical. Provenance is mode-derived and so is not compared on
+this downgrade path; `synthetic`/`regime` still must match. `--force` overrides everything. Regression
+test `test_envelope.py::test_sample_run_never_downgrades_full_checkpoint` covers all four cases and
+asserts the FULL marker is byte-identical after the sample run.

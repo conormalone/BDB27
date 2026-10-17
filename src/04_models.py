@@ -455,7 +455,7 @@ def main() -> None:
     if done.exists() and not args.force:
         rec = common.read_done_marker(done)
         if common.checkpoint_match(rec, mode=mode, provenance=prov,
-                                   synthetic=args.synthetic):
+                                   synthetic=args.synthetic, path=done):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done)
             common.append_run_log(cfg, f"04_models[{mode}{'-synthetic' if args.synthetic else ''}]",
                                   mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
