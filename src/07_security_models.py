@@ -1807,14 +1807,9 @@ def sample_placeholder(cfg: dict, prov: str, out_dir: Path, log) -> None:
 
 
 def _done_ok(done: Path, mode: str, prov: str, synthetic: bool, regime: str) -> bool:
-    if not done.exists():
-        return False
-    try:
-        rec = json.loads(done.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return False
-    return (rec.get("mode") == mode and rec.get("provenance") == prov
-            and bool(rec.get("synthetic")) == bool(synthetic) and rec.get("regime") == regime)
+    """Checkpoint hit only on an exact mode/provenance/synthetic/regime marker match."""
+    return common.checkpoint_match(common.read_done_marker(done), mode=mode, provenance=prov,
+                                   synthetic=synthetic, regime=regime)
 
 
 def main() -> None:
@@ -1845,6 +1840,11 @@ def main() -> None:
         log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done)
         common.append_run_log(cfg, stage, mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
         return
+    if done.exists() and not args.force:
+        log.info("checkpoint marker %s does not match the requested run (%s) — rebuilding",
+                 done.name, common.checkpoint_mismatch_note(
+                     common.read_done_marker(done), mode=mode, provenance=prov,
+                     synthetic=args.synthetic, regime=regime))
 
     if mode == "sample" and not args.synthetic:
         with common.timed_stage(cfg, stage, mode, synthetic=False):

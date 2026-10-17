@@ -399,15 +399,19 @@ def main() -> None:
     # Pre-registration freeze gate: a full run may not proceed on an unfrozen/missing prereg.
     gate.enforce(cfg, mode, "02_combine_envelope", requires_game_side=False, logger=log)
 
+    prov = common.provenance(cfg, mode)
     done = out_dir / "_DONE"
     if done.exists() and not args.force:
-        log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done.name)
-        common.append_run_log(cfg, f"02_combine_envelope[{mode}]", mode, 0.0, common.peak_ram_mb(),
-                              "", {"skipped": "checkpoint"})
-        return
+        rec = common.read_done_marker(done)
+        if common.checkpoint_match(rec, mode=mode, provenance=prov):
+            log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done.name)
+            common.append_run_log(cfg, f"02_combine_envelope[{mode}]", mode, 0.0,
+                                  common.peak_ram_mb(), "", {"skipped": "checkpoint"})
+            return
+        log.info("checkpoint marker %s does not match the requested run (%s) — rebuilding",
+                 done.name, common.checkpoint_mismatch_note(rec, mode=mode, provenance=prov))
 
     con = common.connect(cfg["runtime"]["duckdb_threads"])
-    prov = common.provenance(cfg, mode)
     with common.timed_stage(cfg, f"02_combine_envelope[{mode}]", mode):
         parq = common.resolve(cfg, "parquet")
         for name in ("combine_tracking", "combine_results"):

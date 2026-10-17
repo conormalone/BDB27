@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 import csv
+import json
 import subprocess
 import sys
 import tempfile
@@ -218,6 +219,40 @@ def test_full_run_blocked_without_freeze():
     assert "BLOCKED" in r.stderr
 
 
+def test_checkpoint_is_mode_aware():
+    """REGRESSION: a sample ``_DONE`` must never make a ``--mode full`` request skip.
+
+    The notebook test run once left a sample marker in ``outputs/security``; stages that trusted a
+    bare marker existence would silently reuse sample/synthetic outputs for a full run. Every stage
+    checkpoint now requires the recorded mode (and provenance) to match the request exactly.
+    """
+    tmp = Path(tempfile.mkdtemp())
+    cfg_path = _cfg(tmp / "out")
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    # Fast, self-contained full run: 02 is Combine-only, and the binding fixture has both tables.
+    cfg["paths"]["raw"] = str(REPO / "fixtures" / "synthetic" / "binding")
+    cfg["paths"]["parquet"] = str(tmp / "parquet")
+    cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+    out_dir = tmp / "out" / "envelope"
+    marker = out_dir / "_DONE"
+
+    r = _run(["--mode", "sample"], cfg_path)
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert json.loads(marker.read_text(encoding="utf-8"))["mode"] == "sample"
+
+    # A full request sees the sample marker and MUST rebuild (and say so).
+    r2 = _run(["--mode", "full"], cfg_path)
+    assert r2.returncode == 0, r2.stderr[-3000:]
+    assert json.loads(marker.read_text(encoding="utf-8"))["mode"] == "full"
+    assert "checkpoint hit" not in r2.stderr, r2.stderr[-1500:]
+    assert "rebuilding" in r2.stderr, r2.stderr[-1500:]
+
+    # Only now does a repeated full run legitimately skip.
+    r3 = _run(["--mode", "full"], cfg_path)
+    assert r3.returncode == 0, r3.stderr[-1500:]
+    assert "checkpoint hit" in r3.stderr, r3.stderr[-1500:]
+
+
 # --------------------------------------------------------------------------- #
 # dependency-free runner
 # --------------------------------------------------------------------------- #
@@ -225,7 +260,8 @@ def main() -> int:
     tests = [test_envelope_recovers_planted_curve, test_fit_envelope_too_short_is_nan,
              test_icc_unestimable_on_thin_repeats, test_vif_detects_collinearity,
              test_hierarchical_shrinkage_pulls_toward_grand_mean, test_stage_outputs_and_selection,
-             test_icc_matches_audit_sample, test_determinism, test_full_run_blocked_without_freeze]
+             test_icc_matches_audit_sample, test_determinism, test_full_run_blocked_without_freeze,
+             test_checkpoint_is_mode_aware]
     failed = 0
     for t in tests:
         try:

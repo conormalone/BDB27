@@ -439,16 +439,16 @@ def main() -> None:
 
     done = out_dir / "_DONE"
     if done.exists() and not args.force:
-        try:
-            rec = json.loads(done.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            rec = {}
-        if (rec.get("mode") == mode and rec.get("provenance") == prov
-                and bool(rec.get("synthetic")) == bool(args.synthetic)):
+        rec = common.read_done_marker(done)
+        if common.checkpoint_match(rec, mode=mode, provenance=prov,
+                                   synthetic=args.synthetic):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done)
             common.append_run_log(cfg, f"05_validate[{mode}{'-synthetic' if args.synthetic else ''}]",
                                   mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
             return
+        log.info("checkpoint marker %s does not match the requested run (%s) — rebuilding",
+                 done.name, common.checkpoint_mismatch_note(
+                     rec, mode=mode, provenance=prov, synthetic=args.synthetic))
 
     stage = f"05_validate[{mode}{'-synthetic' if args.synthetic else ''}]"
     mode_label = "synthetic" if args.synthetic else mode

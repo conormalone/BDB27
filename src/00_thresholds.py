@@ -160,16 +160,20 @@ def main() -> None:
     expected_prov = PROV_SYNTH if args.synthetic else ("PLACEHOLDER" if mode == "sample" else
                                                        common.provenance(cfg, mode))
 
-    # checkpoint: skip a finished run unless --force (match on provenance to avoid staleness)
+    # checkpoint: skip a finished run unless --force. A marker must match BOTH the requested mode and
+    # its provenance: a sample/placeholder marker never satisfies a full run (and vice versa).
     if out_path.exists() and not args.force:
         try:
-            existing = json.loads(out_path.read_text(encoding="utf-8")).get("provenance")
+            rec = json.loads(out_path.read_text(encoding="utf-8"))
         except (ValueError, OSError):
-            existing = None
-        if existing == expected_prov:
+            rec = {}
+        if rec.get("provenance") == expected_prov and rec.get("mode") == mode_label:
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", out_path)
             common.append_run_log(cfg, stage, mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
             return
+        log.info("checkpoint marker %s records mode=%r/provenance=%r; requested mode=%r/"
+                 "provenance=%r — rebuilding", out_path.name, rec.get("mode"),
+                 rec.get("provenance"), mode_label, expected_prov)
 
     if args.synthetic:
         con = common.connect(cfg["runtime"]["duckdb_threads"])

@@ -13,6 +13,7 @@ Design rules (TASK.md):
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import os
 import sys
@@ -214,6 +215,44 @@ def append_run_log(
                 "notes": note_str,
             }
         )
+
+
+# --------------------------------------------------------------------------- #
+# Stage checkpoints — a marker from one mode must never satisfy another mode
+# --------------------------------------------------------------------------- #
+def read_done_marker(path: Path | str) -> dict:
+    """Read a stage ``_DONE``/``_DONE.json`` marker; an absent/unreadable marker is ``{}``."""
+    try:
+        rec = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+    return rec if isinstance(rec, dict) else {}
+
+
+def checkpoint_match(rec: dict, *, mode: str, provenance: str | None = None,
+                     synthetic: bool | None = None, regime: str | None = None) -> bool:
+    """True only when the recorded marker matches the requested run exactly.
+
+    Mode is always required. A legacy/plain-text marker (parsed as ``{}``) never matches, so the
+    stage rebuilds instead of silently reusing outputs of unknown provenance.
+    """
+    if not isinstance(rec, dict) or rec.get("mode") != mode:
+        return False
+    if provenance is not None and rec.get("provenance") != provenance:
+        return False
+    if synthetic is not None and bool(rec.get("synthetic")) != bool(synthetic):
+        return False
+    if regime is not None and rec.get("regime") != regime:
+        return False
+    return True
+
+
+def checkpoint_mismatch_note(rec: dict, *, mode: str, provenance: str | None = None,
+                             synthetic: bool | None = None, regime: str | None = None) -> str:
+    """Human-readable marker-vs-request description for the rebuild log line."""
+    return (f"marker mode={rec.get('mode')!r} provenance={rec.get('provenance')!r} "
+            f"synthetic={rec.get('synthetic')!r} regime={rec.get('regime')!r} != requested "
+            f"mode={mode!r} provenance={provenance!r} synthetic={synthetic!r} regime={regime!r}")
 
 
 # --------------------------------------------------------------------------- #

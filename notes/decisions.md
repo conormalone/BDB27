@@ -797,3 +797,13 @@ contrast clears `min_group_n=15` under the stricter rule), `src/tests/test_secur
 **Deviation status.** `notes/prereg.md` stays **FROZEN**; the change is recorded as DV-8. The threshold
 was fixed from the movement distribution before any game-side result was inspected (game data is still
 absent on this Pi), so this is not a results-driven cut.
+
+**Checkpoint integrity (same D40 cycle).** A notebook test run had left `outputs/security/_DONE.json`
+recording a **sample** run. Checkpoints must therefore compare the marker's recorded **mode** (and
+provenance/synthetic/regime) with the request, never bare marker existence: stage 02 read only the
+marker's existence and could skip a `--mode full` run after a sample run. Fixed centrally in
+`common.read_done_marker` / `common.checkpoint_match` / `common.checkpoint_mismatch_note`, applied to
+00_thresholds (mode+provenance), 00b, 02, 03, 04, 05, 06 and 07; a mismatch now logs a `rebuilding`
+line. 01_audit has no stage-level marker (only per-Parquet conversion checkpoints). Regression test:
+`test_envelope.py::test_checkpoint_is_mode_aware` writes a sample `_DONE`, requests full, asserts the
+stage rebuilds and only the subsequent full run skips.

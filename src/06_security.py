@@ -429,16 +429,16 @@ def main() -> None:
     prov = "SYNTHETIC FIXTURE (not a finding)" if args.synthetic else common.provenance(cfg, mode)
     done = sec_dir / "_DONE.json"
     if done.exists() and not args.force:
-        try:
-            rec = json.loads(done.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            rec = {}
-        if (rec.get("mode") == mode and rec.get("provenance") == prov
-                and bool(rec.get("synthetic")) == bool(args.synthetic)
-                and rec.get("regime") == regime):
+        rec = common.read_done_marker(done)
+        if common.checkpoint_match(rec, mode=mode, provenance=prov,
+                                   synthetic=args.synthetic, regime=regime):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done)
             common.append_run_log(cfg, stage, mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
             return
+        log.info("checkpoint marker %s does not match the requested run (%s) — rebuilding — "
+                 "a sample/other-mode marker never satisfies a full run",
+                 done.name, common.checkpoint_mismatch_note(
+                     rec, mode=mode, provenance=prov, synthetic=args.synthetic, regime=regime))
 
     with common.timed_stage(cfg, stage, mode, synthetic=args.synthetic):
         summary = run(cfg, mode, args.synthetic, regime, args.force, log)
