@@ -12,7 +12,8 @@ require it.
 data is not in the usual place — `DATA_DIR`, then **Run All**. It:
 
 - runs the `../src/` engine end-to-end in the frozen order
-  `01_audit → 02_combine_envelope → 00_thresholds → 03_game_demand → 04_models → 05_validate`, invoking
+  `01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 07_security_models
+  → 00b_external_proxies → 04_models → 05_validate`, invoking
   each stage through **its own entry point** (so `--mode` / `--force` / checkpoint behaviour and the
   pre-registration **freeze gate** all apply exactly as on the command line);
 - is **cross-platform** (ARM64 Pi, Windows, macOS) and **Kaggle-ready** (auto-detects the attached dataset
@@ -22,10 +23,12 @@ data is not in the usual place — `DATA_DIR`, then **Run All**. It:
 - renders the **≤5 writeup figures** into `../outputs/figures/` and shows them inline;
 - **degrades gracefully**: with only partial data it runs everything it can and reports the game-side
   stages as `PENDING FULL RUN`, demonstrating the game-side path on the committed synthetic fixture
-  (planted-ceiling `binding` **and** `null`).
+  (planted-ceiling `binding` **and** `null`), and ends with **§8 Headline results**, which prints the
+  pre-declared verdict from the output files (or a `PREVIEW ONLY — not a result` banner in sample mode).
 
 **Labels.** `sample` outputs → `UNVALIDATED SAMPLE OUTPUT`; `full` outputs → `FULL`; fixture outputs →
-`SYNTHETIC FIXTURE (not a finding)`.
+`SYNTHETIC FIXTURE (not a finding)`. §8 computes the verdict only when `MODE="full"` **and** the
+thresholds and security outputs are `FULL`; otherwise it shows the preview banner and suppresses it.
 
 ## Conventions
 - **Self-contained**: each notebook opens with its imports + data paths and runs top-to-bottom, no hidden state.
