@@ -807,3 +807,35 @@ marker's existence and could skip a `--mode full` run after a sample run. Fixed 
 line. 01_audit has no stage-level marker (only per-Parquet conversion checkpoints). Regression test:
 `test_envelope.py::test_checkpoint_is_mode_aware` writes a sample `_DONE`, requests full, asserts the
 stage rebuilds and only the subsequent full run skips.
+
+## D41 — Notebook: withhold synthetic numbers instead of previewing them · 2026-10-17
+
+**Problem.** With the real `07_security_models` output absent, §8 of `notebooks/bdb27_full_run.ipynb`
+silently fell back to `outputs/security_models/synthetic/planted/` — a fixture deliberately tuned to a
+plausible +15% effect — and printed it as the headline block. The provenance banner was present, but the
+numbers read as a finding.
+
+**Decision.** §8 is all-or-nothing. Unless `MODE == "full"` **and** the threshold **and** security
+provenances are `FULL` **and** the source is not a fixture, the section prints
+`NO RESULT — synthetic/sample data in use`, the specific reason(s) (which stage is missing or failed,
+which file is absent, what the stage's own summary says) and one line of next action. No coefficient, SE,
+CI, p-value, effect size or utilisation mean is printed. The status of `06_security` and
+`07_security_models` is read from `RUN_RESULTS` and shown at the top of the block.
+
+**Explicit fallbacks.** `security_dir()` returns `(dir, is_synthetic, reason)`; §5/§8 print the path used,
+whether it is a fixture, and why. `models_series()` / `validate_series()` return a fourth `reason` element
+and §6 announces the source of every plotted series. No reader falls back silently any more.
+
+**Opt-in preview.** `SHOW_SYNTHETIC_PREVIEW = False` (Configuration cell). Only when `True` may the
+fixture be rendered, under a `SYNTHETIC LAYOUT PREVIEW — NOT DATA` heading, with the verdict still
+suppressed. §5's synthetic tables are withheld under the same flag. Figures keep rendering because each
+carries its own `SYNTHETIC FIXTURE (not a finding)` stamp in the image title.
+
+**Verified** (sample mode, executed in a scratch copy so the FULL outputs stayed untouched): §8 printed
+the NO RESULT block with zero numeric claims; with the flag `True` it printed the labelled preview block;
+a repeat sample run skipped `02_combine_envelope` on its checkpoint and `outputs/envelope/_DONE` kept its
+`FULL` marker.
+
+**Pre-existing, unchanged here.** A sample-mode Run All still rebuilds `02_combine_envelope` and
+`06_security` when the on-disk marker is `full` (D40 requires an exact mode match), which relabels those
+outputs as sample. On a checkout holding `FULL` outputs, run the notebook in `full` mode.
