@@ -508,7 +508,8 @@ def render_md(ctx: dict) -> str:
           "Three independent checks, all re-using block B's exact design and estimator:", "",
           "1. **Balance** — route family, depth, snap share and target rate by group.",
           "2. **Within-stratum re-estimation** — VERTICAL only, deep passes only, and depth bands.",
-          "3. **Resampling** — leave-one-player-out and player-level label permutation.", ""]
+          "3. **Composition** — is the pooled number a WR number, or is it carried by TE?",
+          "4. **Resampling** — leave-one-player-out and player-level label permutation.", ""]
 
     L += ["## 1. Do the groups run different route menus?", ""]
     for scope in ("pooled", "WR"):
