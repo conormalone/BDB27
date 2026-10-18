@@ -989,3 +989,50 @@ drives `height=1e200` and `weight=1e200` through the real CLI entry point and as
 are `nan` (not `0.0`/`inf`). `test_run_diagnostics.py` covers the D44 capability gate, dirty-tree-is-a-warning,
 and the crash-vs-data distinction. Full suite: **19 files, 177 tests, all passing** (D43 baseline 17/151;
 the two security-model files 31/31).
+
+---
+
+## D45 — A stage-07-only re-run is a supported path (RUN_ONLY) · 2026-10-18
+
+**Problem.** D44 fixed a three-line defect in `model_features.bmi`, but the only way to exercise it was a
+full Run All: ~5–6 h, almost all of it stages 03/04/05 on the full tracking data, which are already
+checkpointed. `07_security_models` itself fails in ~3 s. Worse, §8 labelled every checkpointed stage
+`not run in this session (§3 must be executed first)`, so a single-stage re-run *looked* broken even when
+the on-disk outputs were FULL.
+
+**Decision.**
+
+* **`RUN_ONLY` in the Configuration cell** (default `[]` = the whole `STAGE_ORDER`). A non-empty list runs
+  exactly those stages, still in `STAGE_ORDER` order; `STAGE_ORDER` itself is never edited. Unknown names
+  warn; a list matching no stage raises. Every skipped stage is printed as
+  `[SKIPPED - checkpoint]` with its own on-disk state, so a single-stage re-run takes seconds and is
+  self-describing. Documented in §1 and §3.
+* **Skipped ≠ failed.** `stage_status_text` now falls back to `run_diagnostics.stage_status_on_disk`, which
+  reads the stage's own `_DONE(_DONE.json)` marker and key artefacts and returns e.g.
+  `FULL checkpoint on disk (not re-run in this session; marker mode=full)` — never `FAILED`/`PENDING`.
+* **The §8 FULL gate is provenance-only.** Extracted to `run_diagnostics.headline_is_full(mode, thresholds
+  provenance, security provenance, synthetic, checkout_blocked, b_row_status)`: no `RUN_RESULTS` input, so
+  `RUN_ONLY=["07_security_models"]` with FULL thresholds + FULL security provenance prints a live headline
+  block. (`test_headline_is_full_is_provenance_driven_not_session_driven`.)
+* **Self-describing header.** §8 now prints the data dir and the covariate-quality counts
+  (`n_players_flagged` / `n_values_flagged` / `n_effort_rows_excluded`) before any number.
+
+**Is `04_models` affected by the `bmi` fix?** Yes, it is reachable: `04_models.py:512` calls
+`mf.load_covariates(...)` → `covariate_table` → `bmi`, and `height`, `weight`, `bmi` are controls in both
+`models.controls_without_draft` and `models.controls_with_draft`; `05_validate` reads the same table. So:
+
+* **No flagged covariate** (the expected case): `sanitize_covariates` is a no-op, every value 04 sees is
+  byte-identical to the D43 table, and 04's existing FULL checkpoint is **valid — no rebuild**.
+* **Any flagged covariate**: the covariate table 04 sees has changed for those players, so its checkpoint
+  is stale. It could not have been built on that same table anyway — the old `bmi` would have raised
+  `OverflowError` in 04 exactly as it did in 07, since both call the same loader before fitting. Rebuild
+  with `FORCE_STAGES=['04_models','05_validate']`. §8 prints that instruction whenever the exclusion count
+  is non-zero, so the stale-provenance input is never silent.
+
+**Evidence.** `test_run_diagnostics.py`: `test_stage_status_on_disk_reads_checkpoint_and_never_says_failed`,
+`::test_stage_status_on_disk_reports_outputs_without_marker`,
+`::test_stage_status_on_disk_missing_stage_is_not_a_failure`,
+`::test_headline_is_full_is_provenance_driven_not_session_driven`.
+`test_notebook_contract.py`: RUN_ONLY default/documented, loop filtered via `STAGES_TO_RUN` with
+`STAGE_ORDER` untouched, skipped stages sourced from disk (no `FAILED`/`PENDING`), §8 gate free of
+`RUN_RESULTS`, header carries data dir + covariate quality.

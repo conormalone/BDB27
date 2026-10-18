@@ -247,6 +247,52 @@ def test_diagnose_not_run_is_not_a_data_remedy():
     assert "game_tracking" not in d["action"], d["action"]
 
 
+# --------------------------------------------------------------------------- #
+# stage_status_on_disk / headline_is_full (D45: RUN_ONLY single-stage re-runs)
+# --------------------------------------------------------------------------- #
+def test_stage_status_on_disk_reads_checkpoint_and_never_says_failed():
+    tmp = Path(tempfile.mkdtemp(prefix="bdb27_diag_disk_"))
+    (tmp / "models").mkdir()
+    (tmp / "models" / "models_summary.csv").write_text("status\nOK\n", encoding="utf-8")
+    (tmp / "models" / "_DONE").write_text(
+        '{"stage": "04_models", "mode": "full", "provenance": "FULL"}', encoding="utf-8")
+
+    st = rd.stage_status_on_disk("04_models", tmp)
+    assert "FULL checkpoint on disk" in st, st
+    assert "not re-run in this session" in st, st
+    for word in ("FAILED", "PENDING"):
+        assert word not in st, st
+
+
+def test_stage_status_on_disk_reports_outputs_without_marker():
+    tmp = Path(tempfile.mkdtemp(prefix="bdb27_diag_nomarker_"))
+    (tmp / "security_models").mkdir()
+    (tmp / "security_models" / "SUMMARY.json").write_text("{}", encoding="utf-8")
+    st = rd.stage_status_on_disk("07_security_models", tmp)
+    assert "outputs on disk" in st and "no checkpoint marker" in st, st
+    assert "FAILED" not in st and "PENDING" not in st, st
+
+
+def test_stage_status_on_disk_missing_stage_is_not_a_failure():
+    tmp = Path(tempfile.mkdtemp(prefix="bdb27_diag_missing_"))
+    st = rd.stage_status_on_disk("05_validate", tmp)
+    assert "not re-run in this session" in st, st
+    assert "FAILED" not in st and "PENDING" not in st, st
+
+
+def test_headline_is_full_is_provenance_driven_not_session_driven():
+    """A RUN_ONLY=["07_security_models"] re-run must still print a live headline block."""
+    assert rd.headline_is_full("full", "FULL", "FULL", False) is True
+    assert rd.headline_is_full("full", "FULL", "FULL", False, False, "OK") is True
+    # every disqualifier is provenance/checkout state — never "did 03/04/05 run in this session"
+    assert rd.headline_is_full("sample", "FULL", "FULL", False) is False
+    assert rd.headline_is_full("full", "UNVALIDATED SAMPLE OUTPUT", "FULL", False) is False
+    assert rd.headline_is_full("full", "FULL", "SYNTHETIC FIXTURE (not a finding)", False) is False
+    assert rd.headline_is_full("full", "FULL", "FULL", True) is False
+    assert rd.headline_is_full("full", "FULL", "FULL", False, True) is False
+    assert rd.headline_is_full("full", "FULL", "FULL", False, False, "FAILED") is False
+
+
 if __name__ == "__main__":
     raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", str(Path(__file__)),
                                      "-q"]))

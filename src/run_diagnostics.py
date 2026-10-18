@@ -34,6 +34,7 @@ row.** Missing ``b_primary.csv`` is therefore never a reason to ask for more dat
 """
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,19 @@ _DATA_REMEDY = ("supply game_tracking_2023/24/25.csv under DATA_DIR, run in MODE
                 "then re-run 07_security_models")
 _CRASH_REMEDY = ("fix the exception and re-run 07_security_models (the data were read "
                  "successfully; supplying data again will not help)")
+
+# Where each stage keeps its checkpoint + the artefacts that prove it produced output.
+STAGE_OUTPUTS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "01_audit": ("audit", ("audit_decision.json",)),
+    "02_combine_envelope": ("envelope", ("per_player_envelope.csv",)),
+    "00_thresholds": ("", ("thresholds.json",)),
+    "03_game_demand": ("game", ("game_demand_summary.csv",)),
+    "04_models": ("models", ("models_summary.csv",)),
+    "05_validate": ("validate", ("validation_summary.csv",)),
+    "06_security": ("security", ("SUMMARY.json",)),
+    "07_security_models": ("security_models", ("SUMMARY.json",)),
+    "00b_external_proxies": ("external", ()),
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -198,6 +212,67 @@ def evaluate_checkout(repo_root: str | Path) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # stage-result helpers (used by the notebook)
 # --------------------------------------------------------------------------- #
+def _read_marker(out_dir: Path) -> dict[str, Any] | None:
+    """The stage's own checkpoint marker (``_DONE.json`` / legacy ``_DONE``), or None."""
+    for name in ("_DONE.json", "_DONE"):
+        p = out_dir / name
+        if not p.exists():
+            continue
+        try:
+            text = p.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        if not text:
+            return {}
+        if text.startswith("{"):
+            try:
+                rec = json.loads(text)
+            except ValueError:
+                return None
+            return rec if isinstance(rec, dict) else None
+        return {"mode": text}
+    return None
+
+
+def stage_status_on_disk(stage: str, outputs_dir: str | Path) -> str:
+    """Status for a stage that did **not** run in this session, read from its own files.
+
+    Used by the notebook's ``stage_status_text`` so a ``RUN_ONLY`` re-run (e.g. only
+    ``07_security_models``) reports the checkpointed stages honestly instead of calling them
+    "not run" — a stage that was merely skipped is never labelled FAILED or PENDING.
+    """
+    sub, artifacts = STAGE_OUTPUTS.get(stage, ("", ()))
+    out = Path(outputs_dir) / sub if sub else Path(outputs_dir)
+    present = [a for a in artifacts if (out / a).exists()]
+    marker = _read_marker(out) if out.is_dir() else None
+    if marker:
+        mode = marker.get("mode") or "?"
+        prov = marker.get("provenance") or "?"
+        return (f"{prov} checkpoint on disk (not re-run in this session; marker mode={mode})")
+    if present:
+        return (f"outputs on disk ({len(present)}/{len(artifacts)} expected files; no checkpoint "
+                f"marker; not re-run in this session)")
+    if stage == "00b_external_proxies":
+        return "not re-run in this session (retired no-op stage, D43)"
+    return "not re-run in this session and no outputs on disk"
+
+
+def headline_is_full(mode: str, thresholds_provenance: Any, security_provenance: Any,
+                     synthetic: bool, checkout_blocked: bool = False,
+                     b_row_status: Any = "") -> bool:
+    """The §8 FULL gate: driven **only** by provenance/checkout state.
+
+    Deliberately takes no ``RUN_RESULTS``: a ``RUN_ONLY=["07_security_models"]`` re-run must be
+    able to print a live headline block when the on-disk provenance inputs are FULL.
+    """
+    return (str(mode) == "full"
+            and str(thresholds_provenance) == "FULL"
+            and str(security_provenance) == "FULL"
+            and not bool(synthetic)
+            and not bool(checkout_blocked)
+            and str(b_row_status or "").strip().upper() != "FAILED")
+
+
 def classify_stage(res: dict[str, Any], game_side: bool) -> str | None:
     """None for success; FAILED for an exception; BLOCKED for a non-zero exit; else PENDING."""
     if res.get("ok"):

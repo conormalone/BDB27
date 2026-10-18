@@ -67,6 +67,53 @@ def test_notebook_writes_no_outputs_path():
                 assert "OUTPUTS" not in line, f"notebook writes into outputs/ directly: {line!r}"
 
 
+# --------------------------------------------------------------------------- #
+# D45: RUN_ONLY single-stage re-run is a first-class path
+# --------------------------------------------------------------------------- #
+def test_run_only_knob_exists_defaults_empty_and_is_documented():
+    cfg = _cells()[2]
+    assert "RUN_ONLY           = []" in cfg, "RUN_ONLY must default to [] (run every stage)"
+    assert "assert isinstance(RUN_ONLY, (list, tuple)), RUN_ONLY" in cfg, cfg
+    for cell in (1, 5):
+        assert "RUN_ONLY" in _cells()[cell], f"§{'1' if cell == 1 else '3'} markdown must document RUN_ONLY"
+    assert "RUN_ONLY=[\"07_security_models\"]" in _cells()[1], _cells()[1]
+
+
+def test_run_only_filters_the_loop_without_editing_stage_order():
+    pipe = _cells()[6]
+    assert 'STAGE_ORDER = ["01_audit", "02_combine_envelope", "06_security", "00_thresholds",' in pipe, \
+        "STAGE_ORDER must stay fixed; RUN_ONLY is the knob"
+    assert "STAGES_TO_RUN = [s for s in STAGE_ORDER if (not RUN_ONLY_NORM or s in RUN_ONLY_NORM)]" in pipe, pipe
+    assert "SKIPPED_STAGES = [s for s in STAGE_ORDER if s not in STAGES_TO_RUN]" in pipe, pipe
+    assert "for name in STAGES_TO_RUN:" in pipe, "the loop must iterate the RUN_ONLY subset"
+    assert "stage_status_on_disk" in pipe, "skipped stages must be reported from their own checkpoint"
+
+
+def test_skipped_stage_status_comes_from_disk_not_from_a_failure_label():
+    boot, pipe = _cells()[4], _cells()[6]
+    assert "run_diagnostics.stage_status_on_disk(name, OUTPUTS)" in boot, \
+        "stage_status_text must fall back to the on-disk checkpoint"
+    assert "not run in this session (§3 must be executed first)" not in boot, \
+        "a skipped stage must not read as 'not run' / failure"
+    assert "SKIPPED - checkpoint" in pipe, pipe
+    assert "never marked failed" in _cells()[2].lower(), _cells()[2]
+
+
+def test_section_8_full_gate_is_provenance_driven():
+    sec8 = _cells()[26]
+    assert "run_diagnostics.headline_is_full(" in sec8, sec8[:600]
+    gate = sec8.split("FULL = run_diagnostics.headline_is_full(", 1)[1].split("PREVIEW", 1)[0]
+    assert "RUN_RESULTS" not in gate, "§8's FULL gate must not depend on which stages ran this session"
+    assert "thr_prov_h" in gate and "sec_prov_h" in gate, gate
+
+
+def test_section_8_header_prints_data_dir_and_covariate_quality():
+    sec8 = _cells()[26]
+    assert 'print(f"  data dir                 : {DATA}")' in sec8, sec8[:800]
+    assert "covariate quality        :" in sec8, sec8[:2000]
+    assert "n_effort_rows_excluded" in sec8, sec8[:2000]
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(0 if all(f() is None for f in (
@@ -76,4 +123,9 @@ if __name__ == "__main__":
         test_old_unconditional_data_supply_wording_is_gone,
         test_config_defaults_unchanged,
         test_notebook_writes_no_outputs_path,
+        test_run_only_knob_exists_defaults_empty_and_is_documented,
+        test_run_only_filters_the_loop_without_editing_stage_order,
+        test_skipped_stage_status_comes_from_disk_not_from_a_failure_label,
+        test_section_8_full_gate_is_provenance_driven,
+        test_section_8_header_prints_data_dir_and_covariate_quality,
     )) else 1)
