@@ -1108,7 +1108,7 @@ coverage, alignment, motion, or target/decoy duty.
   and re-uses `build_effort_rows`, `_complete`, `design`, `ols`, `_coef`, `_mark_thin` and
   `_apply_attenuation`, so every fit is block B's exact specification on a different sample. It writes
   `outputs/security_models/route_robustness/`: `route_balance.csv`, `route_balance_tests.csv`,
-  `route_strata.csv`, `loo_fits.csv`, `loo_summary.csv`, `permutation.csv`,
+  `route_strata.csv`, `composition.csv`, `loo_fits.csv`, `loo_summary.csv`, `permutation.csv`,
   `reproduction_check.csv`, `route_robustness.md`. Nothing touches `b_primary.csv` or the verdict.
 * **Config** `route_robustness:` — `perm_reps: 1000`, `perm_seed_offset: 505`, the VERTICAL family and
   the depth bands `[0–9, 10–19, 20+]`. The deep stratum re-uses `audit.deep_pass_length_yd` (15); no new
@@ -1135,6 +1135,12 @@ coverage, alignment, motion, or target/decoy duty.
   bands 0–9 −0.0112 (p=0.819), 10–19 −0.0549 (p=0.466), 20+ −0.0746 (p=0.501). WR cells are centred on
   zero (+0.0003 VERTICAL at T=5). Three WR cells were thin (14, 14 and 13 `moved_down` players < 15) and
   were reported, not fitted.
+* **Composition (exploratory, scope restrictions of the same fit):** the pooled coefficient is not a
+  WR coefficient. At T=5 pooled is −0.0673, WR −0.0019, pooled **excluding TE** −0.0173 (T=3:
+  −0.0505 / +0.0071 / −0.0011). Removing 20 TE players moves the estimate about three-quarters of the
+  way to zero. Those TE rows are 11/9 at T=3 and 10/10 at T=5 — below `min_group_n` in both groups —
+  so TE is not a reportable scope, yet it carries the pooled number. The "pooled excluding WR" scope is
+  itself thin (15/12 at T=3, 12/15 at T=5) and is reported without a fit.
 * **Leave-one-player-out:** pooled T=5 baseline −0.0673 (p=0.1176) → coef −0.0802…−0.0532, p
   0.0585…0.2070; **0 of 87 refits reached p<0.05** and 0 of 87 had a CI excluding zero. The most
   influential single player moves the coefficient by +0.014. Pooled T=3 and WR T=5 behave the same

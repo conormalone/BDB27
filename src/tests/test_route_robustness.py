@@ -241,7 +241,8 @@ def test_cli_writes_the_documented_artefacts():
     tmp = Path(tempfile.mkdtemp(prefix="bdb27_rr_"))
     out = _run_fixture(tmp)
     for f in ("route_balance.csv", "route_balance_tests.csv", "route_strata.csv",
-              "loo_fits.csv", "loo_summary.csv", "permutation.csv", "route_robustness.md"):
+              "composition.csv", "loo_fits.csv", "loo_summary.csv", "permutation.csv",
+              "route_robustness.md"):
         assert (out / f).exists(), f"missing {f}"
     for f in ("route_balance.csv", "route_strata.csv", "loo_fits.csv", "loo_summary.csv",
               "permutation.csv"):
@@ -260,6 +261,18 @@ def test_cli_writes_the_documented_artefacts():
     perm = list(csv.DictReader((out / "permutation.csv").open(newline="", encoding="utf-8")))
     assert len(perm) == 3
     assert all(0.0 <= float(r["p_perm_two_sided"]) <= 1.0 for r in perm)
+
+
+def test_composition_has_every_scope_and_never_fits_a_thin_one():
+    tmp = Path(tempfile.mkdtemp(prefix="bdb27_rr_comp_"))
+    out = _run_fixture(tmp)
+    rows = list(csv.DictReader((out / "composition.csv").open(newline="", encoding="utf-8")))
+    scopes = {r["scope"] for r in rows}
+    assert scopes == {"pooled", "WR", "pooled excluding TE", "pooled excluding WR"}
+    assert len(rows) == 8                                    # 4 scopes x 2 panels
+    assert all(r["group_coef"] == "" for r in rows if r["thin"] == "True")
+    pooled = [r for r in rows if r["scope"] == "pooled"]
+    assert len(pooled) == 2 and all(r["group_coef"] != "" for r in pooled)
 
 
 def test_sample_mode_writes_a_labelled_placeholder():

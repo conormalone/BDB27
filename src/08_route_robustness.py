@@ -326,6 +326,28 @@ def fit_group(rows: Sequence[dict], cfg: dict, sm, rel: dict, groups: Sequence[s
     return rec
 
 
+def composition(panels: dict, cfg: dict, sm, rel: dict, groups: Sequence[str]) -> list[dict]:
+    """Descriptive: is the pooled coefficient a WR coefficient? (WR is the pre-declared primary.)
+
+    Scope restrictions, not new groups: ``pooled``, ``WR``, ``pooled excluding TE`` and ``pooled
+    excluding WR``. The last one is usually below ``min_group_n`` and is therefore reported as thin
+    and **not fitted** — the same rule block B applies to TE itself.
+    """
+    out: list[dict] = []
+    for panel, label in (("T3", "primary_env_vmax"), ("T5", "panel_threshold_T5")):
+        rows = panels["rows"][panel]
+        scopes = {
+            "pooled": rows,
+            "WR": [r for r in rows if str(r.get("position")) == "WR"],
+            "pooled excluding TE": [r for r in rows if str(r.get("position")) != "TE"],
+            "pooled excluding WR": [r for r in rows if str(r.get("position")) != "WR"],
+        }
+        for name, sub in scopes.items():
+            rec = fit_group(sub, cfg, sm, rel, groups)
+            out.append(dict(panel=label, scope=name, **rec))
+    return out
+
+
 def route_strata(panels: dict, cfg: dict, sm, rel: dict, groups: Sequence[str]) -> list[dict]:
     out: list[dict] = []
     for panel in ("T3", "T5"):
@@ -532,7 +554,21 @@ def render_md(ctx: dict) -> str:
                  f"{coef} | {se} | {p} | {r['note'] or ''} |")
     L += ["", "**Verdict on the strata.** " + ctx["strata_verdict"], ""]
 
-    L += ["## 3. Does p survive resampling?", "",
+    L += ["## 3. Where does the pooled coefficient come from? (composition, exploratory)", "",
+          "`pooled` is not a WR result: it mixes WR (the pre-declared primary) with TE and a few other "
+          "positions. These are **scope restrictions** of the same fit, not new groups; a scope whose "
+          "per-group player count falls below `min_group_n` is marked thin and is not fitted.", "",
+          "| panel | scope | obs | players (down / secure) | coef | p | note |",
+          "|---|---|---:|---|---:|---:|---|"]
+    for r in ctx["composition"]:
+        counts = f"{r['n_players_moved_down']} / {r['n_players_high_secure']}"
+        coef = "—" if r["group_coef"] is None else f"{r['group_coef']:+.4f}"
+        p = "—" if r["group_p"] is None else f"{r['group_p']:.4f}"
+        L.append(f"| {r['panel']} | {r['scope']} | {r['n_obs']} | {counts} | {coef} | {p} | "
+                 f"{r['note'] or ''} |")
+    L += ["", "**Verdict on composition.** " + ctx["composition_verdict"], ""]
+
+    L += ["## 4. Does p survive resampling?", "",
           "**Leave-one-player-out** (drop each player in turn):", "",
           "| panel | scope | baseline coef (p) | LOO coef range | LOO p range | share p<0.05 | "
           "share CI excludes 0 | most influential |",
@@ -552,7 +588,7 @@ def render_md(ctx: dict) -> str:
                  f"{r['perm_coef_q025']:+.4f} … {r['perm_coef_q975']:+.4f} | {r['n_reps']} |")
     L += ["", "**Verdict on resampling.** " + ctx["resample_verdict"], ""]
 
-    L += ["## 4. What these tests cannot rule out", "",
+    L += ["## 5. What these tests cannot rule out", "",
           "The efforts table carries ``route_ran``, ``pass_length`` and ``target`` only. "
           "``receiver_alignment``, ``in_motion_at_ball_snap`` and the ``team_coverage_*`` family "
           "exist in ``player_play.csv`` but are **not propagated** into ``outputs/game/efforts.csv``, "
@@ -569,18 +605,23 @@ def render_md(ctx: dict) -> str:
           "produced it is not.", ""]
 
     if ctx.get("repro"):
-        L += ["## 5. Reproduction check against the `b_primary.csv` on disk", "",
+        L += ["## 6. Reproduction check against the `b_primary.csv` on disk", "",
               "| panel | scope | b_primary coef (p) | this refit (p) | delta | status |",
               "|---|---|---|---|---|---|"]
+        def _d(v, fmt=".4f", signed=True):
+            try:
+                return (f"{float(v):+{fmt}}" if signed else f"{float(v):{fmt}}")
+            except (TypeError, ValueError):
+                return "—"
+
         for r in ctx["repro"]:
             L.append(f"| {r['panel']} | {r['scope']} | "
-                     f"{r.get('b_primary_coef') if r.get('b_primary_coef') is not None else '—'} "
-                     f"({r.get('b_primary_p', '—')}) | "
-                     f"{r.get('refit_coef') if r.get('refit_coef') is not None else '—'} "
-                     f"({r.get('refit_p', '—')}) | {r.get('coef_delta', '—')} | {r.get('note')} |")
+                     f"{_d(r.get('b_primary_coef'))} ({_d(r.get('b_primary_p'), signed=False)}) | "
+                     f"{_d(r.get('refit_coef'))} ({_d(r.get('refit_p'), signed=False)}) | "
+                     f"{_d(r.get('coef_delta'))} | {r.get('note')} |")
         L.append("")
     if ctx.get("notes"):
-        L += ["## 6. Provenance notes", ""] + [f"* {n}" for n in ctx["notes"]] + [""]
+        L += ["## 7. Provenance notes", ""] + [f"* {n}" for n in ctx["notes"]] + [""]
     return "\n".join(L)
 
 
@@ -623,6 +664,7 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
 
     # ---- B. strata ------------------------------------------------------------
     strata = route_strata(panels, cfg, sm, rel, groups)
+    comp = composition(panels, cfg, sm, rel, groups)
     baselines: dict[tuple[str, str], dict] = {}
     for panel, label in (("T3", "primary_env_vmax"), ("T5", "panel_threshold_T5")):
         for scope in ("pooled", "WR"):
@@ -665,6 +707,7 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
     emit(out_dir / "route_balance_tests.csv",
          [dict(panel="primary_env_vmax", scope=s, **t) for s, t in tests.items()], prov)
     emit(out_dir / "route_strata.csv", strata, prov)
+    emit(out_dir / "composition.csv", comp, prov)
     emit(out_dir / "loo_fits.csv", loo_fits, prov)
     emit(out_dir / "loo_summary.csv", loo_summ, prov)
     emit(out_dir / "permutation.csv", perm, prov)
@@ -744,10 +787,33 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
             "no TE balance or TE stratum is reported as a result.")
     notes.append("The permutation null shuffles group labels across players, keeping the observed "
                  "group sizes; it tests the assignment, not the mechanism.")
+    notes.append("If the `b_primary.csv` under discussion was produced in another checkout, copy it "
+                 "into `outputs/security_models/` (or point the config at that run) and re-run: "
+                 "`reproduction_check.csv` prints that file's block-B rows next to this refit, so a "
+                 "different estimate cannot pass silently.")
+    def _c(panel, scope):
+        return next((r for r in comp if r["panel"] == panel and r["scope"] == scope), {})
+
+    p5, w5, x5 = (_c("panel_threshold_T5", "pooled"), _c("panel_threshold_T5", "WR"),
+                  _c("panel_threshold_T5", "pooled excluding TE"))
+    p3, x3 = _c("primary_env_vmax", "pooled"), _c("primary_env_vmax", "pooled excluding TE")
+    if all(v.get("group_coef") is not None for v in (p5, w5, x5, p3, x3)):
+        composition_verdict = (
+            f"The pooled number is not a WR number. At T=5 the pooled coefficient is "
+            f"{p5['group_coef']:+.4f}, WR alone is {w5['group_coef']:+.4f}, and pooled excluding "
+            f"TE is {x5['group_coef']:+.4f} (T=3: {p3['group_coef']:+.4f} pooled, "
+            f"{x3['group_coef']:+.4f} excluding TE). Removing 20 TE players moves the estimate "
+            "about three-quarters of the way to zero; those TE rows are below `min_group_n` in "
+            "both groups, so TE is not a reportable scope. Treat the pooled row as a mixture, not "
+            "as a receiving result.")
+    else:
+        composition_verdict = "A composition cell could not be estimated; see the table."
+
     ctx = dict(provenance=prov, sample=(mode == "sample" and not synthetic), balance=balance,
-               tests=tests, strata=strata, loo_summary=loo_summ, perm=perm, repro=repro,
-               balance_verdict=balance_verdict, strata_verdict=strata_verdict,
-               resample_verdict=resample_verdict, notes=notes)
+               tests=tests, strata=strata, composition=comp, loo_summary=loo_summ, perm=perm,
+               repro=repro, balance_verdict=balance_verdict, strata_verdict=strata_verdict,
+               composition_verdict=composition_verdict, resample_verdict=resample_verdict,
+               notes=notes)
     (out_dir / "route_robustness.md").write_text(render_md(ctx), encoding="utf-8")
     log.info("%s: route robustness written to %s", prov, out_dir)
     return ctx
