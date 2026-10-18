@@ -1090,3 +1090,81 @@ Line numbers match because they are read from the file; the code is what is old.
 **Operational consequence.** A kernel that is *already* running pre-D46 notebook code cannot be fixed by
 re-running the §3 cell — that cell itself is the stale code. **After pulling D46: restart the kernel and
 Run All once**; from then on re-running any cell is sufficient, because every stage call reloads from disk.
+
+---
+
+## D47 — Route-mix robustness for the group contrast (analysis only) · 2026-10-18
+
+**Question (Conor).** "Can we rule out that this is because they are running worse routes in the
+league?" The rival explanation for a negative `group_coef` is mechanical: later-pick / lower-security
+receivers get fewer deep routes and more decoy duty, which lowers a top-k **peak-speed** outcome with no
+effort or fatigue mechanism. The existing controls (`route_family`, `pass_length`, `snap_share`,
+position, height, weight, years since Combine) absorb some of that, but not depth within family,
+coverage, alignment, motion, or target/decoy duty.
+
+**What was added.**
+
+* **`src/08_route_robustness.py`** — analysis-only. It rebuilds nothing: it imports `07_security_models`
+  and re-uses `build_effort_rows`, `_complete`, `design`, `ols`, `_coef`, `_mark_thin` and
+  `_apply_attenuation`, so every fit is block B's exact specification on a different sample. It writes
+  `outputs/security_models/route_robustness/`: `route_balance.csv`, `route_balance_tests.csv`,
+  `route_strata.csv`, `loo_fits.csv`, `loo_summary.csv`, `permutation.csv`,
+  `reproduction_check.csv`, `route_robustness.md`. Nothing touches `b_primary.csv` or the verdict.
+* **Config** `route_robustness:` — `perm_reps: 1000`, `perm_seed_offset: 505`, the VERTICAL family and
+  the depth bands `[0–9, 10–19, 20+]`. The deep stratum re-uses `audit.deep_pass_length_yd` (15); no new
+  cut-off was invented.
+* **Notebook §9** — appended after §8, prints `robustness — not a pre-declared test` before anything
+  else, reads the directory above, and prints the balance table, the stratum rows and the LOO/permutation
+  p-values. It is never merged into §8's verdict block.
+* **Tests** — `src/tests/test_route_robustness.py` (12): counts/shares sum, missing fields stay NaN,
+  the thin rule never fits, the full-sample stratum fit equals `run_b` to 1e-12, LOO drops exactly one
+  player per fit, summary ranges/shares, permutation determinism and null centring, CLI artefacts +
+  schema, sample placeholder.
+
+**Findings (full-data artefacts available in this checkout; 87 pooled players, 33 `moved_down` /
+54 `high_secure` at T=5).**
+
+* **Balance (T3 panel, pooled):** route-family mix is *not* distinguishable — VERTICAL 45.0% vs 39.2%,
+  BREAK_IN 20.6% vs 19.8%, BREAK_OUT 27.2% vs 28.4%, SHORT 7.2% vs 12.5% (χ²=3.66, dof 3, p=0.30,
+  Cramér's V=0.09). Mean depth 10.3 vs 12.6 yd (Welch p=0.074). Snap share 0.83 vs 0.89.
+  **Target rate 55.6% vs 66.4% (−10.8 pp, p=0.025)** — `moved_down` receivers are targeted materially
+  less often. WR only: 51.7% vs 40.6% VERTICAL (χ² p=0.161, V=0.13), depth 11.8 vs 13.9 yd (p=0.195),
+  target rate 58.3% vs 72.2% (−13.9 pp, p=0.0124).
+* **Within-stratum re-estimation:** 17 of 20 panel × scope × stratum cells estimable; **none** reached
+  p<0.05 (11 of 17 were negative). Pooled T=5: VERTICAL −0.0559 (p=0.451), depth ≥15 −0.0266 (p=0.732),
+  bands 0–9 −0.0112 (p=0.819), 10–19 −0.0549 (p=0.466), 20+ −0.0746 (p=0.501). WR cells are centred on
+  zero (+0.0003 VERTICAL at T=5). Three WR cells were thin (14, 14 and 13 `moved_down` players < 15) and
+  were reported, not fitted.
+* **Leave-one-player-out:** pooled T=5 baseline −0.0673 (p=0.1176) → coef −0.0802…−0.0532, p
+  0.0585…0.2070; **0 of 87 refits reached p<0.05** and 0 of 87 had a CI excluding zero. The most
+  influential single player moves the coefficient by +0.014. Pooled T=3 and WR T=5 behave the same
+  (0 of 87 and 0 of 60 significant refits).
+* **Player-level permutation (1000 reps, fixed seed):** pooled T=5 p=0.1249 two-sided (directional
+  0.0559); pooled T=3 p=0.2368; WR T=5 p=0.9710. The observed coefficient sits inside the label-shuffle
+  null.
+
+**Reproduction caveat — load-bearing.** The stage-07 numbers quoted for this check (pooled T=5
+`group_coef=-0.0380`, `se=0.0185`, `p=0.0396`, corrected `-0.0395`, p=0.0299) are **not** what the
+committed code produces from the full-data artefacts present here. Re-running stage 07 on the same
+population (87 players; 33/54) gives pooled T=5 **−0.0673 (se 0.0430, p=0.1176)**, pooled T=3 −0.0505
+(p=0.2220), WR T=3 +0.0071 (p=0.8701), WR T=5 −0.0019 (p=0.9686). The group sizes match exactly, so this
+is not a population difference; the SE is 2.3× larger, which points to a different effort build or a
+different estimator in the run that produced the quoted row. `b_primary.csv` from that run was not found
+anywhere on this machine (`outputs/` is gitignored; only the sample placeholder and the synthetic runs
+are present). **Consequence:** the robustness numbers above describe the reproducible estimate, not the
+quoted one. Re-run `python src/08_route_robustness.py --mode full` (or the notebook §9) against the
+checkout that holds the quoted `b_primary.csv`; the stage prints a `reproduction_check.csv` comparison so
+the difference cannot pass silently.
+
+**What this cannot rule out.** `outputs/game/efforts.csv` carries `route_ran`, `pass_length` and `target`
+only. `receiver_alignment`, `in_motion_at_ball_snap`, `coverage_assignment` and `team_coverage_type` exist
+in `player_play.csv` (audit item d) but are **not propagated** to the efforts table, so they cannot be
+balanced or controlled here. Even a clean pass would leave route-running skill/separation, QB and target
+quality, coverage difficulty and decoy duty beyond the binary target flag untouched. The honest
+conclusion is that route *menu* differences are small and cannot explain the gap on their own, while the
+target-rate difference is real and is exactly the kind of decoy-duty mechanism the rival explanation
+predicts — so it is **not** ruled out.
+
+**Discipline.** `outputs/` is gitignored; the new directory is additive and no existing output was
+modified. `b_primary.csv` and the pre-declared verdict are untouched. All emitted CSVs put `provenance`
+first.

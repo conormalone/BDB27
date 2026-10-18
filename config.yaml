@@ -553,6 +553,20 @@ security_models:
     weight_sd: 16.0
 
 # --------------------------------------------------------------------------- #
+# Route-mix robustness for the group contrast (analysis-only; src/08_route_robustness.py)
+# D47. Re-estimates block B's exact specification on route strata, leave-one-player-out and a
+# player-label permutation. NOT a pre-declared test: it cannot change b_primary.csv or the verdict.
+# --------------------------------------------------------------------------- #
+route_robustness:
+  out_subdir: route_robustness
+  perm_reps: 1000                  # player-label permutations (>=1000; fixed seed)
+  perm_seed_offset: 505            # permutation RNG seed = config seed + offset
+  strata:
+    vertical_family: VERTICAL      # the route family tested in isolation (config route_family_map)
+    # Depth bands (inclusive, yards). The 'deep' stratum is audit.deep_pass_length_yd (15).
+    pass_length_bands: [[0, 9], [10, 19], [20, null]]
+
+# --------------------------------------------------------------------------- #
 # Deliverables / sample discipline
 # --------------------------------------------------------------------------- #
 deliverables:
