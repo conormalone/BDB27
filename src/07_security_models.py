@@ -321,19 +321,31 @@ def _read_csv_simple(path: Path) -> list[dict]:
         return list(_csv.DictReader(fh))
 
 
-def load_covariates(con, cfg: dict, synthetic: bool, regime: str) -> dict[int, dict]:
-    """Per-player covariates: fixture CSV (synthetic) or the shared Phase-4 loader (real)."""
+def load_covariates(con, cfg: dict, synthetic: bool, regime: str,
+                    issues: list[dict] | None = None) -> dict[int, dict]:
+    """Per-player covariates: fixture CSV (synthetic) or the shared Phase-4 loader (real).
+
+    D44: implausible size covariates (absurd height/weight/BMI — a corrupt row, not an athlete)
+    are blanked and appended to ``issues`` so the caller can warn per player and report them in
+    ``covariate_quality.csv`` / ``SUMMARY.*``. This is the path that used to raise
+    ``OverflowError: math range error`` from ``model_features.bmi`` before block B emitted anything.
+    """
     if synthetic:
         path = fixture_dir(cfg, regime) / cfg["security_models"]["inputs"]["covariates"]
         rows = _read(con, path, COV_COLS)
+        constant = float(cfg["models"]["bmi_constant"])
         out: dict[int, dict] = {}
         for r in rows:
             dy = _num(r["draft_year"])
+            height, weight = _num(r["height"]), _num(r["weight"])
             out[int(r["nfl_id"])] = dict(
                 position=(str(r["position"]) if r["position"] is not None else None),
-                height=_num(r["height"]), weight=_num(r["weight"]), age=_num(r["age"]),
+                height=height, weight=weight, age=_num(r["age"]),
                 draft_position=(str(r["draft_position"]) if r["draft_position"] is not None else None),
-                draft_year=dy)
+                draft_year=dy,
+                bmi=mf.bmi(height, weight, constant) if (height is not None and weight is not None)
+                else float("nan"))
+        mf.sanitize_covariates(out, cfg, issues)
         return out
     parq = common.resolve(cfg, "parquet")
     con2 = con
@@ -343,7 +355,7 @@ def load_covariates(con, cfg: dict, synthetic: bool, regime: str) -> dict[int, d
         common.to_parquet(con2, common.csv_path(cfg, "combine_results"), cr_pq)
     if not pl_pq.exists():
         common.to_parquet(con2, common.csv_path(cfg, "players"), pl_pq)
-    return mf.load_covariates(con2, cr_pq, pl_pq, cfg)
+    return mf.load_covariates(con2, cr_pq, pl_pq, cfg, issues=issues)
 
 
 # --------------------------------------------------------------------------- #
@@ -624,6 +636,11 @@ def build_effort_rows(efforts: Sequence[dict], assign: dict, envelope: dict[int,
         c = cov.get(nid)
         if c is None:
             _drop("no_covariates")
+            continue
+        # D44: a corrupt size covariate is not a missing value — it is reported by nfl_id in
+        # covariate_quality.csv and counted here, so it never disappears into a generic drop tally.
+        if c.get("quality_issue"):
+            _drop("covariate_quality")
             continue
         ps = psum.get(nid)
         if ps is None:
@@ -1237,23 +1254,31 @@ def run_e(pool: list[dict], rows: list[dict], cfg: dict) -> tuple[list[dict], li
     if sep is not None:
         return _e_null(sep, len(fin), n_app, meta)
 
-    clip = float(e.get("or_exponent_clip", 700.0))
-    ci = np.asarray(res.conf_int(), float)
-    sel_rows = []
-    for i, nm in enumerate(names):
-        if nm == "const":
-            continue
-        or_val, or_note = _odds_ratio(res.params[i], clip)
-        lo_val, lo_note = _odds_ratio(ci[i, 0], clip)
-        hi_val, hi_note = _odds_ratio(ci[i, 1], clip)
-        notes = [("standardized predictor (OR per SD)" if nm.startswith("z_") else "raw units")]
-        notes += list(dict.fromkeys(n for n in (or_note, lo_note, hi_note) if n))
-        if dr:
-            notes.append("dropped: " + ";".join(f"{a}:{b}" for a, b in dr))
-        sel_rows.append(dict(term=nm, coef=float(res.params[i]), se=float(res.bse[i]),
-                             z=float(res.tvalues[i]), p=float(res.pvalues[i]),
-                             odds_ratio=or_val, or_ci_lo=lo_val, or_ci_hi=hi_val,
-                             n_obs=len(fin), n_appeared=n_app, note="; ".join(notes)))
+    # D43 hardening: the odds-ratio rows are the one place where a separated fit turns coefficients into
+    # exponentials. ``_safe_exp`` clips those, and this outer guard means an unexpected failure in
+    # the reporting path still yields the labelled-null E block rather than killing B/C/D/F/G.
+    try:
+        clip = float(e.get("or_exponent_clip", 700.0))
+        ci = np.asarray(res.conf_int(), float)
+        sel_rows = []
+        for i, nm in enumerate(names):
+            if nm == "const":
+                continue
+            or_val, or_note = _odds_ratio(res.params[i], clip)
+            lo_val, lo_note = _odds_ratio(ci[i, 0], clip)
+            hi_val, hi_note = _odds_ratio(ci[i, 1], clip)
+            notes = [("standardized predictor (OR per SD)" if nm.startswith("z_")
+                      else "raw units")]
+            notes += list(dict.fromkeys(n for n in (or_note, lo_note, hi_note) if n))
+            if dr:
+                notes.append("dropped: " + ";".join(f"{a}:{b}" for a, b in dr))
+            sel_rows.append(dict(term=nm, coef=float(res.params[i]), se=float(res.bse[i]),
+                                 z=float(res.tvalues[i]), p=float(res.pvalues[i]),
+                                 odds_ratio=or_val, or_ci_lo=lo_val, or_ci_hi=hi_val,
+                                 n_obs=len(fin), n_appeared=n_app, note="; ".join(notes)))
+    except Exception as exc:  # noqa: BLE001 - reporting failure is an E null, never a stage crash
+        return _e_null(f"odds-ratio reporting failed ({type(exc).__name__}: {exc})",
+                       len(fin), n_app, meta)
     p_hat = np.clip(np.asarray(res.predict(X), float), 1e-6, 1 - 1e-6)
     prob = {r["nfl_id"]: float(ph) for r, ph in zip(fin, p_hat)}
     w_raw = {nid: 1.0 / ph for nid, ph in prob.items()}
@@ -1558,7 +1583,17 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
     topk = load_topk(con, inp["topk"])
     efforts = load_efforts(con, inp["efforts"])
     attempts = load_attempt_markers(con, inp["attempts"])
-    cov = load_covariates(con, cfg, synthetic, regime)
+    cov_issues: list[dict] = []
+    cov = load_covariates(con, cfg, synthetic, regime, issues=cov_issues)
+    cov_bounds = mf.covariate_bounds(cfg)
+    for iss in cov_issues:
+        log.warning("%s: IMPLAUSIBLE COVARIATE — nfl_id=%s %s=%s (%s); value set to NaN and the "
+                    "player excluded from every model (D44)", prov, iss["nfl_id"], iss["field"],
+                    iss["value"], iss["reason"])
+    if cov_issues:
+        log.warning("%s: %d implausible covariate value(s) on %d player(s); reported in "
+                    "covariate_quality.csv and SUMMARY (D44)", prov, len(cov_issues),
+                    len({iss["nfl_id"] for iss in cov_issues}))
     rel = load_reliability(cfg, synthetic, regime, log)
     log.info("%s: %d exposures, %d envelope, %d top-k, %d efforts, %d covariates",
              prov, len(exposures), len(envelope), len(topk), len(efforts), len(cov))
@@ -1588,8 +1623,12 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
     for r in rows_all + all_rows:
         ps = psum.get(r["nfl_id"]) or {}
         r["topk_mean_speed"] = ps.get("topk_mean_speed")
-    dropped_cov = sum(1 for nid in cov if _num(cov[nid].get("height")) is None
-                      or _num(cov[nid].get("weight")) is None)
+    # "missing" size is a blank source cell; a *flagged* value is a separate, reported condition
+    # (D44) and is counted in covariate_quality.n_players_flagged, never blended into this tally.
+    dropped_cov = sum(1 for nid in cov
+                      if not cov[nid].get("quality_issue")
+                      and (_num(cov[nid].get("height")) is None
+                           or _num(cov[nid].get("weight")) is None))
     log.info("model rows: %d in the two-group contrast, %d unclassified retained for C "
              "(dropped reasons: %s); players with a missing size covariate: %d",
              len(rows), len(rows_all) - len(rows), dropped or "none", dropped_cov)
@@ -1609,6 +1648,12 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
             _emit(out_dir / fname, [_fail_row(reason, key)], prov, log, block_status="FAILED")
 
     _emit(out_dir / "group_assignment.csv", assign["assignments"], prov, log)
+    # D44: the covariate-quality audit trail is written even when nothing was flagged, so a clean
+    # run *states* that the size covariates were checked against the declared bounds.
+    _emit(out_dir / "covariate_quality.csv",
+          cov_issues or [dict(nfl_id="", field="none", value="", lower="", upper="",
+                              reason="all size covariates within the declared plausible bounds")],
+          prov, log)
 
     try:
         b_rows, b_means, _ = run_b(rows, cov, rel, cfg, dropped, alt_rows=rows_t5)
@@ -1618,6 +1663,12 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
         raise RuntimeError(
             f"primary block B failed ({failed_blocks['B']}) — no primary result was produced; "
             f"see {out_dir / 'b_primary.csv'}") from exc
+    if cov_issues:
+        _q_note = (f"covariate quality: {len({iss['nfl_id'] for iss in cov_issues})} player(s) / "
+                   f"{int(dropped.get('covariate_quality', 0))} effort row(s) excluded for an "
+                   f"implausible size covariate (see covariate_quality.csv)")
+        for _rec in b_rows:
+            _rec["note"] = f"{_rec['note']}; {_q_note}" if _rec.get("note") else _q_note
     _emit(out_dir / "b_primary.csv", b_rows, prov, log)
     _emit(out_dir / "b_group_means.csv", b_means, prov, log)
 
@@ -1714,6 +1765,14 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
         dropped_reasons=dropped, dropped_reasons_all_efforts=dropped_all,
         dropped_reasons_threshold_T5=dropped_t5,
         n_missing_size_covariate_players=dropped_cov,
+        covariate_quality=dict(
+            bounds={k: [float(v[0]), float(v[1])] for k, v in cov_bounds.items()},
+            n_players_flagged=len({int(iss["nfl_id"]) for iss in cov_issues}),
+            n_values_flagged=len(cov_issues),
+            n_effort_rows_excluded=int(dropped.get("covariate_quality", 0)),
+            issues=cov_issues,
+            policy=("a non-finite or out-of-bounds height/weight/BMI is a CORRUPT ROW: the value is "
+                    "set to NaN, warned by nfl_id, excluded from every model and reported here")),
         sort=dict(fall_threshold=assign["fall_threshold"],
                   sensitivity_threshold=alt_threshold,
                   group_semantics=("moved_down = edp_trend >= fall_threshold (fell 3+ EDP spots); "
@@ -1776,11 +1835,34 @@ def render_summary(s: dict) -> str:
              f"C continuous rows {s['n_effort_rows_c']} ({s['n_model_players_c']} players; "
              f"{s['n_unclassified_players_c']} unclassified retained: "
              f"{s['n_unclassified_rows_c']} efforts)")
+    _q = s.get("covariate_quality") or {}
+    if _q:
+        _bnd = ", ".join(f"{k} {v[0]:g}–{v[1]:g}" for k, v in (_q.get("bounds") or {}).items())
+        _n_pl, _n_v = int(_q.get("n_players_flagged") or 0), int(_q.get("n_values_flagged") or 0)
+        if _n_pl:
+            L.append(f"- **Covariate quality (D44):** {_n_pl} player(s) / {_n_v} value(s) outside "
+                     f"the declared plausible bounds ({_bnd}); {_q.get('n_effort_rows_excluded', 0)} "
+                     f"effort row(s) were excluded from every model and are listed in "
+                     f"`covariate_quality.csv`.")
+        else:
+            L.append(f"- **Covariate quality (D44):** all height/weight/BMI values are within the "
+                     f"declared plausible bounds ({_bnd}); nothing excluded.")
     L.append("")
     if s.get("failed_blocks"):
         L.append("## ⚠ FAILED BLOCKS (D43)")
         for block, why in s["failed_blocks"].items():
             L.append(f"- **{block}: FAILED** — {why} (labelled `block_status=FAILED` in the CSVs)")
+        L.append("")
+    if int((s.get("covariate_quality") or {}).get("n_players_flagged") or 0):
+        L.append("## ⚠ Covariate quality — implausible size rows excluded (D44)")
+        L.append("A value outside these bounds is a corrupt row, not an unusual athlete. Each one is "
+                 "set to NaN, warned with its `nfl_id`, and dropped from every model.")
+        L.append("")
+        L.append("| nfl_id | field | raw value | plausible range | reason |")
+        L.append("|---:|---|---:|---|---|")
+        for _iss in s["covariate_quality"].get("issues") or []:
+            L.append(f"| {_iss['nfl_id']} | {_iss['field']} | {_iss['value']} | "
+                     f"{_iss['lower']:g}–{_iss['upper']:g} | {_iss['reason']} |")
         L.append("")
     # group assignment
     L.append("## Group assignment (pre-Combine sort key)")

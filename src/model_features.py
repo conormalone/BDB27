@@ -31,10 +31,106 @@ KNOWN_CATEGORICAL = {"position", "draft_position"}
 # per-player covariates
 # --------------------------------------------------------------------------- #
 def bmi(height_in: float, weight_lb: float, constant: float) -> float:
-    """Body-mass index: ``constant * weight_lb / height_in**2`` (constant from config)."""
-    if not (np.isfinite(height_in) and np.isfinite(weight_lb)) or height_in <= 0:
+    """Body-mass index: ``constant * weight_lb / height_in**2`` (constant from config).
+
+    Hostile-input hardened (D44): an absurd height (e.g. ``1e200``) used to raise
+    ``OverflowError: math range error`` from ``height_in ** 2``, killing the whole caller before
+    block B could emit anything. ``**`` is replaced by a multiplication and the whole computation
+    is guarded, so implausible inputs return ``nan`` rather than raising. Underflow to ``0.0``
+    (an absurdly large height with a finite weight) is also returned as ``nan`` — a zero BMI is
+    never a real player and must not be silently accepted.
+    """
+    try:
+        h = float(height_in)
+        w = float(weight_lb)
+        c = float(constant)
+        if not (np.isfinite(h) and np.isfinite(w) and np.isfinite(c)) or h <= 0 or w < 0:
+            return float("nan")
+        val = c * w / (h * h)
+        # ``h * h`` overflows to ``inf`` (no exception), so val underflows to 0.0 — not a real BMI.
+        return float(val) if (np.isfinite(val) and val > 0.0) else float("nan")
+    except (OverflowError, ZeroDivisionError, ValueError, TypeError):
         return float("nan")
-    return float(constant) * float(weight_lb) / (float(height_in) ** 2)
+
+
+# --------------------------------------------------------------------------- #
+# covariate plausibility (D44): a corrupt size covariate must be VISIBLE, never silently nan
+# --------------------------------------------------------------------------- #
+# Default bounds; overridden by ``security_models.primary.covariate_bounds`` in config.yaml.
+DEFAULT_COVARIATE_BOUNDS = {
+    "height_in": (48.0, 90.0),     # 4'0" – 7'6"
+    "weight_lb": (100.0, 400.0),   # 100 – 400 lb
+    "bmi": (15.0, 60.0),
+}
+
+# covariate dict key -> bounds key (the name used in config.yaml)
+_SIZE_FIELDS = (("height", "height_in"), ("weight", "weight_lb"), ("bmi", "bmi"))
+
+
+def covariate_bounds(cfg: dict) -> dict[str, tuple[float, float]]:
+    """The declared plausible range for each size covariate (config first, defaults after)."""
+    raw = (((cfg or {}).get("security_models") or {}).get("primary") or {}).get(
+        "covariate_bounds") or {}
+    out = dict(DEFAULT_COVARIATE_BOUNDS)
+    for key, pair in raw.items():
+        try:
+            lo, hi = float(pair[0]), float(pair[1])
+        except (TypeError, ValueError, IndexError, KeyError):
+            continue
+        if np.isfinite(lo) and np.isfinite(hi) and lo < hi:
+            out[str(key)] = (lo, hi)
+    return out
+
+
+def sanitize_covariates(table: dict[int, dict], cfg: dict,
+                        issues: list[dict] | None = None) -> int:
+    """Blank implausible size covariates and record every one of them (D44).
+
+    A non-finite or out-of-``covariate_bounds`` height/weight/BMI means the *row* is corrupt, not
+    that the player is unusual. The value is set to ``nan`` (so listwise models drop it) **and**:
+
+    * an entry ``{nfl_id, field, value, lower, upper, reason}`` is appended to ``issues`` (the
+      caller logs it and writes ``covariate_quality.csv``);
+    * ``table[nfl_id]['quality_issue']`` is set, so the stage can count the excluded rows/players
+      explicitly instead of losing them to a generic "incomplete controls" tally.
+
+    Returns the number of players flagged.
+    """
+    bounds = covariate_bounds(cfg)
+    flagged = 0
+    for nid in sorted(table):
+        row = table[nid]
+        bad: list[str] = []
+        for field, key in _SIZE_FIELDS:
+            lo, hi = bounds[key]
+            raw = row.get(field)
+            # BMI is derived: it is only meaningful when both inputs are present and usable, and a
+            # bad height/weight is already reported on its own — never double-count the derivative.
+            if field == "bmi":
+                h, w = row.get("height"), row.get("weight")
+                if _is_missing(h) or _is_missing(w) or not (np.isfinite(_num(h)) and np.isfinite(_num(w))):
+                    continue
+            if _is_missing(raw):
+                # An ordinary empty cell is MISSING, not corrupt: the existing drop reasons own it.
+                row[field] = float("nan")
+                continue
+            x = _num(raw)
+            if not np.isfinite(x):
+                reason = "non-finite value (present but not a usable number)"
+            elif x < lo or x > hi:
+                reason = f"outside plausible range [{lo:g}, {hi:g}]"
+            else:
+                continue
+            bad.append(field)
+            if issues is not None:
+                issues.append(dict(nfl_id=int(nid), field=field, value=str(raw),
+                                   lower=lo, upper=hi, reason=reason))
+        if bad:
+            for field in bad:
+                row[field] = float("nan")
+            row["quality_issue"] = True
+            flagged += 1
+    return flagged
 
 
 def _year_of(birth_date: Any) -> float:
@@ -47,7 +143,8 @@ def _year_of(birth_date: Any) -> float:
     return float(int(s[:4]))
 
 
-def covariate_table(cr_records: Sequence[dict], player_records: Sequence[dict], cfg: dict) -> dict[int, dict]:
+def covariate_table(cr_records: Sequence[dict], player_records: Sequence[dict], cfg: dict,
+                    issues: list[dict] | None = None) -> dict[int, dict]:
     """Build the per-player covariate table from `combine_results` + `players` records.
 
     Returns ``{nfl_id: {position, height, weight, age, draft_position, bmi, optout}}``.
@@ -55,6 +152,9 @@ def covariate_table(cr_records: Sequence[dict], player_records: Sequence[dict], 
     round tier (``R1..R7``) with **``undrafted`` as an explicit level** (prereg §8); ``bmi`` uses
     ``models.bmi_constant``. ``optout`` flags a player missing any headline Combine field
     (`validate.optout_fields`) — reported and usable by the `exclude_optouts` sensitivity.
+
+    D44: implausible / non-finite size covariates are blanked by :func:`sanitize_covariates` and,
+    when ``issues`` is supplied, recorded there (the security stage logs and reports them).
     """
     m = cfg["models"]
     optout_fields = list(cfg["validate"]["optout_fields"])
@@ -96,10 +196,12 @@ def covariate_table(cr_records: Sequence[dict], player_records: Sequence[dict], 
             draft_year=(dy if np.isfinite(dy) else float("nan")),
             bmi=bmi(height, weight, float(m["bmi_constant"])), optout=bool(optout),
         )
+    sanitize_covariates(out, cfg, issues)
     return out
 
 
-def load_covariates(con, cr_path, players_path, cfg: dict) -> dict[int, dict]:
+def load_covariates(con, cr_path, players_path, cfg: dict,
+                    issues: list[dict] | None = None) -> dict[int, dict]:
     """Query `combine_results` + `players` (Parquet) and return the covariate table."""
     # Precompute the quoted opt-out column list OUTSIDE any f-string: the escaped-quote form
     # (``'"%s"' % f``) inside an f-string expression is a hard SyntaxError on CPython <= 3.11
@@ -114,7 +216,7 @@ def load_covariates(con, cr_path, players_path, cfg: dict) -> dict[int, dict]:
     pl = con.execute(
         f"SELECT nfl_id, draft_year, birth_date, draft_round FROM {common.pq(players_path)}").fetchall()
     player_records = [dict(zip(["nfl_id", "draft_year", "birth_date", "draft_round"], row)) for row in pl]
-    return covariate_table(cr_records, player_records, cfg)
+    return covariate_table(cr_records, player_records, cfg, issues=issues)
 
 
 # --------------------------------------------------------------------------- #

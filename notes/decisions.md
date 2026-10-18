@@ -923,3 +923,69 @@ incremental emission through a simulated G failure, B hard-fail).
 `test_external_proxies.py::test_external_disabled_no_network_exit_zero` runs 00b with every socket denied
 and asserts exit 0 plus the disabled log line; `::test_models_not_gated_on_proxy` asserts 04 no longer
 references the flag and both config switches are false. Full suite: 17 files, 151 tests, all passing.
+
+---
+
+## D44 — The `OverflowError` was `bmi`, not the selection logit; covariate-quality reporting · 2026-10-18
+
+**Problem.** D43 did not fix the crash. After pulling `eea0272` (D43), a Run All on Windows failed again
+with the **identical bare `OverflowError: math range error`** and **no `b_primary.csv` at all**. That is a
+different signature from D43's own failure mode: D43's per-block isolation guarantees either a B result or
+`RuntimeError("primary block B failed (...)")` plus a labelled `block_status=FAILED` row. A bare
+`OverflowError` with no B file means the exception happened **before the B block was entered**, so D43
+guarded the wrong code.
+
+**Root cause.** `src/model_features.py::bmi` computed `float(height_in) ** 2` with no guard. CPython's
+`float_pow` maps C `ERANGE` to `OverflowError`; the message is platform-dependent — **Windows: `math range
+error`** (what Conor saw), **Linux/glibc: `(34, 'Numerical result out of range')`**. Same exception, different
+text, and no test ever fed an absurd height, so the Linux suite never reproduced it.
+
+It was on the **pre-B path**: `07_security_models.run()` → `load_covariates()` →
+`model_features.covariate_table()` → `bmi()`. That call builds covariates before group assignment, before
+`group_assignment.csv`, before B. Hence: bare exception, zero output files, and no D43 wrapper — every
+symptom follows from one line.
+
+**Decision.**
+
+* **`bmi` is overflow-proof.** `h * h` replaces `**` (no `float_pow`, no `ERANGE`), the whole computation is
+  inside `try/except (OverflowError, ZeroDivisionError, ValueError, TypeError)`, and a non-finite **or
+  non-positive** result returns `nan`. The `val > 0` condition matters: `1e200 * 1e200` overflows to `inf`
+  without raising, so a naive guard would report a **BMI of exactly 0.0** for a corrupt height.
+* **A bogus height is visible, never silently `nan`.** `security_models.primary.covariate_bounds` in
+  `config.yaml` declares the plausible ranges (`height_in 48–90`, `weight_lb 100–400`, `bmi 15–60`, with a
+  comment saying these catch corruption, not unusual athletes). `model_features.sanitize_covariates()` then:
+  sets the offending value to `NaN`; appends `{nfl_id, field, raw value, lower, upper, reason}`; and marks
+  the player `quality_issue` so `build_effort_rows` drops the row under the explicit reason
+  `covariate_quality` (not the generic "missing size" tally). An **empty** cell stays "missing" and is not
+  mislabelled as corrupt; a **present** but non-finite/out-of-range value is corrupt.
+* **The stage reports it three ways.** (1) A `WARNING` per value naming `nfl_id`, field, raw value and reason,
+  plus a summary warning with the counts. (2) `outputs/security_models/covariate_quality.csv` (always written;
+  a single `field=none` row when nothing was flagged, so a clean run states the check happened). (3)
+  `SUMMARY.json::covariate_quality` (`bounds`, `n_players_flagged`, `n_values_flagged`,
+  `n_effort_rows_excluded`, `issues`, `policy`) and a `SUMMARY.md` line + table. Every `b_primary.csv` row's
+  `note` states how many players/rows were excluded, so the primary block itself carries the exclusion count.
+* **Audit of every other numeric path.** An AST scan of `07_security_models.py`, `common.py`, `gate.py`,
+  `model_features.py`, `security_features.py` (locked by `test_static_numeric_audit`) finds `math.exp` only
+  inside `_safe_exp` (the D43 clip) and no scalar `float(...) ** n`; the remaining `** 2` is a NumPy array
+  variance term in a VIF sum, which cannot raise. `math.log` sites are already guarded by `v > 0`.
+* **Notebook guard extended to D44.** `run_diagnostics.REQUIRED_CAPABILITIES` now also requires the D44
+  marker in `07_security_models.py` (`covariate_quality`), `model_features.py` (`sanitize_covariates`) and
+  `config.yaml` (`covariate_bounds`); a checkout missing any of them is a **hard stop** with the sha and
+  "pull and re-run". A dirty tree / detached HEAD / shallow clone / missing git is a warning only — a dirty
+  tree must never block a run. §8 distinguishes **CRASH** (prints the captured traceback tail, last ~10
+  lines, and says re-supplying data cannot help) from **DATA-ABSENT** (data remedy), and a `FAILED` B row now
+  carries the run's tail instead of an empty list.
+
+**Why.** A corrupt height must not decide whether the headline model exists, and a guard that only returns
+`nan` would hide a data-integrity defect and silently shrink the sample. The exclusion is therefore counted
+and named, with the bounds declared in config rather than buried in code.
+
+**Evidence.** `test_security_models_hostile.py::test_absurd_height_through_stage_writes_primary_and_reports_quality`
+drives `height=1e200` and `weight=1e200` through the real CLI entry point and asserts exit 0, an `OK`
+`primary_env_vmax` row in `b_primary.csv` with the exclusion note, the two `nfl_id`s and the raw `1e200` in
+`covariate_quality.csv`, non-zero `n_effort_rows_excluded`, the bounds in `SUMMARY.json`, the summary line in
+`SUMMARY.md`, and the `IMPLAUSIBLE COVARIATE` warning naming the player on stderr.
+`::test_separating_real_shaped_rows_without_fixture` now also asserts `bmi(1e200, …)` and `bmi(1e-200, …)`
+are `nan` (not `0.0`/`inf`). `test_run_diagnostics.py` covers the D44 capability gate, dirty-tree-is-a-warning,
+and the crash-vs-data distinction. Full suite: **19 files, 177 tests, all passing** (D43 baseline 17/151;
+the two security-model files 31/31).

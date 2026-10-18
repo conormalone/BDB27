@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import copy
 import csv
+import ast
 import importlib.util
 import json
 import math
@@ -29,6 +30,7 @@ import tempfile
 from pathlib import Path
 
 import yaml
+import numpy as np
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
@@ -50,6 +52,7 @@ def _load(name: str, path: Path):
 
 GEN = _load("_hostile_gen", REPO / "src" / "synthetic_security_game_fixture.py")
 SM = _load("_hostile_sm07", SCRIPT)
+MF = _load("_hostile_mf", REPO / "src" / "model_features.py")
 
 
 # --------------------------------------------------------------------------- #
@@ -269,13 +272,157 @@ def test_primary_block_failure_is_hard_and_labelled():
 
 
 # --------------------------------------------------------------------------- #
+# 4) static numeric audit + real-shaped separating rows (D43 hardening)
+# --------------------------------------------------------------------------- #
+_NUMERIC_FILES = ("07_security_models.py", "common.py", "gate.py", "model_features.py",
+                  "security_features.py")
+_ALLOWED_NUMERIC_FUNCS = {"_safe_exp"}
+_UNSAFE_MATH = {"exp", "cosh", "sinh", "factorial"}
+
+
+def test_static_numeric_audit():
+    """math.exp/cosh/sinh/factorial and pow() may only appear inside the one safe helper."""
+    offenders: list[str] = []
+    for name in _NUMERIC_FILES:
+        path = REPO / "src" / name
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+
+        class Visitor(ast.NodeVisitor):
+            def __init__(self) -> None:
+                self.stack: list[str] = []
+
+            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+                self.stack.append(node.name)
+                self.generic_visit(node)
+                self.stack.pop()
+
+            def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
+                fn = node.func
+                fname = None
+                if (isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Name)
+                        and fn.value.id == "math" and fn.attr in _UNSAFE_MATH):
+                    fname = f"math.{fn.attr}"
+                elif (isinstance(fn, ast.Name)
+                      and fn.id in ("pow", "factorial")):
+                    fname = fn.id
+                if fname and not (set(self.stack) & _ALLOWED_NUMERIC_FUNCS):
+                    offenders.append(f"{name}:{node.lineno} {fname} outside _safe_exp")
+                self.generic_visit(node)
+
+            def visit_BinOp(self, node: ast.BinOp) -> None:  # noqa: N802
+                # A bare ``float(x) ** n`` is the shape that overflowed at runtime.
+                if isinstance(node.op, ast.Pow) and "float(" in ast.unparse(node):
+                    if not (set(self.stack) & _ALLOWED_NUMERIC_FUNCS):
+                        offenders.append(f"{name}:{node.lineno} bare float ** power")
+                self.generic_visit(node)
+
+        Visitor().visit(tree)
+    assert not offenders, "\n".join(offenders)
+
+
+def test_separating_real_shaped_rows_without_fixture():
+    """Perfect separation in a hand-built pool -> labelled unavailable E, never OverflowError."""
+    cfg = copy.deepcopy(common.load_config())
+    cfg.pop("_config_path", None)
+    pool = []
+    for i in range(80):
+        appeared = i < 40
+        pool.append(dict(
+            nfl_id=i, position_group="WR", position="WR",
+            log_edp_pre=3.0 + 0.01 * (i % 7),
+            log_combine_speed=9.0 if appeared else 7.0,   # perfectly separates appearance
+            height=72.0 + 0.1 * (i % 5), weight=200.0 + 0.5 * (i % 4),
+            appeared=appeared))
+
+    sel, ipw, meta = SM.run_e(pool, [], cfg)            # must not raise OverflowError
+    assert sel[0]["term"] == "unavailable", sel[0]
+    assert "reported null" in sel[0]["note"], sel[0]
+    assert ipw[0]["weighting"] == "unavailable", ipw[0]
+    assert meta.get("n_pool") == 80 and meta.get("n_appeared") == 40, meta
+
+    # bmi must never raise on absurd but numeric inputs (and must not return a bogus 0.0 either:
+    # ``h * h`` overflows to inf, so a naive guard would report a BMI of zero for height=1e200).
+    for val in (MF.bmi(1e200, 200, 703), MF.bmi(1e-200, 200, 703)):
+        assert np.isnan(val), val
+
+
+# --------------------------------------------------------------------------- #
+# 5) D44: an absurd height through the REAL stage entry point (the Windows crash)
+# --------------------------------------------------------------------------- #
+def test_absurd_height_through_stage_writes_primary_and_reports_quality():
+    """A corrupt height (1e200) must not kill stage 07 — and must never vanish silently.
+
+    Reproduces Conor's Windows symptom on Linux: ``OverflowError: math range error`` came from
+    ``model_features.bmi`` while building covariates, i.e. BEFORE block B, so there was no
+    ``b_primary.csv`` at all. After D44 the stage completes, B is written, and the corrupt row is
+    named by ``nfl_id`` in a WARNING + ``covariate_quality.csv`` + ``SUMMARY.*``.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="bdb27_hostile_bmi_"))
+    cfg, d = _build(tmp)
+
+    effort_ids = sorted({int(r["nfl_id"]) for r in _rd(d / "efforts.csv")})
+    bad_height, bad_weight = effort_ids[0], effort_ids[1]
+    cov = _rd(d / "covariates.csv")
+    touched = 0
+    for r in cov:
+        if int(r["nfl_id"]) == bad_height:
+            r["height"] = "1e200"                    # the exact shape that raised OverflowError
+            touched += 1
+        elif int(r["nfl_id"]) == bad_weight:
+            r["weight"] = "1e200"                    # finite, but an impossible weight
+            touched += 1
+    assert touched == 2, (bad_height, bad_weight, touched)
+    _wr(d / "covariates.csv", cov)
+
+    r = _run_cli(_write_cfg(tmp, cfg))
+    assert r.returncode == 0, f"a corrupt height must not kill the stage:\n{r.stderr[-2000:]}"
+    out = _out_dir(cfg)
+    _assert_files_and_labels(out)
+
+    # (a) no exception, and the primary result IS written
+    b = _rd(out / "b_primary.csv")
+    primary = [x for x in b if x["spec"] == "primary_env_vmax" and x["block_status"] == "OK"]
+    assert primary, b[:2]
+    assert primary[0]["group_coef"] != "", primary[0]
+    assert "covariate quality" in primary[0]["note"], primary[0]["note"]
+
+    # (b) the corrupt rows are named, counted and reported — not silently nan'd
+    q = _rd(out / "covariate_quality.csv")
+    assert q, "covariate_quality.csv must record the excluded rows"
+    assert (out / "covariate_quality.csv").read_text(encoding="utf-8").splitlines()[0].split(",")[0] \
+        == "provenance"
+    named = {int(x["nfl_id"]) for x in q if x["nfl_id"]}
+    assert {bad_height, bad_weight} <= named, (bad_height, bad_weight, named)
+    raw = {x["field"]: x["value"] for x in q if int(x["nfl_id"]) == bad_height}
+    assert float(raw.get("height")) == 1e200, raw          # the raw value, not a masked one
+
+    s = json.loads((out / "SUMMARY.json").read_text(encoding="utf-8"))
+    cq = s["covariate_quality"]
+    assert cq["n_players_flagged"] >= 2, cq
+    assert cq["n_values_flagged"] >= 2, cq
+    assert cq["n_effort_rows_excluded"] > 0, cq
+    assert {bad_height, bad_weight} <= {int(i["nfl_id"]) for i in cq["issues"]}, cq["issues"]
+    assert cq["bounds"]["height_in"] == [48.0, 90.0], cq["bounds"]
+    md = (out / "SUMMARY.md").read_text(encoding="utf-8")
+    assert "Covariate quality (D44)" in md and "covariate_quality.csv" in md, md[:2000]
+
+    # (c) the operator sees the player, not just a count
+    assert "IMPLAUSIBLE COVARIATE" in r.stderr, r.stderr[-2000:]
+    assert f"nfl_id={bad_height}" in r.stderr, r.stderr[-2000:]
+    assert "1e+200" in r.stderr or "1e200" in r.stderr, r.stderr[-2000:]
+
+
+# --------------------------------------------------------------------------- #
 # dependency-free runner
 # --------------------------------------------------------------------------- #
 def main() -> int:
     tests = [test_hostile_covariates_outliers_and_blanks,
              test_separating_selection_logit_through_stage,
              test_later_block_failure_keeps_earlier_files,
-             test_primary_block_failure_is_hard_and_labelled]
+             test_primary_block_failure_is_hard_and_labelled,
+             test_static_numeric_audit,
+             test_separating_real_shaped_rows_without_fixture,
+             test_absurd_height_through_stage_writes_primary_and_reports_quality]
     failed = 0
     for t in tests:
         try:

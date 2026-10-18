@@ -102,7 +102,8 @@ python src/06_security.py --synthetic --synthetic-regime null      # null case (
 #   Phase-4 security exposure table, the Phase-2 envelope + FULL thresholds. Writes
 #   outputs/security_models/{SUMMARY.md,SUMMARY.json,group_assignment.csv,b_primary.csv,b_group_means.csv,
 #   c_end.csv,c_exceedance.csv,d_skippers.csv,e_selection.csv,e_ipw.csv,falsification.csv,g_tail.csv,
-#   g_tail_summary.csv,_DONE.json}.
+#   g_tail_summary.csv,covariate_quality.csv,_DONE.json}. covariate_quality.csv (D44) lists every
+#   implausible height/weight/BMI row by nfl_id and the plausible bounds it violated.
 python src/synthetic_security_game_fixture.py                 # (re)build the committed game-side fixture
 python src/07_security_models.py --mode sample                # labelled PENDING FULL RUN placeholder (exit 0)
 python src/07_security_models.py --mode full                  # real estimates (needs the full game files)

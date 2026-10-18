@@ -429,6 +429,15 @@ security_models:
     attenuation_seed_offset: 303
     snap_share_clip: 1.0            # snap_share = min(n_route_snaps / route_snap_count, clip)
     min_obs: 40
+    # D44 COVARIATE PLAUSIBILITY BOUNDS. An NFL Combine participant cannot be outside these; a
+    # value that is (e.g. height 1e200 from a corrupt join) is treated as a CORRUPT ROW, never kept:
+    # the field is set to NaN, a WARNING names nfl_id + the raw value, the row drops out of every
+    # model, and it is reported in outputs/security_models/covariate_quality.csv + SUMMARY.
+    # Bounds are deliberately wide: they catch corruption, not unusual athletes.
+    covariate_bounds:
+      height_in: [48.0, 90.0]       # 4'0" to 7'6"
+      weight_lb: [100.0, 400.0]     # 100 to 400 lb
+      bmi: [15.0, 60.0]             # BMI = 703 * weight_lb / height_in^2
     scopes: [WR, TE, pooled]
     stratum_fe: true                # headline = pooled two-group split WITH a stratum fixed effect
     panels: [trend_only, level_fallback]   # pre-declared sensitivity panels (one stratum each)
