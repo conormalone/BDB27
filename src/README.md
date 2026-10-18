@@ -28,6 +28,11 @@ Reusable / production code — **coder-owned**, implemented via the PM pipeline.
   Position (Grinding The Mocks, February snapshots, fuzzy match). `--mode sample|full`, `--force`,
   `--synthetic`; writes `outputs/pre_combine_expectation.parquet` (EXACT `nflId, Pre_Combine_EDP,
   match_confidence_score`). **Gates `04_models --mode full`** (existence + schema).
+- `run_diagnostics.py` — stale-checkout guard (`evaluate_checkout`), honest stage-failure wording,
+  `stage_status_on_disk`, and `file_commit` (which commit a file last changed in).
+- `stage_runner.py` — D46: runs one stage in-process **from the code on disk** (invalidates the
+  import caches, reloads the module and its loaded helpers, purges the stale `.pyc`) and writes
+  `outputs/<stage>/crash_<stamp>.txt` with the full traceback when a stage raises.
 - `gate.py` — pre-registration freeze / audit go-no-go / **Phase-0.5 external-proxy** runtime gate
   (`--mode full` only).
 - `synthetic_fixture.py` — builds the committed, schema-compliant fixture with a **planted binding

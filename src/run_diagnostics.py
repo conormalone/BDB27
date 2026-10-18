@@ -88,6 +88,26 @@ def _git(repo_root: Path, *args: str) -> tuple[int, str, str]:
         return 127, "", f"{type(exc).__name__}: {exc}"
 
 
+_COMMIT_CACHE: dict[tuple[str, str], str] = {}
+
+
+def file_commit(repo_root: str | Path, rel_path: str, cache: bool = True) -> str:
+    """Last commit that touched ``rel_path``, as ``"<short sha> <commit date>"`` (D46).
+
+    Used to print *which* code a loaded module corresponds to: after a pull, a module cached in
+    ``sys.modules`` still carries the commit that was current when it was imported. Local only;
+    returns ``"unknown"`` when git or the file is unavailable.
+    """
+    key = (str(repo_root), str(rel_path))
+    if cache and key in _COMMIT_CACHE:
+        return _COMMIT_CACHE[key]
+    rc, out, _ = _git(Path(repo_root), "log", "-1", "--format=%h %cs", "--", str(rel_path))
+    value = out if (rc == 0 and out) else "unknown"
+    if cache:
+        _COMMIT_CACHE[key] = value
+    return value
+
+
 def git_state(repo_root: str | Path) -> dict[str, Any]:
     """Local-only description of the checkout. Missing git/repo is reported, not raised."""
     root = Path(repo_root)
@@ -286,13 +306,27 @@ def classify_stage(res: dict[str, Any], game_side: bool) -> str | None:
 
 
 def failure_lines(res: dict[str, Any], max_tail: int = 10) -> list[str]:
-    """A short, honest crash report: the exception line first, then the tail of the captured log."""
+    """A short, honest crash report: the exception line first, then the tail of the captured log.
+
+    The full traceback is written to ``crash_<stamp>.txt`` (D46). If the captured tail is empty the
+    line says so *and* names the file, instead of ending on a bare ``traceback tail:``.
+    """
     tail = [str(x) for x in (res.get("tail") or [])][-max(0, int(max_tail)):]
+    crash_file = res.get("crash_file")
     if res.get("error"):
-        lines = [f"crashed: {res['error']}", "traceback tail:"]
+        lines = [f"crashed: {res['error']}"]
+        if tail:
+            lines.append("traceback tail:")
+        elif crash_file:
+            lines.append(f"traceback tail: (empty — see {crash_file})")
+        else:
+            lines.append("traceback tail: (empty — no crash file was written)")
     else:
         lines = ["stage exited without an exception; tail:"]
-    return lines + tail
+    lines += tail
+    if crash_file:
+        lines.append(f"full traceback: {crash_file}")
+    return lines
 
 
 def diagnose_missing_primary(run_result: dict[str, Any] | None, full_game_ok: bool,

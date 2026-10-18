@@ -183,6 +183,23 @@ def test_classify_stage():
     assert rd.classify_stage({"ok": False, "rc": 0, "error": ""}, "WR") == "PENDING"
 
 
+def test_file_commit_reports_the_commit_that_touched_the_file():
+    tmp = Path(tempfile.mkdtemp(prefix="bdb27_diag_commit_"))
+    repo = _init_repo(tmp / "repo")
+    first = rd.file_commit(repo, "src/07_security_models.py", cache=False)
+    assert first != "unknown" and len(first.split()[0]) >= 7, first
+
+    sha = _commit(repo, "src/07_security_models.py", SEC_OK + "\n# touched\n")
+    second = rd.file_commit(repo, "src/07_security_models.py", cache=False)
+    assert second.split()[0] == sha[:len(second.split()[0])], (second, sha)
+    assert second != first
+
+
+def test_file_commit_is_unknown_without_git():
+    tmp = Path(tempfile.mkdtemp(prefix="bdb27_diag_nogit_"))
+    assert rd.file_commit(tmp, "src/anything.py", cache=False) == "unknown"
+
+
 def test_failure_lines_surface_crash_and_tail():
     res = {"ok": False, "rc": 1, "error": "OverflowError: math range error",
            "tail": ["log 1", "Traceback (most recent call last):", "  ...", "OverflowError: math range error"]}

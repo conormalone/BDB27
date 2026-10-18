@@ -1036,3 +1036,57 @@ the on-disk outputs were FULL.
 `test_notebook_contract.py`: RUN_ONLY default/documented, loop filtered via `STAGES_TO_RUN` with
 `STAGE_ORDER` untouched, skipped stages sourced from disk (no `FAILED`/`PENDING`), §8 gate free of
 `RUN_RESULTS`, header carries data dir + covariate quality.
+
+---
+
+## D46 — The notebook executed stale in-memory modules after a pull · 2026-10-18
+
+**Problem.** D44 fixed the `bmi` overflow and D45 made a stage-07-only re-run cheap, yet Conor's run kept
+dying with the *same* pre-D43 `OverflowError` and still wrote no `b_primary.csv`. The checkout guard
+reported the new commit every time, because it reads the files on disk. The notebook's §3 loop did not:
+`run_stage()` called `importlib.import_module(module_name)`, and Python returns the module object already
+cached in that kernel's `sys.modules`. Re-running the cell therefore re-executed the **pre-pull** code
+objects, formatted against the fresh source file on disk.
+
+**Diagnostic signature (the general tell).** A traceback whose frames cannot exist in the current source:
+
+* `main()` reported at a line that is `L.append("## ⚠ FAILED BLOCKS")`, not a call to `run(...)`;
+* `run(...)` reported at a line that is `rec["action"] = "adjacent_tau_report"`, not a call to `run_e(...)`;
+* `run_e(...)` reported at a line that is `_safe_exp`'s `return float(math.exp(x))`.
+
+Three frames, none a legal call chain, all with plausible line numbers. That combination means the
+interpreter is executing older code objects and printing them against the newer file. **If the printed
+frames do not form a legal call chain in the file you are reading, the kernel is stale — not the source.**
+Line numbers match because they are read from the file; the code is what is old.
+
+**Decision.**
+
+1. **Reload on every stage invocation.** New `src/stage_runner.py` owns the stage call. `run_stage()`
+   calls `importlib.invalidate_caches()`, purges the module's cached `.pyc`, reloads every
+   already-loaded helper (`common`, `gate`, `model_features`, `security_features`, `combine_features`,
+   `game_features`) in that order, then reloads the stage module itself (importing it only if absent).
+   The `.pyc` purge matters: `reload` otherwise trusts the bytecode header's source mtime+size, and a
+   pull or a same-second rewrite can leave that looking valid — the same trap in a different layer.
+   Helper-first order matters because a stage's `from common import load_config` re-binds only when the
+   stage module is re-executed.
+2. **Bootstrap knows what the kernel is holding.** `stage_runner.code_state_report(REPO)` runs in §2 and,
+   when any pipeline module is already in `sys.modules`, prints a banner plus one line per module with its
+   file, mtime and last commit (`run_diagnostics.file_commit`). A fresh kernel prints
+   `no pipeline module preloaded`. The §3 stage rows now end with **`code reloaded from disk`**
+   (or `code imported from disk` on a first import), so the run states which code it used.
+3. **No traceback is lost.** Any stage exception writes the full traceback to
+   `outputs/<stage_subdir>/crash_<YYYYmmdd-HHMMSS>.txt` (never overwriting; `-2`, `-3` … on collision) and
+   the notebook prints the path. `failure_lines` prints `traceback tail: (empty — see <path>)` instead of a
+   bare `traceback tail:`, and appends `full traceback: <path>`. The `crash_` prefix keeps these files out
+   of every results listing (stage artefacts are named explicitly; no stage globs its output directory).
+4. **Tests.** `test_stage_runner.py` (8) reproduces the defect directly: import a temp module, rewrite its
+   source with the *same byte length in the same second*, call `run_stage` again, assert the new code ran
+   and the action is `reloaded`. Also: crash file written in the stage's subdir with a full traceback and
+   the path printed; empty-tail wording; preload warning with file/mtime/commit; module-list coverage.
+   `test_notebook_contract.py` gains three static assertions (bootstrap banner, delegation to
+   `stage_runner`, `code reloaded from disk` in both the §3 table and §3 markdown). `test_run_diagnostics.py`
+   gains `file_commit` coverage (real temp repo + no-git).
+
+**Operational consequence.** A kernel that is *already* running pre-D46 notebook code cannot be fixed by
+re-running the §3 cell — that cell itself is the stale code. **After pulling D46: restart the kernel and
+Run All once**; from then on re-running any cell is sufficient, because every stage call reloads from disk.

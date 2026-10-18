@@ -32,7 +32,8 @@ def test_pipeline_loop_is_gated_and_keeps_traceback_tail():
     assert "CHECKOUT_BLOCKED" in pipe and "if CHECKOUT_BLOCKED" in pipe, \
         "the stage loop must be gated by the checkout guard"
     assert "RUN_RESULTS = []" in pipe, pipe[:400]
-    assert "[-10:]" in pipe, "run_stage must keep the last 10 tail lines"
+    assert "stage_runner.run_stage(module_name, extra_args, outputs_root=OUTPUTS)" in pipe, \
+        "run_stage must delegate to stage_runner so the code is reloaded from disk (D46)"
     assert "failure_lines" in pipe, "a failed stage must print its failure lines"
     assert "synthetic demo skipped — checkout guard blocked" in _cells()[8], "cell 8 must be gated"
 
@@ -114,6 +115,40 @@ def test_section_8_header_prints_data_dir_and_covariate_quality():
     assert "n_effort_rows_excluded" in sec8, sec8[:2000]
 
 
+# --------------------------------------------------------------------------- #
+# D46: the kernel must never run code older than the files on disk
+# --------------------------------------------------------------------------- #
+def test_bootstrap_warns_when_pipeline_modules_are_already_loaded():
+    boot = _cells()[4]
+    assert "import stage_runner" in boot, "bootstrap must import stage_runner"
+    assert "CODE_STATE = stage_runner.code_state_report(REPO, modules=" in boot, boot[:1600]
+    assert "ALREADY LOADED in this kernel" in boot, "a preloaded module must warn loudly"
+    assert "no pipeline module preloaded" in boot, "a fresh kernel must say so"
+    assert "sys.modules" in boot, "the warning must explain the sys.modules cache"
+    # the snapshot must be taken BEFORE the bootstrap's own `import common`, or a fresh kernel
+    # would always look stale
+    assert (boot.index("PRELOADED_AT_CELL_START = stage_runner.preloaded_modules()")
+            < boot.index("import common                             # the shared engine")), \
+        "the preload snapshot must precede the bootstrap's own src imports"
+
+
+def test_run_stage_reloads_from_disk_and_the_table_says_so():
+    pipe, md = _cells()[6], _cells()[5]
+    assert "importlib.import_module(module_name)" not in pipe, \
+        "run_stage must not import a cached module object (D46)"
+    assert "code reloaded from disk" in pipe, "the §3 stage row must state the code was reloaded"
+    assert "code imported from disk" in pipe, "a first import must be distinguishable"
+    assert "code reloaded from disk" in md, "§3 markdown must document the reload"
+    assert "crash_<timestamp>.txt" in md, "§3 markdown must document the crash file"
+
+
+def test_stage_runner_is_imported_from_src_by_the_notebook():
+    boot = _cells()[4]
+    assert str(Path("src")) in boot or "SRC" in boot, "src must be on sys.path before the import"
+    assert boot.index("sys.path.insert") < boot.index("import stage_runner"), \
+        "stage_runner must be imported after src is on sys.path"
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(0 if all(f() is None for f in (
@@ -128,4 +163,7 @@ if __name__ == "__main__":
         test_skipped_stage_status_comes_from_disk_not_from_a_failure_label,
         test_section_8_full_gate_is_provenance_driven,
         test_section_8_header_prints_data_dir_and_covariate_quality,
+        test_bootstrap_warns_when_pipeline_modules_are_already_loaded,
+        test_run_stage_reloads_from_disk_and_the_table_says_so,
+        test_stage_runner_is_imported_from_src_by_the_notebook,
     )) else 1)
