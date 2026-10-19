@@ -100,3 +100,14 @@ security exposures. It is external data (see §4) and is **permitted**.
 4. Whether finalist travel is required for prize eligibility (a public discussion thread asks this).
 
 *No competition-rule conflict forces a stop; see `blockers.md` (none active).*
+
+## 8. Post-treatment variables are diagnostics, never §8 controls  ·  2026-10-19
+
+- **Draft slot is post-Combine.** It may be used to *describe* realised draft capital or as an
+  exploratory conditioning variable, but never as a clean control in the pre-registered model.
+  Conditioning on it can open a collider; every such fit is labelled a mechanism/diagnostic probe.
+- **The target flag is post-snap and role-dependent.** `target == True` is selection on QB, scheme
+  and depth chart, not a randomisation. Target-only fits are decomposition/diagnostics, never a clean
+  group effect.
+- **The clean group estimate remains block B on all rows.** If a post-treatment split is reported,
+  the write-up must say what it can and cannot license and must not enter §8.

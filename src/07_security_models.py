@@ -92,8 +92,10 @@ EXPOSURE_COLS = ["nfl_id", "draft_year", "position", "position_group", "edp_pre"
 ENVELOPE_COLS = ["nfl_id", "combine_position", "draft_year", "n_attempts", "peak_speed",
                  "speed_at_20yd", "env_vmax", "env_vmax_se"]
 SUMMARY_COLS = ["nfl_id", "n_route_snaps", "eligible", "topk_mean_speed", "ceiling_speed_yds"]
-TOPK_COLS = ["nfl_id", "rank", "game_id", "play_id", "route_ran", "pass_length", "peak_speed"]
-EFFORT_COLS = ["nfl_id", "game_id", "play_id", "route_ran", "pass_length", "peak_speed"]
+TOPK_COLS = ["nfl_id", "rank", "game_id", "play_id", "route_ran", "pass_length", "target",
+             "peak_speed"]
+EFFORT_COLS = ["nfl_id", "game_id", "play_id", "route_ran", "pass_length", "target",
+               "peak_speed"]
 ATTEMPT_COLS = ["nfl_id", "event_id", "peak_speed"]
 COV_COLS = ["nfl_id", "position", "height", "weight", "age", "draft_position", "draft_year"]
 
@@ -265,7 +267,8 @@ def load_efforts(con, path: Path) -> list[dict]:
         out.append(dict(nfl_id=int(r["nfl_id"]), game_id=int(r["game_id"]),
                         play_id=int(r["play_id"]),
                         route_ran=(str(r["route_ran"]) if r["route_ran"] is not None else None),
-                        pass_length=_num(r["pass_length"]), peak_speed=_num(r["peak_speed"])))
+                        pass_length=_num(r["pass_length"]), target=_bool(r["target"]),
+                        peak_speed=_num(r["peak_speed"])))
     return out
 
 
@@ -276,7 +279,8 @@ def load_topk(con, path: Path) -> list[dict]:
         out.append(dict(nfl_id=int(r["nfl_id"]), rank=int(r["rank"]), game_id=int(r["game_id"]),
                         play_id=int(r["play_id"]),
                         route_ran=(str(r["route_ran"]) if r["route_ran"] is not None else None),
-                        pass_length=_num(r["pass_length"]), peak_speed=_num(r["peak_speed"])))
+                        pass_length=_num(r["pass_length"]), target=_bool(r["target"]),
+                        peak_speed=_num(r["peak_speed"])))
     return out
 
 
@@ -660,6 +664,8 @@ def build_effort_rows(efforts: Sequence[dict], assign: dict, envelope: dict[int,
             group=a["group"], stratum=a["stratum"],
             moved_down=1.0 if a["group"] == GROUP_POS else 0.0,
             y=math.log(peak), peak_speed=peak,
+            target=_bool(e.get("target")),
+            route_ran=(str(e["route_ran"]) if e.get("route_ran") is not None else None),
             log_edp_pre=a["log_edp_pre"], edp_pre=a["edp_pre"],
             route_family=_route_family(e["route_ran"], cfg),
             pass_length=_num(e["pass_length"]),

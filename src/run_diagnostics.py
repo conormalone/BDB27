@@ -71,6 +71,8 @@ STAGE_OUTPUTS: dict[str, tuple[str, tuple[str, ...]]] = {
     "05_validate": ("validate", ("validation_summary.csv",)),
     "06_security": ("security", ("SUMMARY.json",)),
     "07_security_models": ("security_models", ("SUMMARY.json",)),
+    "08_route_robustness": ("security_models/route_robustness", ("route_robustness.md",)),
+    "09_draft_and_target": ("security_models/draft_and_target", ("draft_target.md",)),
     "00b_external_proxies": ("external", ()),
 }
 

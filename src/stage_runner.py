@@ -60,6 +60,8 @@ STAGE_MODULES: tuple[str, ...] = (
     "03_game_demand",
     "06_security",
     "07_security_models",
+    "08_route_robustness",
+    "09_draft_and_target",
     "04_models",
     "05_validate",
 )

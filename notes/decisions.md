@@ -1174,3 +1174,60 @@ predicts — so it is **not** ruled out.
 **Discipline.** `outputs/` is gitignored; the new directory is additive and no existing output was
 modified. `b_primary.csv` and the pre-declared verdict are untouched. All emitted CSVs put `provenance`
 first.
+
+## D48 — Draft outcomes and targeted routes are exploratory probes (analysis only) · 2026-10-19
+
+**Question (Conor).** Two follow-ups on the pre-Combine group contrast: (A) did the two sort
+populations actually end up with different **draft capital**, and does the `moved_down` coefficient
+survive controlling for / within realised draft slot? (B) does the contrast hold on plays where the
+receiver was **actually targeted**, and what does the non-target (decoy) subset look like?
+
+**A — draft outcome is POST-Combine.** `players.csv` carries `draft_round`,
+`draft_pick_within_round` and `draft_overall_pick`; the stage joins them to 07's group assignment on
+`nfl_id`. It reports per group × panel × scope: n assigned, n matched, join rate, unmatched ids,
+median pick with IQR, R1 / R2 / R3-4 / R5-7 shares, R1-2 share, a Mann-Whitney U with Cliff's delta,
+a chi-square on the four round bands and a Fisher exact on R1-2 vs R3-7. Spearman correlations of
+`edp_pre` and `log_edp_pre` with actual overall pick are the validity check on the sort key.
+
+**This is not a clean adjustment.** Realised draft slot is post-Combine. Conditioning on it can open
+a collider (Combine performance → draft slot, and Combine performance → game speed). A significant
+group difference in draft slot is **both** evidence that the pre-Combine sort key tracks a real market
+outcome **and** a live confound (worse draft capital → worse QB/team/opportunity). The conditional
+fits (`log(draft_overall_pick)` as a covariate; within-band refits) are therefore labelled a
+mechanism/diagnostic probe, not causal estimates, and are kept out of the pre-registered §8 panel.
+
+**B — targeted routes.** `build_effort_rows` in `07_security_models.py` now carries `target` and
+`route_ran` in the model-row dict, and `load_topk`/`load_efforts` read `target` (the field already
+exists in `top_k_efforts.csv` and `efforts.csv`). Existing artefacts do **not** need a stage-07
+rerun: `09_draft_and_target.py` derives the flag by ONE documented key join on
+(`nfl_id`, `game_id`, `play_id`) from `efforts.csv`, and asserts that any in-row value agrees; a
+disagreement is a hard error, not a silent choice. The primary panel and the T3/T5 sensitivity panels
+are refitted on `target == True`, `target == False` and all rows, pooled and WR.
+
+**Selection, not randomisation.** Being targeted is a post-treatment, role-dependent variable
+(QB/scheme/depth chart). `target == True` is therefore **not** a clean estimate and is not written as
+one. The value of the split is decomposition: the non-target (decoy) subset is where the mechanical
+"peak speed is an opportunity-limited maximum" suppression should live. A null there is not evidence
+of no effort effect, and a surviving target-only coefficient is not a causal group effect.
+
+**Engineering.** New analysis-only `src/09_draft_and_target.py` imports 07's `build_effort_rows` /
+`design` / `ols` / `_mark_thin` / attenuation helpers and 08's panel builder; no statistics are
+forked. New config block `draft_target:` (band definitions, target subsets, min_obs/min_group_n
+reuse, seed offset); no existing config key changed. Outputs are additive under
+`outputs/security_models/draft_and_target/` (`draft_by_group.csv`, `draft_tests.csv`,
+`draft_conditional_fits.csv`, `draft_spearman.csv`, `target_subset_fits.csv`, `target_balance.csv`,
+`draft_target.md`). `outputs/` stays gitignored; no existing result file is modified. Notebook §10 runs
+the stage **in-notebook** via `stage_runner` and, when full-data inputs are absent, prints exactly
+which files are missing instead of substituting sample/synthetic numbers. `src/tests/test_draft_and_target.py`
+adds 12 tests: planted-effect recovery in target and non-target subsets, a null fixture flat in every
+subset, a thin-group guard, target join agreement/conflict, missing-key reporting, draft rank/band
+direction, CLI artefact/provenance contract, missing-input exit, sample placeholder, and the §10
+notebook contract. Full suite: **22 files / 226 tests, all passing**.
+
+**Pi caveat (repeat).** This Pi has no full-data `b_primary.csv` (`outputs/` is gitignored; the
+full-run staging directory is absent). The code path is proven on the synthetic fixture, but the
+real numbers must come from Conor's laptop run. The Pi outputs are not quoted as if they were his
+data; they are labelled `SYNTHETIC FIXTURE (not a finding)`.
+
+**Discipline.** Neither analysis enters §8 or changes `b_primary.csv`/the verdict. All emitted CSVs
+put `provenance` first.

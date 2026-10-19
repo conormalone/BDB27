@@ -567,6 +567,27 @@ route_robustness:
     pass_length_bands: [[0, 9], [10, 19], [20, null]]
 
 # --------------------------------------------------------------------------- #
+# Draft-outcome and targeted-route probes (analysis-only; src/09_draft_and_target.py)
+# D48. TWO EXPLORATORY checks that never enter the pre-registered §8 panel:
+#   A. realised draft capital (POST-Combine) by group, plus the group contrast with
+#      log(draft_overall_pick) as a covariate and within draft bands — a mechanism/diagnostic
+#      probe, not a clean adjustment (conditioning on a post-Combine outcome can open a collider).
+#   B. the same contrast on target==True / target==False / all rows. Target-only is selection on
+#      a post-treatment, role-dependent variable; the non-target subset is the decoy/mechanical
+#      channel, not a causal estimate.
+# min_obs / min_group_n null means "reuse security_models.primary.min_obs / sort.min_group_n".
+# --------------------------------------------------------------------------- #
+draft_target:
+  out_subdir: draft_and_target
+  draft_file: null                 # null -> files.players under paths.raw (players.csv)
+  round_bands: [[1, 1], [2, 2], [3, 4], [5, 7]]   # descriptive R1 / R2 / R3-4 / R5-7
+  strata_bands: [[1, 2], [3, 4], [5, 7]]          # declared bands for the conditional fits
+  target_subsets: [all, target, non_target]       # target==True / target==False / everything
+  min_obs: null                    # null -> security_models.primary.min_obs
+  min_group_n: null                # null -> security_models.sort.min_group_n
+  seed_offset: 606                 # reserved for any resampling added later; fixed, never tuned
+
+# --------------------------------------------------------------------------- #
 # Deliverables / sample discipline
 # --------------------------------------------------------------------------- #
 deliverables:
