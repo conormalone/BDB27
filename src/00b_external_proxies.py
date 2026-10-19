@@ -435,6 +435,7 @@ def run(cfg: dict, mode: str, synthetic: bool, force: bool, log) -> None:
                    drafted_wr_te_match_rate=round(rate, 6), matched_hits=hits, matched_denom=denom,
                    proxy_file=str(pp.name), schema=PROXY_COLS,
                    raw_sources=[str(p) for p in raw_paths])
+    summary.update(common.fingerprint_fields(cfg, "00b_external_proxies"))
     (pp.parent / "_DONE.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     log.info("Phase 0.5 summary: %s", summary)
 
@@ -472,14 +473,16 @@ def main() -> None:
     done = pp.parent / "_DONE.json"
     if done.exists() and not args.force:
         rec = common.read_done_marker(done)
-        if common.checkpoint_match(rec, mode=mode, provenance=prov,
-                                   synthetic=args.synthetic, path=done):
+        if common.checkpoint_match(
+                rec, mode=mode, provenance=prov, synthetic=args.synthetic, path=done,
+                fingerprint=common.config_fingerprint(cfg, "00b_external_proxies")):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done)
             common.append_run_log(cfg, stage, mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
             return
         log.info("checkpoint marker %s does not match the requested run (%s) — rebuilding",
                  done.name, common.checkpoint_mismatch_note(
-                     rec, mode=mode, provenance=prov, synthetic=args.synthetic))
+                     rec, mode=mode, provenance=prov, synthetic=args.synthetic,
+                     fingerprint=common.config_fingerprint(cfg, "00b_external_proxies")))
 
     with common.timed_stage(cfg, stage, mode, synthetic=args.synthetic):
         run(cfg, mode, args.synthetic, args.force, log)

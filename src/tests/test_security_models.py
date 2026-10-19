@@ -164,11 +164,14 @@ def test_fixture_schema_and_units():
                 assert 0.0 <= float(r["consensus_share"]) <= 1.0
             if r["log_edp_pre"] not in ("", None):
                 assert abs(float(r["log_edp_pre"]) - math.log(float(r["edp_pre"]))) < 1e-5
-        for r in _rows(d / "top_k_efforts.csv"):
-            assert math.isfinite(float(r["peak_speed"])) and float(r["peak_speed"]) > 0
-        # both effort strata present (top-k carries the planted effect; bottom-k is the placebo)
-        eff = _rows(d / "efforts.csv")
-        assert len(eff) > len(_rows(d / "top_k_efforts.csv"))
+            for r in _rows(d / "top_k_efforts.csv"):
+                assert math.isfinite(float(r["peak_speed"])) and float(r["peak_speed"]) > 0
+            # both effort strata present (top-k carries the planted effect; bottom-k is the placebo)
+            eff = _rows(d / "efforts.csv")
+            # D49: top-k is emitted once per scope; compare against the primary-scope block
+            topk_primary = [r for r in _rows(d / "top_k_efforts.csv")
+                            if r.get("season_scope") == "primary"]
+            assert len(eff) > len(topk_primary)
 
 
 def test_input_schema_guard_fails_loudly():
@@ -200,10 +203,11 @@ def test_input_schema_guard_fails_loudly():
 def test_output_tables_schema():
     d = _run("planted")
     expect = {
-        "group_assignment.csv": ["provenance", "nfl_id", "position_group", "edp_pre", "log_edp_pre",
+        "group_assignment.csv": ["provenance", "season_scope", "nfl_id", "position_group",
+                                 "edp_pre", "log_edp_pre",
                                  "edp_trend", "has_trend", "stratum", "group", "basis",
                                  "block_status"],
-        "b_primary.csv": ["provenance", "spec", "scope", "n_obs", "n_players",
+        "b_primary.csv": ["provenance", "season_scope", "spec", "scope", "n_obs", "n_players",
                           "n_players_moved_down", "n_players_high_secure", "thin",
                           "group_coef", "group_se", "group_p", "group_ci_lo", "group_ci_hi", "speed_coef",
                           "speed_se", "speed_p", "speed_coef_corrected", "group_coef_corrected",
@@ -568,7 +572,8 @@ def test_edge_cases_present_and_handled():
         assert assign[nid]["group"] == "unclassified" and assign[nid]["basis"] == "no_pre_combine"
     # one effort -> exactly one top-k row
     one = [int(k) for k, v in edges.items() if "one_effort" in v]
-    topk = _rows(_fixture("planted") / "top_k_efforts.csv")
+    topk = [r for r in _rows(_fixture("planted") / "top_k_efforts.csv")
+            if r.get("season_scope") == "primary"]
     for nid in one:
         assert sum(1 for r in topk if int(r["nfl_id"]) == nid) == 1
     # <100 route snaps reported (not dropped)
@@ -686,6 +691,11 @@ def _model_rows(regime: str):
         envelope = SM.load_envelope(con, inp["envelope"])
         psum = SM.load_player_summary(con, inp["players"])
         topk = SM.load_topk(con, inp["topk"])
+        scope_key, active_types = common.scope_types(cfg)
+        snaps = SM.scoped_snap_counts(SM.load_snap_counts(con, inp["snap_counts"]),
+                                      active_types)
+        game_ids = {int(r["game_id"]) for r in topk}
+        gi = common.load_game_index(con, inp["games"], game_ids=game_ids)
         cov = SM.load_covariates(con, cfg, True, regime)
     finally:
         con.close()
@@ -695,8 +705,10 @@ def _model_rows(regime: str):
             for nid, ex in sorted(exposures.items())]
     assign = sf.assign_security_groups(pool, cfg)
     try:
-        rows, _ = SM.build_effort_rows(topk, assign, envelope, cov, psum, cfg,
-                                       keep_unclassified=True)
+        rows, _ = SM.build_effort_rows(
+            topk, assign, envelope, cov, psum, cfg, keep_unclassified=True,
+            snap_counts=snaps, game_index=gi, season_types=active_types,
+            season_scope=scope_key, min_snaps=int(cfg["game"]["route_snap_count"]))
     except TypeError:   # pre-fix signature: contrast groups only
         rows, _ = SM.build_effort_rows(topk, assign, envelope, cov, psum, cfg)
     return cfg, rows

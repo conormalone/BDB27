@@ -430,21 +430,23 @@ def main() -> None:
     done = sec_dir / "_DONE.json"
     if done.exists() and not args.force:
         rec = common.read_done_marker(done)
-        if common.checkpoint_match(rec, mode=mode, provenance=prov,
-                                   synthetic=args.synthetic, regime=regime, path=done):
+        if common.checkpoint_match(
+                rec, mode=mode, provenance=prov, synthetic=args.synthetic, regime=regime,
+                path=done, fingerprint=common.config_fingerprint(cfg, "06_security")):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done)
             common.append_run_log(cfg, stage, mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
             return
         log.info("checkpoint marker %s does not match the requested run (%s) — rebuilding — "
                  "a sample/other-mode marker never satisfies a full run",
                  done.name, common.checkpoint_mismatch_note(
-                     rec, mode=mode, provenance=prov, synthetic=args.synthetic, regime=regime))
+                     rec, mode=mode, provenance=prov, synthetic=args.synthetic, regime=regime,
+                     fingerprint=common.config_fingerprint(cfg, "06_security")))
 
     with common.timed_stage(cfg, stage, mode, synthetic=args.synthetic):
         summary = run(cfg, mode, args.synthetic, regime, args.force, log)
-    (sec_dir / "_DONE.json").write_text(json.dumps(
-        {"stage": "06_security", "mode": mode, "provenance": prov,
-         "synthetic": bool(args.synthetic), "regime": regime}, indent=2), encoding="utf-8")
+    (sec_dir / "_DONE.json").write_text(json.dumps(common.done_marker(
+        cfg, "06_security", mode=mode, provenance=prov,
+        synthetic=bool(args.synthetic), regime=regime), indent=2), encoding="utf-8")
     log.info("Phase 4 security complete -> %s (gate_pass=%s)", sec_dir, summary["analysis_a"].get("gate_pass"))
 
 

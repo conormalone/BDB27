@@ -95,6 +95,7 @@ def build_fixture(
     cr_rows: list[dict] = []
     gt_rows: list[dict] = []
     pp_rows: list[dict] = []
+    games_by_id: dict[int, dict] = {}
 
     t0 = pd.Timestamp("2025-03-01T15:00:00")
 
@@ -191,7 +192,32 @@ def build_fixture(
 
         # ---------- Game side: route plays ----------
         for pl in range(n_plays_per_player):
-            game_id = 2025123400 + pl
+            # D49: games span PRE / REG / POST and carry the TRUE season in games.csv.
+            # Player 0 is deliberately majority-preseason (>50% of route snaps) so the scope
+            # filter is exercised end-to-end. One player also gets a January REG game whose
+            # calendar year (2024) differs from its season (2023) — the D49 mislabel case.
+            if pi == 0 and n_plays_per_player >= 5:
+                n_pre = n_plays_per_player // 2 + 1
+                sched_types = ["PRE"] * n_pre + ["REG"] * (n_plays_per_player - n_pre)
+            else:
+                pattern = ["REG", "REG", "REG", "PRE", "PRE", "POST", "POST", "REG"]
+                sched_types = [pattern[j % len(pattern)] for j in range(n_plays_per_player)]
+            season_type = sched_types[pl]
+            if season_type == "PRE":
+                game_date, season = "2025-08-10", 2025
+            elif season_type == "POST":
+                game_date, season = "2025-01-12", 2024
+            elif pi == 1 and pl == n_plays_per_player - 1:
+                game_date, season = "2024-01-07", 2023      # Jan calendar year != season
+            else:
+                game_date, season = "2025-09-07", 2025
+            nn = (pi * n_plays_per_player + pl) % 100
+            game_id = int(game_date.replace("-", "") + f"{nn:02d}")
+            games_by_id[game_id] = dict(
+                game_id=game_id, game_key=90000 + len(games_by_id), season=season,
+                season_type=season_type,
+                week=(1 if season_type == "PRE" else (19 if season_type == "POST" else pl + 1)),
+                home_team_abbr="SYN", visitor_team_abbr="OPP")
             play_id = 100 + pi * 1000 + pl
             is_deep = bool(pl % 2 == 0)
             pass_length = int(rng.integers(16, 30)) if is_deep else int(rng.integers(1, 10))
@@ -221,7 +247,8 @@ def build_fixture(
             xs, ys, s, a, tt = _walk_polyline(wps, peak, tau, dt, tmax=frames_per_play * dt)
             n = min(len(xs), frames_per_play)
             xs, ys, s, a, tt = xs[:n], ys[:n], s[:n], a[:n], tt[:n]
-            tstart = pd.Timestamp("2025-09-07T17:00:00") + pd.Timedelta(seconds=120 * pl + 4 * pi)
+            tstart = pd.Timestamp(f"{game_date}T17:00:00") + pd.Timedelta(
+                seconds=120 * pl + 4 * pi)
             dis = np.concatenate([[0.0], np.hypot(np.diff(xs), np.diff(ys))])
             for k in range(n):
                 gt_rows.append(
@@ -286,11 +313,7 @@ def build_fixture(
         ))
     players = pd.DataFrame(pl_rows)
 
-    games = pd.DataFrame(
-        [dict(game_id=2025123400 + pl, game_key=90000 + pl, season=2025,
-              season_type="REG", week=pl + 1, home_team_abbr="SYN", visitor_team_abbr="OPP")
-         for pl in range(n_plays_per_player)]
-    )
+    games = pd.DataFrame([games_by_id[g] for g in sorted(games_by_id)])
 
     ct = pd.DataFrame(ct_rows)
     cr = pd.DataFrame(cr_rows)

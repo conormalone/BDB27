@@ -214,11 +214,44 @@ def extract_efforts(
 
 
 def route_snap_counts(con, pp_path: Path) -> dict[int, int]:
-    """Per-player route-snap counts (``route_ran IS NOT NULL``) — the fixed denominator."""
+    """Per-player route-snap counts (``route_ran IS NOT NULL``) — ungrouped (all games)."""
     rows = con.execute(
         f"SELECT nfl_id, count(*) FROM {common.pq(pp_path)} "
         f"WHERE route_ran IS NOT NULL GROUP BY 1").fetchall()
     return {int(n): int(c) for n, c in rows}
+
+
+def route_snap_counts_by_type(con, pp_path: Path, games_path: Path) -> list[dict]:
+    """Per-player route-snap counts split by the TRUE ``season`` / ``season_type`` (D49).
+
+    One build carries every scope: the modelling stages sum the rows whose ``season_type`` is in
+    the active scope, so the snap-count denominator, ``snap_share`` and the ``min_snaps`` gate are
+    all filtered by the same rule. A game_id present in ``player_play`` but absent from
+    ``games.csv`` is a hard error (never a silent guess).
+    """
+    missing = [int(r[0]) for r in con.execute(f"""
+        SELECT DISTINCT pp.game_id
+        FROM {common.pq(pp_path)} pp
+        LEFT JOIN {common.pq(games_path)} g ON g.game_id = pp.game_id
+        WHERE pp.route_ran IS NOT NULL AND g.game_id IS NULL
+    """).fetchall()]
+    if missing:
+        ids = sorted(set(missing))
+        raise common.SeasonLookupError(
+            f"{len(ids)} game_id(s) with route snaps are absent from games.csv "
+            f"(games.csv IS present): {ids}")
+    rows = con.execute(f"""
+        SELECT pp.nfl_id, g.season, g.season_type, count(*) AS n_route_snaps
+        FROM {common.pq(pp_path)} pp
+        JOIN {common.pq(games_path)} g ON g.game_id = pp.game_id
+        WHERE pp.route_ran IS NOT NULL
+        GROUP BY 1, 2, 3
+    """).fetchall()
+    return [dict(nfl_id=int(nid), season=(int(season) if season is not None else None),
+                 season_type=(str(stype) if stype is not None else None),
+                 n_route_snaps=int(n))
+            for nid, season, stype, n in sorted(
+                rows, key=lambda r: (int(r[0]), r[1] or 0, r[2] or ""))]
 
 
 # --------------------------------------------------------------------------- #

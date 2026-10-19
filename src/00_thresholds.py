@@ -165,7 +165,9 @@ def main() -> None:
     # (D42): a FULL marker satisfies --mode sample, so a sample run never downgrades FULL thresholds.
     if out_path.exists() and not args.force:
         rec = common.read_done_marker(out_path)
-        if common.checkpoint_match(rec, mode=mode_label, provenance=expected_prov, path=out_path):
+        if common.checkpoint_match(rec, mode=mode_label, provenance=expected_prov,
+                                   path=out_path,
+                                   fingerprint=common.config_fingerprint(cfg, "00_thresholds")):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", out_path)
             common.append_run_log(cfg, stage, mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
             return
@@ -198,6 +200,7 @@ def main() -> None:
             payload = derived_payload(cfg, mode_label, common.provenance(cfg, mode), derived,
                                       source="full game tracking (percentile method)")
 
+    payload.update(common.fingerprint_fields(cfg, "00_thresholds"))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     log.info("wrote %s (provenance=%s)", out_path, payload["provenance"])

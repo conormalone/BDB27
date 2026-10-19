@@ -455,15 +455,17 @@ def main() -> None:
     done = out_dir / "_DONE"
     if done.exists() and not args.force:
         rec = common.read_done_marker(done)
-        if common.checkpoint_match(rec, mode=mode, provenance=prov,
-                                   synthetic=args.synthetic, path=done):
+        if common.checkpoint_match(
+                rec, mode=mode, provenance=prov, synthetic=args.synthetic, path=done,
+                fingerprint=common.config_fingerprint(cfg, "04_models")):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done)
             common.append_run_log(cfg, f"04_models[{mode}{'-synthetic' if args.synthetic else ''}]",
                                   mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
             return
         log.info("checkpoint marker %s does not match the requested run (%s) — rebuilding",
                  done.name, common.checkpoint_mismatch_note(
-                     rec, mode=mode, provenance=prov, synthetic=args.synthetic))
+                     rec, mode=mode, provenance=prov, synthetic=args.synthetic,
+                     fingerprint=common.config_fingerprint(cfg, "04_models")))
 
     stage = f"04_models[{mode}{'-synthetic' if args.synthetic else ''}]"
     mode_label = "synthetic" if args.synthetic else mode
@@ -518,8 +520,9 @@ def main() -> None:
             summary = summarize(cfg, prov, mode_label, dataset, records, events, exu, len(rows))
             write_outputs(cfg, prov, out_dir, records, events, exu, summary, log)
 
-    done.write_text(json.dumps({"stage": "04_models", "mode": mode, "provenance": prov,
-                                "synthetic": args.synthetic}, indent=2), encoding="utf-8")
+    done.write_text(json.dumps(common.done_marker(
+        cfg, "04_models", mode=mode, provenance=prov,
+        synthetic=args.synthetic), indent=2), encoding="utf-8")
     log.info("Phase 4 models complete -> %s", out_dir)
 
 

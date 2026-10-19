@@ -135,9 +135,24 @@ def _metric_column(cfg: dict) -> str:
     return {"speed": "peak_speed", "accel": "peak_accel"}.get(m, "peak_speed")
 
 
-def compute(cfg: dict, efforts: list[dict], snap_counts: dict[int, int],
+def _snap_totals(rows: list[dict], types: set[str] | None = None) -> dict[int, int]:
+    """Sum per-type route-snap counts, optionally restricted to a season-type scope."""
+    out: dict[int, int] = {}
+    for r in rows:
+        if types is not None and r.get("season_type") not in types:
+            continue
+        out[int(r["nfl_id"])] = out.get(int(r["nfl_id"]), 0) + int(r["n_route_snaps"] or 0)
+    return out
+
+
+def compute(cfg: dict, efforts: list[dict], snap_counts_by_type: list[dict],
             thresholds: dict, ceilings: dict[int, dict], prov: str) -> dict:
-    """Attach ceilings/envelope fractions, build tables, and summarise. Pure (no I/O)."""
+    """Attach ceilings/envelope fractions, build tables, and summarise. Pure (no I/O).
+
+    D49: every effort carries the true ``season`` / ``season_type`` from games.csv. Nothing is
+    dropped here. Top-k is emitted **once per configured scope** (``season_scope`` column), and
+    the player summary uses the primary scope; the model stages apply their own active scope.
+    """
     g = cfg["game"]
     margin = float(cfg["audit"]["exceedance_margin_rel"])
     k = int(g["top_k_efforts"])
@@ -145,6 +160,12 @@ def compute(cfg: dict, efforts: list[dict], snap_counts: dict[int, int],
     metric_col = _metric_column(cfg)
     hs = thresholds.get("high_speed_threshold_yds")
     ac = thresholds.get("accel_threshold_yds2")
+    active_key, primary_types = common.scope_types(cfg, "primary")
+    sens_key, sens_types = common.scope_types(cfg, "sensitivity")
+    primary_set, sens_set = set(primary_types), set(sens_types)
+    snap_all = _snap_totals(snap_counts_by_type)
+    snap_primary = _snap_totals(snap_counts_by_type, primary_set)
+    snap_sens = _snap_totals(snap_counts_by_type, sens_set)
 
     n_missing_ceiling = 0
     for e in efforts:
@@ -171,23 +192,37 @@ def compute(cfg: dict, efforts: list[dict], snap_counts: dict[int, int],
     for nid in sorted(by_player):
         effs = by_player[nid]
         pos = next((e["combine_position"] for e in effs if e["combine_position"]), None)
-        n_snaps = int(snap_counts.get(nid, 0))
+        n_snaps = int(snap_primary.get(nid, 0))
         eligible = n_snaps >= min_snaps
-        tk = gf.top_k_efforts(effs, k, metric_col)
-        for rank, e in enumerate(tk, 1):
-            tk_rows.append(dict(nfl_id=nid, combine_position=pos, rank=rank,
-                                game_id=e["game_id"], play_id=e["play_id"], route_ran=e["route_ran"],
-                                pass_length=e["pass_length"], target=e["target"],
-                                peak_speed=e["peak_speed"], peak_accel=e["peak_accel"],
-                                max_over_ceiling=e["max_over_ceiling"],
-                                is_exceed=e["is_exceed"]))
+        # one top-k table per scope (a REG/POST effort appears under both labels, which is why
+        # 07 filters on `season_scope`, never on season_type alone — no duplicate model rows)
+        tk_by_scope: dict[str, list[dict]] = {}
+        for scope_name, tset in ((active_key, primary_set), (sens_key, sens_set)):
+            scoped = [e for e in effs if e.get("season_type") in tset]
+            tk = gf.top_k_efforts(scoped, k, metric_col)
+            tk_by_scope[scope_name] = tk
+            for rank, e in enumerate(tk, 1):
+                tk_rows.append(dict(nfl_id=nid, combine_position=pos, rank=rank,
+                                    game_id=e["game_id"], play_id=e["play_id"],
+                                    season=e.get("season"), season_type=e.get("season_type"),
+                                    season_scope=scope_name,
+                                    route_ran=e["route_ran"],
+                                    pass_length=e["pass_length"], target=e["target"],
+                                    peak_speed=e["peak_speed"], peak_accel=e["peak_accel"],
+                                    max_over_ceiling=e["max_over_ceiling"],
+                                    is_exceed=e["is_exceed"]))
+        tk = tk_by_scope.get(active_key, [])
         fr = [e["max_over_ceiling"] for e in effs if np.isfinite(e["max_over_ceiling"])]
         tk_fr = [e["max_over_ceiling"] for e in tk if np.isfinite(e["max_over_ceiling"])]
         n_exc = sum(1 for e in effs if e["is_exceed"] is True)
         n_eff = len(effs)
         ps_rows.append(dict(
             nfl_id=nid, combine_position=pos,
-            n_route_snaps=n_snaps, eligible=eligible, n_efforts_tracked=n_eff,
+            n_route_snaps=n_snaps,
+            n_route_snaps_all=int(snap_all.get(nid, 0)),
+            n_route_snaps_sensitivity=int(snap_sens.get(nid, 0)),
+            season_scope_primary="+".join(primary_types),
+            eligible=eligible, n_efforts_tracked=n_eff,
             ceiling_speed_yds=effs[0]["ceiling_speed_yds"],
             n_exceed=n_exc, exceedance_rate=(round(n_exc / n_eff, 4) if n_eff else None),
             topk_n=len(tk),
@@ -212,7 +247,11 @@ def compute(cfg: dict, efforts: list[dict], snap_counts: dict[int, int],
     eligible_players = [r for r in ps_rows if r["eligible"]]
     exceed_rates = [e for e in (r["exceedance_rate"] for r in eligible_players) if e is not None]
     overall = dict(
-        n_route_snaps=int(sum(snap_counts.values())),
+        n_route_snaps=int(sum(snap_all.values())),
+        n_route_snaps_primary=int(sum(snap_primary.values())),
+        n_route_snaps_sensitivity=int(sum(snap_sens.values())),
+        season_scope_primary="+".join(primary_types),
+        season_scope_sensitivity="+".join(sens_types),
         n_efforts_tracked=int(tot_eff),
         n_players=int(len(ps_rows)),
         n_players_eligible=int(len(eligible_players)),
@@ -225,6 +264,7 @@ def compute(cfg: dict, efforts: list[dict], snap_counts: dict[int, int],
         mean_player_exceedance_rate=(round(float(np.mean(exceed_rates)), 4) if exceed_rates else None),
     )
     return dict(efforts=efforts, top_k=tk_rows, players=ps_rows,
+                route_snap_counts=snap_counts_by_type,
                 top_k_efforts=k, route_snap_count=min_snaps, top_k_metric=metric_col,
                 thresholds=thresholds, overall=overall)
 
@@ -235,13 +275,20 @@ def compute(cfg: dict, efforts: list[dict], snap_counts: dict[int, int],
 def run(con, cfg: dict, prov: str, mode: str, dataset: str, inputs: dict,
         thresholds: dict, ceilings: dict, out_dir: Path, log) -> dict:
     efforts = gf.extract_efforts(con, inputs["gt"], inputs["pp"], inputs["cr"], cfg)
-    snap_counts = gf.route_snap_counts(con, inputs["pp"])
+    # ---- D49: the TRUE season / season_type come from games.csv (one source of truth) ----
+    game_ids = {int(e["game_id"]) for e in efforts}
+    games = common.load_game_index(con, inputs.get("games"), game_ids=game_ids)
+    season_min = int(cfg["security_models"]["primary"]["season_min"])
+    season_max = int(cfg["security_models"]["primary"]["season_max"])
+    common.attach_seasons(efforts, games, min_year=season_min, max_year=season_max)
+    snap_counts_by_type = gf.route_snap_counts_by_type(con, inputs["pp"], inputs["games"])
     log.info("%s: %d route-snap efforts; %d players with route snaps",
-             dataset, len(efforts), len(snap_counts))
-    res = compute(cfg, efforts, snap_counts, thresholds, ceilings, prov)
+             dataset, len(efforts), len({r["nfl_id"] for r in snap_counts_by_type}))
+    res = compute(cfg, efforts, snap_counts_by_type, thresholds, ceilings, prov)
 
     efforts_out = sorted(res["efforts"], key=lambda e: (e["nfl_id"], e["game_id"], e["play_id"]))
-    tk_out = sorted(res["top_k"], key=lambda e: (e["nfl_id"], e["rank"]))
+    tk_out = sorted(res["top_k"],
+                    key=lambda e: (e["nfl_id"], e.get("season_scope", ""), e["rank"]))
     ps_out = sorted(res["players"], key=lambda e: (e["combine_position"] or "", e["nfl_id"]))
 
     thr_row = dict(method=thresholds.get("method"),
@@ -256,6 +303,10 @@ def run(con, cfg: dict, prov: str, mode: str, dataset: str, inputs: dict,
     _emit(out_dir / "efforts.csv", efforts_out, prov, log)
     _emit(out_dir / "top_k_efforts.csv", tk_out, prov, log)
     _emit(out_dir / "player_summary.csv", ps_out, prov, log)
+    _emit(out_dir / "route_snap_counts.csv",
+          sorted(res["route_snap_counts"],
+                 key=lambda r: (int(r["nfl_id"]), r.get("season") or 0,
+                                r.get("season_type") or "")), prov, log)
     _emit(out_dir / "thresholds_applied.csv", [thr_row], prov, log)
 
     summary = dict(provenance=prov, mode=mode, dataset=dataset,
@@ -279,6 +330,11 @@ def render_summary(s: dict) -> str:
     lines.append(f"- **route snaps:** {s['n_route_snaps']}  ·  **efforts (tracked):** "
                  f"{s['n_efforts_tracked']}  ·  **players:** {s['n_players']} "
                  f"(eligible ≥{s['route_snap_count']} snaps: {s['n_players_eligible']})")
+    lines.append(f"- **season scope (D49):** primary `{s.get('season_scope_primary')}` = "
+                 f"{s.get('n_route_snaps_primary')} route snaps; sensitivity "
+                 f"`{s.get('season_scope_sensitivity')}` = "
+                 f"{s.get('n_route_snaps_sensitivity')} route snaps (all {s['n_route_snaps']} "
+                 "retained; the scope is applied at the model stage)")
     lines.append(f"- **overall exceedance rate** (effort speed > ceiling, margin "
                  f"{s['exceedance_margin_rel']}): **{s['overall_exceedance_rate']}**  ·  "
                  f"reframe threshold {s['exceedance_reframe_rate']} "
@@ -345,15 +401,17 @@ def main() -> None:
     done = out_dir / "_DONE"
     if done.exists() and not args.force:
         rec = common.read_done_marker(done)
-        if common.checkpoint_match(rec, mode=mode, provenance=prov,
-                                   synthetic=args.synthetic, path=done):
+        if common.checkpoint_match(
+                rec, mode=mode, provenance=prov, synthetic=args.synthetic, path=done,
+                fingerprint=common.config_fingerprint(cfg, "03_game_demand")):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done)
             common.append_run_log(cfg, f"03_game_demand[{mode}{'-synthetic' if args.synthetic else ''}]",
                                   mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
             return
         log.info("checkpoint marker %s does not match the requested run (%s) — rebuilding",
                  done.name, common.checkpoint_mismatch_note(
-                     rec, mode=mode, provenance=prov, synthetic=args.synthetic))
+                     rec, mode=mode, provenance=prov, synthetic=args.synthetic,
+                     fingerprint=common.config_fingerprint(cfg, "03_game_demand")))
 
     stage = f"03_game_demand[{mode}{'-synthetic' if args.synthetic else ''}]"
     mode_label = "synthetic" if args.synthetic else mode
@@ -369,12 +427,14 @@ def main() -> None:
                 cache = out_dir / "_cache"
                 inputs = {}
                 for name, fn in (("gt", "game_tracking.csv"), ("pp", "player_play.csv"),
-                                 ("cr", "combine_results.csv"), ("ct", "combine_tracking.csv")):
+                                 ("cr", "combine_results.csv"), ("ct", "combine_tracking.csv"),
+                                 ("games", "games.csv")):
                     dst = cache / (name + ".parquet")
                     common.to_parquet(con, fix / fn, dst, force=args.force, logger=None)
                     inputs[name] = dst
                 ceilings = gf.combine_ceilings(con, [inputs["ct"]], cfg)
-                inputs = {"gt": [inputs["gt"]], "pp": inputs["pp"], "cr": inputs["cr"]}
+                inputs = {"gt": [inputs["gt"]], "pp": inputs["pp"], "cr": inputs["cr"],
+                          "games": inputs["games"]}
                 thr_path = thresholds_path(cfg, True, args.synthetic_regime)
                 if not thr_path.exists():
                     record_blocker(cfg, f"synthetic thresholds missing at {thr_path}; run "
@@ -405,11 +465,14 @@ def main() -> None:
                 gt = _parquet_full(con, cfg, "game_tracking_full", args.force, log)
                 pp = _parquet(con, cfg, "player_play", args.force, log)
                 cr = _parquet(con, cfg, "combine_results", args.force, log)
+                games = _parquet(con, cfg, "games", args.force, log)
                 run(con, cfg, prov, "full", "game_tracking_2023/24/25 (full)",
-                    {"gt": gt, "pp": pp, "cr": cr}, thresholds, ceilings, out_dir, log)
+                    {"gt": gt, "pp": pp, "cr": cr, "games": games},
+                    thresholds, ceilings, out_dir, log)
 
-    done.write_text(json.dumps({"stage": "03_game_demand", "mode": mode, "provenance": prov,
-                                "synthetic": args.synthetic}, indent=2), encoding="utf-8")
+    done.write_text(json.dumps(common.done_marker(
+        cfg, "03_game_demand", mode=mode, provenance=prov,
+        synthetic=args.synthetic), indent=2), encoding="utf-8")
     log.info("Phase 3 game demand complete -> %s", out_dir)
 
 

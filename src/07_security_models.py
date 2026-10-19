@@ -92,16 +92,21 @@ EXPOSURE_COLS = ["nfl_id", "draft_year", "position", "position_group", "edp_pre"
 ENVELOPE_COLS = ["nfl_id", "combine_position", "draft_year", "n_attempts", "peak_speed",
                  "speed_at_20yd", "env_vmax", "env_vmax_se"]
 SUMMARY_COLS = ["nfl_id", "n_route_snaps", "eligible", "topk_mean_speed", "ceiling_speed_yds"]
-TOPK_COLS = ["nfl_id", "rank", "game_id", "play_id", "route_ran", "pass_length", "target",
-             "peak_speed"]
-EFFORT_COLS = ["nfl_id", "game_id", "play_id", "route_ran", "pass_length", "target",
-               "peak_speed"]
+TOPK_COLS = ["nfl_id", "rank", "game_id", "play_id", "season", "season_type", "season_scope",
+             "route_ran", "pass_length", "target", "peak_speed"]
+EFFORT_COLS = ["nfl_id", "game_id", "play_id", "season", "season_type", "route_ran",
+               "pass_length", "target", "peak_speed"]
+SNAP_COLS = ["nfl_id", "season", "season_type", "n_route_snaps"]
 ATTEMPT_COLS = ["nfl_id", "event_id", "peak_speed"]
 COV_COLS = ["nfl_id", "position", "height", "weight", "age", "draft_position", "draft_year"]
 
 FLOAT_FIELDS = ("edp_pre", "log_edp_pre", "edp_trend", "consensus_share", "peak_speed",
                 "speed_at_20yd", "env_vmax", "env_vmax_se", "topk_mean_speed", "ceiling_speed_yds",
                 "pass_length", "height", "weight", "age", "log_combine_speed")
+
+# Set once by ``run()``; every emitted CSV then carries the scope label (D49) so a table can never
+# be misread as the other scope. A single process handles a single run, so a module global is safe.
+_ACTIVE_SEASON_SCOPE: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -118,24 +123,29 @@ def _f(x: Any) -> Any:
     return x
 
 
-def _emit(path: Path, rows: Sequence[dict], prov: str, log, block_status: str = "OK") -> None:
+def _emit(path: Path, rows: Sequence[dict], prov: str, log, block_status: str = "OK",
+          season_scope: str | None = None) -> None:
     """Write one block's CSV immediately (D43: no end-of-run batch that a later bug can destroy).
 
     Every row carries ``block_status`` (``OK`` / ``FAILED``); a failed block is a single labelled row
     with ``term``/``weighting='unavailable'`` and the reason string, never an empty file.
     """
+    scope = season_scope if season_scope is not None else _ACTIVE_SEASON_SCOPE
     rows = [dict(r) for r in rows] or [{}]
     fields: list[str] = []
     for r in rows:
         for k in r:
             if k not in fields:
                 fields.append(k)
-    fields = ["provenance"] + [f for f in fields if f not in ("provenance", "block_status")]
+    fields = ["provenance"] + (["season_scope"] if scope is not None else []) + [
+        f for f in fields if f not in ("provenance", "block_status", "season_scope")]
     norm = []
     for r in rows:
         d = {"provenance": prov}
+        if scope is not None:
+            d["season_scope"] = scope
         for k, v in r.items():
-            if k not in ("provenance", "block_status"):
+            if k not in ("provenance", "block_status", "season_scope"):
                 d[k] = _f(v)
         d["block_status"] = str(r.get("block_status", block_status))
         norm.append(d)
@@ -260,12 +270,39 @@ def load_player_summary(con, path: Path) -> dict[int, dict]:
         ceiling_speed_yds=_num(r["ceiling_speed_yds"])) for r in rows}
 
 
+def load_snap_counts(con, path: Path) -> list[dict]:
+    """Per-player route-snap counts split by the TRUE season / season_type (D49)."""
+    rows = _read(con, path, SNAP_COLS)
+    out = []
+    for r in rows:
+        out.append(dict(nfl_id=int(r["nfl_id"]),
+                        season=(int(r["season"]) if r["season"] is not None else None),
+                        season_type=(str(r["season_type"])
+                                     if r["season_type"] is not None else None),
+                        n_route_snaps=int(r["n_route_snaps"] or 0)))
+    return out
+
+
+def scoped_snap_counts(rows: Sequence[dict], season_types: Sequence[str]) -> dict[int, int]:
+    """Sum route snaps over the active scope — the same filter the model rows use."""
+    allowed = set(str(t) for t in season_types)
+    out: dict[int, int] = {}
+    for r in rows:
+        if r.get("season_type") not in allowed:
+            continue
+        out[int(r["nfl_id"])] = out.get(int(r["nfl_id"]), 0) + int(r["n_route_snaps"] or 0)
+    return out
+
+
 def load_efforts(con, path: Path) -> list[dict]:
     rows = _read(con, path, EFFORT_COLS)
     out = []
     for r in rows:
         out.append(dict(nfl_id=int(r["nfl_id"]), game_id=int(r["game_id"]),
                         play_id=int(r["play_id"]),
+                        season=(int(r["season"]) if r["season"] is not None else None),
+                        season_type=(str(r["season_type"])
+                                     if r["season_type"] is not None else None),
                         route_ran=(str(r["route_ran"]) if r["route_ran"] is not None else None),
                         pass_length=_num(r["pass_length"]), target=_bool(r["target"]),
                         peak_speed=_num(r["peak_speed"])))
@@ -278,6 +315,11 @@ def load_topk(con, path: Path) -> list[dict]:
     for r in rows:
         out.append(dict(nfl_id=int(r["nfl_id"]), rank=int(r["rank"]), game_id=int(r["game_id"]),
                         play_id=int(r["play_id"]),
+                        season=(int(r["season"]) if r["season"] is not None else None),
+                        season_type=(str(r["season_type"])
+                                     if r["season_type"] is not None else None),
+                        season_scope=(str(r["season_scope"])
+                                      if r["season_scope"] is not None else None),
                         route_ran=(str(r["route_ran"]) if r["route_ran"] is not None else None),
                         pass_length=_num(r["pass_length"]), target=_bool(r["target"]),
                         peak_speed=_num(r["peak_speed"])))
@@ -578,21 +620,6 @@ def fwl_attenuation(y: np.ndarray, x: np.ndarray, g: np.ndarray, C: np.ndarray,
 # --------------------------------------------------------------------------- #
 # model rows
 # --------------------------------------------------------------------------- #
-def _season(game_id: Any, cfg: dict) -> int | None:
-    p = cfg["security_models"]["primary"]
-    s = str(int(game_id))
-    d = int(p["season_digits"])
-    if len(s) < d:
-        return None
-    try:
-        y = int(s[:d])
-    except (TypeError, ValueError):
-        return None
-    if y < int(p["season_min"]) or y > int(p["season_max"]):
-        return None
-    return y
-
-
 def _route_family(route: Any, cfg: dict) -> str:
     p = cfg["security_models"]["primary"]
     if route is None:
@@ -606,13 +633,23 @@ def _assign_map(assign: dict) -> dict[int, dict]:
 
 def build_effort_rows(efforts: Sequence[dict], assign: dict, envelope: dict[int, dict],
                       cov: dict[int, dict], psum: dict[int, dict], cfg: dict,
-                      keep_unclassified: bool = False) -> tuple[list[dict], dict]:
+                      keep_unclassified: bool = False, *,
+                      snap_counts: dict[int, int] | None = None,
+                      game_index: dict[int, dict] | None = None,
+                      season_types: Sequence[str] | None = None,
+                      season_scope: str | None = None,
+                      min_snaps: int | None = None) -> tuple[list[dict], dict]:
     """Effort-level model rows with every pre-computed control; drops counted by reason.
 
     ``unclassified`` players (the middle tertile of the level fallback, and board rows with no
     pre-Combine information) are excluded from the two-group contrast. They are keyed by
     ``keep_unclassified=True`` so the continuous ``log(EDP_pre)`` dose-response (C) still sees them,
     per ``security_features.py`` / DV-3 / limitations item 24.
+
+    D49 season scope: when ``season_types`` is supplied, only rows in that scope enter the model;
+    ``snap_counts`` (scoped the same way) supplies ``n_route_snaps`` / ``snap_share`` and the
+    ``min_snaps`` gate. ``season`` comes from games.csv via ``game_index`` (date fallback only when
+    games.csv is absent); a game_id missing from a present games.csv is a hard error.
     """
     p = cfg["security_models"]["primary"]
     contrast = set(cfg["security_models"]["sort"]["groups"])
@@ -621,6 +658,8 @@ def build_effort_rows(efforts: Sequence[dict], assign: dict, envelope: dict[int,
     snap_denom = float(cfg["game"]["route_snap_count"])
     clip = float(p["snap_share_clip"])
     amap = _assign_map(assign)
+    active_types = set(str(t) for t in season_types) if season_types is not None else None
+    season_min, season_max = int(p["season_min"]), int(p["season_max"])
     out: list[dict] = []
     dropped: dict[str, int] = {}
 
@@ -646,6 +685,18 @@ def build_effort_rows(efforts: Sequence[dict], assign: dict, envelope: dict[int,
         if c.get("quality_issue"):
             _drop("covariate_quality")
             continue
+        # ---- D49 scope filter (rows AND denominator) ----
+        if active_types is not None:
+            if season_scope is not None and e.get("season_scope") not in (None, season_scope):
+                _drop("other_season_scope")
+                continue
+            stype = e.get("season_type")
+            if stype is None:
+                _drop("missing_season_type")
+                continue
+            if str(stype) not in active_types:
+                _drop("season_type_not_in_scope")
+                continue
         ps = psum.get(nid)
         if ps is None:
             _drop("no_player_summary")
@@ -654,13 +705,21 @@ def build_effort_rows(efforts: Sequence[dict], assign: dict, envelope: dict[int,
         if peak is None or peak <= 0:
             _drop("non_positive_game_speed")
             continue
-        season = _season(e["game_id"], cfg)
+        # games.csv is authoritative whenever it is present (hard error on a missing id)
+        season, _stype = common.season_and_type(
+            e["game_id"], game_index, min_year=season_min, max_year=season_max)
+        if season is None and e.get("season") is not None:
+            season = int(e["season"])
         years = (float(season) - float(c["draft_year"])
                  if season is not None and c.get("draft_year") is not None else None)
-        n_snaps = int(ps["n_route_snaps"] or 0)
+        n_snaps = int((snap_counts or {}).get(nid, ps["n_route_snaps"] or 0))
+        if min_snaps is not None and n_snaps < int(min_snaps):
+            _drop("below_min_snaps")
+            continue
         snap_share = min(float(n_snaps) / snap_denom, clip) if snap_denom > 0 else None
         row = dict(
             nfl_id=nid, game_id=int(e["game_id"]), play_id=int(e["play_id"]),
+            season=season, season_type=e.get("season_type"),
             group=a["group"], stratum=a["stratum"],
             moved_down=1.0 if a["group"] == GROUP_POS else 0.0,
             y=math.log(peak), peak_speed=peak,
@@ -1547,6 +1606,7 @@ def _inputs(cfg: dict, synthetic: bool, regime: str) -> dict[str, Path]:
         return dict(
             efforts=d / names["efforts"], topk=d / names["top_k_efforts"],
             players=d / names["player_summary"], thresholds=d / names["thresholds_applied"],
+            snap_counts=d / names["route_snap_counts"], games=d / names["games"],
             exposure=d / names["security_exposure_csv"],
             envelope=d / names["per_player_envelope"], attempts=d / names["attempt_features"],
             meta=d / names["meta"])
@@ -1555,6 +1615,8 @@ def _inputs(cfg: dict, synthetic: bool, regime: str) -> dict[str, Path]:
     env = common.resolve(cfg, "outputs", cfg["envelope"]["out_subdir"])
     return dict(efforts=game / names["efforts"], topk=game / names["top_k_efforts"],
                 players=game / names["player_summary"], thresholds=game / names["thresholds_applied"],
+                snap_counts=game / names["route_snap_counts"],
+                games=common.csv_path(cfg, "games"),
                 exposure=sec / names["security_exposure"], envelope=env / names["per_player_envelope"],
                 attempts=env / names["attempt_features"],
                 meta=common.resolve(cfg, "outputs", cfg["game"]["thresholds_file"]))
@@ -1575,8 +1637,39 @@ def _check_thresholds(cfg: dict, synthetic: bool, path: Path, log) -> dict:
     return thr
 
 
-def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov: str, log) -> dict:
+def season_scope_table(cfg: dict, snap_rows: Sequence[dict], psum: dict[int, dict],
+                       active_key: str) -> list[dict]:
+    """One row per configured scope: route snaps, players, eligibility, snap-share (D49)."""
+    denom = float(cfg["game"]["route_snap_count"])
+    clip = float(cfg["security_models"]["primary"]["snap_share_clip"])
+    players = set(int(n) for n in psum)
+    out: list[dict] = []
+    for key in ("primary", "sensitivity"):
+        types = [str(t) for t in cfg["game"]["scope"][key]]
+        counts = {nid: n for nid, n in scoped_snap_counts(snap_rows, types).items()
+                  if n > 0 and (not players or nid in players)}
+        vals = np.asarray(sorted(counts.values()), float)
+        shares = [min(float(n) / denom, clip) for n in vals] if denom > 0 else []
+        out.append(dict(
+            scope=key, season_types="+".join(types), active=bool(key == active_key),
+            n_route_snaps=int(vals.sum()) if vals.size else 0,
+            n_players=int(vals.size),
+            n_players_passing_min_snaps=int((vals >= denom).sum()) if vals.size else 0,
+            min_snaps=denom,
+            mean_n_route_snaps=(round(float(vals.mean()), 4) if vals.size else None),
+            median_n_route_snaps=(round(float(np.median(vals)), 4) if vals.size else None),
+            mean_snap_share=(round(float(np.mean(shares)), 4) if shares else None),
+        ))
+    return out
+
+
+def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov: str, log,
+        scope_key: str | None = None) -> dict:
+    global _ACTIVE_SEASON_SCOPE
     p = cfg["security_models"]["primary"]
+    scope_key, active_types = common.scope_types(cfg, scope_key)
+    _ACTIVE_SEASON_SCOPE = scope_key
+    scope_label = "+".join(active_types)
     inp = _inputs(cfg, synthetic, regime)
     con = common.connect(cfg["runtime"]["duckdb_threads"])
     _check_thresholds(cfg, synthetic,
@@ -1588,6 +1681,10 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
     psum = load_player_summary(con, inp["players"])
     topk = load_topk(con, inp["topk"])
     efforts = load_efforts(con, inp["efforts"])
+    snap_rows = load_snap_counts(con, inp["snap_counts"])
+    snap_counts = scoped_snap_counts(snap_rows, active_types)
+    game_ids = ({int(r["game_id"]) for r in topk} | {int(r["game_id"]) for r in efforts})
+    game_index = common.load_game_index(con, inp["games"], game_ids=game_ids)
     attempts = load_attempt_markers(con, inp["attempts"])
     cov_issues: list[dict] = []
     cov = load_covariates(con, cfg, synthetic, regime, issues=cov_issues)
@@ -1601,8 +1698,9 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
                     "covariate_quality.csv and SUMMARY (D44)", prov, len(cov_issues),
                     len({iss["nfl_id"] for iss in cov_issues}))
     rel = load_reliability(cfg, synthetic, regime, log)
-    log.info("%s: %d exposures, %d envelope, %d top-k, %d efforts, %d covariates",
-             prov, len(exposures), len(envelope), len(topk), len(efforts), len(cov))
+    log.info("%s: %d exposures, %d envelope, %d top-k, %d efforts, %d covariates; season scope "
+             "%s=%s (%d scoped route snaps)", prov, len(exposures), len(envelope), len(topk),
+             len(efforts), len(cov), scope_key, scope_label, sum(snap_counts.values()))
 
     # ---- group assignment (pre-Combine only) ----
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1619,12 +1717,17 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
 
     # ---- model rows ----
     # C's continuous dose-response keeps the middle tertile; the two-group models (B, D–G) do not.
+    row_kwargs = dict(snap_counts=snap_counts, game_index=game_index,
+                      season_types=active_types, season_scope=scope_key,
+                      min_snaps=int(cfg["game"]["route_snap_count"]))
     rows_all, dropped = build_effort_rows(topk, assign, envelope, cov, psum, cfg,
-                                          keep_unclassified=True)
+                                          keep_unclassified=True, **row_kwargs)
     contrast = set(cfg["security_models"]["sort"]["groups"])
     rows = [r for r in rows_all if r["group"] in contrast]
-    rows_t5, dropped_t5 = build_effort_rows(topk, assign_t5, envelope, cov, psum, cfg)
-    all_rows, dropped_all = build_effort_rows(efforts, assign, envelope, cov, psum, cfg)
+    rows_t5, dropped_t5 = build_effort_rows(topk, assign_t5, envelope, cov, psum, cfg,
+                                            **row_kwargs)
+    all_rows, dropped_all = build_effort_rows(efforts, assign, envelope, cov, psum, cfg,
+                                              **row_kwargs)
     # attach the per-player top-k mean (from player_summary) for the per-player variant
     for r in rows_all + all_rows:
         ps = psum.get(r["nfl_id"]) or {}
@@ -1654,6 +1757,12 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
             _emit(out_dir / fname, [_fail_row(reason, key)], prov, log, block_status="FAILED")
 
     _emit(out_dir / "group_assignment.csv", assign["assignments"], prov, log)
+    scope_table = season_scope_table(cfg, snap_rows, psum, scope_key)
+    _emit(out_dir / "season_scope.csv", scope_table, prov, log)
+    for _r in scope_table:
+        log.info("%s: season scope %s (%s) — %d route snaps, %d players, %d pass min_snaps=%g",
+                 prov, _r["scope"], _r["season_types"], _r["n_route_snaps"], _r["n_players"],
+                 _r["n_players_passing_min_snaps"], _r["min_snaps"])
     # D44: the covariate-quality audit trail is written even when nothing was flagged, so a clean
     # run *states* that the size covariates were checked against the declared bounds.
     _emit(out_dir / "covariate_quality.csv",
@@ -1743,6 +1852,12 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
 
     # ---- persist the summary (every data file was already written block-by-block above) ----
 
+    # D49: every in-memory row carries the scope label too (the CSVs got it from `_emit`)
+    for _coll in (b_rows, b_means, c_end, c_exc, d_rows, e_sel, e_ipw, f_rows, g_rows, g_tail,
+                  assign["assignments"]):
+        for _rec in _coll:
+            _rec.setdefault("season_scope", scope_key)
+
     primary_wr = next((r for r in b_rows if r["scope"] == "WR"
                        and r["spec"] == "primary_env_vmax"), {})
     group_totals = {g: sum(1 for a in assign["assignments"] if a["group"] == g)
@@ -1751,6 +1866,11 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
     thin_groups = sorted(g for g, n in group_totals.items() if n < min_group_n)
     summary = dict(
         provenance=prov, mode=mode, synthetic=synthetic, regime=regime,
+        season_scope=dict(
+            active=scope_key, active_types=list(active_types),
+            primary_types=[str(t) for t in cfg["game"]["scope"]["primary"]],
+            sensitivity_types=[str(t) for t in cfg["game"]["scope"]["sensitivity"]],
+            table=scope_table),
         sign_convention=("a NEGATIVE group_coef means moved_down sits further below its ceiling "
                          "(larger gap) = AGAINST the incentive hypothesis; the hypothesis predicts "
                          "POSITIVE"),
@@ -1831,6 +1951,21 @@ def render_summary(s: dict) -> str:
              f"{s['synthetic']}")
     L.append(f"- **Analysis A:** {s['analysis_a_status']}")
     L.append(f"- **Sign convention:** {s['sign_convention']}.")
+    _sc = s.get("season_scope") or {}
+    L.append(f"- **Season scope (D49):** active `{_sc.get('active')}` = "
+             f"`{'+'.join(_sc.get('active_types') or [])}`. Every row in every CSV carries the "
+             f"`season_scope` label. The all-games sensitivity is "
+             f"`{'+'.join(_sc.get('sensitivity_types') or [])}`; it is retained, not deleted.")
+    if _sc.get("table"):
+        L.append("")
+        L.append("| scope | season types | route snaps | players | pass min_snaps | "
+                 "mean snaps | median snaps | mean snap_share |")
+        L.append("|---|---|---:|---:|---:|---:|---:|---:|")
+        for _r in _sc["table"]:
+            L.append(f"| {_r['scope']} | {_r['season_types']} | {_r['n_route_snaps']} | "
+                     f"{_r['n_players']} | {_r['n_players_passing_min_snaps']} | "
+                     f"{_fmt(_r['mean_n_route_snaps'])} | {_fmt(_r['median_n_route_snaps'])} | "
+                     f"{_fmt(_r['mean_snap_share'])} |")
     if s.get("failed_blocks"):
         L.append(f"- **FAILED BLOCKS:** " + "; ".join(
             f"{b} ({why})" for b, why in s["failed_blocks"].items()) +
@@ -2037,10 +2172,12 @@ def sample_placeholder(cfg: dict, prov: str, out_dir: Path, log) -> None:
         f"(`outputs/security/analysis_a_attenuation.csv`).\n", encoding="utf-8")
 
 
-def _done_ok(done: Path, mode: str, prov: str, synthetic: bool, regime: str) -> bool:
+def _done_ok(done: Path, mode: str, prov: str, synthetic: bool, regime: str,
+             fingerprint: str | None = None) -> bool:
     """Checkpoint hit only on an exact mode/provenance/synthetic/regime marker match."""
     return common.checkpoint_match(common.read_done_marker(done), mode=mode, provenance=prov,
-                                   synthetic=synthetic, regime=regime, path=done)
+                                   synthetic=synthetic, regime=regime, path=done,
+                                   fingerprint=fingerprint)
 
 
 def main() -> None:
@@ -2050,6 +2187,8 @@ def main() -> None:
     ap.add_argument("--synthetic", action="store_true",
                     help="run the identical path on the committed game-side fixture (not a finding)")
     ap.add_argument("--synthetic-regime", choices=["planted", "null", "selection"], default="planted")
+    ap.add_argument("--scope", choices=["primary", "sensitivity"], default=None,
+                    help="season scope for this run (default: config game.scope.active)")
     ap.add_argument("--config", default=None)
     args = ap.parse_args()
 
@@ -2062,12 +2201,17 @@ def main() -> None:
 
     regime = args.synthetic_regime
     prov = PROV_SYNTH if args.synthetic else common.provenance(cfg, mode)
+    scope_key, _scope_list = common.scope_types(cfg, args.scope)
     out_dir = stage_dir(cfg, args.synthetic, regime)
+    configured_active = str(cfg["game"]["scope"].get("active", "primary"))
+    if scope_key != configured_active:
+        out_dir = out_dir / scope_key
     out_dir.mkdir(parents=True, exist_ok=True)
     stage = f"07_security_models[{mode}{'-synthetic-' + regime if args.synthetic else ''}]"
+    fingerprint = common.config_fingerprint(cfg, "07_security_models")
 
     done = out_dir / "_DONE.json"
-    if _done_ok(done, mode, prov, args.synthetic, regime) and not args.force:
+    if _done_ok(done, mode, prov, args.synthetic, regime, fingerprint) and not args.force:
         log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done)
         common.append_run_log(cfg, stage, mode, 0.0, common.peak_ram_mb(), "", {"skipped": "checkpoint"})
         return
@@ -2075,7 +2219,7 @@ def main() -> None:
         log.info("checkpoint marker %s does not match the requested run (%s) — rebuilding",
                  done.name, common.checkpoint_mismatch_note(
                      common.read_done_marker(done), mode=mode, provenance=prov,
-                     synthetic=args.synthetic, regime=regime))
+                     synthetic=args.synthetic, regime=regime, fingerprint=fingerprint))
 
     if mode == "sample" and not args.synthetic:
         with common.timed_stage(cfg, stage, mode, synthetic=False):
@@ -2083,11 +2227,12 @@ def main() -> None:
     else:
         with common.timed_stage(cfg, stage, mode, synthetic=args.synthetic):
             run(cfg, "synthetic" if args.synthetic else mode, args.synthetic, regime, out_dir,
-                prov, log)
+                prov, log, scope_key=scope_key)
 
-    done.write_text(json.dumps({"stage": "07_security_models", "mode": mode, "provenance": prov,
-                                "synthetic": bool(args.synthetic), "regime": regime}, indent=2),
-                    encoding="utf-8")
+    done.write_text(json.dumps(common.done_marker(
+        cfg, "07_security_models", mode=mode, provenance=prov,
+        synthetic=bool(args.synthetic), regime=regime, season_scope=scope_key), indent=2),
+        encoding="utf-8")
     log.info("Phase 5 B–G security models complete -> %s", out_dir)
 
 

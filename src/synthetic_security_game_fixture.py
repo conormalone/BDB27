@@ -77,15 +77,18 @@ COV_COLS = ["nfl_id", "position", "height", "weight", "age", "draft_position", "
 POOL_COLS = ["nfl_id", "position_group", "position", "edp_pre", "log_edp_pre", "edp_trend",
              "has_trend", "has_primary", "participation_pattern", "height", "weight",
              "log_combine_speed", "draft_year", "appeared"]
-EFFORT_COLS = ["nfl_id", "combine_position", "game_id", "play_id", "route_ran", "pass_length",
+EFFORT_COLS = ["nfl_id", "combine_position", "game_id", "play_id", "season", "season_type",
+               "route_ran", "pass_length",
                "target", "n_frames", "peak_speed", "peak_accel", "ceiling_speed_yds",
                "ceiling_accel_yds2", "max_over_ceiling", "accel_over_ceiling", "is_high_speed",
                "is_high_accel", "is_exceed"]
-TOPK_COLS = ["nfl_id", "combine_position", "rank", "game_id", "play_id", "route_ran",
+TOPK_COLS = ["nfl_id", "combine_position", "rank", "game_id", "play_id", "season", "season_type",
+             "season_scope", "route_ran",
              "pass_length", "target", "peak_speed", "peak_accel", "max_over_ceiling", "is_exceed"]
 SUM_COLS = ["nfl_id", "combine_position", "n_route_snaps", "eligible", "n_efforts_tracked",
             "ceiling_speed_yds", "n_exceed", "exceedance_rate", "topk_n", "topk_mean_speed",
             "topk_mean_envelope_fraction", "topk_max_envelope_fraction", "max_envelope_fraction"]
+SNAP_COLS = ["nfl_id", "season", "season_type", "n_route_snaps"]
 THR_COLS = ["method", "thresholds_provenance", "high_speed_threshold_yds", "accel_threshold_yds2",
             "high_speed_percentile", "accel_percentile", "top_k_efforts", "route_snap_count",
             "top_k_metric"]
@@ -237,6 +240,8 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
     topk: list[dict] = []
     summaries: list[dict] = []
     attempts: list[dict] = []
+    snap_counts: list[dict] = []
+    games_by_id: dict[int, dict] = {}
     for p in players:
         if not p["appeared"]:
             continue
@@ -249,9 +254,18 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
             log_sp = math.log(p["combine"]) + gap + float(rng.normal(0.0, s["gap_noise_sd"]))
             peak = math.exp(log_sp)
             accel = float(rng.normal(28.0, 3.0))
+            # D49: date-shaped game ids + the TRUE season/season_type in games.csv. Top-k rows
+            # are REG (the primary scope); one non-top row per player is PRE so the scope filter
+            # is exercised on effort rows and snap counts without disturbing the planted signal.
+            gid = 2024000000 + p["idx"] * 10 + j
+            stype = "PRE" if j == n_top + n_bottom - 1 and n_bottom > 0 else "REG"
+            games_by_id[gid] = dict(game_id=gid, game_key=80000 + len(games_by_id),
+                                    season=2024, season_type=stype,
+                                    week=(1 if stype == "PRE" else 1 + (j % 18)),
+                                    home_team_abbr="SYN", visitor_team_abbr="OPP")
             row = dict(
                 nfl_id=p["nfl_id"], combine_position=p["position"],
-                game_id=2025000000 + p["idx"] * 100 + j, play_id=100 + j,
+                game_id=gid, play_id=100 + j, season=2024, season_type=stype,
                 route_ran=ROUTES[(p["idx"] * 7 + j) % len(ROUTES)],
                 pass_length=int(rng.integers(0, 31)), target=bool(j == 0 and is_top),
                 n_frames=int(rng.integers(8, 20)),
@@ -267,7 +281,9 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
         rows.sort(key=lambda r: (-r["peak_speed"], r["game_id"], r["play_id"]))
         # the emitted top-k is the true speed ranking (what Phase 3 would emit)
         for rank, row in enumerate(rows[:n_top], 1):
-            topk.append(dict(row, rank=rank))
+            # D49: one build carries both scopes; 07 selects the label it is running
+            for scope_name in ("primary", "sensitivity"):
+                topk.append(dict(row, rank=rank, season_scope=scope_name))
         for row in rows:
             efforts.append(row)
         n_eff = len(rows)
@@ -284,6 +300,20 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
             topk_mean_envelope_fraction=_r(float(np.mean(fr))),
             topk_max_envelope_fraction=_r(float(np.max(fr))),
             max_envelope_fraction=_r(float(np.max([r["max_over_ceiling"] for r in rows])))))
+        # D49 snap counts: REG reproduces the historical denominator, PRE is additional. One
+        # forced low-snap player is majority-PRE, so the primary scope fails `min_snaps` while
+        # the sensitivity scope passes it (the gate moves with the scope, never silently).
+        reg_snaps = int(p["n_snaps"])
+        pre_snaps = 10 + (p["idx"] * 7) % 21
+        if "low_snap" in p["flags"]:
+            reg_snaps, pre_snaps = int(p["n_snaps"]), int(p["n_snaps"]) + 55
+        snap_counts.append(dict(nfl_id=p["nfl_id"], season=2024, season_type="REG",
+                                n_route_snaps=reg_snaps))
+        snap_counts.append(dict(nfl_id=p["nfl_id"], season=2024, season_type="PRE",
+                                n_route_snaps=pre_snaps))
+        # keep the summary's denominator the PRIMARY scope count
+        summaries[-1]["n_route_snaps"] = reg_snaps
+        summaries[-1]["eligible"] = bool(reg_snaps >= int(cfg["game"]["route_snap_count"]))
         # Combine attempts (best-minus-mean marker): a peaking marker correlated with the gap
         for a in range(p["n_attempts"]):
             sp = p["combine"] * math.exp(float(rng.normal(0.0, s["attempt_sd"]))
@@ -357,6 +387,7 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
     topk.sort(key=lambda r: (r["nfl_id"], r["rank"]))
     summaries.sort(key=lambda r: r["nfl_id"])
     attempts.sort(key=lambda r: (r["nfl_id"], r["event_id"]))
+    snap_counts.sort(key=lambda r: (r["nfl_id"], r["season_type"]))
     envelope.sort(key=lambda r: r["nfl_id"])
     cov.sort(key=lambda r: r["nfl_id"])
     exposure.sort(key=lambda r: r["nfl_id"])
@@ -365,6 +396,10 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
     _write(out_dir / "efforts.csv", EFFORT_COLS, efforts)
     _write(out_dir / "top_k_efforts.csv", TOPK_COLS, topk)
     _write(out_dir / "player_summary.csv", SUM_COLS, summaries)
+    _write(out_dir / "route_snap_counts.csv", SNAP_COLS, snap_counts)
+    _write(out_dir / "games.csv",
+           ["game_id", "game_key", "season", "season_type", "week", "home_team_abbr",
+            "visitor_team_abbr"], [games_by_id[g] for g in sorted(games_by_id)], prov=False)
     _write(out_dir / "thresholds_applied.csv", THR_COLS, [thr])
     _write(out_dir / "security_exposure.csv", EXPOSURE_COLS, exposure)
     _write(out_dir / "per_player_envelope.csv", ENVELOPE_COLS, envelope)

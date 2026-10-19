@@ -403,13 +403,17 @@ def main() -> None:
     done = out_dir / "_DONE"
     if done.exists() and not args.force:
         rec = common.read_done_marker(done)
-        if common.checkpoint_match(rec, mode=mode, provenance=prov, path=done):
+        if common.checkpoint_match(rec, mode=mode, provenance=prov, path=done,
+                                   fingerprint=common.config_fingerprint(
+                                       cfg, "02_combine_envelope")):
             log.info("checkpoint hit (%s) — skipping; use --force to rebuild", done.name)
             common.append_run_log(cfg, f"02_combine_envelope[{mode}]", mode, 0.0,
                                   common.peak_ram_mb(), "", {"skipped": "checkpoint"})
             return
         log.info("checkpoint marker %s does not match the requested run (%s) — rebuilding",
-                 done.name, common.checkpoint_mismatch_note(rec, mode=mode, provenance=prov))
+                 done.name, common.checkpoint_mismatch_note(
+                     rec, mode=mode, provenance=prov,
+                     fingerprint=common.config_fingerprint(cfg, "02_combine_envelope")))
 
     con = common.connect(cfg["runtime"]["duckdb_threads"])
     with common.timed_stage(cfg, f"02_combine_envelope[{mode}]", mode):
@@ -421,8 +425,8 @@ def main() -> None:
         summary = run(con, cfg, mode, prov, log)
 
     (out_dir / "SUMMARY.md").write_text(render_summary(summary), encoding="utf-8")
-    done.write_text(json.dumps({"stage": "02_combine_envelope", "mode": mode,
-                                "provenance": prov}, indent=2), encoding="utf-8")
+    done.write_text(json.dumps(common.done_marker(
+        cfg, "02_combine_envelope", mode=mode, provenance=prov), indent=2), encoding="utf-8")
     log.info("Phase 2 complete -> %s", out_dir)
 
 

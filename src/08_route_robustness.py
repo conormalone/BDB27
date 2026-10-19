@@ -116,7 +116,15 @@ def build_panels(cfg: dict, synthetic: bool, regime: str, sm) -> dict:
     envelope = sm.load_envelope(con, inp["envelope"])
     psum = sm.load_player_summary(con, inp["players"])
     topk = sm.load_topk(con, inp["topk"])
+    scope_key, active_types = common.scope_types(cfg)
+    snap_counts = sm.scoped_snap_counts(sm.load_snap_counts(con, inp["snap_counts"]),
+                                        active_types)
+    game_ids = {int(r["game_id"]) for r in topk}
+    game_index = common.load_game_index(con, inp["games"], game_ids=game_ids)
     cov = sm.load_covariates(con, cfg, synthetic, regime, issues=[])
+    row_kwargs = dict(snap_counts=snap_counts, game_index=game_index,
+                      season_types=active_types, season_scope=scope_key,
+                      min_snaps=int(cfg["game"]["route_snap_count"]))
 
     pool = [dict(nfl_id=nid, position_group=ex["position_group"], edp_pre=ex["edp_pre"],
                  log_edp_pre=ex["log_edp_pre"], edp_trend=ex["edp_trend"],
@@ -127,8 +135,8 @@ def build_panels(cfg: dict, synthetic: bool, regime: str, sm) -> dict:
     assign3 = sf.assign_security_groups(pool, cfg)
     assign5 = sf.assign_security_groups(pool, cfg, threshold=threshold5)
 
-    rows3, _ = sm.build_effort_rows(topk, assign3, envelope, cov, psum, cfg)
-    rows5, _ = sm.build_effort_rows(topk, assign5, envelope, cov, psum, cfg)
+    rows3, _ = sm.build_effort_rows(topk, assign3, envelope, cov, psum, cfg, **row_kwargs)
+    rows5, _ = sm.build_effort_rows(topk, assign5, envelope, cov, psum, cfg, **row_kwargs)
 
     # ``target`` and ``rank`` are in the top-k file but are deliberately not model covariates; read
     # them here (descriptive balance only) — never as controls.
@@ -143,7 +151,8 @@ def build_panels(cfg: dict, synthetic: bool, regime: str, sm) -> dict:
         extra = {}
     return dict(rows={"T3": rows3, "T5": rows5}, extra=extra, exposures=exposures,
                 envelope=envelope, assign={"T3": assign3, "T5": assign5}, paths=inp,
-                threshold=threshold, threshold5=threshold5)
+                threshold=threshold, threshold5=threshold5,
+                season_scope=scope_key, season_types=list(active_types))
 
 
 # --------------------------------------------------------------------------- #

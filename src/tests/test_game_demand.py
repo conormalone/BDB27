@@ -127,12 +127,19 @@ def test_synthetic_binding_and_null():
             exp = float(r["peak_speed"]) / float(r["ceiling_speed_yds"])
             assert abs(exp - float(r["max_over_ceiling"])) < 1e-3, r
 
-    # top-k: every player contributes exactly k=5 rows (8 route snaps each, no ties at the cut)
+    # top-k: the primary scope (REG+POST) contributes k=5 rows per player with >=k primary
+    # snaps; the sensitivity scope is a second labelled block (D49). The fixture's player 0 is
+    # deliberately majority-preseason (3 primary snaps), so it legitimately contributes <k.
     k = int(common.load_config()["game"]["top_k_efforts"])
     per = {}
     for r in _rows(mind / "top_k_efforts.csv"):
-        per[r["nfl_id"]] = per.get(r["nfl_id"], 0) + 1
-    assert per and all(v == k for v in per.values()), per
+        if r["season_scope"] == "primary":
+            per[r["nfl_id"]] = per.get(r["nfl_id"], 0) + 1
+    assert per and all(1 <= v <= k for v in per.values()), per
+    assert sum(1 for v in per.values() if v == k) >= len(per) - 1, per
+    # every effort carries the TRUE season/season_type from games.csv (D49)
+    eff = _rows(mind / "efforts.csv")
+    assert all(r["season"] and r["season_type"] in ("PRE", "REG", "POST") for r in eff), eff[:2]
     # players with < route_snap_count snaps are flagged ineligible (prereg §2), not pooled
     ps = _rows(mind / "player_summary.csv")
     assert all(r["eligible"] == "False" for r in ps)

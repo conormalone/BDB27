@@ -156,6 +156,8 @@ def required_inputs(cfg: dict, synthetic: bool, regime: str) -> list[tuple[str, 
     checks = [
         ("top-k efforts (model rows)", inp["topk"]),
         ("player summary", inp["players"]),
+        ("route snap counts (season scope, D49)", inp["snap_counts"]),
+        ("games.csv (true season, D49)", inp["games"]),
         ("efforts (target key join)", inp["efforts"]),
         ("security exposure", inp["exposure"]),
         ("Combine envelope", inp["envelope"]),
@@ -751,6 +753,16 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
     groups = list(cfg["security_models"]["sort"]["groups"])
     panels = rr.build_panels(cfg, synthetic, regime, sm)
     rel = sm.load_reliability(cfg, synthetic, regime, log)
+
+    # D49: 09 inherits 07's season-scope filter through build_effort_rows. Assert the inherited
+    # rows never leak a season type outside the active scope (a bypass must fail loudly).
+    _allowed = set(panels["season_types"])
+    _leaked = sorted({str(r.get("season_type")) for rows in panels["rows"].values()
+                      for r in rows if r.get("season_type") not in (None, *_allowed)})
+    if _leaked:
+        raise AssertionError(
+            f"09_draft_and_target bypassed the D49 season scope: rows with season_type "
+            f"{_leaked} outside active scope {sorted(_allowed)}")
 
     con = common.connect(cfg["runtime"]["duckdb_threads"])
     try:

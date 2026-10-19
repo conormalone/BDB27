@@ -1231,3 +1231,70 @@ data; they are labelled `SYNTHETIC FIXTURE (not a finding)`.
 
 **Discipline.** Neither analysis enters §8 or changes `b_primary.csv`/the verdict. All emitted CSVs
 put `provenance` first.
+
+## D49 — Season scope is now REG+POST (preseason excluded); season labels come from games.csv · 2026-10-19
+
+**Why this is a specification change, not a robustness tweak.** Verified against the raw files
+(`/mnt/project_data/conor_downloads/bdb27`):
+
+* `player_play.csv` has 314,197 rows / 497 players / 1,001 games (2023-08-03 → 2026-02-08).
+  Each true season is 272 REG + 49 PRE + 13 POST games.
+* Route snaps by `season_type`: **REG 43,181 (81.0%), PRE 7,962 (14.9%), POST 2,165 (4.1%)**.
+  145 of 156 route-running players have at least one preseason route snap, and **50 players have
+  >25% of their route snaps in preseason**.
+* **Defect 1 — season mislabel.** `_season()` in `07_security_models.py` parsed the leading four
+  digits of `game_id`. NFL game ids are date-based (`YYYYMMDDNN`), so every January/February game
+  received the FOLLOWING calendar year as its season: 87 games, **4,775 route snaps (9.0%)**, had
+  `years_since_combine` one year too high. `games.csv` carries the true `season`/`season_type`.
+* **Defect 2 — preseason confound.** Preseason was included by default (no `season_type` filter
+  anywhere in `src/`). Snap counts, `snap_share`, the `min_snaps` eligibility gate and the outcome
+  rows therefore contained 14.9% of reps played largely against backups. **Direction of the bias:**
+  deeper-depth-chart players plausibly receive proportionally more preseason work — the same axis
+  the `moved_down` / `high_secure` contrast differs on — so this is a plausible group-difference
+  channel, not just noise.
+
+**Decision.** The primary specification is **REG + POST**. The all-games version
+(**REG + POST + PRE**) is **retained as the declared sensitivity, not deleted**. Nothing is
+dropped at build time: `03_game_demand` carries the true `season` and `season_type` on every
+effort and emits top-k once per configured scope. The scope is applied at the model stage from
+`config.yaml::game.scope`, so Conor's ~6-hour game build is paid **once**, not twice.
+
+**Implementation.**
+
+* One season helper in `common.py` (`load_game_index` / `season_and_type` / `attach_seasons`),
+  used by 03, 07 and 08/09. games.csv is authoritative; when games.csv **is present**, a game_id
+  missing from it is a hard error listing the count and ids. The date fallback (`YYYYMMDD`,
+  Jan/Feb → year − 1) is used only when games.csv is absent (fixtures / sample mode).
+* `03_game_demand` joins games.csv; `efforts.csv` and `top_k_efforts.csv` gain `season` /
+  `season_type`; `top_k_efforts.csv` gains a `season_scope` label (primary / sensitivity) and
+  `route_snap_counts.csv` splits counts by true season/type. `player_summary.csv` reports the
+  primary-scope denominator (plus all / sensitivity columns).
+* `07_security_models` filters rows **and** the denominator by the active scope; `min_snaps` is
+  applied to the same scoped count. `season_scope.csv` reports, per scope: route snaps, players,
+  players passing `min_snaps`, mean/median route snaps and mean snap-share. Every output CSV
+  carries a `season_scope` column and the SUMMARY records both scope definitions.
+* `08` / `09` inherit the filter through `build_effort_rows`; 09 asserts that no inherited row
+  leaks a season type outside the active scope.
+
+**Checkpoint fingerprints (the dangerous one).** `common.checkpoint_match` previously compared
+only mode/provenance/synthetic/regime, so a config change silently reused stale artefacts. Every
+stage `_DONE` marker now records `pipeline_version` + `config_fingerprint` (stable SHA-256 of the
+stage's relevant config subtree, sorted keys). A **missing** fingerprint is a mismatch (legacy
+markers rebuild), and so is a changed one. `pipeline_version` is bumped to **1** in this commit.
+Consequence: Conor's existing markers are invalid, so the first full run after this commit is
+**one full rebuild** — this is correct, not a resume. The notebook §3 prints the per-stage
+fingerprint rejection reason and an explicit `artefacts stale — ONE FULL REBUILD REQUIRED`
+banner; §1 documents it.
+
+**What is NOT claimed here.** No new result is reported. The Pi has no full artefacts. The code
+path is proven on the synthetic fixture (games spanning PRE/REG/POST, a Jan game whose calendar
+year differs from its season, a player with majority-preseason route snaps) and on sample mode.
+The real REG+POST numbers require Conor's one rebuild, then notebook §11 (primary vs all games).
+
+**Read on how much the headline could move.** Two offsetting channels are now explicit: (i) the
+season relabel removes a one-year error in `years_since_combine` for 9.0% of route snaps; (ii)
+excluding preseason removes reps that are disproportionately available to deeper-chart players.
+If the group contrast is driven by opportunity/role, the primary coefficient should move relative
+to the all-games sensitivity; if it is stable, the confound is small. The honest statement is that
+the direction of (ii) is predictable (deeper charts get more preseason work) but its magnitude on
+this contrast is unknown until the full REG+POST run. `outputs/` stays gitignored.

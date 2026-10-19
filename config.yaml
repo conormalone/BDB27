@@ -8,6 +8,7 @@
 # a-priori placeholders, always labelled `UNVALIDATED SAMPLE OUTPUT`.
 
 project: BDB27
+pipeline_version: 1       # D49: bumped whenever a config change must invalidate every checkpoint
 seed: 20270106            # fixed seed for any stochastic step
 
 # --------------------------------------------------------------------------- #
@@ -147,6 +148,13 @@ envelope:
 game:
   out_subdir: game
   thresholds_file: thresholds.json # outputs/thresholds.json (FULL in full mode; PLACEHOLDER in sample)
+  # --- D49 season scope: ONE build carries season/season_type on every effort; the scope is
+  # applied at the MODEL stage (07/08/09), never by rebuilding 03. Primary excludes preseason,
+  # whose 14.9% share is played largely against backups and deeper depth charts.
+  scope:
+    active: primary                # which list the model stages apply by default
+    primary: [REG, POST]           # the new primary specification
+    sensitivity: [REG, POST, PRE]  # the all-games version, retained (never deleted)
   # --- data-QC per-frame speed validity bound (game side only; notes/decisions.md D35) ---
   # `peak_speed` is max() over per-frame speed = step distance / dt (recomputed from x,y); one
   # noisy/duplicated frame can define a physically-impossible peak. This is the frame-level DESPIKE
@@ -395,6 +403,8 @@ security_models:
     efforts: efforts.csv
     top_k_efforts: top_k_efforts.csv
     player_summary: player_summary.csv
+    route_snap_counts: route_snap_counts.csv
+    games: games.csv
     thresholds_applied: thresholds_applied.csv
     security_exposure: security_exposure.parquet       # real path (outputs/security/)
     security_exposure_csv: security_exposure.csv       # synthetic fixture path
@@ -456,7 +466,10 @@ security_models:
       HITCH: SHORT
       SCREEN: SHORT
     route_family_default: OTHER
-    season_digits: 4                # season = leading 4 digits of game_id (NFL game ids)
+    # D49: the season now comes from games.csv (the true season). The digits below are only the
+    # FALLBACK when games.csv is absent (synthetic fixtures): parse YYYYMMDD and map Jan/Feb to
+    # year-1. `season_digits` is retained for provenance but is no longer the primary rule.
+    season_digits: 4
     season_min: 1999
     season_max: 2100
   # --- C: which end drives it (continuous log-EDP piecewise model) ---

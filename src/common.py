@@ -13,6 +13,7 @@ Design rules (TASK.md):
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import logging
 import os
@@ -229,13 +230,68 @@ def read_done_marker(path: Path | str) -> dict:
     return rec if isinstance(rec, dict) else {}
 
 
+# --------------------------------------------------------------------------- #
+# Config fingerprint (D49) — a config change must never reuse stale artefacts
+# --------------------------------------------------------------------------- #
+# Each stage's relevant config subtree. Over-invalidation is safe (the stage rebuilds);
+# under-invalidation is the defect D49 closes. Paths / logging / mode are deliberately excluded:
+# they change per machine and do not change any number a stage produces.
+STAGE_CONFIG_SUBTREES: dict[str, tuple[str, ...]] = {
+    "00_thresholds": ("game", "audit"),
+    "00b_external_proxies": ("external",),
+    "02_combine_envelope": ("envelope", "audit"),
+    "03_game_demand": ("game", "audit", "files"),
+    "04_models": ("models", "game", "envelope"),
+    "05_validate": ("validate", "models"),
+    "06_security": ("security", "external"),
+    "07_security_models": ("security_models", "security", "game", "envelope", "models"),
+}
+
+
+def stable_hash(obj: Any) -> str:
+    """SHA-256 of a canonical JSON rendering (sorted keys; deterministic across machines)."""
+    blob = json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def config_fingerprint(cfg: dict, stage: str) -> str:
+    """Stable hash of ``pipeline_version`` + the stage's relevant config subtree (D49)."""
+    keys = STAGE_CONFIG_SUBTREES.get(stage)
+    if keys is None:
+        keys = tuple(sorted(k for k in cfg if not str(k).startswith("_")
+                            and k not in ("paths", "logging", "mode")))
+    payload = dict(
+        pipeline_version=int(cfg.get("pipeline_version", 0)),
+        stage=str(stage),
+        config={k: cfg.get(k) for k in keys},
+    )
+    return stable_hash(payload)
+
+
+def fingerprint_fields(cfg: dict, stage: str) -> dict:
+    """The marker fields every stage writes alongside its mode/provenance (D49)."""
+    return dict(pipeline_version=int(cfg.get("pipeline_version", 0)),
+                config_fingerprint=config_fingerprint(cfg, stage))
+
+
+def done_marker(cfg: dict, stage: str, **extra: Any) -> dict:
+    """Build a ``_DONE`` payload: stage + mode/provenance extras + fingerprint fields."""
+    return dict(stage=str(stage), **extra, **fingerprint_fields(cfg, stage))
+
+
 def checkpoint_match(rec: dict, *, mode: str, provenance: str | None = None,
                      synthetic: bool | None = None, regime: str | None = None,
-                     path: Path | str | None = None) -> bool:
+                     path: Path | str | None = None,
+                     fingerprint: str | None = None) -> bool:
     """True only when the recorded marker matches the requested run exactly.
 
     Mode is always required. A legacy/plain-text marker (parsed as ``{}``) never matches, so the
     stage rebuilds instead of silently reusing outputs of unknown provenance.
+
+    Fingerprint rule (D49): when ``fingerprint`` is supplied, the marker must carry the same
+    ``config_fingerprint``. A **missing** fingerprint (legacy marker) is a mismatch, and so is a
+    changed one — a config change (e.g. ``game.scope``) must never silently reuse stale artefacts
+    and quote old numbers with new code.
 
     Asymmetric mode rule (D42): a **FULL** checkpoint satisfies a ``--mode sample`` request and is
     reused untouched — a sample run must never overwrite/downgrade FULL outputs. The reverse (a
@@ -244,6 +300,15 @@ def checkpoint_match(rec: dict, *, mode: str, provenance: str | None = None,
     """
     if not isinstance(rec, dict):
         return False
+    if fingerprint is not None:
+        recorded_fp = rec.get("config_fingerprint")
+        if recorded_fp != fingerprint:
+            logging.getLogger(_LOGGER_NAME).info(
+                "checkpoint at %s REJECTED — config fingerprint changed (%s -> %s); rebuilding",
+                path if path is not None else (rec.get("stage") or "<marker>"),
+                "missing legacy marker" if recorded_fp is None else str(recorded_fp)[:12],
+                str(fingerprint)[:12])
+            return False
     recorded = rec.get("mode")
     downgrade = recorded == "full" and mode == "sample"
     if recorded != mode and not downgrade:
@@ -268,11 +333,138 @@ def checkpoint_match(rec: dict, *, mode: str, provenance: str | None = None,
 
 
 def checkpoint_mismatch_note(rec: dict, *, mode: str, provenance: str | None = None,
-                             synthetic: bool | None = None, regime: str | None = None) -> str:
+                             synthetic: bool | None = None, regime: str | None = None,
+                             fingerprint: str | None = None) -> str:
     """Human-readable marker-vs-request description for the rebuild log line."""
-    return (f"marker mode={rec.get('mode')!r} provenance={rec.get('provenance')!r} "
+    note = (f"marker mode={rec.get('mode')!r} provenance={rec.get('provenance')!r} "
             f"synthetic={rec.get('synthetic')!r} regime={rec.get('regime')!r} != requested "
             f"mode={mode!r} provenance={provenance!r} synthetic={synthetic!r} regime={regime!r}")
+    if fingerprint is not None:
+        old = rec.get("config_fingerprint")
+        note += (f" · config_fingerprint "
+                 f"{'MISSING (legacy marker)' if old is None else str(old)[:12]} -> "
+                 f"{str(fingerprint)[:12]}")
+    return note
+
+
+# --------------------------------------------------------------------------- #
+# Season labels (D49) — ONE source of truth, shared by 03 / 07 / 09
+# --------------------------------------------------------------------------- #
+class SeasonLookupError(ValueError):
+    """A game_id present in the efforts but absent from a loaded games.csv (never guess)."""
+
+
+def fallback_season_from_game_id(game_id: Any, *, min_year: int = 1999,
+                                 max_year: int = 2100) -> int | None:
+    """Season from a date-based ``YYYYMMDDNN`` game id, for fixtures **without** games.csv.
+
+    NFL game ids are date-based. A January/February game belongs to the **previous** season
+    (e.g. 2024-01-07 is the 2023 season), so those months map to ``year - 1``. An unparseable
+    month falls back to the leading four digits (synthetic ids such as ``2025000000``).
+    """
+    try:
+        s = str(int(game_id))
+    except (TypeError, ValueError):
+        return None
+    if len(s) < 4:
+        return None
+    try:
+        year = int(s[:4])
+    except ValueError:
+        return None
+    month = None
+    if len(s) >= 6:
+        try:
+            month = int(s[4:6])
+        except ValueError:
+            month = None
+    if month in (1, 2):
+        year -= 1
+    if year < int(min_year) or year > int(max_year):
+        return None
+    return year
+
+
+def load_game_index(con, path: Path | str | None,
+                    game_ids: Iterable[int] | None = None) -> dict[int, dict] | None:
+    """Load ``{game_id: {season, season_type}}`` from games.csv; ``None`` when it is absent.
+
+    ``None`` is the only condition that permits the game-id date fallback (fixtures / sample
+    mode). When games.csv **is** present, callers must treat a missing id as a hard error.
+    """
+    if path is None:
+        return None
+    p = Path(path)
+    if not p.exists():
+        return None
+    src = (f"read_parquet('{p}')" if str(p).endswith(".parquet")
+           else f"read_csv_auto('{p}', header=true)")
+    sql = f"SELECT game_id, season, season_type FROM {src}"
+    ids = None if game_ids is None else sorted({int(g) for g in game_ids})
+    if ids is not None:
+        # explicit list: the caller only needs the games it actually touches
+        if not ids:
+            return {}
+        id_sql = ", ".join(str(int(g)) for g in ids)
+        sql += f" WHERE game_id IN ({id_sql})"
+    out: dict[int, dict] = {}
+    for gid, season, stype in con.execute(sql).fetchall():
+        season_i = int(season) if season is not None else None
+        out[int(gid)] = dict(season=season_i,
+                             season_type=(str(stype) if stype is not None else None))
+    return out
+
+
+def season_and_type(game_id: Any, games: dict[int, dict] | None, *,
+                    min_year: int = 1999, max_year: int = 2100) -> tuple[int | None, str | None]:
+    """Resolve ``(season, season_type)`` for one game — games.csv wins, date fallback otherwise."""
+    gid = int(game_id)
+    if games is not None:
+        rec = games.get(gid)
+        if rec is None:
+            raise SeasonLookupError(
+                f"game_id {gid} is absent from games.csv while games.csv IS present "
+                "(never guess a season)")
+        return rec.get("season"), rec.get("season_type")
+    return fallback_season_from_game_id(gid, min_year=min_year, max_year=max_year), None
+
+
+def attach_seasons(rows: Iterable[dict], games: dict[int, dict] | None, *,
+                   game_key: str = "game_id", min_year: int = 1999,
+                   max_year: int = 2100) -> None:
+    """Add ``season`` / ``season_type`` in place; hard-fail on any id missing from games.csv."""
+    missing: list[int] = []
+    rows = list(rows)
+    for r in rows:
+        gid = int(r[game_key])
+        if games is None:
+            r["season"] = fallback_season_from_game_id(gid, min_year=min_year,
+                                                       max_year=max_year)
+            r["season_type"] = None
+            continue
+        rec = games.get(gid)
+        if rec is None:
+            missing.append(gid)
+            continue
+        r["season"] = rec.get("season")
+        r["season_type"] = rec.get("season_type")
+    if missing:
+        uniq = sorted(set(missing))
+        raise SeasonLookupError(
+            f"{len(uniq)} game_id(s) absent from games.csv (games.csv IS present): "
+            f"{uniq}")
+
+
+def scope_types(cfg: dict, key: str | None = None) -> tuple[str, list[str]]:
+    """Return ``(scope_key, season_types)`` from ``config.game.scope`` (D49)."""
+    scope = cfg["game"]["scope"]
+    scope_key = str(key or scope.get("active", "primary"))
+    if scope_key not in ("primary", "sensitivity"):
+        raise ValueError(f"unknown game.scope key {scope_key!r}")
+    types = scope.get(scope_key)
+    if not isinstance(types, (list, tuple)) or not types:
+        raise ValueError(f"game.scope.{scope_key} must be a non-empty list")
+    return scope_key, [str(t) for t in types]
 
 
 # --------------------------------------------------------------------------- #
