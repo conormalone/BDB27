@@ -205,16 +205,19 @@ def test_input_schema_guard_fails_loudly():
 def test_output_tables_schema():
     d = _run("planted")
     expect = {
-        "group_assignment.csv": ["provenance", "season_scope", "nfl_id", "position_group",
+        "group_assignment.csv": ["provenance", "season_scope", "panel", "nfl_id",
+                                 "position_group",
                                  "edp_pre", "log_edp_pre",
                                  "edp_trend", "has_trend", "stratum", "group", "basis",
                                  "block_status"],
-        "b_primary.csv": ["provenance", "season_scope", "spec", "scope", "n_obs", "n_players",
+        "b_primary.csv": ["provenance", "season_scope", "panel", "spec", "scope", "n_obs",
+                          "n_players",
                           "n_players_moved_down", "n_players_high_secure", "thin",
                           "group_coef", "group_se", "group_p", "group_ci_lo", "group_ci_hi", "speed_coef",
                           "speed_se", "speed_p", "speed_coef_corrected", "group_coef_corrected",
                           "group_se_corrected", "group_p_corrected", "reliability_icc",
-                          "reliability_source", "r2", "method", "note", "block_status"],
+                          "reliability_source", "r2", "method", "note", "dropped_controls",
+                          "block_status"],
     }
     for name, cols in expect.items():
         assert _header(d / name) == cols, (name, _header(d / name))

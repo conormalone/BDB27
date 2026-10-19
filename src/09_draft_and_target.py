@@ -763,6 +763,12 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
         raise AssertionError(
             f"09_draft_and_target bypassed the D49 season scope: rows with season_type "
             f"{_leaked} outside active scope {sorted(_allowed)}")
+    _leaked_panel = sorted({str(r.get("panel")) for rows in panels["rows"].values()
+                            for r in rows if r.get("panel") not in (None, panels["panel"])})
+    if _leaked_panel:
+        raise AssertionError(
+            f"09_draft_and_target bypassed the D49 panel axis: rows with panel "
+            f"{_leaked_panel} outside active panel {panels['panel']!r}")
 
     con = common.connect(cfg["runtime"]["duckdb_threads"])
     try:

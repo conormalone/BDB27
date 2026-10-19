@@ -107,6 +107,7 @@ FLOAT_FIELDS = ("edp_pre", "log_edp_pre", "edp_trend", "consensus_share", "peak_
 # Set once by ``run()``; every emitted CSV then carries the scope label (D49) so a table can never
 # be misread as the other scope. A single process handles a single run, so a module global is safe.
 _ACTIVE_SEASON_SCOPE: str | None = None
+_ACTIVE_PANEL: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -124,28 +125,38 @@ def _f(x: Any) -> Any:
 
 
 def _emit(path: Path, rows: Sequence[dict], prov: str, log, block_status: str = "OK",
-          season_scope: str | None = None) -> None:
+          season_scope: str | None = None, use_row_scope: bool = False) -> None:
     """Write one block's CSV immediately (D43: no end-of-run batch that a later bug can destroy).
 
     Every row carries ``block_status`` (``OK`` / ``FAILED``); a failed block is a single labelled row
     with ``term``/``weighting='unavailable'`` and the reason string, never an empty file.
     """
-    scope = season_scope if season_scope is not None else _ACTIVE_SEASON_SCOPE
+    scope = (None if use_row_scope else
+             (season_scope if season_scope is not None else _ACTIVE_SEASON_SCOPE))
+    panel = None if use_row_scope else _ACTIVE_PANEL
     rows = [dict(r) for r in rows] or [{}]
     fields: list[str] = []
     for r in rows:
         for k in r:
             if k not in fields:
                 fields.append(k)
-    fields = ["provenance"] + (["season_scope"] if scope is not None else []) + [
-        f for f in fields if f not in ("provenance", "block_status", "season_scope")]
+    _drop = {"provenance", "block_status"} | (
+        set() if use_row_scope else {"season_scope", "panel"})
+    fields = (["provenance"] + (["season_scope"] if scope is not None else [])
+              + (["panel"] if panel is not None else [])
+              + [f for f in fields if f not in _drop])
     norm = []
     for r in rows:
         d = {"provenance": prov}
         if scope is not None:
             d["season_scope"] = scope
+        if panel is not None:
+            d["panel"] = panel
+        skip = {"provenance", "block_status"}
+        if not use_row_scope:
+            skip |= {"season_scope", "panel"}
         for k, v in r.items():
-            if k not in ("provenance", "block_status", "season_scope"):
+            if k not in skip:
                 d[k] = _f(v)
         d["block_status"] = str(r.get("block_status", block_status))
         norm.append(d)
@@ -283,14 +294,26 @@ def load_snap_counts(con, path: Path) -> list[dict]:
     return out
 
 
-def scoped_snap_counts(rows: Sequence[dict], season_types: Sequence[str]) -> dict[int, int]:
-    """Sum route snaps over the active scope — the same filter the model rows use."""
+def scoped_snap_counts(rows: Sequence[dict], season_types: Sequence[str],
+                       panel: str = common.PANEL_ALL,
+                       draft_year: dict[int, int | None] | None = None) -> dict[int, int]:
+    """Sum route snaps over the active scope AND panel — the same filter the model rows use.
+
+    ``rookie_only`` keeps only seasons equal to the player's draft year, so the denominator,
+    ``snap_share`` and the ``min_snaps`` gate are rookie-season-only, never career totals.
+    """
     allowed = set(str(t) for t in season_types)
+    draft_year = draft_year or {}
     out: dict[int, int] = {}
     for r in rows:
         if r.get("season_type") not in allowed:
             continue
-        out[int(r["nfl_id"])] = out.get(int(r["nfl_id"]), 0) + int(r["n_route_snaps"] or 0)
+        nid = int(r["nfl_id"])
+        if panel == common.PANEL_ROOKIE:
+            dy = draft_year.get(nid)
+            if dy is None or r.get("season") is None or int(r["season"]) != int(dy):
+                continue
+        out[nid] = out.get(nid, 0) + int(r["n_route_snaps"] or 0)
     return out
 
 
@@ -638,7 +661,8 @@ def build_effort_rows(efforts: Sequence[dict], assign: dict, envelope: dict[int,
                       game_index: dict[int, dict] | None = None,
                       season_types: Sequence[str] | None = None,
                       season_scope: str | None = None,
-                      min_snaps: int | None = None) -> tuple[list[dict], dict]:
+                      min_snaps: int | None = None,
+                      panel: str = common.PANEL_ALL) -> tuple[list[dict], dict]:
     """Effort-level model rows with every pre-computed control; drops counted by reason.
 
     ``unclassified`` players (the middle tertile of the level fallback, and board rows with no
@@ -712,14 +736,23 @@ def build_effort_rows(efforts: Sequence[dict], assign: dict, envelope: dict[int,
             season = int(e["season"])
         years = (float(season) - float(c["draft_year"])
                  if season is not None and c.get("draft_year") is not None else None)
-        n_snaps = int((snap_counts or {}).get(nid, ps["n_route_snaps"] or 0))
+        if panel == common.PANEL_ROOKIE:
+            dy = c.get("draft_year")
+            if dy is None or season is None or int(season) != int(dy):
+                _drop("not_rookie_season")
+                continue
+        # When a scoped count map is supplied, a player absent from it has ZERO snaps in that
+        # scope/panel — never fall back to the career total in player_summary, or the panel
+        # denominator (and snap_share / min_snaps gate) would silently leak career snaps.
+        n_snaps = (int(ps["n_route_snaps"] or 0) if snap_counts is None
+                   else int(snap_counts.get(nid, 0)))
         if min_snaps is not None and n_snaps < int(min_snaps):
             _drop("below_min_snaps")
             continue
         snap_share = min(float(n_snaps) / snap_denom, clip) if snap_denom > 0 else None
         row = dict(
             nfl_id=nid, game_id=int(e["game_id"]), play_id=int(e["play_id"]),
-            season=season, season_type=e.get("season_type"),
+            season=season, season_type=e.get("season_type"), panel=panel,
             group=a["group"], stratum=a["stratum"],
             moved_down=1.0 if a["group"] == GROUP_POS else 0.0,
             y=math.log(peak), peak_speed=peak,
@@ -827,6 +860,7 @@ def run_b(rows: list[dict], cov: dict[int, dict], rel: dict[str, dict], cfg: dic
                        speed_coef=sc["coef"], speed_se=sc["se"], speed_p=sc["p"],
                        r2=float(res.rsquared))
             if dr:
+                rec["dropped_controls"] = "; ".join(f"{a}:{b}" for a, b in dr)
                 rec["note"] = "dropped controls: " + "; ".join(f"{a}:{b}" for a, b in dr)
             # ---- attenuation (FWL + ICC moment matrix) ----
             _apply_attenuation(rec, fin, xkey, y, X, names, icc, num_controls, cat_controls, p, cfg,
@@ -874,6 +908,7 @@ def run_b(rows: list[dict], cov: dict[int, dict], rel: dict[str, dict], cfg: dic
                            speed_coef=sc["coef"], speed_se=sc["se"], speed_p=sc["p"],
                            r2=float(res.rsquared))
                 if dr:
+                    rec["dropped_controls"] = "; ".join(f"{a}:{b}" for a, b in dr)
                     rec["note"] += " | dropped controls: " + "; ".join(f"{a}:{b}" for a, b in dr)
                 _apply_attenuation(rec, fin, panel_xkey, y, X, names, panel_icc,
                                    num_controls, cat_controls, p, cfg,
@@ -923,6 +958,7 @@ def run_b(rows: list[dict], cov: dict[int, dict], rel: dict[str, dict], cfg: dic
                            speed_coef=sc["coef"], speed_se=sc["se"], speed_p=sc["p"],
                            r2=float(res.rsquared))
                 if dr:
+                    rec["dropped_controls"] = "; ".join(f"{a}:{b}" for a, b in dr)
                     rec["note"] += " | dropped controls: " + "; ".join(f"{a}:{b}" for a, b in dr)
                 _apply_attenuation(rec, fin, panel_xkey, y, X, names, panel_icc,
                                    num_controls, cat_controls, p, cfg,
@@ -974,6 +1010,7 @@ def run_b(rows: list[dict], cov: dict[int, dict], rel: dict[str, dict], cfg: dic
                     if dr and not rec["note"].endswith("speed"):
                         rec["note"] += " | "
                     if dr:
+                        rec["dropped_controls"] = "; ".join(f"{a}:{b}" for a, b in dr)
                         rec["note"] += "dropped controls: " + "; ".join(f"{a}:{b}" for a, b in dr)
                     _apply_attenuation(rec, fin, "log_env_vmax", y, X, names,
                                        rel.get("env_vmax") or {}, num_controls, cat_controls,
@@ -1591,6 +1628,7 @@ def run_g(rows: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
                 rec["unstable"] = False
                 rec["reported"] = est
                 if dr:
+                    rec["dropped_controls"] = "; ".join(f"{a}:{b}" for a, b in dr)
                     rec["note"] = "dropped controls: " + "; ".join(f"{a}:{b}" for a, b in dr)
             out.append(rec)
     return out, tail
@@ -1638,7 +1676,8 @@ def _check_thresholds(cfg: dict, synthetic: bool, path: Path, log) -> dict:
 
 
 def season_scope_table(cfg: dict, snap_rows: Sequence[dict], psum: dict[int, dict],
-                       active_key: str) -> list[dict]:
+                       active_key: str, panel: str = common.PANEL_ALL,
+                       draft_years: dict[int, int | None] | None = None) -> list[dict]:
     """One row per configured scope: route snaps, players, eligibility, snap-share (D49)."""
     denom = float(cfg["game"]["route_snap_count"])
     clip = float(cfg["security_models"]["primary"]["snap_share_clip"])
@@ -1646,7 +1685,8 @@ def season_scope_table(cfg: dict, snap_rows: Sequence[dict], psum: dict[int, dic
     out: list[dict] = []
     for key in ("primary", "sensitivity"):
         types = [str(t) for t in cfg["game"]["scope"][key]]
-        counts = {nid: n for nid, n in scoped_snap_counts(snap_rows, types).items()
+        counts = {nid: n for nid, n in scoped_snap_counts(
+            snap_rows, types, panel=panel, draft_year=draft_years).items()
                   if n > 0 and (not players or nid in players)}
         vals = np.asarray(sorted(counts.values()), float)
         shares = [min(float(n) / denom, clip) for n in vals] if denom > 0 else []
@@ -1663,12 +1703,77 @@ def season_scope_table(cfg: dict, snap_rows: Sequence[dict], psum: dict[int, dic
     return out
 
 
+def scope_grid_table(cfg: dict, snap_rows: Sequence[dict], psum: dict[int, dict],
+                     assign: dict, topk: Sequence[dict], envelope: dict[int, dict],
+                     cov: dict[int, dict], game_index: dict[int, dict] | None,
+                     active_scope_key: str, active_panel: str) -> list[dict]:
+    """The 2x2 scope grid: season_types {primary, sensitivity} x panel {all_seasons, rookie_only}.
+
+    One row per cell, with the eligibility denominator recomputed inside that cell. The PRIMARY
+    cell is fixed by config (REG+POST x all_seasons), never by which cell this process is running.
+    """
+    denom = float(cfg["game"]["route_snap_count"])
+    clip = float(cfg["security_models"]["primary"]["snap_share_clip"])
+    min_group_n = int(cfg["security_models"]["sort"]["min_group_n"])
+    groups = list(cfg["security_models"]["sort"]["groups"])
+    num_controls = [c for c in cfg["security_models"]["primary"]["controls"]
+                    if c not in ("route_family", "position")]
+    model_keys = ["y", "log_env_vmax", "moved_down"] + num_controls
+    players = set(int(n) for n in psum)
+    draft_years = {int(nid): c.get("draft_year") for nid, c in cov.items()}
+    # PRIMARY is fixed by the study design: the configured primary season scope x all_seasons.
+    # It must not follow either the runtime --panel/--scope args or a config default panel, or a
+    # rookie-only run would relabel its own cell as PRIMARY.
+    primary_panel = common.PANEL_ALL
+    primary_scope = str(cfg["game"]["scope"].get("active", "primary"))
+    out: list[dict] = []
+    for panel in [str(x) for x in cfg["game"]["scope"].get("panels",
+                                                           [common.PANEL_ALL,
+                                                            common.PANEL_ROOKIE])]:
+        for key in ("primary", "sensitivity"):
+            types = [str(t) for t in cfg["game"]["scope"][key]]
+            counts = {nid: n for nid, n in scoped_snap_counts(
+                snap_rows, types, panel=panel, draft_year=draft_years).items()
+                      if n > 0 and (not players or nid in players)}
+            vals = np.asarray(sorted(counts.values()), float)
+            shares = [min(float(n) / denom, clip) for n in vals] if denom > 0 else []
+            rows, _ = build_effort_rows(
+                topk, assign, envelope, cov, psum, cfg, snap_counts=counts,
+                game_index=game_index, season_types=types, season_scope=key,
+                min_snaps=int(denom), panel=panel)
+            model_rows = _complete(rows, model_keys)
+            counts_g = _group_player_counts(model_rows, groups)
+            thin_groups = sorted(g for g, n in counts_g.items() if n < min_group_n)
+            out.append(dict(
+                scope_cell=f"{panel}|{'+'.join(types)}",
+                panel=panel, season_scope=key, season_types="+".join(types),
+                is_primary=bool(panel == primary_panel and key == primary_scope),
+                active=bool(panel == active_panel and key == active_scope_key),
+                n_route_snaps=int(vals.sum()) if vals.size else 0,
+                n_players=int(vals.size),
+                n_eligible=int((vals >= denom).sum()) if vals.size else 0,
+                min_snaps=denom,
+                mean_n_route_snaps=(round(float(vals.mean()), 4) if vals.size else None),
+                median_n_route_snaps=(round(float(np.median(vals)), 4) if vals.size else None),
+                mean_snap_share=(round(float(np.mean(shares)), 4) if shares else None),
+                n_model_rows=len(model_rows),
+                n_players_moved_down=counts_g.get(GROUP_POS, 0),
+                n_players_high_secure=counts_g.get(GROUP_NEG, 0),
+                min_group_n=min_group_n,
+                thin=bool(thin_groups),
+                thin_groups=",".join(thin_groups),
+            ))
+    return out
+
+
 def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov: str, log,
-        scope_key: str | None = None) -> dict:
-    global _ACTIVE_SEASON_SCOPE
+        scope_key: str | None = None, panel: str | None = None) -> dict:
+    global _ACTIVE_SEASON_SCOPE, _ACTIVE_PANEL
     p = cfg["security_models"]["primary"]
     scope_key, active_types = common.scope_types(cfg, scope_key)
+    panel = common.panel_key(cfg, panel)
     _ACTIVE_SEASON_SCOPE = scope_key
+    _ACTIVE_PANEL = panel
     scope_label = "+".join(active_types)
     inp = _inputs(cfg, synthetic, regime)
     con = common.connect(cfg["runtime"]["duckdb_threads"])
@@ -1682,12 +1787,14 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
     topk = load_topk(con, inp["topk"])
     efforts = load_efforts(con, inp["efforts"])
     snap_rows = load_snap_counts(con, inp["snap_counts"])
-    snap_counts = scoped_snap_counts(snap_rows, active_types)
     game_ids = ({int(r["game_id"]) for r in topk} | {int(r["game_id"]) for r in efforts})
     game_index = common.load_game_index(con, inp["games"], game_ids=game_ids)
     attempts = load_attempt_markers(con, inp["attempts"])
     cov_issues: list[dict] = []
     cov = load_covariates(con, cfg, synthetic, regime, issues=cov_issues)
+    draft_years = {int(nid): c.get("draft_year") for nid, c in cov.items()}
+    snap_counts = scoped_snap_counts(snap_rows, active_types, panel=panel,
+                                     draft_year=draft_years)
     cov_bounds = mf.covariate_bounds(cfg)
     for iss in cov_issues:
         log.warning("%s: IMPLAUSIBLE COVARIATE — nfl_id=%s %s=%s (%s); value set to NaN and the "
@@ -1698,9 +1805,10 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
                     "covariate_quality.csv and SUMMARY (D44)", prov, len(cov_issues),
                     len({iss["nfl_id"] for iss in cov_issues}))
     rel = load_reliability(cfg, synthetic, regime, log)
-    log.info("%s: %d exposures, %d envelope, %d top-k, %d efforts, %d covariates; season scope "
-             "%s=%s (%d scoped route snaps)", prov, len(exposures), len(envelope), len(topk),
-             len(efforts), len(cov), scope_key, scope_label, sum(snap_counts.values()))
+    log.info("%s: %d exposures, %d envelope, %d top-k, %d efforts, %d covariates; scope "
+             "panel=%s season=%s(%s) (%d scoped route snaps)", prov, len(exposures),
+             len(envelope), len(topk), len(efforts), len(cov), panel, scope_key, scope_label,
+             sum(snap_counts.values()))
 
     # ---- group assignment (pre-Combine only) ----
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1719,7 +1827,7 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
     # C's continuous dose-response keeps the middle tertile; the two-group models (B, D–G) do not.
     row_kwargs = dict(snap_counts=snap_counts, game_index=game_index,
                       season_types=active_types, season_scope=scope_key,
-                      min_snaps=int(cfg["game"]["route_snap_count"]))
+                      min_snaps=int(cfg["game"]["route_snap_count"]), panel=panel)
     rows_all, dropped = build_effort_rows(topk, assign, envelope, cov, psum, cfg,
                                           keep_unclassified=True, **row_kwargs)
     contrast = set(cfg["security_models"]["sort"]["groups"])
@@ -1757,12 +1865,20 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
             _emit(out_dir / fname, [_fail_row(reason, key)], prov, log, block_status="FAILED")
 
     _emit(out_dir / "group_assignment.csv", assign["assignments"], prov, log)
-    scope_table = season_scope_table(cfg, snap_rows, psum, scope_key)
+    scope_table = season_scope_table(cfg, snap_rows, psum, scope_key, panel=panel,
+                                     draft_years=draft_years)
     _emit(out_dir / "season_scope.csv", scope_table, prov, log)
     for _r in scope_table:
         log.info("%s: season scope %s (%s) — %d route snaps, %d players, %d pass min_snaps=%g",
                  prov, _r["scope"], _r["season_types"], _r["n_route_snaps"], _r["n_players"],
                  _r["n_players_passing_min_snaps"], _r["min_snaps"])
+    grid = scope_grid_table(cfg, snap_rows, psum, assign, topk, envelope, cov, game_index,
+                            scope_key, panel)
+    _emit(out_dir / "scope_grid.csv", grid, prov, log, use_row_scope=True)
+    for _r in grid:
+        log.info("%s: scope cell %s — %d route snaps, %d players, %d eligible, %d model rows, "
+                 "thin=%s", prov, _r["scope_cell"], _r["n_route_snaps"], _r["n_players"],
+                 _r["n_eligible"], _r["n_model_rows"], _r["thin"])
     # D44: the covariate-quality audit trail is written even when nothing was flagged, so a clean
     # run *states* that the size covariates were checked against the declared bounds.
     _emit(out_dir / "covariate_quality.csv",
@@ -1778,6 +1894,20 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
         raise RuntimeError(
             f"primary block B failed ({failed_blocks['B']}) — no primary result was produced; "
             f"see {out_dir / 'b_primary.csv'}") from exc
+    if panel == common.PANEL_ROOKIE:
+        # The tenure control is identically zero by construction. It MUST drop as constant and
+        # the drop must be visible in the fit metadata — never silent (D49 addendum).
+        _bad = [r for r in rows if r.get("years_since_combine") not in (0, 0.0)]
+        if _bad:
+            raise AssertionError(
+                f"rookie_only rows must have years_since_combine == 0; found "
+                f"{sorted({r.get('years_since_combine') for r in _bad})[:5]}")
+        _fitted = [r for r in b_rows if r.get("group_coef") is not None]
+        if _fitted and not any("years_since_combine:constant"
+                               in str(r.get("dropped_controls") or "") for r in _fitted):
+            raise AssertionError(
+                "rookie_only: years_since_combine did not drop as a constant control in any "
+                f"fitted B row (dropped_controls={[r.get('dropped_controls') for r in _fitted]})")
     if cov_issues:
         _q_note = (f"covariate quality: {len({iss['nfl_id'] for iss in cov_issues})} player(s) / "
                    f"{int(dropped.get('covariate_quality', 0))} effort row(s) excluded for an "
@@ -1866,11 +1996,16 @@ def run(cfg: dict, mode: str, synthetic: bool, regime: str, out_dir: Path, prov:
     thin_groups = sorted(g for g, n in group_totals.items() if n < min_group_n)
     summary = dict(
         provenance=prov, mode=mode, synthetic=synthetic, regime=regime,
+        panel=panel,
+        tenure_note=("rookie_only: years_since_combine is identically 0 and is dropped as a "
+                     "constant control (reported in dropped_controls)"
+                     if panel == common.PANEL_ROOKIE else ""),
         season_scope=dict(
-            active=scope_key, active_types=list(active_types),
+            active=scope_key, active_types=list(active_types), panel=panel,
             primary_types=[str(t) for t in cfg["game"]["scope"]["primary"]],
             sensitivity_types=[str(t) for t in cfg["game"]["scope"]["sensitivity"]],
-            table=scope_table),
+            panels=[str(p) for p in cfg["game"]["scope"].get("panels", [])],
+            table=scope_table, grid=grid),
         sign_convention=("a NEGATIVE group_coef means moved_down sits further below its ceiling "
                          "(larger gap) = AGAINST the incentive hypothesis; the hypothesis predicts "
                          "POSITIVE"),
@@ -1951,8 +2086,11 @@ def render_summary(s: dict) -> str:
              f"{s['synthetic']}")
     L.append(f"- **Analysis A:** {s['analysis_a_status']}")
     L.append(f"- **Sign convention:** {s['sign_convention']}.")
+    if s.get("tenure_note"):
+        L.append(f"- **Panel note (D49):** {s['tenure_note']}.")
     _sc = s.get("season_scope") or {}
-    L.append(f"- **Season scope (D49):** active `{_sc.get('active')}` = "
+    L.append(f"- **Season scope (D49):** active panel `{_sc.get('panel')}`, season "
+             f"`{_sc.get('active')}` = "
              f"`{'+'.join(_sc.get('active_types') or [])}`. Every row in every CSV carries the "
              f"`season_scope` label. The all-games sensitivity is "
              f"`{'+'.join(_sc.get('sensitivity_types') or [])}`; it is retained, not deleted.")
@@ -1966,6 +2104,18 @@ def render_summary(s: dict) -> str:
                      f"{_r['n_players']} | {_r['n_players_passing_min_snaps']} | "
                      f"{_fmt(_r['mean_n_route_snaps'])} | {_fmt(_r['median_n_route_snaps'])} | "
                      f"{_fmt(_r['mean_snap_share'])} |")
+    if _sc.get("grid"):
+        L.append("")
+        L.append("### 2x2 scope grid (model-stage only)")
+        L.append("| cell | panel | season types | snaps | players | eligible | model rows | "
+                 "moved_down | high_secure | thin |")
+        L.append("|---|---|---|---:|---:|---:|---:|---:|---:|---|")
+        for _r in _sc["grid"]:
+            L.append(f"| {_r['scope_cell']}{' **PRIMARY**' if _r['is_primary'] else ''} | "
+                     f"{_r['panel']} | {_r['season_types']} | {_r['n_route_snaps']} | "
+                     f"{_r['n_players']} | {_r['n_eligible']} | {_r['n_model_rows']} | "
+                     f"{_r['n_players_moved_down']} | {_r['n_players_high_secure']} | "
+                     f"{_r['thin']} |")
     if s.get("failed_blocks"):
         L.append(f"- **FAILED BLOCKS:** " + "; ".join(
             f"{b} ({why})" for b, why in s["failed_blocks"].items()) +
@@ -2189,6 +2339,8 @@ def main() -> None:
     ap.add_argument("--synthetic-regime", choices=["planted", "null", "selection"], default="planted")
     ap.add_argument("--scope", choices=["primary", "sensitivity"], default=None,
                     help="season scope for this run (default: config game.scope.active)")
+    ap.add_argument("--panel", choices=["all_seasons", "rookie_only"], default=None,
+                    help="panel axis for this run (default: config game.scope.active_panel)")
     ap.add_argument("--config", default=None)
     args = ap.parse_args()
 
@@ -2202,10 +2354,17 @@ def main() -> None:
     regime = args.synthetic_regime
     prov = PROV_SYNTH if args.synthetic else common.provenance(cfg, mode)
     scope_key, _scope_list = common.scope_types(cfg, args.scope)
+    panel = common.panel_key(cfg, args.panel)
     out_dir = stage_dir(cfg, args.synthetic, regime)
     configured_active = str(cfg["game"]["scope"].get("active", "primary"))
+    configured_panel = str(cfg["game"]["scope"].get("active_panel", common.PANEL_ALL))
+    suffix = []
+    if panel != configured_panel:
+        suffix.append(panel)
     if scope_key != configured_active:
-        out_dir = out_dir / scope_key
+        suffix.append(scope_key)
+    if suffix:
+        out_dir = out_dir / "_".join(suffix)
     out_dir.mkdir(parents=True, exist_ok=True)
     stage = f"07_security_models[{mode}{'-synthetic-' + regime if args.synthetic else ''}]"
     fingerprint = common.config_fingerprint(cfg, "07_security_models")
@@ -2227,11 +2386,12 @@ def main() -> None:
     else:
         with common.timed_stage(cfg, stage, mode, synthetic=args.synthetic):
             run(cfg, "synthetic" if args.synthetic else mode, args.synthetic, regime, out_dir,
-                prov, log, scope_key=scope_key)
+                prov, log, scope_key=scope_key, panel=panel)
 
     done.write_text(json.dumps(common.done_marker(
         cfg, "07_security_models", mode=mode, provenance=prov,
-        synthetic=bool(args.synthetic), regime=regime, season_scope=scope_key), indent=2),
+        synthetic=bool(args.synthetic), regime=regime, season_scope=scope_key,
+        panel=panel), indent=2),
         encoding="utf-8")
     log.info("Phase 5 B–G security models complete -> %s", out_dir)
 

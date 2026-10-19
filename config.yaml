@@ -153,8 +153,11 @@ game:
   # whose 14.9% share is played largely against backups and deeper depth charts.
   scope:
     active: primary                # which list the model stages apply by default
+    active_panel: all_seasons      # panel axis: all_seasons | rookie_only (model-stage only)
     primary: [REG, POST]           # the new primary specification
     sensitivity: [REG, POST, PRE]  # the all-games version, retained (never deleted)
+    panels: [all_seasons, rookie_only]  # 2x2 grid with the season-type axis; PRIMARY is
+                                        # REG+POST x all_seasons. rookie_only = season == draft_year.
   # --- data-QC per-frame speed validity bound (game side only; notes/decisions.md D35) ---
   # `peak_speed` is max() over per-frame speed = step distance / dt (recomputed from x,y); one
   # noisy/duplicated frame can define a physically-impossible peak. This is the frame-level DESPIKE

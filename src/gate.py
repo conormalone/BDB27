@@ -45,6 +45,8 @@ REQUIRED_KEYS: list[str] = [
     "game.scope.primary",
     "game.scope.sensitivity",
     "game.scope.active",
+    "game.scope.active_panel",
+    "game.scope.panels",
     "envelope.max_features",
     "envelope.selection_rule",
     "envelope.icc_min",

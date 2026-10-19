@@ -117,14 +117,16 @@ def build_panels(cfg: dict, synthetic: bool, regime: str, sm) -> dict:
     psum = sm.load_player_summary(con, inp["players"])
     topk = sm.load_topk(con, inp["topk"])
     scope_key, active_types = common.scope_types(cfg)
+    panel = common.panel_key(cfg)
+    cov = sm.load_covariates(con, cfg, synthetic, regime, issues=[])
+    draft_years = {int(nid): c.get("draft_year") for nid, c in cov.items()}
     snap_counts = sm.scoped_snap_counts(sm.load_snap_counts(con, inp["snap_counts"]),
-                                        active_types)
+                                        active_types, panel=panel, draft_year=draft_years)
     game_ids = {int(r["game_id"]) for r in topk}
     game_index = common.load_game_index(con, inp["games"], game_ids=game_ids)
-    cov = sm.load_covariates(con, cfg, synthetic, regime, issues=[])
     row_kwargs = dict(snap_counts=snap_counts, game_index=game_index,
                       season_types=active_types, season_scope=scope_key,
-                      min_snaps=int(cfg["game"]["route_snap_count"]))
+                      min_snaps=int(cfg["game"]["route_snap_count"]), panel=panel)
 
     pool = [dict(nfl_id=nid, position_group=ex["position_group"], edp_pre=ex["edp_pre"],
                  log_edp_pre=ex["log_edp_pre"], edp_trend=ex["edp_trend"],
@@ -152,7 +154,7 @@ def build_panels(cfg: dict, synthetic: bool, regime: str, sm) -> dict:
     return dict(rows={"T3": rows3, "T5": rows5}, extra=extra, exposures=exposures,
                 envelope=envelope, assign={"T3": assign3, "T5": assign5}, paths=inp,
                 threshold=threshold, threshold5=threshold5,
-                season_scope=scope_key, season_types=list(active_types))
+                season_scope=scope_key, season_types=list(active_types), panel=panel)
 
 
 # --------------------------------------------------------------------------- #

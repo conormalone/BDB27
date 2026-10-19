@@ -22,7 +22,9 @@ from __future__ import annotations
 import copy
 import csv
 import importlib.util
+import math
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -270,6 +272,216 @@ def test_pipeline_version_changes_the_fingerprint():
 
 
 # --------------------------------------------------------------------------- #
+# 6. D49 addendum — the panel axis (all_seasons | rookie_only)
+# --------------------------------------------------------------------------- #
+def _panel_rows():
+    cfg = _cfg()
+    assign = {"assignments": [
+        dict(nfl_id=1, group="moved_down", stratum="trend", log_edp_pre=3.0, edp_pre=20.0,
+             position_group="WR"),
+        dict(nfl_id=2, group="high_secure", stratum="trend", log_edp_pre=3.1, edp_pre=22.0,
+             position_group="WR"),
+        dict(nfl_id=3, group="moved_down", stratum="trend", log_edp_pre=3.2, edp_pre=24.0,
+             position_group="WR"),
+    ]}
+    envelope = {n: dict(env_vmax=9.0, peak_speed=9.0, speed_at_20yd=8.5) for n in (1, 2, 3)}
+    cov = {1: dict(position="WR", height=73.0, weight=200.0, draft_year=2024),
+           2: dict(position="WR", height=73.0, weight=200.0, draft_year=2024),
+           3: dict(position="WR", height=73.0, weight=200.0, draft_year=2023)}
+    psum = {n: dict(n_route_snaps=120, topk_mean_speed=8.0) for n in (1, 2, 3)}
+    topk = [
+        dict(nfl_id=1, game_id=2024090801, play_id=1, season=2024, season_type="REG",
+             season_scope="primary", route_ran="GO", pass_length=20, target=True,
+             peak_speed=8.0),
+        dict(nfl_id=1, game_id=2025090701, play_id=2, season=2025, season_type="REG",
+             season_scope="primary", route_ran="GO", pass_length=20, target=True,
+             peak_speed=8.0),
+        dict(nfl_id=2, game_id=2024090802, play_id=3, season=2024, season_type="REG",
+             season_scope="primary", route_ran="GO", pass_length=20, target=True,
+             peak_speed=8.0),
+        dict(nfl_id=3, game_id=2024090803, play_id=4, season=2024, season_type="REG",
+             season_scope="primary", route_ran="GO", pass_length=20, target=True,
+             peak_speed=8.0),
+    ]
+    return cfg, assign, envelope, cov, psum, topk
+
+
+def test_rookie_boundary_is_inclusive_and_excludes_next_season():
+    cfg, assign, envelope, cov, psum, topk = _panel_rows()
+    rows, dropped = SM.build_effort_rows(
+        topk, assign, envelope, cov, psum, cfg,
+        snap_counts={1: 120, 2: 120, 3: 120}, game_index=None,
+        season_types=["REG", "POST"], season_scope="primary", min_snaps=100,
+        panel=common.PANEL_ROOKIE)
+    # player 1 draft_year 2024: season 2024 kept, 2025 excluded.
+    # player 2 draft_year 2024: 2024 kept. player 3 draft_year 2023: 2024 excluded.
+    assert {r["nfl_id"] for r in rows} == {1, 2}
+    assert all(int(r["season"]) == int(cov[r["nfl_id"]]["draft_year"]) for r in rows)
+    assert dropped.get("not_rookie_season") == 2
+
+
+def test_rookie_eligibility_is_recomputed_within_the_panel():
+    cfg = _cfg()
+    snap_rows = [
+        dict(nfl_id=1, season=2024, season_type="REG", n_route_snaps=40),   # rookie snaps
+        dict(nfl_id=1, season=2025, season_type="REG", n_route_snaps=100),  # later career
+    ]
+    draft = {1: 2024}
+    career = SM.scoped_snap_counts(snap_rows, ["REG", "POST"])
+    rookie = SM.scoped_snap_counts(snap_rows, ["REG", "POST"], panel=common.PANEL_ROOKIE,
+                                   draft_year=draft)
+    assert career == {1: 140} and rookie == {1: 40}
+    assert career[1] >= 100 and rookie[1] < 100   # eligible on career, NOT on rookie
+
+    _, assign, envelope, cov, psum, topk = _panel_rows()
+    cov = {1: dict(position="WR", height=73.0, weight=200.0, draft_year=2024)}
+    psum = {1: dict(n_route_snaps=140, topk_mean_speed=8.0)}
+    topk = [dict(nfl_id=1, game_id=2024090801, play_id=1, season=2024, season_type="REG",
+                 season_scope="primary", route_ran="GO", pass_length=20, target=True,
+                 peak_speed=8.0)]
+    rows, dropped = SM.build_effort_rows(
+        topk, assign, envelope, cov, psum, cfg, snap_counts=rookie, game_index=None,
+        season_types=["REG", "POST"], season_scope="primary", min_snaps=100,
+        panel=common.PANEL_ROOKIE)
+    assert rows == [] and dropped.get("below_min_snaps") == 1
+
+
+def test_scoped_snap_map_never_falls_back_to_career_totals():
+    """A player absent from the scoped map has zero scoped snaps — not their career total."""
+    cfg = _cfg()
+    _, assign, envelope, _cov, _psum, _topk = _panel_rows()
+    cov = {1: dict(position="WR", height=73.0, weight=200.0, draft_year=2024)}
+    psum = {1: dict(n_route_snaps=500, topk_mean_speed=8.0)}   # career total only
+    topk = [dict(nfl_id=1, game_id=2024090801, play_id=1, season=2024, season_type="REG",
+                 season_scope="primary", route_ran="GO", pass_length=20, target=True,
+                 peak_speed=8.0)]
+    rows, dropped = SM.build_effort_rows(
+        topk, assign, envelope, cov, psum, cfg, snap_counts={}, game_index=None,
+        season_types=["REG", "POST"], season_scope="primary", min_snaps=100,
+        panel=common.PANEL_ROOKIE)
+    assert rows == [] and dropped.get("below_min_snaps") == 1
+
+
+def _tenure_rows(n_per_group: int = 20, n_eff: int = 3) -> list[dict]:
+    out = []
+    nid = 1000
+    for group in ("moved_down", "high_secure"):
+        md = 1.0 if group == "moved_down" else 0.0
+        for p in range(n_per_group):
+            for j in range(n_eff):
+                ceiling = math.log(8.6 + 0.01 * (p % 7) + 0.005 * j)
+                y = ceiling - 0.20 + 0.005 * ((p + j) % 5)
+                out.append(dict(
+                    nfl_id=nid, game_id=2024090000 + nid, play_id=j,
+                    season=2024, season_type="REG", panel=common.PANEL_ROOKIE,
+                    group=group, moved_down=md, stratum="trend",
+                    y=y, log_ceiling=ceiling, log_env_vmax=ceiling,
+                    log_peak_speed=ceiling - 0.01 * (p % 3),
+                    log_speed_at_20yd=ceiling - 0.02,
+                    log_edp_pre=3.0 + 0.01 * p, edp_pre=20.0 + p,
+                    route_family=("VERTICAL", "BREAK_IN", "SHORT")[j % 3],
+                    pass_length=5.0 + 3.0 * j, target=True,
+                    snap_share=1.0, n_route_snaps=120, position="WR",
+                    height=72.0 + (p % 3), weight=200.0 + (p % 5),
+                    years_since_combine=0.0,
+                ))
+            nid += 1
+    return out
+
+
+def test_rookie_tenure_control_is_dropped_as_constant_and_reported():
+    cfg = _cfg()
+    cfg["security_models"]["primary"]["attenuation_reps"] = 5
+    rows = _tenure_rows()
+    # 60 players x 3 efforts = 180 rows; the primary spec fits.
+    b_rows, _, _ = SM.run_b(rows, {}, {}, cfg, {})
+    fitted = [r for r in b_rows if r.get("group_coef") is not None]
+    assert fitted, "the fixture rows should fit the primary spec"
+    assert any("years_since_combine:constant" in str(r.get("dropped_controls") or "")
+               for r in fitted), [r.get("dropped_controls") for r in fitted]
+    assert all("years_since_combine:constant" in str(r.get("dropped_controls") or "")
+               for r in fitted if r["spec"] == "primary_env_vmax"), \
+        [(r["spec"], r.get("dropped_controls")) for r in fitted]
+
+
+def _grid_from_fixture(cfg: dict, regime: str = "planted") -> list[dict]:
+    import duckdb  # noqa: F401 - present in the project venv
+    con = common.connect(cfg["runtime"]["duckdb_threads"])
+    try:
+        inp = SM._inputs(cfg, True, regime)
+        exposures = SM.load_exposures(con, inp["exposure"])
+        envelope = SM.load_envelope(con, inp["envelope"])
+        psum = SM.load_player_summary(con, inp["players"])
+        topk = SM.load_topk(con, inp["topk"])
+        cov = SM.load_covariates(con, cfg, True, regime, issues=[])
+        snap_rows = SM.load_snap_counts(con, inp["snap_counts"])
+        game_ids = {int(r["game_id"]) for r in topk}
+        gi = common.load_game_index(con, inp["games"], game_ids=game_ids)
+    finally:
+        con.close()
+    import security_features as sf
+    pool = [dict(nfl_id=nid, position_group=ex["position_group"], edp_pre=ex["edp_pre"],
+                 log_edp_pre=ex["log_edp_pre"], edp_trend=ex["edp_trend"],
+                 has_trend=ex["has_trend"], has_primary=ex["has_primary"])
+            for nid, ex in sorted(exposures.items())]
+    assign = sf.assign_security_groups(pool, cfg)
+    return SM.scope_grid_table(cfg, snap_rows, psum, assign, topk, envelope, cov, gi,
+                               "primary",
+                               cfg["game"]["scope"].get("active_panel", common.PANEL_ALL))
+
+
+def test_scope_grid_emits_all_four_cells_with_distinct_labels():
+    cfg = _cfg()
+    grid = _grid_from_fixture(cfg)
+    assert len(grid) == 4, grid
+    assert len({r["scope_cell"] for r in grid}) == 4, grid
+    assert len({(r["panel"], r["season_scope"]) for r in grid}) == 4, grid
+    assert {r["season_scope"] for r in grid} == {"primary", "sensitivity"}
+    assert sum(1 for r in grid if r["is_primary"]) == 1
+    primary = next(r for r in grid if r["is_primary"])
+    assert primary["panel"] == "all_seasons" and primary["season_types"] == "REG+POST"
+    # the rookie cells must have strictly fewer route snaps than their all-season counterpart
+    by = {(r["panel"], r["season_scope"]): r for r in grid}
+    assert by[("rookie_only", "primary")]["n_route_snaps"] < \
+        by[("all_seasons", "primary")]["n_route_snaps"]
+    # thin state is exactly "some contrast group below min_group_n" in every cell
+    for r in grid:
+        expected = min(r["n_players_moved_down"], r["n_players_high_secure"]) < r["min_group_n"]
+        assert bool(r["thin"]) is expected, r
+
+
+def test_scope_grid_primary_cell_does_not_follow_the_active_panel():
+    """PRIMARY is REG+POST x all_seasons even when the process runs a different panel."""
+    cfg = _cfg()
+    cfg["game"]["scope"]["active_panel"] = common.PANEL_ROOKIE
+    grid = _grid_from_fixture(cfg)
+    primary = [r for r in grid if r["is_primary"]]
+    assert len(primary) == 1, primary
+    assert primary[0]["panel"] == common.PANEL_ALL
+    assert primary[0]["season_scope"] == "primary"
+
+
+def test_rookie_run_records_panel_and_constant_drop():
+    cfg = _cfg()
+    cfg["security_models"]["primary"]["attenuation_reps"] = 5
+    cfg["security_models"]["g"]["bootstrap_reps"] = 5
+    out = Path(tempfile.mkdtemp())
+    log = common.get_logger()
+    summary = SM.run(cfg, "synthetic", True, "planted", out, SM.PROV_SYNTH, log,
+                     panel=common.PANEL_ROOKIE)
+    assert summary["panel"] == common.PANEL_ROOKIE
+    assert "years_since_combine" in summary["tenure_note"]
+    b = _rows(out / "b_primary.csv")
+    assert all(r["panel"] == "rookie_only" for r in b)
+    fitted = [r for r in b if r["group_coef"] not in ("", None)]
+    assert fitted and any("years_since_combine:constant" in r["dropped_controls"]
+                          for r in fitted)
+    grid = _rows(out / "scope_grid.csv")
+    assert len(grid) == 4
+    assert sum(1 for r in grid if r["is_primary"].lower() == "true") == 1
+
+
+# --------------------------------------------------------------------------- #
 # dependency-free runner
 # --------------------------------------------------------------------------- #
 def main() -> int:
@@ -283,7 +495,13 @@ def main() -> int:
              test_fingerprint_matches_unchanged_config,
              test_fingerprint_mismatch_on_changed_scope,
              test_legacy_marker_without_fingerprint_is_a_mismatch,
-             test_pipeline_version_changes_the_fingerprint]
+             test_pipeline_version_changes_the_fingerprint,
+             test_rookie_boundary_is_inclusive_and_excludes_next_season,
+             test_rookie_eligibility_is_recomputed_within_the_panel,
+             test_rookie_tenure_control_is_dropped_as_constant_and_reported,
+             test_scope_grid_emits_all_four_cells_with_distinct_labels,
+             test_scope_grid_primary_cell_does_not_follow_the_active_panel,
+             test_rookie_run_records_panel_and_constant_drop]
     failed = 0
     for t in tests:
         try:

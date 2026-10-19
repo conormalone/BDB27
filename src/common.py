@@ -467,6 +467,20 @@ def scope_types(cfg: dict, key: str | None = None) -> tuple[str, list[str]]:
     return scope_key, [str(t) for t in types]
 
 
+PANEL_ALL = "all_seasons"
+PANEL_ROOKIE = "rookie_only"
+
+
+def panel_key(cfg: dict, key: str | None = None) -> str:
+    """Return the active panel axis value (``all_seasons`` | ``rookie_only``)."""
+    scope = cfg["game"]["scope"]
+    panel = str(key or scope.get("active_panel", PANEL_ALL))
+    allowed = [str(p) for p in scope.get("panels", [PANEL_ALL, PANEL_ROOKIE])]
+    if panel not in allowed:
+        raise ValueError(f"unknown game.scope panel {panel!r}; allowed {allowed}")
+    return panel
+
+
 # --------------------------------------------------------------------------- #
 # I/O: CSV -> Parquet (memory-safe, streamed by DuckDB)
 # --------------------------------------------------------------------------- #
