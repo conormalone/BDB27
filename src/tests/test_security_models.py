@@ -104,6 +104,8 @@ def _fixture(regime: str) -> Path:
 def _run(regime: str) -> Path:
     """Run the CLI once per regime (cached) with the test config; return the output dir."""
     if regime not in _RUNS:
+        # self-contained: never rely on another test having built this regime's fixture first
+        _fixture(regime)
         cfg = _write_cfg()
         r = subprocess.run([sys.executable, str(SCRIPT), "--synthetic", "--synthetic-regime", regime,
                             "--force", "--config", str(cfg)],
