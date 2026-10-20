@@ -1298,3 +1298,96 @@ If the group contrast is driven by opportunity/role, the primary coefficient sho
 to the all-games sensitivity; if it is stable, the confound is small. The honest statement is that
 the direction of (ii) is predictable (deeper charts get more preseason work) but its magnitude on
 this contrast is unknown until the full REG+POST run. `outputs/` stays gitignored.
+
+## D50 — The exposure is modelled continuously (exploratory panel only) · 2026-10-20
+
+**Why.** The pre-registered exposure is a **binary** cut (`moved_down` iff `edp_trend >= +3.0`, D40) with a
+declared +5.0 sensitivity. Both cuts are arbitrary, and the T3→T5 change relabels only a handful of players
+while moving *p* a lot — the threshold is not doing real work. A continuous model asks the same question
+without a cut: **does one more EDP spot of pre-Combine decline predict a smaller share of the Combine
+ceiling realised in games?**
+
+**The binary result is untouched.** `b_primary.csv`, `TASK.md` H1 and every frozen value in
+`notes/prereg.md` stay exactly as they are. The new panel is written only under
+`outputs/security_models/dose/` by `src/10_dose_response.py`, is labelled **exploratory / post hoc** in
+every file, and cannot change the verdict. Nothing here is a new pre-registered test.
+
+**Estimand and estimator (reused, not reimplemented).** The outcome is **exactly block B's**: row-level
+`log(peak_speed)` on the top-k efforts, `log_env_vmax` as the ceiling regressor, `statsmodels` OLS with
+`cov_type="cluster"`, `groups = nfl_id`, and the same controls **minus `stratum`**. `stratum` is *constant*
+inside this population by construction — every row has a finite `edp_trend`, which **is** the trend
+stratum — so a stratum fixed effect would be an intercept with no identifying variation. That is stated in
+`SUMMARY.md` and on every fitted row's note. `dose_fits.csv` also reports, beside the naive slope, the
+**ICC-attenuation-corrected** linear slope (Frisch–Waugh + the 2-regressor moment matrix with Var(ceiling)
+scaled by λ, player-clustered bootstrap SE), reusing `security_models.primary.attenuation_reps/seed_offset`.
+
+**Sign convention — a real discrepancy, recorded not smoothed.** The PI's stated expectation is that a
+slipping player **realises less** of his ceiling — i.e. a **NEGATIVE** slope of log(game speed) on
+`edp_trend`. `TASK.md` H1 and the `config.yaml::security_models` comment say the opposite (slipping ⇒ a
+*smaller gap* ⇒ *higher* realisation ⇒ **POSITIVE**). This is the same contradiction D39/DV-7 recorded for
+the fixture's planted sign, and it cannot be resolved by data. The decision here:
+
+* the **pre-registered binary test keeps its own (H1) sign convention and wording** — untouched;
+* the **dose panel states its own convention explicitly and identically everywhere** (a constant
+  `sign_convention` column on every row, a plain-words block at the top of `SUMMARY.md`, and an annotation
+  on the figure): `coef` = change in log(game peak speed) per **+1 EDP spot fallen**, holding the ceiling
+  fixed; **NEGATIVE = the slipping player realises LESS** (the PI's stated expectation); **POSITIVE** is
+  what the H1 wording predicts;
+* no reader should have to infer the sign from a table.
+
+**Capital confound (mandatory, not optional).** Draft capital is the obvious rival explanation: later picks
+are worse players, and `edp_trend` is correlated with the level of EDP. Every specification is therefore
+fitted under **seven** treatments — `unadjusted`, `pick_linear` (`overall_pick`, undrafted excluded because
+no pick exists, and the note says so), `round_band` (`draft_position` as a categorical with `undrafted` kept
+as its own level and `R1` as the reference), `pick_plus_level` (pick **and** the pre-Combine level, which is
+a separate confound from capital), and three within-band fits (`within_R1`, `within_R2_R3`,
+`within_R4plus`, the last labelled `R4plus_or_undrafted`). `overall_pick` comes from `players.parquet`
+(`draft_overall_pick`) in a real run and from the fixture's `covariates.csv` column `overall_pick` in
+synthetic mode; an undrafted player's pick is **never invented**. **If the slope dies once capital is
+controlled, `SUMMARY.md` says so in one sentence — "the dose slope is draft position in disguise" — and
+that is the finding.** The sentence is generated from the fitted numbers, never typed.
+
+**Ambiguities in the spec, and how they were resolved (all recorded here, none silently simplified).**
+
+1. **The segmented basis is discontinuous.** §3.5 mandates `f(d) = b1*d + b2*d*I(d >= 5)` and
+   `slope_above_5 = b1 + b2`. That basis is *linear in `d`* on each side and therefore carries a **jump of
+   `+5*b2` at the knot** (downward here, because `b2 < 0`); it does not nest a continuous "slope change at
+   5". The alternative
+   (`b1*d + b2*(d-5)*I(d>=5)`) is a continuous kink but is **not** the mandated design, so it was not used.
+   The estimator is implemented exactly as specified, every kink row's note spells out the jump, and the
+   `dose_kink` fixture plants the form the estimator actually nests (`-0.006*d*I(d>=5)`), so the recovery
+   test is a genuine test of the machinery rather than an attenuated one. **This is the one place where the
+   fixture table ("0 below 5, −0.006 per spot above 5") and the estimator could be read as inconsistent;
+   the estimator wins, because the contract pins the columns and the SE formula.**
+2. **Fixed bins are closed on the upper edge.** `<=0 / 1-2 / 3-4 / 5-9 / 10+` leaves gaps for a fractional
+   `edp_trend` (`edp` is an expected position, so a difference can be fractional). The bins are implemented
+   as a **total** partition `(-inf,0] (0,2] (2,4] (4,9] (9,inf)` — identical to the labelled bins on integer
+   trends, and no row can fall through a gap. Stated in `SUMMARY.md`.
+3. **`season_scope` in the emitted tables is the PANEL axis** (`all_seasons` / `rookie_only`, both fitted in
+   one invocation), not the season-type scope: that stays on the existing `--scope` CLI knob (D49), and a
+   non-default scope writes to a suffixed directory, exactly as stage 07 does.
+4. **Thin discipline is applied to the treatment-specific sample.** `pick_linear` and `pick_plus_level`
+   exclude undrafted rows, and the within-band fits use one band, so `n_obs`/`n_players` are reported *per
+   treatment*; a cell is fitted only when both clear `dose.min_obs` (40) and `dose.min_players` (15).
+5. **Fixture nuisance noise.** The four dose regimes use a smaller player-level gap SD and ceiling
+   measurement noise than the legacy fixture (`dose.fixture.dose_gap_player_sd` /
+   `dose_measurement_noise_sd`). The planted dose is small (−0.002 log units per spot), and in a single
+   fixture replication a large nuisance draw that happens to correlate with the deterministic dose grid
+   would swamp it. The effort-level noise is untouched, so the clustered-SE machinery is still exercised.
+   The legacy `planted|null|selection` fixtures are **byte-identical** (verified): every new RNG draw lives
+   in a `DOSE_REGIMES` branch and `overall_pick` is written **only** for the dose regimes.
+6. **`common.STAGE_CONFIG_SUBTREES` was not extended.** The default for an unlisted stage already hashes
+   every top-level config key except `paths`/`logging`/`mode`, so a `dose:` change invalidates the stage's
+   checkpoint. Adding an explicit entry would only *narrow* the fingerprint.
+
+**The figure is supplementary.** `fig_dose_response.png` (300 dpi, single panel, zero-based y-axis, no
+break, no dual axis) is written into the stage's own output directory and is **not** one of the 5 writeup
+figures; `deliverables.figures_max: 5` and the `FIGURES` list in the notebook are unchanged. Notebook §12
+saves it to `outputs/figures/fig_dose_response.png` **only** when the source is FULL, otherwise to
+`outputs/figures/synthetic/` with `_SYNTHETIC_PREVIEW` in the name; with no FULL output it prints a
+`NO RESULT` block (D41) instead of numbers.
+
+**What is NOT claimed here.** No result. The Pi has no full game artefacts, so the panel is proven on the
+four committed dose fixtures (recovery / null / kink / capital) and in sample mode only. The
+`dose_capital` fixture demonstrates the failure mode the panel is built to expose: unadjusted
+−0.0039 vs pick-adjusted −0.00007. The real numbers require the full run.

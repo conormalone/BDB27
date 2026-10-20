@@ -1,0 +1,2 @@
+provenance,method,thresholds_provenance,high_speed_threshold_yds,accel_threshold_yds2,high_speed_percentile,accel_percentile,top_k_efforts,route_snap_count,top_k_metric
+SYNTHETIC FIXTURE (not a finding),percentile,SYNTHETIC FIXTURE (not a finding),7.267853,31.792835,0.9,0.9,5,100,peak_speed

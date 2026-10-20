@@ -1,0 +1,4 @@
+feature,icc,source
+env_vmax,0.64,fixture:dose_kink
+peak_speed,0.97,fixture:dose_kink
+speed_at_20yd,0.97,fixture:dose_kink

@@ -29,6 +29,21 @@ Regimes (all share one population and RNG stream, so planted vs null is an exact
   players less likely to reach game data), strong enough that the unweighted group coefficient is
   biased and IPW moves back toward the planted value.
 
+* ``dose`` / ``dose_null`` / ``dose_kink`` / ``dose_capital`` (D50) — the **continuous** dose panel
+  for ``src/10_dose_response.py``. The gap equation carries a planted linear slope on
+  ``edp_trend`` (``dose``: −0.002 per EDP spot fallen; ``dose_null``: 0), a segmented slope
+  (``dose_kink``: 0 below 5 spots, −0.006 per spot above 5 **in the mandated segmented basis**
+  ``b1*d + b2*d*I(d>=5)`` — that basis carries a jump of ``+knot*b2`` at the knot, so the fixture
+  plants the form the estimator actually nests and the recovery is exact rather than attenuated)
+  or no direct dose effect at all
+  (``dose_capital``: ``overall_pick`` drives the gap and ``edp_trend`` is generated **from** the
+  pick, so the unadjusted slope is non-zero and the pick-adjusted slope is ≈ 0).
+
+  **Legacy byte-identity.** The three legacy regimes are untouched: every new RNG draw lives inside
+  a ``DOSE_REGIMES`` branch, ``has_trend``/``edp_trend``/``gap`` keep their original expressions for
+  them, and the ``overall_pick`` column is written **only** for the four dose regimes. Regenerating
+  ``planted``/``null``/``selection`` therefore reproduces the committed files byte-for-byte.
+
 Design details that matter for the tests
 ----------------------------------------
 * top-k efforts (5) carry the planted δ; **bottom-k efforts (5) carry no δ** — the pre-declared
@@ -64,6 +79,8 @@ import security_features as sf
 
 PROV = "SYNTHETIC FIXTURE (not a finding)"
 ROUTES = ["SLANT", "HITCH", "CROSS", "IN", "OUT", "POST", "GO", "CORNER", "FLAT", "SCREEN"]
+DOSE_REGIMES = ("dose", "dose_null", "dose_kink", "dose_capital")   # D50 dose panel
+LEGACY_REGIMES = ("planted", "null", "selection")
 
 EXPOSURE_COLS = ["nfl_id", "draft_year", "position", "position_group", "edp_pre", "log_edp_pre",
                  "edp_trend", "consensus_share", "n_snapshots", "has_primary", "has_trend",
@@ -74,6 +91,9 @@ ATTEMPT_COLS = ["nfl_id", "event_id", "draft_year", "drill_type", "n_frames", "p
                 "speed_at_20yd", "env_vmax"]
 COV_COLS = ["nfl_id", "position", "height", "weight", "age", "draft_position", "draft_year",
             "bmi", "optout"]
+# D50: `overall_pick` is appended ONLY for the dose regimes, so the three legacy fixtures regenerate
+# byte-identically (no extra column, no extra RNG draw).
+COV_COLS_DOSE = COV_COLS + ["overall_pick"]
 POOL_COLS = ["nfl_id", "position_group", "position", "edp_pre", "log_edp_pre", "edp_trend",
              "has_trend", "has_primary", "participation_pattern", "height", "weight",
              "log_combine_speed", "draft_year", "appeared"]
@@ -126,14 +146,19 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
     """Generate one regime into ``out_dir``. Deterministic given ``(cfg, regime, seed)``."""
     s = cfg["security_models"]["synthetic"]
     rng = np.random.default_rng(int(seed))
-    delta = {"planted": float(s["delta"]), "null": float(s["delta_null"]),
-             "selection": float(s["delta_selection"])}[regime]
+    dcfg = cfg["dose"]["fixture"]
+    kink_at = float(cfg["dose"]["kink_at"])
+    is_dose = regime in DOSE_REGIMES
+    delta = (0.0 if is_dose else
+             {"planted": float(s["delta"]), "null": float(s["delta_null"]),
+              "selection": float(s["delta_selection"])}[regime])
     # the continuous dose gradient is part of the planted signal: the null regime has neither
-    gamma = 0.0 if regime == "null" else float(s["dose_gamma"])
+    gamma = 0.0 if (regime == "null" or is_dose) else float(s["dose_gamma"])
     n_wr, n_te, n_edge = int(s["n_wr"]), int(s["n_te"]), int(s["n_edge"])
     mu, sd = float(s["log_edp_mu"]), float(s["log_edp_sd"])
     margin = float(cfg["audit"]["exceedance_margin_rel"])
     k_top, k_bottom = int(s["k_top"]), int(s["k_bottom"])
+    round_size = int(dcfg["pick_round_size"])
 
     # forced edge flags, by position inside the edge block
     edge_flags = ["one_effort", "low_snap", "no_game", "missing_cov", "no_trend", "no_primary",
@@ -156,6 +181,9 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
             idx=i, nfl_id=900001 + i, position=pos, position_group=pos,
             log_edp_pre=log_edp, edp_pre=math.exp(log_edp),
             draft_year=2023 + (i % 3), combine=combine, height=height, weight=weight,
+            # D50: deterministic draft slot inside the same round band as `draft_position`
+            # (no RNG draw — the legacy RNG stream is untouched).
+            overall_pick=1 + (i % 7) * round_size + (i * 7) % round_size,
             flags=flags,
             has_primary=("no_primary" not in flags),
             has_trend=("no_trend" not in flags and "no_primary" not in flags
@@ -164,14 +192,36 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
 
     # ---- pre-Combine EDP snapshots (the ONLY inputs to the sort key) ----
     corr = float(s["trend_level_corr"])
-    for p in players:
-        p["edp_trend"] = None
-        if p["has_trend"]:
-            z = (p["log_edp_pre"] - mu) / sd
-            drift = float(s["trend_sd_edp"]) * (corr * z + math.sqrt(max(0.0, 1 - corr * corr))
-                                                * float(rng.normal(0.0, 1.0)))
-            edp_2wk = max(0.5, p["edp_pre"] - drift)
-            p["edp_trend"] = p["edp_pre"] - edp_2wk
+    if is_dose:
+        # D50 regimes: a deterministic trend grid (no RNG at all), so the planted dose is exact and
+        # the legacy stream is untouched. `dose_capital` instead derives the trend FROM the pick.
+        for p in players:
+            p["has_trend"] = bool(p["has_primary"]) and "no_trend" not in p["flags"]
+        lo, hi = (float(dcfg["kink_trend_range"][0]), float(dcfg["kink_trend_range"][1])) \
+            if regime == "dose_kink" else (float(dcfg["trend_range"][0]),
+                                           float(dcfg["trend_range"][1]))
+        nlev = int(dcfg["trend_levels"])
+        mean_pick = float(np.mean([p["overall_pick"] for p in players]))
+        for p in players:
+            if not p["has_trend"]:
+                p["edp_trend"] = None
+                continue
+            if regime == "dose_capital":
+                p["edp_trend"] = (float(dcfg["capital_trend_per_pick"])
+                                  * (float(p["overall_pick"]) - mean_pick)
+                                  + float(rng.normal(0.0, float(dcfg["capital_trend_noise_sd"]))))
+            else:
+                k = (int(p["idx"]) * 13) % nlev
+                p["edp_trend"] = lo + (hi - lo) * float(k) / float(nlev - 1)
+    else:
+        for p in players:
+            p["edp_trend"] = None
+            if p["has_trend"]:
+                z = (p["log_edp_pre"] - mu) / sd
+                drift = float(s["trend_sd_edp"]) * (corr * z + math.sqrt(max(0.0, 1 - corr * corr))
+                                                    * float(rng.normal(0.0, 1.0)))
+                edp_2wk = max(0.5, p["edp_pre"] - drift)
+                p["edp_trend"] = p["edp_pre"] - edp_2wk
 
     # ---- sort key: the SAME shared implementation the stage uses ----
     pool = [dict(nfl_id=p["nfl_id"], position_group=p["position_group"], edp_pre=p["edp_pre"],
@@ -211,11 +261,32 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
             p["appeared"] = bool(float(rng.random()) >= float(s["absence_rate"]))
 
     # ---- outcomes ----
+    mean_pick_all = float(np.mean([p["overall_pick"] for p in players]))
     for p in players:
         z = (p["log_edp_pre"] - mu) / sd
         moved = 1.0 if p["group"] == "moved_down" else 0.0
         base = float(s["base_gap_log"])
-        if p["has_primary"]:
+        if is_dose:
+            # D50: the planted dose lives in the gap equation, so the target equals the fitted slope.
+            d = float(p["edp_trend"]) if p["edp_trend"] is not None else 0.0
+            if regime == "dose":
+                planted = float(dcfg["trend_slope"]) * d
+            elif regime == "dose_null":
+                planted = 0.0
+            elif regime == "dose_kink":
+                # The mandated estimator is `b1*d + b2*d*I(d >= knot)` (§3.5), whose above-knot
+                # branch is `(b1+b2)*d` — i.e. it carries a jump of `+knot*b2` at the knot. Planting
+                # the *continuous* `max(0, d-knot)` form would therefore be unrepresentable by the
+                # mandated basis and would attenuate the recovered above-knot slope. The fixture
+                # plants exactly the form the estimator nests: b2 * d * I(d >= knot).
+                planted = float(dcfg["kink_slope_above"]) * d * (1.0 if d >= kink_at else 0.0)
+            else:  # dose_capital: no direct dose effect — the PICK moves the gap
+                planted = float(dcfg["capital_gap_per_pick"]) * (
+                    float(p["overall_pick"]) - mean_pick_all)
+            gap = base + planted + float(rng.normal(0.0, dcfg["dose_gap_player_sd"]))
+            # low-effort placebo: never carries the planted dose (F2)
+            gap_low = base + float(rng.normal(0.0, dcfg["dose_gap_player_sd"]))
+        elif p["has_primary"]:
             gap = (base + delta * moved + gamma * (p["log_edp_pre"] - mu)
                    + float(rng.normal(0.0, s["gap_player_sd"])))
             # low-effort placebo: NO planted group delta and NO dose gradient (F2)
@@ -230,7 +301,9 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
                         else int(s["route_snaps_min"]) + int(rng.integers(
                             0, int(s["route_snaps_max"]) - int(s["route_snaps_min"]) + 1)))
         # observed (shrunken) Combine features carry a little measurement noise
-        p["env_vmax"] = p["combine"] * math.exp(float(rng.normal(0.0, s["measurement_noise_sd"])))
+        p["env_vmax"] = p["combine"] * math.exp(
+            float(rng.normal(0.0, (dcfg["dose_measurement_noise_sd"] if is_dose
+                                   else s["measurement_noise_sd"]))))
         p["peak_speed"] = p["combine"] * math.exp(float(rng.normal(0.0, s["attempt_sd"])))
         p["speed_at_20yd"] = p["peak_speed"] * float(s["speed_at_20yd_ratio"])
         p["n_attempts"] = 1 if ("one_effort" in p["flags"]) else 2
@@ -359,7 +432,7 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
             age=float(p["draft_year"] - 22), draft_position=f"R{1 + (p['idx'] % 7)}",
             draft_year=p["draft_year"],
             bmi=("" if bad_cov else _r(703.0 * p["weight"] / (p["height"] ** 2))),
-            optout=bool(bad_cov)))
+            optout=bool(bad_cov), overall_pick=p["overall_pick"]))
         exposure.append(dict(
             nfl_id=p["nfl_id"], draft_year=p["draft_year"], position=p["position"],
             position_group=p["position_group"],
@@ -404,7 +477,8 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
     _write(out_dir / "security_exposure.csv", EXPOSURE_COLS, exposure)
     _write(out_dir / "per_player_envelope.csv", ENVELOPE_COLS, envelope)
     _write(out_dir / "attempt_features.csv", ATTEMPT_COLS, attempts)
-    _write(out_dir / "covariates.csv", COV_COLS, cov)
+    # D50: the pick column exists only in the dose regimes (legacy fixtures stay byte-identical).
+    _write(out_dir / "covariates.csv", COV_COLS_DOSE if is_dose else COV_COLS, cov)
     _write(out_dir / "selection_pool.csv", POOL_COLS, sel_pool)
     _write(out_dir / "feature_reliability.csv", ["feature", "icc", "source"],
            [{"feature": f, "icc": v, "source": f"fixture:{regime}"}
@@ -443,6 +517,28 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
             counts=assign["counts"], cutoffs=assign["cutoffs"],
             fall_threshold=assign["fall_threshold"],
             sensitivity_threshold=float(cfg["security_models"]["sort"]["sensitivity_threshold"])))
+    if is_dose:
+        # D50: the planted truth the dose tests assert against (never a finding).
+        meta["design"]["dose"] = dict(
+            regime=regime,
+            trend_slope=(float(dcfg["trend_slope"]) if regime == "dose" else
+                         (0.0 if regime == "dose_null" else None)),
+            kink_at=kink_at if regime == "dose_kink" else None,
+            kink_slope_above=(float(dcfg["kink_slope_above"])
+                              if regime == "dose_kink" else None),
+            capital_trend_per_pick=(float(dcfg["capital_trend_per_pick"])
+                                    if regime == "dose_capital" else None),
+            capital_gap_per_pick=(float(dcfg["capital_gap_per_pick"])
+                                  if regime == "dose_capital" else None),
+            trend_range=[float(dcfg["trend_range"][0]), float(dcfg["trend_range"][1])],
+            has_overall_pick=True,
+            note=("The dose is planted in the GAP equation (gap = log game speed - log ceiling), so "
+                  "the fitted slope targets the planted value exactly. NEGATIVE = a player whose EDP "
+                  "number rose (stock fell) realises LESS of the ceiling (D50 sign convention)."))
+        meta["ground_truth"]["dose"] = dict(
+            trend_slope=meta["design"]["dose"]["trend_slope"],
+            kink_slope_above=meta["design"]["dose"]["kink_slope_above"],
+            kink_at=meta["design"]["dose"]["kink_at"])
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
     return {"dir": out_dir, "meta": meta, "n_efforts": len(efforts), "n_topk": len(topk),
             "n_players": len(players), "n_appeared": sum(1 for p in players if p["appeared"])}
@@ -450,7 +546,8 @@ def build_fixture(out_dir: Path, cfg: dict, regime: str, seed: int) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Build the synthetic game-side security fixture")
-    ap.add_argument("--regime", choices=["planted", "null", "selection", "all"], default="all")
+    ap.add_argument("--regime", choices=list(LEGACY_REGIMES) + list(DOSE_REGIMES) + ["all", "dose_all"],
+                    default="all")
     ap.add_argument("--out", default=None, help="output root (default: fixtures/synthetic/security_game)")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--config", default=None)
@@ -461,7 +558,12 @@ def main() -> None:
     s = cfg["security_models"]["synthetic"]
     root = Path(args.out) if args.out else common.resolve(cfg, "fixtures", s["root"])
     seed = int(args.seed) if args.seed is not None else int(cfg["seed"]) + int(s["seed_offset"])
-    regimes = ["planted", "null", "selection"] if args.regime == "all" else [args.regime]
+    if args.regime == "all":
+        regimes = list(LEGACY_REGIMES)
+    elif args.regime == "dose_all":
+        regimes = list(DOSE_REGIMES)
+    else:
+        regimes = [args.regime]
     for regime in regimes:
         res = build_fixture(root / regime, cfg, regime, seed)
         print(f"[{regime}] {res['n_players']} players ({res['n_appeared']} appeared), "

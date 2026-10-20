@@ -604,6 +604,88 @@ draft_target:
   seed_offset: 606                 # reserved for any resampling added later; fixed, never tuned
 
 # --------------------------------------------------------------------------- #
+# Dose-response panel — continuous pre-Combine stock movement (D50; src/10_dose_response.py)
+# EXPLORATORY / POST HOC. It models the exposure continuously instead of at the binary D40 cut and
+# CANNOT change the pre-registered binary result (b_primary.csv, TASK.md H1). Every emitted table is
+# labelled exploratory / post hoc. Sign convention: `coef` is the change in log(game peak speed) per
+# +1 EDP spot FALLEN, holding the Combine ceiling fixed; NEGATIVE = a slipping player realises LESS
+# of his ceiling (the PI's stated expectation). TASK.md H1's wording predicts POSITIVE — see D50.
+# --------------------------------------------------------------------------- #
+dose:
+  out_subdir: dose                 # outputs/security_models/dose/ (never touches a 07/08/09 output)
+  # --- thin discipline (a cell is FITTED only when both floors are met) ---
+  min_obs: 40                      # effort rows
+  min_players: 15                  # distinct nfl_id (the cluster unit)
+  # --- panels / scopes / features ---
+  season_scopes: [all_seasons, rookie_only]   # fitted in ONE invocation (two row builds)
+  scopes: [WR, TE, pooled]
+  features: [env_vmax, peak_speed, speed_at_20yd]      # every spec's ceiling feature pool
+  linear_spline_features: [env_vmax, peak_speed, speed_at_20yd]  # linear+spline robustness set
+  other_spec_features: [env_vmax]  # knot5 / bins / kink run on the primary feature only
+  # --- spline / kink geometry ---
+  knots_3df: [0.05, 0.35, 0.65, 0.95]   # 4 knots -> df = 3 (Harrell restricted cubic)
+  knot5: 5.0                            # the declared panel threshold, as an EXPLICIT knot
+  knot5_percentiles: [0.10, 0.90]       # knots = unique(sort([q10, 5.0, q90]))
+  knot5_fallback_percentiles: [0.10, 0.50, 0.90]  # used when knot5 is outside the observed range
+  kink_at: 5.0                          # segmented model knot (>= 5 spots)
+  # --- fixed bins on d = edp_trend (integer EDP spots) ---
+  bins:
+    labels: ["<=0", "1-2", "3-4", "5-9", "10+"]
+    # [lo, hi] inclusive; null = unbounded
+    bounds: [[null, 0], [1, 2], [3, 4], [5, 9], [10, null]]
+    reference: "<=0"
+  quantile_bins: 5                 # quantile variant, fitted only when a fixed bin is thin
+  # --- capital (draft-cost) confound: mandatory for every spec ---
+  capital:
+    treatments: [unadjusted, pick_linear, round_band, pick_plus_level,
+                 within_R1, within_R2_R3, within_R4plus]
+    pick_column: draft_overall_pick      # players.parquet (real) / covariates.csv (fixture)
+    fixture_pick_column: overall_pick    # the synthetic covariates.csv column name (D50 fixture)
+    round_column: draft_position         # R1..R7 / undrafted
+    pick_linear_note: "undrafted rows (no pick) are EXCLUDED for this treatment"
+    round_band_note: "undrafted is kept as its own level; R1 is the reference"
+    bands:                               # within-band treatments fit ONLY that band
+      within_R1: [R1]
+      within_R2_R3: [R2, R3]
+      within_R4plus: [R4, R5, R6, R7, undrafted]
+    band_labels:
+      within_R4plus: R4plus_or_undrafted
+    level_control: log_edp_pre           # pick_plus_level adds the pre-Combine LEVEL too
+  # --- plotting grid (dose_curve.csv) ---
+  grid_n: 61                       # points spanning [min(d), max(d)] of the fitted rows
+  z: 1.959963984540054             # 95% normal quantile (curve / bin intervals)
+  curve:
+    specs: [dose_linear, dose_spline, dose_spline_knot5, dose_kink]
+    feature: env_vmax
+    capital_treatments: [unadjusted, pick_linear, round_band]
+  # --- figure (supplementary/exploratory: NOT one of the 5 writeup figures) ---
+  figure:
+    file: fig_dose_response.png
+    dpi: 300
+    figsize: [7.6, 5.4]
+    reference_spots: [3.0, 5.0]
+  # --- the plain-words sign convention stamped on every row (§9) ---
+  sign_convention: "coef = change in log(game peak speed) per +1 EDP spot fallen, holding the Combine ceiling fixed; NEGATIVE = a slipping player realises LESS of the ceiling (the PI's stated expectation); the pre-registered TASK.md H1 wording predicts POSITIVE — see D50."
+  # --- planted truth for the four dose fixture regimes (NEVER a finding) ---
+  fixture:
+    regimes: [dose, dose_null, dose_kink, dose_capital]
+    trend_slope: -0.002            # `dose`: gap += trend_slope * edp_trend
+    trend_slope_null: 0.0          # `dose_null`
+    kink_slope_above: -0.006       # `dose_kink`: 0 below 5, this per spot above 5
+    trend_range: [-6.0, 14.0]      # deterministic grid of edp_trend for dose/dose_null
+    trend_levels: 81
+    kink_trend_range: [-4.0, 20.0] # kink regime: most of the mass above the 5-spot knot
+    # Nuisance noise for the dose regimes only. The dose slope is small (-0.002), so a large
+    # player-level draw would swamp it in a single fixture replication; the effort-level noise is
+    # kept, so the clustered SE machinery is still exercised.
+    dose_gap_player_sd: 0.010
+    dose_measurement_noise_sd: 0.010
+    capital_trend_per_pick: 0.05   # `dose_capital`: edp_trend generated FROM the pick
+    capital_gap_per_pick: -0.0003  # pick drives the gap => unadjusted slope ~ -0.006
+    capital_trend_noise_sd: 2.0    # keeps dose and pick from being exactly collinear
+    pick_round_size: 32            # deterministic pick inside its round band
+
+# --------------------------------------------------------------------------- #
 # Deliverables / sample discipline
 # --------------------------------------------------------------------------- #
 deliverables:

@@ -205,3 +205,42 @@ archived at git tag `archive/combine-fatigue-v1`.
     with the reason (the IPW refit is reported unavailable rather than forced). E is non-fatal by design:
     B/C/D/F/G are written regardless. A null E means the selection correction is **not** available for that
     run, so the unweighted estimate stands and H1's selection caveat (limitation 25) applies in full.
+
+36. **The dose-response panel is exploratory and post hoc.** It was specified *after* the binary cut had been
+    examined, and it looks at the same exposure continuously (linear, spline, explicit knot at 5, bins,
+    segmented) under seven capital treatments. *Mitigation:* it cannot change `b_primary.csv`, the
+    pre-registered test or any frozen value; every row, table and figure is labelled exploratory / post hoc;
+    the panel is a **supplementary** figure, not one of the 5 writeup figures; and no multiplicity-adjusted
+    claim is made across its cells (treat the p-values as descriptive, as in item 28).
+
+37. **Dose and draft capital are collinear by construction.** `edp_trend` moves with the EDP level, and the
+    level is the draft slot. A "dose effect" can therefore be draft position in disguise — later picks are
+    worse players, and worse players may realise less of their ceiling for reasons that have nothing to do
+    with pre-Combine movement. *Mitigation:* every specification is fitted unadjusted, with `overall_pick`,
+    with the round band, with pick plus the pre-Combine level, and inside three declared round bands; the
+    undrafted are kept as their own level (and excluded, with the reason stated, where a raw pick is
+    required). `SUMMARY.md` states in one sentence, generated from the numbers, whether the slope survives
+    — "the dose slope is draft position in disguise" is an acceptable and reportable outcome. What this
+    cannot fix: a within-band fit uses a much smaller sample (and is marked thin below the floors), and
+    conditioning on realised draft slot is conditioning on a **post-Combine** outcome, so the adjusted
+    estimates are a confound probe, not a causal adjustment (the same caveat as D48/§10).
+
+38. **The dose bins are small, and the extremes are where the noise is.** `<=0 / 1-2 / 3-4 / 5-9 / 10+` puts
+    most players in two bins and can leave 1-2 and 3-4 below `dose.min_players` (15) in a position scope.
+    *Mitigation:* a bin below the floor is reported with its counts and descriptive means and **no
+    contrast** (never a forced number); when any fixed bin is thin a five-bin **quantile** variant is fitted
+    as well and labelled with its actual `[lo, hi]` ranges. Bins are closed on the upper edge and form a
+    total partition, so a fractional `edp_trend` cannot fall through a gap. The binned means in the figure
+    carry player-clustered 95% CIs and their `n_players` labels, so a thin bin is visible rather than
+    persuasive.
+
+39. **The sign wording in `TASK.md` H1 and the PI's stated expectation disagree, and this panel does not
+    resolve it.** H1 says a slipping player (`moved_down`) realises a *higher* share of his ceiling (a
+    *positive* coefficient on movement); the PI's stated expectation is the opposite — a slipping player
+    realises *less* (a *negative* coefficient per EDP spot fallen). *Mitigation:* the pre-registered binary
+    test keeps its own (H1) wording and is not reinterpreted; the dose panel states its own convention
+    explicitly and identically in every row (`sign_convention`), at the top of `SUMMARY.md`, and on the
+    figure, and reports the sign it actually estimates rather than the sign the hypothesis wanted. The
+    discrepancy is recorded in D39/DV-7 (fixture), D50 and DV-9. A reader must not compare the sign of a
+    `dose_fits.csv` coefficient with the sign of `b_primary.csv`'s `group_coef` without reading both
+    conventions.

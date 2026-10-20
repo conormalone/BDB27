@@ -45,7 +45,7 @@ the drive (or copy the CSVs to a laptop and point `data/raw` there) before any g
 ## 3. Run order
 
 ```
-01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 07_security_models → 00b_external_proxies → 04_models → 05_validate
+01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 07_security_models → 10_dose_response → 00b_external_proxies → 04_models → 05_validate
 ```
 
 ```bash
@@ -111,6 +111,19 @@ python src/07_security_models.py --synthetic --synthetic-regime planted    # pla
 python src/07_security_models.py --synthetic --synthetic-regime null       # null case
 python src/07_security_models.py --synthetic --synthetic-regime selection  # selection + IPW
 
+# DOSE-RESPONSE PANEL (D50) — EXPLORATORY / POST HOC: the same block-B outcome with the exposure modelled
+#   CONTINUOUSLY (edp_trend: linear, 3-df restricted cubic spline, explicit knot at 5, fixed/quantile bins,
+#   segmented kink) under seven draft-capital treatments. It cannot change b_primary.csv or the verdict.
+#   Writes outputs/security_models/dose/{dose_fits.csv,dose_bins.csv,dose_curve.csv,SUMMARY.md,SUMMARY.json,
+#   fig_dose_response.png} (the figure is supplementary — NOT one of the 5 writeup figures).
+python src/synthetic_security_game_fixture.py --regime dose_all          # (re)build the four dose fixtures
+python src/10_dose_response.py --synthetic --synthetic-regime dose --force        # planted linear -0.002
+python src/10_dose_response.py --synthetic --synthetic-regime dose_null --force   # null case
+python src/10_dose_response.py --synthetic --synthetic-regime dose_kink --force   # 0 below 5, -0.006 above
+python src/10_dose_response.py --synthetic --synthetic-regime dose_capital --force  # slope dies under pick
+python src/10_dose_response.py --mode sample                             # labelled PENDING FULL RUN (exit 0)
+python src/10_dose_response.py --mode full                               # needs the full game files
+
 # Phase 3/4/5 tests (no pytest needed)
 python src/tests/test_thresholds.py
 python src/tests/test_game_demand.py
@@ -123,6 +136,8 @@ python src/tests/test_security.py
 python src/tests/test_security_audit.py
 # Phase 5 B–G security-model tests (sort key, post-Combine invariance, recovery/null/selection, CLI)
 python src/tests/test_security_models.py
+# D50 dose-response panel tests (spline/bins/kink, thin guards, recovery, capital, determinism, figure)
+python src/tests/test_dose_response.py
 ```
 
 `--force` ignores stage checkpoints (stages otherwise skip finished work). Logs of wall time + peak RAM per
