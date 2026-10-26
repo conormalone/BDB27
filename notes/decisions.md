@@ -1391,3 +1391,274 @@ saves it to `outputs/figures/fig_dose_response.png` **only** when the source is 
 four committed dose fixtures (recovery / null / kink / capital) and in sample mode only. The
 `dose_capital` fixture demonstrates the failure mode the panel is built to expose: unadjusted
 −0.0039 vs pick-adjusted −0.00007. The real numbers require the full run.
+
+---
+
+## D51 — 2026-10-25 — Task pivot: in-game decay of DB effort relative to the Combine ceiling
+
+**Decision.** The active task is now **"In-game decay of DB performance relative to the Combine ceiling"**
+(`TASK.md`, rewritten 2026-10-25). The previous WR/TE draft-stock ("security") task is archived verbatim at
+`notes/archive-tasks/TASK-wr-security-2026-10-20.md` and remains in git history. All security-task outputs,
+config blocks and stage code stay in the repo as legacy; they are **not** part of the new paper.
+
+**Why.** Conor set the new task and deadline. Only one Kaggle entry will be submitted; the DB-decay question
+uses the Combine tracking asset directly and does not depend on the external draft-board data (which was a
+data blocker, `notes/blockers.md` Phase 0.5).
+
+**Consequences.**
+1. New run order: `01_audit -> 02_combine_ceiling -> 00_thresholds -> 03_game_efforts -> 04_models -> 05_validate`.
+2. New config block `db_decay:`; existing keys are preserved (merge, never clobber).
+3. `notes/prereg.md` must be rewritten for the DB-decay estimands before any full-data run. The frozen
+   security prereg is superseded; keep it as `notes/archive-tasks/prereg-wr-security.md`.
+4. Prior combine-fatigue finding (no within-session signal) is **not** evidence about in-game decay and must
+   not be cited as such.
+
+---
+
+## D52 — 2026-10-26 — The DB audit is a new stage; the legacy WR/TE audit and its tests stay untouched
+
+**Decision.** The DB-decay audit is implemented as a **separate stage**, `src/01_db_audit.py`, writing to
+`outputs/audit/db_decay/`. The legacy WR/TE audit (`src/01_audit.py`), its outputs and its **259 tests** are
+left untouched. The DB stage adds **21** tests of its own; the suite collects **280** today
+(`pytest --collect-only -q`, 2026-10-26: 280 total, 21 in `src/tests/test_db_audit.py`; 280 − 21 = 259
+legacy). The ICC helper is **cross-checked numerically** between the two implementations so they cannot
+drift apart. _(Corrected 2026-10-26: this entry first said 12 tests / 271 collected, the count before the
+four review regressions in D58 were added; the legacy 259 was right.)_
+
+**Why.** Zero regression risk on a green suite (the legacy stage has audit outputs the archived security
+evidence still cites — `notes/archive-tasks/`, D37/D38), and a clean separation between **legacy** and
+**active** evidence: a reader of `outputs/audit/db_decay/` must never wonder whether a number came from the
+WR/TE population. Duplicating the ICC code is only safe if the duplicate is checked, hence the numerical
+cross-check rather than a copied formula and a hope.
+
+**Consequences.**
+1. Run order for the active task is `01_db_audit -> 02_combine_ceiling -> 00_thresholds -> 03_game_efforts ->
+   04_models -> 05_validate`; `01_audit` is not in it.
+2. Two audit trees coexist: `outputs/audit/` (legacy, cited by the archived security work) and
+   `outputs/audit/db_decay/` (active). Neither overwrites the other.
+3. If the two ICC implementations ever disagree, the DB stage **fails** rather than picking a winner. There
+   is no "trust the newer one" rule.
+4. The legacy stage stays in the repo for as long as the archive cites it. It is documentation of prior
+   evidence, not dead code to be tidied away.
+
+---
+
+## D53 — 2026-10-26 — `a0` exits by the ICC screen; the ceiling becomes single-feature
+
+**Decision.** `a0` is **excluded** from the ceiling feature set by the pre-registered ICC screen, and the
+ceiling is therefore **single-feature (`vmax`)**. It is **not** a stop condition. Recorded evidence
+(`outputs/audit/db_decay/g_feature_icc.csv`, 40-yard dash, n = 77 players with ≥2 attempts, 154 attempts,
+15 attempts excluded by the sanity rule):
+
+| Feature | ICC(1,1) | 95% CI | Status |
+|---|---:|---|---|
+| `vmax` | **0.686** | [0.548, 0.788] | pass (≥ 0.60) |
+| `a0` | **0.288** | [0.071, 0.480] | **fail → dropped** |
+| `max_decel` | 0.313 | [0.098, 0.500] | fail at the 0.60 primary threshold; retained only as secondary/descriptive |
+
+**Why.** `TASK.md` fixes the selection rule as **ICC then VIF, ≤3 features**. Under that rule a candidate that
+fails ICC **leaves the feature set**; it does not kill the project. My earlier gate configuration made **every
+candidate mandatory** (a per-feature `min_icc` check that turns one failure into a project-level NO_GO), which
+is a different and stricter rule than the spec — and the audit duly returned `NO_GO` on `icc_primary_a0`
+(`outputs/audit/db_decay/SUMMARY_db_decay.md`). The gate condition is the thing that was wrong, not the data:
+`a0` really is unreliable (CI upper bound 0.480 is below the 0.60 threshold, and the point estimate is 0.288),
+so dropping it is the correct application of the spec.
+
+**Consequences.**
+1. **Single-feature ceiling.** The load × ceiling interaction is tested on **`vmax` only**; the
+   acceleration-moderated version of the hypothesis is not testable and must not be half-tested.
+2. `a0`, `tau` and the cut/COD metrics are **reported descriptively** (they are already in the audit) and are
+   **not** model inputs. The writeup may show the `a0` ICC as justification for the exclusion; it may not use
+   `a0` as a moderator.
+3. `vmax`'s CI **lower bound (0.548) sits below the 0.60 threshold**, so the ceiling is retained but known to
+   be marginally reliable. The ceiling's **SE must propagate into every downstream estimate**, and a
+   **measurement-error-corrected** estimate is **mandatory alongside** the naive one — a result that survives
+   only the naive fit is not a result.
+4. The audit's go/no-go gate must be re-expressed as **"at least one primary feature passes"** before a full
+   run; as configured today it cannot return GO for a reason the spec does not require. (Action for the
+   coder/PM; recorded here because it changes the gate's meaning, not just its threshold.)
+
+---
+
+## D54 — 2026-10-26 — The 40-yard sanity exclusion is pre-registered data hygiene, not post-hoc tuning
+
+**Decision.** Attempts whose fitted `vmax > 12.5 yd/s` **or** `vmax > 1.5 ×` the player's observed peak speed
+are excluded from the ceiling fit, and the exclusion is counted and reported. Both bounds **already existed in
+`config.yaml` before the audit ran**: `envelope.flag_vmax_over_peak: 1.5` (from the D29 Combine-envelope work,
+2026-10-12) and `db_decay.ceiling.sanity.vmax_yds_max: 12.5` / `.vmax_over_peak_max: 1.5` (written in the
+DB-decay block; the config file on disk is dated 01:10, the audit outputs 02:16–02:20 on 2026-10-26). The
+rule is therefore a **declared precondition**, not a response to the ICC result.
+
+**Why.** The 2-parameter envelope is unidentifiable on a small number of noisy or thin attempts — a flat start
+plus tracking noise lets `tau` run away and the fitted ceiling extrapolate far above human speed. Those fits
+are not "fast players"; they are **failed fits**, and they enter the between-player variance as pure noise.
+
+**Consequences.**
+1. The effect is large and must be stated with both numbers: **raw ICC 0.118 vs filtered ICC 0.686** for
+   `vmax` (`g_feature_icc.csv`, `icc_raw` vs `icc`). **15** failed fits dominate the between-player variance;
+   without the rule the ceiling would be junk.
+2. Because a filter that moves an ICC from 0.118 to 0.686 is exactly the kind of step that invites suspicion,
+   the **four-variant sensitivity table** (filter on/off × each bound) and the **selection-bias table**
+   (who gets excluded: class, position, attempt count) are **mandatory evidence**, not optional appendix.
+3. **Any variant below threshold is reported, never suppressed.** If the unfiltered or single-bound variant
+   fails, the writeup says so and explains why the pre-registered rule still stands.
+4. The rule is never re-tuned after full-data results. If it needs to change, it changes as a dated decision
+   with the pre-change value (anti-HARKing).
+
+---
+
+## D55 — 2026-10-26 — Provided game acceleration and Combine `dis` are unusable; kinematics come from `x`/`y`
+
+**Decision.** **(a)** The provided game `a` is **never** used as acceleration; acceleration is derived from the
+smoothed speed everywhere. **(b)** The provided Combine `dis` is **never** used for path length or speed;
+distance and speed come from `x`/`y` in both pipelines. The provided `s`/`dis` survive **only as cross-checks**,
+and their disagreement is reported.
+
+**Evidence.** `outputs/audit/db_decay/f_reliability_game.csv` (n = 225,679 game frames): game `a` vs `ds/dt` of
+the tracked speed has **r ≈ 0.0027**, **bias +1.733 yd/s²**, and breaches a 5% relative tolerance on **88.0%**
+of frames — i.e. it is not the derivative of the speed in the same file, by any reading.
+`outputs/audit/db_decay/f_reliability_combine.csv` (40-yd dash, 9,254 frames): Combine `dis` vs per-frame
+|Δxy| has r = 0.980 but a **−0.048 yd** bias and breaches the 5% tolerance on **75.6%** of frames (it
+under-counts low-speed displacement); Combine `s` and `a` on the straight-line dash are close to the
+derivatives (r = 0.999 / 0.982), and on cutting drills `a` is not (r ≈ 0 to −0.10).
+
+**Why.** A field named `a` that is not `ds/dt` silently breaks every downstream quantity that assumes it:
+acceleration-based effort thresholds, deceleration metrics, and the exceedance test. The failure is worse
+than noise (88% of frames, a one-directional +1.73 yd/s² bias) — it is a **different quantity**, most likely
+including a lateral/centripetal component or a vendor smoothing that is not differenced the same way.
+
+**Consequences.**
+1. Stage 03's **cumulative load is `x`/`y` path length** (`prior_distance_yd_per100`), not a sum of `dis`.
+2. The acceleration branch of the episode definition uses **derived** acceleration, so the audit's accel
+   exceedance number (`h_exceedance_summary.csv`, accel rate ≈ 0.14% on the sample) is **provisional by
+   construction** — audit item h says so in its own note — and must not be quoted as a ceiling result.
+3. The Combine ceiling fit uses speed from `x`/`y`, smoothed, so the ceiling and the game effort are produced
+   by the **same** kinematic chain. That is what makes the ratio comparable at all.
+4. `notes/schema.md` §4 and `notes/blockers.md` carry the same finding; the blocker stays
+   **OPEN-WORKAROUND**, not closed, because the underlying field is still wrong in the supplied data.
+
+---
+
+## D56 — 2026-10-26 — The DB analysis cannot rely on co-located players: no matchup-demand covariate
+
+**Decision.** No nearest-receiver, ball-distance or matchup-demand covariate is built. Matchup demand is
+declared a **confound** and handled by **within-game contrasts**, not by conditioning. Full-data tracking
+coverage is `PENDING FULL RUN`.
+
+**Evidence.** `player_play.csv` contains only the 497 combine-class players (mean **2.73 rows/play**,
+`d_players_per_play.csv`), and the 2023 tracking **sample** has **1.16 players/play** (max 4, **0 plays with
+all 22 tracked**, `audit_items.json` item d). The sample carries **no ball entity**, so ball location and
+lateral reference are unavailable (`d_sample_blocked_paths.csv`). Within `player_play`, `dropback_duration`
+is **0% non-null on DB rows** and 38.4% non-null on opponent rows (`d_field_availability.csv`) — the offense
+row exists per play, but the *tracked* offense players largely do not.
+
+**Why.** The intended covariate ("nearest receiver's speed / route depth") needs the receiver's frame-level
+trajectory on the same play. With ~1 tracked player per play in the sample, that player is usually the DB
+himself; a "nearest receiver" computed from those rows would be a fabrication. Even on full data the question
+of whether tracking is **all-22 or combine-class-only** is open (T5/T8), so the covariate cannot be
+pre-registered as if it will exist.
+
+**Consequences.**
+1. The max-effort subset's "within 5 yd of the ball carrier" condition **cannot** be computed from tracking in
+   the sample; it falls back to the `first_contact` / `tackle` / `assist` flags in `player_play`
+   (`notes/prereg.md` §4, T5).
+2. Matchup demand is a **stated confound**: a DB covering a WR1 on a vertical route is not doing the same job
+   as one covering a check-down. The design answer is the **within-player, within-game contrast** (early vs
+   late, matched on play type/alignment/margin), which differences out the player's role but **not** a
+   change in role across the game (garbage time, injuries elsewhere).
+3. If the full run turns out to track all 22, the covariate can be added **only as a declared sensitivity**,
+   not as a change to the pre-registered primary model.
+
+---
+
+## D57 — 2026-10-26 — Sample-vs-full discipline: the sample can never produce a reportable number
+
+**Decision.** The 2023 tracking sample is **code-path exercise only**. It is a **2²⁰−1-row cap over
+2023-class players only**, with **scattered** play coverage, and it can never yield a reportable number.
+Every sample output is stamped `UNVALIDATED SAMPLE OUTPUT`, and the gate **cannot return GO from sample
+mode**.
+
+**Evidence.** 1,048,575 data rows (2²⁰−1) but **333 games interleaved** in file order, so it is not a prefix
+(`d_sample_draw.csv`, hypothesis A **REFUTED**); every player has `draft_year = 2023` (hypothesis C,
+"CONFIRMED (stronger)"); 197 units have < 40 frames and one unit has an internal > 150 ms gap (truncation
+mid-play); `d_sample_blocked_paths.csv` lists six blocked paths including load accumulation ("plays are a
+scattered subset (~11% of player_play plays) ... prior-effort load must come from the full run, not the
+sample").
+
+**Why.** Two independent failure modes: (i) **coverage** — a scattered ~11% subset of plays per game cannot
+support a within-game cumulative-load variable, which is the exposure; (ii) **truncation** — cutting a play
+mid-trajectory biases peaks **downward**, which is precisely the tail the whole design uses. A sample that
+biases the outcome in a known direction is worse than a small sample.
+
+**Consequences.**
+1. `01_db_audit` in sample mode is allowed to be **NO_GO** (it is now, on the `a0` gate — D53) without
+   blocking anything except its own sample run; the DB audit's Combine-side numbers are complete-data and
+   usable as *evidence about the Combine file*, not as results about decay.
+2. No threshold, no power figure, no effect size may be tuned against sample output; `00_thresholds` must
+   stamp `FULL` in full mode and stage 03 asserts it.
+3. `notes/prereg.md` contains no sample numbers by construction; the TBD register names the stage that
+   produces each missing value.
+4. Any writeup draft that quotes a sample number is wrong even if the number looks plausible.
+
+---
+
+## D58 — 2026-10-26 — Review of the DB audit: four defects fixed, and the legacy full-run gate is now red by design
+
+**Decision.** The Phase-0/1 DB-decay audit was reviewed line by line and re-run from scratch. Four defects were
+proven and fixed, each with a red→green regression test; the gate's *semantics* were left as specified (D53).
+
+**(1) Item (e) divided by nothing.** `e_snap_distribution_by_quarter.csv` grouped `player_play` by
+(position, quarter) only, so every DB-game collapsed into one row: `n_db_games = 1` and `snaps_median =
+9,592` for CB Q1 — a population *total* presented as a per-game median (this was open as P27). The query now
+groups by (player, game, quarter); CB Q1 reads 889 DB-games, median 11 snaps, IQR 7–15. Fixing it does not
+change `e_attrition.csv` (75.8% all four quarters; 21.0% Q1-not-Q4), which was already per DB-game.
+
+**(2) The power gate compared two different scales.** `_power_mc`/`_power_closed_form` return an MDE **per 1 SD
+of load**, while the pre-registered smallest effect of interest is **0.01 effort fraction per 10 prior
+high-intensity episodes** (prereg §11). `decide()` compared them directly, so at
+`assumed_load_sd_per10 = 2.0` an MDE of 0.015 per SD (0.0075 per 10 episodes — adequate) was failed. The gate
+now converts first (`mde_per_sd_load / assumed_load_sd_per10`) and reports both numbers. The verdict on this
+cycle's sample run is unchanged (`0.0013 ≤ 0.01`, still `pass`), but the *rule* now matches the prereg.
+
+**(3) Config validation had silent defaults in the gate's own inputs.** `ceiling_config()` promised "a missing
+key is a loud `GateError`, never a silent default", but `smooth_window_frames`, `heading_window_frames`,
+`cut_window_s` and `cut_min_speed_yds` were read with `.get(..., default)`, as were `audit.icc_ci_alpha`,
+`audit.provenance_thresholds` and three `power.assumed_*` inputs. Any of those could change which attempts
+enter the ICC screen (or whether a full run is allowed) without a word in the log. All of them are now
+required by `validate_db_decay_config()` (presence + range, dotted key named in the error) and read by direct
+index.
+
+**(4) The DB stage overwrote the legacy audit decision.** `write_decision` wrote
+`outputs/audit/audit_decision.json` — the exact file `src/gate.py` enforces for the legacy WR/TE game-side
+stages — after a one-time backup. That contradicted D52 ("neither overwrites the other") and meant a legacy
+full run would have been gated by the DB decision (`GO_PENDING_FULL_RUN` passes `gate.py`, so it would have
+passed silently). The authoritative file is now `outputs/audit/db_decay/audit_decision.json`; the legacy path
+is mirrored only when it is absent or already holds this stage's decision. The clobbered legacy file was
+restored from `audit_decision.wr_security.json` (byte-identical).
+
+**Also corrected (no behaviour change):** the sensitivity-table column `variant_is_preregistered` actually
+meant "is the gate variant" (all four variants are pre-registered, D54) — renamed `is_gate_variant`. Item (f)
+and item (h) emitted **sample-derived numbers** (75.6%, r≈0.003, +1.73 yd/s²) as a hardcoded note that would
+have been printed verbatim in a full run; the notes now point at `f_reliability_*.csv` for the mode in hand.
+The summary no longer claims `00_thresholds` "has not frozen" thresholds when provenance is `FULL`.
+
+**The suite is not globally green, and that is not a defect in this stage.** 12 legacy full-mode tests
+(`test_audit_full_mode`, `test_full_mode_e2e`, `test_speed_despike`, two in `test_envelope`, one in
+`test_gate`) now fail with `FULL-RUN GATE BLOCKED … notes/prereg.md does not declare '**Status: FROZEN**'`.
+Cause: the pivot replaced the frozen WR/TE `notes/prereg.md` (archived, still frozen, at
+`notes/archive-tasks/prereg-wr-security.md`) with the DB-decay prereg, which is deliberately **DRAFT — NOT
+FROZEN** until Conor approves it. `gate.py` is therefore doing exactly what `TASK.md` requires — refusing full
+runs — and those tests assert the retired pipeline's precondition. The D52 claim "zero regression risk on a
+green suite" is **wrong as stated** for those 12. Two remedies, both Conor's call, neither taken here:
+(a) retire or explicitly skip the legacy full-mode tests (they cover a pipeline that can no longer run), or
+(b) point their `paths.notes` at a frozen copy of the archived prereg and re-assert the live-repo test as
+"gate blocks while the active prereg is a draft". No DB-decay test and no other legacy test regressed:
+`test_db_audit.py` 21/21, suite 268/280 passing, the 12 failures all being that one gate message.
+
+**Consequences.**
+1. `src/01_db_audit.py` now reads every gate input from validated config; adding a threshold means adding it
+   to `config.yaml` and to the relevant key tuple, or the stage refuses to start.
+2. Any consumer of the audit decision for the *active* task must read
+   `outputs/audit/db_decay/audit_decision.json`; `src/gate.py` still points at the legacy path and will need a
+   task-aware prereg/decision path before the DB game-side stages (03–05) can be gated.
+3. P27 is closed. `notes/pending_full_run.md` keeps it as a closed item rather than deleting the history.

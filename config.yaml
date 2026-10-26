@@ -692,3 +692,98 @@ deliverables:
   figures_max: 5                   # <= 5 figures (stricter than the official "<10")
   sample_label: UNVALIDATED SAMPLE OUTPUT
   kaggle_notebook: true            # public Kaggle notebook + writeup is a pass/fail gate
+
+# --------------------------------------------------------------------------- #
+# db_decay — NFL Big Data Bowl 2027: in-game decay of DB effort vs Combine ceiling
+# (task pivot 2026-10-25, D51). Appended verbatim-preserving; do not rewrite.
+# --------------------------------------------------------------------------- #
+db_decay:
+  audit:
+    out_subdir: audit/db_decay
+    positions: [CB, SS, FS, DB]
+    snap_source: player_play
+    min_matched_dbs: 40
+    min_efforts_per_db: 20
+    min_efforts_per_db_slope: 60
+    min_total_efforts: 4000
+    min_icc_primary: 0.60
+    min_icc_secondary: 0.50
+    min_repeat_players_icc: 5
+    sampling_rate_hz: 10
+    dt_tolerance_s: 0.02
+    distance_rtol: 0.05
+    exceedance_margin_rel: 0.0
+    icc_ci_alpha: 0.05
+    provenance_thresholds: PLACEHOLDER_SAMPLE
+    alignment_map: {CB: outside_corner, SLOT_CB: slot_corner, HIGH_SAFETY: safety, BOX_SAFETY: safety}
+    alignment:
+      safety_min_depth_yd: 8.0
+      los_max_depth_yd: 2.0
+      slot_max_lateral_yd: 10.0
+      min_offense_rows_for_lateral: 5
+    drill_families:
+      FORTY_YARD_DASH: straight_line
+      SHORT_SHUTTLE: shuffle
+      THREE_CONE_DRILL: cut
+      BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL: backpedal
+      BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION: backpedal
+      GAUNTLET_DRILL: backpedal
+      BOX_DRILL: cut
+      TERYL_AUSTIN_DRILL_1: cut
+      TERYL_AUSTIN_DRILL_2: cut
+      W_DRILL: cut
+      LINE: other
+      LINE_DRILL: other
+    pending_full_run: [c_tracking, e_tracking, h, i]
+  ceiling:
+    fit_drills: FORTY_YARD_DASH
+    curve: exponential
+    a0_definition: vmax_over_tau
+    required_features: [vmax]        # features the primary estimand depends on
+    candidates: [vmax, a0, max_decel, cut_entry_speed, cut_cod_deficit]
+    selection:
+      rule: icc_then_vif
+      icc_min: 0.60
+      vif_max: 5.0
+      max_features: 3
+    shrinkage: hierarchical
+    shrink_method: reliability_weighted_mean
+    min_attempts_per_player: 1
+    cut_drills: [THREE_CONE_DRILL, W_DRILL, BOX_DRILL]
+    cut_metrics: [entry_speed, exit_speed, cod_deficit]
+    sanity:                          # pre-registered data-quality exclusions
+      vmax_yds_max: 12.5
+      vmax_over_peak_max: 1.5
+    smooth_window_frames: 5
+    cut_window_s: 1.0
+    cut_min_speed_yds: 2.0
+    heading_window_frames: 3
+  game:
+    effort_speed_frac_of_vmax: 0.85
+    effort_speed_floor_yds: 6.0
+    effort_accel_frac_of_a0: 0.80
+    effort_accel_floor_yds2: 4.0
+    min_effort_duration_s: 0.3
+    load_primary: prior_hi_efforts_per10
+    load_secondary: prior_distance_yd_per100
+    garbage_time_q4_margin: 21
+    garbage_time_any_margin: 28
+    min_snaps_per_player: 100
+  power:
+    alpha: 0.05
+    power: 0.80
+    reps: 500
+    seed_offset: 907
+    effect_grid: [0.0025, 0.005, 0.0075, 0.01, 0.015, 0.02]
+    assumed_sd_effort_fraction: 0.05
+    assumed_load_icc_within_player: 0.25
+    assumed_efforts_per_db: 80
+    assumed_games_per_db: 12
+    smallest_effect_of_interest: 0.01
+    assumed_load_sd_per10: 2.0
+    assumed_random_intercept_sd: 0.03
+    assumed_random_slope_sd: 0.005
+  model:
+    reliability_threshold: 0.5
+    slope_spec: "(1 + cumulative_load | player)"
+    fallbacks: [uncorrelated_re, eb_slopes, random_intercept]

@@ -1,0 +1,11 @@
+nfl_id,display_name,draft_year,nfl_position,birth_date,college_name,college_conference,draft_round,draft_pick_within_round,draft_overall_pick
+900001,DB1,2023,CB,2000-01-01,Fixture U,FIX,1,1,1
+900002,DB2,2023,CB,2000-01-01,Fixture U,FIX,1,1,2
+900003,DB3,2024,CB,2000-01-01,Fixture U,FIX,1,1,3
+900004,DB4,2023,SS,2000-01-01,Fixture U,FIX,1,1,4
+900005,DB5,2024,FS,2000-01-01,Fixture U,FIX,1,1,5
+900006,DB6,2024,DB,2000-01-01,Fixture U,FIX,1,1,6
+910001,OFF1,2023,WR,2000-01-01,Fixture U,FIX,2,1,40
+910002,OFF2,2023,WR,2000-01-01,Fixture U,FIX,2,1,41
+910003,OFF3,2023,TE,2000-01-01,Fixture U,FIX,2,1,42
+910004,OFF4,2023,WR,2000-01-01,Fixture U,FIX,2,1,43

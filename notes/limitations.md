@@ -244,3 +244,131 @@ archived at git tag `archive/combine-fatigue-v1`.
     discrepancy is recorded in D39/DV-7 (fixture), D50 and DV-9. A reader must not compare the sign of a
     `dose_fits.csv` coefficient with the sign of `b_primary.csv`'s `group_coef` without reading both
     conventions.
+
+## DB-decay task (2026-10-25 pivot, D51) — threats
+
+Scope of this block: the active task only. Items 1–39 above belong to the archived ceiling-binding/security
+work; where they still apply they are cross-referenced rather than repeated. Every item below says either how
+it is mitigated or that it is **not mitigable and is reported as a limitation**.
+
+40. **Selection is "reached the NFL and played", not "was drafted".** The claim limit in `TASK.md` says
+    "only draftees have game tracking", but the data says otherwise: of the 118 Combine DBs, **24 have no
+    draft slot** (structural "undrafted" level) and **all 24 appear in `player_play`**, while **3 drafted DBs
+    do not**. So the population is everyone who reached a roster *and* took a defensive snap — a survivorship
+    filter of unknown strength, correlated with ability, health and depth-chart luck.
+    *Mitigation:* state the population in those words (never "draftees only"); report 118 / 115 / 94 / 24
+    counts and the frame-level matched count (`c_matched_levels.csv`, `PENDING FULL RUN` for tracking);
+    never generalise to combine participants or to drafted-but-never-played DBs. *Residual:* selection on
+    unobservables (who sticks) is not identified — **not mitigable**.
+
+41. **The ceiling is a single feature with non-trivial measurement error.** `a0` fails the ICC screen, so the
+    ceiling is `vmax` alone, whose test-retest ICC is **0.686 with a 95% CI of [0.548, 0.788]**
+    (`g_feature_icc.csv`) — the interval's lower bound is **below** the 0.60 retention threshold. The ceiling
+    is therefore a noisy denominator sitting under every effort fraction.
+    *Mitigation:* hierarchical EB shrinkage with a carried SE; the SE is propagated into every downstream
+    estimate; the measurement-error-corrected (attenuation) estimate is reported **alongside** the naive one
+    (prereg §2.3, §5); `EF > 1` is reported, never clipped, so the ceiling's calibration is visible.
+    *Residual:* attenuation correction is an approximation and depends on the estimated ICC; with a single
+    feature there is no second indicator to triangulate it — **partially identified, reported as such**.
+
+42. **`a0` is unusable, so the acceleration-moderated hypothesis is untested.** ICC 0.288 (CI [0.071, 0.480])
+    means a player's fitted initial acceleration is not a stable property of the player at this sample size.
+    *Consequence:* the load × ceiling interaction is tested on `vmax` only; the question "does a player with a
+    better *start* decay less?" is **not answered**. *Mitigation:* report `a0`'s ICC as the reason (D53);
+    do not run a half-tested interaction or reinterpret a `vmax` interaction as an acceleration effect.
+    **Not mitigable with this data** — reported as a narrowing of the question.
+
+43. **The provided game acceleration is invalid, and derived acceleration is a smoothing artefact.**
+    Game `a` is not `ds/dt` (r ≈ 0.003, bias +1.73 yd/s², 88% of frames outside a 5% tolerance), so
+    acceleration is derived from smoothed speed. But a Savitzky–Golay fit at 10 Hz necessarily **suppresses
+    very short bursts**: an acceleration spike lasting < ~0.2 s cannot survive the filter, which is precisely
+    why the acceleration episode branch requires a 0.2 s sustain. Short explosive movements may therefore be
+    missed as episodes.
+    *Mitigation:* both branches (speed and acceleration) must fire independently, so a short burst that also
+    raises speed is still captured; the smoothing window is fixed in advance and sensitivity-tested (a
+    narrower window is a declared sensitivity, not a re-spec); truncated units are flagged and excluded from
+    peak-derived quantities (`notes/schema.md` §8). *Residual:* **not fully mitigable** — the 10 Hz sampling
+    is the floor.
+
+44. **No opponent co-location, so matchup demand cannot be conditioned on.** `player_play` holds only the 497
+    combine-class players (2.73 rows/play) and the tracking sample has 1.16 players/play (0 plays with 22
+    tracked). A DB covering a WR1 on a vertical is not doing the same job as one covering a check-down, and
+    this cannot be measured here (D56).
+    *Mitigation:* the **within-player, within-game contrast** (early vs late, matched on play type, alignment,
+    margin band) differences out the player's role; alignment, man/zone and play type are controls;
+    play-type/alignment strata are reported. *Residual:* a **mid-game change in role** (injury elsewhere,
+    garbage time) is not differenced out, and coverage quality itself is unobserved — **not mitigable**;
+    reported as the main identification caveat.
+
+45. **Role and pacing: snaps are not effort.** A DB with many snaps may be a starter playing soft coverage, or
+    a sub playing special packages; snap count is a role proxy, not a work measure. Load built from episodes
+    avoids counting idle snaps, but the two are correlated by construction.
+    *Mitigation:* the primary load is the **prior high-intensity episode count** (not snaps) and the secondary
+    is **`x`/`y` path length**; `snaps_in_drive` and `seconds_since_rest` are separate controls; the
+    all-efforts model is a declared secondary so a max-effort-only result can be compared against the full
+    set; the within-player contrast removes between-player role differences. *Residual:* pacing *within* a
+    player (saving himself for a long drive) is exactly the behaviour the design is trying to measure and
+    cannot be separated from "role" — **reported as an interpretive limitation**, not a bias to be corrected.
+
+46. **Substitution and survivorship within games.** **21.0%** of DB-games have the DB playing Q1 but not Q4
+    (`e_attrition.csv`: ALL 0.2095; CB 0.2227, S 0.1957; 75.8% play all four quarters). Missing late snaps are
+    not random: injury, blowout rotation and benchings all correlate with the outcome.
+    *Mitigation:* report results restricted to DBs who played all four quarters, plus a version weighting by
+    the probability of remaining in the game; the Q1-not-Q4 share is reported per position group; per-quarter
+    tracking coverage is `PENDING FULL RUN` (P21) so the tracking-side version of the same check is still
+    open. *Residual:* IPW corrects only for selection on observables — **not mitigable** for unobserved
+    injury/benching.
+
+47. **Game-script effects.** Score margin, pace and play-calling change effort in ways that are not "decay":
+    a DB in a blowout may coast (or press), and a team trailing by 3 runs a different defence than one
+    trailing by 24.
+    *Mitigation:* pre-registered garbage-time exclusion (Q4 and |margin| ≥ 21; any play |margin| ≥ 28),
+    penalty-nullified plays excluded, score-margin **band** as a control (0–7/8–14/15–21/22+), quarter
+    control, and a declared sensitivity excluding the final two minutes of each half. *Residual:* game script
+    inside the non-garbage window still varies — **partially mitigable**; the relaxed-rule sensitivity
+    quantifies how much the exclusion matters.
+
+48. **19 of 118 DBs have no 40-yard-dash attempt and therefore no ceiling.** They cannot enter the primary
+    analysis at all (`a_dbs_missing_40.csv` lists the ids). Combine participation is voluntary and
+    non-random, so this is a selection threat, not a data-cleaning detail.
+    *Mitigation:* the excluded ids are published with the reason; included vs excluded DBs are compared on
+    position group, class year and (where present) draft slot so the direction of the selection is visible;
+    no imputed ceiling is ever used. *Residual:* **not mitigable** — the excluded players are unobservable on
+    the exposure of interest, and if fast players are more likely to run the 40 the retained sample is
+    selected on the ceiling itself.
+
+49. **Lateral alignment cannot be derived from tracking.** The sample has no ball/lateral reference
+    (`n_lateral_reference_available = 0`), so outside-corner vs slot-corner comes from
+    `player_play.lined_up_position` only. Agreement between the `lined_up_position` family and the
+    tracking-derived family is **92.3%** for the safety/non-safety split (n = 2,842) but the **3-class lateral
+    variant** is only **80.9%** on n = 947 (`c_alignment_agreement.csv`) — i.e. the axis that matters most
+    for corner alignment is the least verifiable.
+    *Mitigation:* alignment enters as a 4-level control with an explicit `other`/`missing` level; the
+    alignment-subgroup sensitivity is pre-declared; the 92.3% / 80.9% agreement numbers are reported next to
+    the control rather than hidden. *Residual:* misclassification is likely non-differential with respect to
+    load (it is a pre-snap label), so it should attenuate toward zero rather than create a spurious decay —
+    **argued, not proven**; reported as a limitation.
+
+50. **Per-player slopes are noisy and mostly unreportable.** With 20–60 episodes per DB, an individual slope's
+    SE can exceed its estimate.
+    *Mitigation:* the model-based reliability threshold `var(slope)/(var(slope)+mean SE²) ≥ 0.50` is fixed in
+    advance (prereg §11), EB shrinkage is applied, and players below threshold are reported as a **count**,
+    with no individual numbers. Explicitly **not** an odd/even split-half. *Residual:* the surviving slopes
+    are a selected (better-covered, higher-snap) subset — reported as such.
+
+51. **Short follow-up for the 2025 class.** The 2025 class has ~1 NFL season of games while 2023 has ~3, so
+    games/DB and efforts/DB are class-dependent (audit c: `db_seasons_median` = 2 for CB/S). A class effect
+    in the model is therefore partly a **follow-up-length** effect.
+    *Mitigation:* class year is reported per DB; per-class descriptive panels; the primary model does not
+    claim a trend over classes; the minimum-effort floors are applied **per player**, so a thin 2025 DB is
+    excluded rather than contributing noise. *Residual:* **not mitigable** — the data cannot be extended.
+
+52. **Thresholds could be tuned against the sample.** Every effort cut-off and the garbage-time rule are
+    placeholders in sample mode; a number chosen because it "looks right" on the sample would be a
+    sample-tuned design presented as pre-registered.
+    *Mitigation:* `00_thresholds` stamps provenance `PLACEHOLDER_SAMPLE` or `FULL`, stage 03 **asserts**
+    `FULL` in full mode, and the prereg is frozen before the first full run (it is `DRAFT — NOT FROZEN`
+    today, and the full run is gated on that). Sample outputs are stamped `UNVALIDATED SAMPLE OUTPUT`, the
+    gate cannot return GO in sample mode (D57), and no threshold may be edited after seeing full-data
+    results without a dated deviation entry. *Residual:* **process control only** — it prevents tuning, it
+    does not detect tuning that was never written down; the audit trail is the mitigation.

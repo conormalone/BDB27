@@ -1,6 +1,7 @@
 # Blockers — BDB27
 
-**Status: 0 ACTIVE.** Per `TASK.md`, a blocker stops work and must be written here. **Prior
+**Status: 0 ACTIVE · 1 OPEN-WORKAROUND** (game `a` fails its definition check — worked around, not closed;
+see the entry at the end of this file). Per `TASK.md`, a blocker stops work and must be written here. **Prior
 (combine-fatigue) blockers B1–B7 are archived at git tag `archive/combine-fatigue-v1`** (HEAD `fdc794c`).
 
 As of **2026-10-12 (Cycle 4)** there are **no active blockers**. `04_models` and `05_validate` are now
@@ -87,3 +88,32 @@ which is **present and permitted** (Conor 2026-10-17; `notes/rules.md` §6). The
 board→Combine exact `nfl_id` WR/TE match rate is ≈0.757, below `external.board.min_match_rate` (0.85), because
 the board spans a broader prospect pool than the 2027 subset — logged in `notes/decisions.md` D37 for the
 cycle-2 validator; the implemented go/no-go minima are evaluated separately.
+
+---
+
+## Game `a` fails its definition check — OPEN-WORKAROUND · 2026-10-26
+
+**Status: OPEN-WORKAROUND.** Not closed, and not a stop condition: the pipeline runs without the field.
+
+**The problem.** The provided game-tracking `a` is **not** the derivative of the provided game `s`.
+Audit item f (`outputs/audit/db_decay/f_reliability_game.csv`, n = 225,679 frames):
+**r = 0.0027**, **bias = +1.733 yd/s²**, **88.0%** of frames outside a 5% relative tolerance — a
+one-directional discrepancy, not noise. A field named `a` that is not `ds/dt` breaks any acceleration-based
+threshold, deceleration metric or exceedance test that assumes it.
+
+**Workaround (in force).** Acceleration is **derived from smoothed speed** (`ds/dt` of a Savitzky–Golay fit
+on speed computed from `x`/`y`) in every stage, Combine and game (D55). The provided `a` is retained **only**
+as a cross-check and is never a model input. Consequence: the acceleration branch of the effort definition is
+a derived quantity, and the audit's **acceleration exceedance rate is provisional** — audit item h says so in
+its own note, because that number was computed with the provided `a`. It must not be quoted in the writeup
+until recomputed from derived acceleration on full data.
+
+**Not closed because** the underlying field is still wrong in the supplied data and the cause is unknown
+(possible lateral/centripetal component, or a vendor smoothing that is not differenced the same way). The
+workaround makes the pipeline correct; it does not make the field usable.
+
+**What would close it:** an official definition of the `a` column from the competition data documentation, or
+a vendor correction. Until then, any analysis that needs the *provided* acceleration (e.g. a
+vendor-comparable deceleration metric) is out of scope.
+
+**Related.** `notes/schema.md` §4; `notes/decisions.md` D55; `notes/limitations.md` §43.

@@ -46,3 +46,30 @@ committed game-side fixture for the **planted**, **null** and **selection** regi
 run (P12–P16) is **data-blocked** by the absent `game_tracking_{2023,24,25}.csv`. Run order:
 `01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 07_security_models →
 00b_external_proxies → 04_models → 05_validate`.
+
+---
+
+## DB-decay task (2026-10-25 pivot, D51) — `PENDING FULL RUN`
+
+The active task's game side is blocked by the same absent files; the Combine side is **complete** and already
+run (`outputs/audit/db_decay/`). Commands below are the exact invocations; config keys are the ones that
+change, and "unblocks" is the decision that cannot be made without the answer. All sample-mode outputs are
+stamped `UNVALIDATED SAMPLE OUTPUT` and are **never** reportable (D57).
+
+| # | Question | Exact command / stage | Config key that changes | Unblocks |
+|---|---|---|---|---|
+| **P18** | **Matched DBs with frame-level tracking** (audit c): how many of the 118 Combine DBs appear in `game_tracking_{2023,24,25}.csv`? (sample: **33**, non-representative) | `python src/01_db_audit.py --mode full --force` → `outputs/audit/db_decay/c_matched_levels.csv`, gate row `matched_dbs_game_tracking` | `db_decay.audit.min_matched_dbs` (40) | The go/no-go gate; whether the study has a population at all |
+| **P19** | **Efforts per DB** (high-intensity episodes/player-game and per season) — above the 20 floor for population models and the 60 floor for slopes? | `01_db_audit --mode full` (i) + `python src/03_game_efforts.py --mode full` → effort summary table | `db_decay.audit.min_efforts_per_db` (20), `min_efforts_per_db_slope` (60) | Whether per-player slopes are reportable at all |
+| **P20** | **Total efforts** across the DB population | same as P19 → `i_power.csv` / gate row `total_efforts` | `db_decay.audit.min_total_efforts` (4000) | Power; whether a null is informative |
+| **P21** | **Per-quarter tracking substitution / survivorship**: does tracking coverage per DB degrade by quarter, and by how much? (audit e; sample `e_tracking` is `PENDING FULL RUN`, and `e_snap_distribution_by_quarter.csv` was unusable until the P27 fix, 2026-10-26) | `01_db_audit --mode full` (e) → `e_tracking_by_quarter.csv`, `e_attrition.csv` | `db_decay.audit.pending_full_run` (drop `e_tracking` once answered) | The Q1-not-Q4 restriction and the inverse-probability weighting in validation |
+| **P22** | **Exceedance rate**: how often does in-game peak speed beat the shrunken ceiling, on max-effort episodes? (sample: 0.0% speed on 2,934 units — diagnostic only) | `01_db_audit --mode full` (h) → `h_exceedance_summary.csv` | `db_decay.audit.exceedance_margin_rel` (0.0; margin grid is a sensitivity) | Whether the ceiling is a bound or a scaling reference — the framing of the whole writeup |
+| **P23** | **MDE recalibration**: smallest detectable load β with the real DB count, efforts/DB, games/DB and **observed load SD** (audit assumed `load_sd_per10 = 2.0`) | `python src/05_validate.py --mode full` → power block | `db_decay.power.assumed_load_sd_per10`, `assumed_efforts_per_db`, `assumed_games_per_db`, `smallest_effect_of_interest` (0.01, fixed) | Whether "no decay" is an informative null or an underpowered shrug |
+| **P24** | **Nearest-receiver / co-location availability**: does full tracking carry opponent rows and the ball on the same play? | `01_db_audit --mode full` (d) → `d_players_per_play.csv`, `d_sample_blocked_paths.csv` | *(no key yet — add `db_decay.game.matchup_covariate` only if the answer is yes)* | Whether matchup demand can be conditioned on, or stays a declared confound (D56) |
+| **P25** | **Is full tracking all-22 or combine-class only?** (sample: 0 plays with 22 tracked, 1.16 players/play) | `01_db_audit --mode full` (d), same outputs as P24 | *(no key)* | The `within 5 yd of the ball carrier` condition in the max-effort subset; lateral alignment derivation (T4) |
+| **P26** | **Thresholds with `FULL` provenance** (effort speed/accel cuts, sustain times, garbage-time margins, min snaps) | `python src/00_thresholds.py --mode full` → `outputs/thresholds.json` | `db_decay.game.effort_*`, `min_effort_duration_s`, `garbage_time_*`, `min_snaps_per_player`; `db_decay.audit.provenance_thresholds` → `FULL` | Stage 03 (it asserts `FULL`); every number downstream |
+| **P27** | ~~**Pre-full-run code fix, not a data question:** `e_snap_distribution_by_quarter.csv` reports `n_db_games = 1` and `snaps_median ≈ 9,592` for CB Q1 — that is a total, not a per-game median, so the per-quarter snap distribution is currently unreadable.~~ **FIXED 2026-10-26 (D58):** the query now groups by (player, game, quarter), so the distribution is over DB-games (CB Q1: 889 DB-games, median 11 snaps, IQR 7–15); covered by `test_snap_distribution_is_per_db_game`. Kept here as a closed item, not a pending question. | `01_db_audit` (e) — no action left | *(none)* | P21's interpretation; any substitution/survivorship claim |
+
+**Gate status (2026-10-26).** A DB-decay full run must not start until: (1) `notes/prereg.md` is **FROZEN**
+(it is currently `DRAFT — NOT FROZEN`), (2) the audit go/no-go gate has been re-expressed as "≥1 primary
+Combine feature passes ICC" (D53) and passes on full data, and (3) `00_thresholds` has written `FULL`
+provenance. Otherwise → `notes/blockers.md`.
