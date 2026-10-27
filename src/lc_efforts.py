@@ -16,7 +16,9 @@ Definitions (design placeholders from ``config.yaml``):
   definition, so this is the "prior high-intensity efforts" load measure;
 * ``route_displacement_yd`` is start-to-end displacement.  It is descriptive,
   not a control: over a fixed route duration it is mechanically a function of
-  speed.  The full-data stage derives designed route depth at the break.
+  speed.  The control is ``break_depth_yd`` -- geometric depth at the break
+  (``lc_route_depth``, D61) -- plus the ``break_found`` indicator.  Routes with
+  no detectable break keep a MISSING depth; nothing is imputed.
 
 No post-snap field (target, result, completion) enters the effort or the
 leverage definition.
@@ -32,6 +34,9 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+import lc_common as C
+import lc_route_depth as RD
 
 
 def leverage_from_wp(wp) -> np.ndarray:
@@ -111,6 +116,14 @@ def extract_efforts(player_play: pd.DataFrame, tracking: pd.DataFrame,
     """Build the one-row-per-effort table plus extraction diagnostics."""
     pp = player_play.copy()
     diag = {"n_player_play_rows": int(len(pp))}
+    if cfg is None:
+        cfg = C.load_config()
+    if "play_direction" in pp.columns:
+        direction_map = (pp.drop_duplicates(["game_id", "play_id"])
+                         .set_index(["game_id", "play_id"])["play_direction"]
+                         .to_dict())
+    else:
+        direction_map = {}
 
     if "route_ran" not in pp.columns:
         raise KeyError("player_play has no route_ran column")
@@ -127,8 +140,26 @@ def extract_efforts(player_play: pd.DataFrame, tracking: pd.DataFrame,
 
     tr = _tracking_summary(tracking)
     diag["n_tracked_player_plays"] = int(len(tr))
+    wanted = set(zip(pp["game_id"], pp["play_id"], pp["nfl_id"]))
+    track_subset = tracking[[(g, p, n) in wanted for g, p, n in
+                             zip(tracking["game_id"], tracking["play_id"],
+                                 tracking["nfl_id"])]]
+    depth_table = RD.route_depth_table(track_subset, direction_map, cfg)
+    diag["n_route_depth_rows"] = int(len(depth_table))
+    diag["n_break_found"] = int(depth_table["break_found"].astype(bool).sum())
+    diag["n_no_break"] = int((~depth_table["break_found"].astype(bool)).sum())
+    diag["n_break_after_throw"] = int(
+        depth_table["break_after_throw"].astype(bool).sum())
+    depth_columns = ["game_id", "play_id", "nfl_id", "break_found",
+                     "break_depth_yd", "break_time_from_snap_s",
+                     "break_after_throw", "throw_known", "flags"]
+    depth_table = depth_table[depth_columns].rename(
+        columns={"flags": "route_depth_flags"})
     merged = pp.merge(tr, on=["game_id", "play_id", "nfl_id"], how="left")
+    merged = merged.merge(depth_table, on=["game_id", "play_id", "nfl_id"],
+                          how="left")
     diag["n_without_tracking"] = int(merged["max_speed_yds"].isna().sum())
+    diag["n_without_depth"] = int(merged["break_found"].isna().sum())
     merged = merged[merged["max_speed_yds"].notna() & (merged["n_frames"] >= min_frames)]
     merged = merged[(merged["route_displacement_yd"] >= min_depth) &
                     (merged["duration_s"] >= min_duration)]
@@ -150,6 +181,13 @@ def extract_efforts(player_play: pd.DataFrame, tracking: pd.DataFrame,
         "wp_pre": pd.to_numeric(merged["pre_snap_home_team_win_probability"], errors="coerce"),
         "max_speed_yds": merged["max_speed_yds"].astype(float),
         "route_displacement_yd": merged["route_displacement_yd"].astype(float),
+        "break_found": merged["break_found"].fillna(False).astype(bool),
+        "break_depth_yd": pd.to_numeric(merged["break_depth_yd"],
+                                        errors="coerce").astype(float),
+        "break_time_from_snap_s": pd.to_numeric(
+            merged["break_time_from_snap_s"], errors="coerce").astype(float),
+        "break_after_throw": merged["break_after_throw"].fillna(False).astype(bool),
+        "throw_known": merged["throw_known"].fillna(False).astype(bool),
         "route_path_yd": merged["route_path_yd"].astype(float),
         "duration_s": merged["duration_s"].astype(float),
         "n_frames": merged["n_frames"].astype(int),

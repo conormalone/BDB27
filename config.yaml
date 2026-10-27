@@ -961,6 +961,43 @@ bdb27_lc:
       primary: prior_high_intensity_efforts
       secondary: prior_distance_yd
 
+  # --- D61: route depth as DEPTH AT THE BREAK (the depth control in the model) ---
+  # Every number below is a design constant frozen in notes/decisions.md D61 and
+  # carried into notes/prereg.md.  The smoother is the existing ceiling smoother
+  # (thresholds.smoothing.window_frames); no second smoothing convention exists.
+  route_depth:
+    definition_id: depth_at_break_v1
+    out_subdir: game/lc/route_depth   # outputs/ (never data/interim)
+    smoothing_window_frames: 5       # must equal thresholds.smoothing.window_frames (asserted)
+    heading_window_s: 0.2            # heading from smoothed velocity over this window
+    stem_min_s: 0.8                  # minimum post-snap motion before a break can count
+    break_window_s: 0.3              # cumulative |dtheta| is summed over this window
+    break_angle_deg: 45.0            # cumulative turn that defines a break
+    sustain_window_s: 0.3            # the new heading must persist this long
+    sustain_angle_deg: 20.0          # ...within this tolerance
+    min_frames: 10                   # below this a track cannot support the definition
+    min_speed_yds: 2.0               # heading undefined below this local speed
+    max_gap_s: 0.5                   # a longer frame gap cannot be spanned by a break window
+    nominal_hz: 10                   # only a sanity check; dt comes from the frames
+    snap_event: ball_snap            # tracking event marking the snap frame
+    throw_event: pass_forward        # tracking event marking the throw frame (not re-derived)
+    snap_tolerance_s: 0.15           # play-level snap event must land this near a frame
+    sensitivity_max_tracks: 2000     # deterministic subsample for the specification curve
+    direction_column: play_direction
+    direction_right: right           # play_direction 'right' => +x is downfield
+    direction_left: left             # play_direction 'left'  => -x is downfield
+    # Declared specification curve: the answer must not be threshold-art.
+    robustness:
+      break_angle_deg: [35.0, 45.0, 55.0]
+      break_window_s: [0.2, 0.3, 0.4]
+    # How the control enters the model: family + centred depth + indicator.
+    model_control:
+      depth_column: break_depth_yd
+      indicator_column: break_found
+      centre: true                   # depth centred; no scaling (yards stay yards)
+      include_after_throw: true      # headline fit keeps every detected break
+      exclude_after_throw_sensitivity: true   # sensitivity refit drops them
+
   power:
     reps: 1000
     alpha: 0.05
@@ -996,7 +1033,7 @@ bdb27_lc:
     n_players: 60
     n_games: 6
     plays_per_game: 16
-    frames_per_effort: 28
+    frames_per_effort: 34
     tracking_hz: 10
     planted_beta_leverage: 0.05          # log max speed per 1 SD leverage
     planted_within_player_sd: 0.04

@@ -40,6 +40,29 @@ DEFAULT_SEED = 20270107
 DRILL = "FORTY_YARD_DASH"
 ROUTES = ["GO", "HITCH", "CROSS", "IN", "OUT", "POST", "CORNER", "SLANT",
           "FLAT", "WHEEL"]
+#: Planted route geometry (D61).  ``(break depth yd, post-break angle deg)``
+#: with 0 deg = straight downfield and a positive angle turning to the
+#: receiver's right.  ``None`` means the fixture plants NO break: the detector
+#: must report ``break_found = False`` and a missing depth for these.
+ROUTE_BREAKS = {
+    "GO": None,
+    "WHEEL": None,
+    "FLAT": None,
+    "HITCH": (6.0, 120.0),
+    "CROSS": (8.0, 90.0),
+    "IN": (10.0, 90.0),
+    "OUT": (9.0, -90.0),
+    "POST": (12.0, 60.0),
+    "CORNER": (11.0, -66.0),
+    "SLANT": (4.5, 60.0),
+}
+#: Every 5th play plants a deliberately LATE break (a fixed fraction of the
+#: route's total path, which lands at ~2.26 s for every receiver because the
+#: speed profile is the same shape).  The throw is at 2.0 s, so these exercise
+#: the ``break_after_throw`` flag without changing the planted speed.
+LATE_BREAK_EVERY = 5
+LATE_BREAK_PATH_FRACTION = 0.64
+THROW_FRAME = 20
 TEAMS = ["AAA", "BBB", "CCC", "DDD"]
 COLLEGES = ["Alabama", "Ohio State", "Georgia", "LSU", "Michigan", "Clemson",
             "Texas", "Oregon", "Penn State", "USC"]
@@ -318,37 +341,65 @@ def _player_rows(players):
 # --------------------------------------------------------------------------- #
 # Game fixture
 # --------------------------------------------------------------------------- #
+def _planted_geometry(route: str, total_path_yd: float, late_break: bool):
+    """Return ``(break_depth_yd, post_break_angle_deg)`` or ``(None, 0.0)``."""
+    spec = ROUTE_BREAKS.get(route)
+    if spec is None:
+        return None, 0.0
+    depth, angle = spec
+    if late_break:
+        depth = LATE_BREAK_PATH_FRACTION * total_path_yd
+    return round(float(depth), 6), float(angle)
+
+
 def _tracking_for_effort(game_id, play_id, nfl_id, route, vmax_eff, t0,
-                         frames_n, hz, rng):
-    """Smooth acceleration to a planted max speed along a route direction."""
+                         frames_n, hz, rng, play_direction="right",
+                         late_break=False):
+    """Smooth acceleration along a planted (optionally two-segment) route.
+
+    The speed profile is unchanged; the path is walked at that speed.  A route
+    with a planted break runs straight downfield to the break depth, then turns
+    by the planted angle.  Positions are expressed in the field frame using
+    ``play_direction`` (``right`` => +x is downfield), so the reader and the
+    fixture agree on the play frame.
+    """
     dt = 1.0 / hz
     tau = 0.55
-    ux, uy = {
-        "GO": (1.0, 0.06), "HITCH": (1.0, 0.0), "CROSS": (0.72, 0.69),
-        "IN": (0.60, -0.80), "OUT": (0.60, 0.80), "POST": (0.80, 0.60),
-        "CORNER": (0.80, -0.60), "SLANT": (0.75, -0.66), "FLAT": (0.35, 0.94),
-        "WHEEL": (0.50, 0.87),
-    }[route]
-    norm = math.hypot(ux, uy)
-    ux, uy = ux / norm, uy / norm
     x0, y0 = 50.0, 26.65
+    sign = 1.0 if str(play_direction).strip().lower() == "right" else -1.0
+    t_end = (frames_n - 1) * dt
+    total_path = vmax_eff * (t_end - tau * (1.0 - math.exp(-t_end / tau)))
+    break_depth, break_angle = _planted_geometry(route, total_path, late_break)
+    phi = math.radians(break_angle)
     rows = []
     for k in range(frames_n):
         t = k * dt
         v = vmax_eff * (1.0 - math.exp(-t / tau))
         dist = vmax_eff * (t - tau * (1.0 - math.exp(-t / tau)))
         a = (vmax_eff / tau) * math.exp(-t / tau)
+        if break_depth is not None and dist > break_depth:
+            remaining = dist - break_depth
+            play_down = break_depth + remaining * math.cos(phi)
+            play_lat = remaining * math.sin(phi)
+        else:
+            play_down, play_lat = dist, 0.0
+        heading_deg = 0.0 if (break_depth is None or dist <= break_depth) \
+            else break_angle
+        field_angle = (math.atan2(sign * math.sin(phi), sign * math.cos(phi))
+                       if heading_deg else 0.0)
         moment = t0 + timedelta(seconds=round(t, 3))
-        event = "ball_snap" if k == 0 else ("pass_forward" if k == frames_n - 1 else "")
+        event = "ball_snap" if k == 0 else (
+            "pass_forward" if k == THROW_FRAME else "")
         rows.append({
             "game_id": game_id, "play_id": play_id, "nfl_id": nfl_id,
             "time": _ts(moment),
-            "x": _f(x0 + ux * dist + rng.gauss(0, 0.03)),
-            "y": _f(y0 + uy * dist + rng.gauss(0, 0.03)),
+            "x": _f(x0 + sign * play_down + rng.gauss(0, 0.03)),
+            "y": _f(y0 + sign * play_lat + rng.gauss(0, 0.03)),
             "s": _f(max(0.0, v + rng.gauss(0, 0.02))),
             "a": _f(max(0.0, a + rng.gauss(0, 0.05))),
             "dis": _f(dist / 36.7),
-            "o": _f(dist), "dir": _f((math.degrees(math.atan2(uy, ux))) % 360, 2),
+            "o": _f(dist),
+            "dir": _f(math.degrees(field_angle) % 360, 2),
             "event": event,
         })
     return rows
@@ -404,6 +455,8 @@ def _build_world(out_root: Path, players, seed: int, *, world: str, beta: float,
                      for k in range(3)]
             defender = defenders[other][play % len(defenders[other])]
             route = ROUTES[(g * plays_per_game + play) % len(ROUTES)]
+            play_direction = "right" if play % 2 == 0 else "left"
+            late_break = (play % LATE_BREAK_EVERY == 0)
             score_home = 10 + (play * 3) % 21
             score_vis = 7 + (play * 5) % 21
             clock = _fmt_clock(secs_left)
@@ -417,7 +470,7 @@ def _build_world(out_root: Path, players, seed: int, *, world: str, beta: float,
                 "game_clock": clock,
                 "pre_snap_home_score": score_home,
                 "pre_snap_visitor_score": score_vis,
-                "play_direction": "right" if play % 2 == 0 else "left",
+                "play_direction": play_direction,
                 "pre_snap_home_team_win_probability": _f(p_home, 12),
                 "pre_snap_visitor_team_win_probability": _f(1.0 - p_home, 12),
                 "home_team_win_probability_added": _f(0.0, 12),
@@ -442,6 +495,8 @@ def _build_world(out_root: Path, players, seed: int, *, world: str, beta: float,
                     "eps": rng.gauss(0, within_sd), "is_target": is_target,
                     "wp_home": p_home,
                     "t0": t0, "play_index": play,
+                    "play_direction": play_direction,
+                    "late_break": late_break,
                 })
                 pp_rows.append(dict(common, **{
                     "team_abbr": possession, "nfl_id": p["nfl_id"],
@@ -527,9 +582,14 @@ def _build_world(out_root: Path, players, seed: int, *, world: str, beta: float,
     tracking_rows, efforts = [], []
     for s in specs:
         max_speed = _clip(math.exp(s["true_log"]), 3.0, 12.0)
+        t_end = (frames_n - 1) / float(hz)
+        total_path = max_speed * (t_end - 0.55 * (1.0 - math.exp(-t_end / 0.55)))
+        planted_depth, planted_angle = _planted_geometry(
+            s["route"], total_path, s["late_break"])
         tracking_rows.extend(_tracking_for_effort(
             s["game_id"], s["play_id"], s["p"]["nfl_id"], s["route"],
-            max_speed, s["t0"], frames_n, hz, rng))
+            max_speed, s["t0"], frames_n, hz, rng,
+            play_direction=s["play_direction"], late_break=s["late_break"]))
         efforts.append({
             "game_id": s["game_id"], "play_id": s["play_id"],
             "nfl_id": s["p"]["nfl_id"], "position": s["p"]["position"],
@@ -545,6 +605,13 @@ def _build_world(out_root: Path, players, seed: int, *, world: str, beta: float,
             "true_log_speed": round(s["true_log"], 8),
             "is_target": bool(s["is_target"]),
             "play_index": s["play_index"],
+            "play_direction": s["play_direction"],
+            "throw_time_from_snap_s": round(THROW_FRAME / float(hz), 6),
+            "planted_break_depth_yd": planted_depth,
+            "planted_break_found": planted_depth is not None,
+            "planted_post_break_angle_deg": planted_angle,
+            "planted_break_after_throw": bool(
+                planted_depth is not None and s["late_break"]),
         })
 
     game_dir = out_root / "game" if world == "planted" else out_root / "game" / world
@@ -583,6 +650,27 @@ def _build_world(out_root: Path, players, seed: int, *, world: str, beta: float,
         "n_games": n_games,
         "plays_per_game": plays_per_game,
         "leverage_definition": "4 * wp_pre * (1 - wp_pre)",
+        "route_geometry": {
+            "note": ("D61 depth-at-break fixture: the stem is straight "
+                     "downfield and the break is an exact two-segment corner, "
+                     "so planted_break_depth_yd is the geometric truth."),
+            "definition_id": "depth_at_break_v1",
+            "stem_min_s": 0.8,
+            "break_window_s": 0.3,
+            "break_angle_deg": 45.0,
+            "sustain_window_s": 0.3,
+            "sustain_angle_deg": 20.0,
+            "heading_window_s": 0.2,
+            "throw_time_from_snap_s": round(THROW_FRAME / float(hz), 6),
+            "late_break_every": LATE_BREAK_EVERY,
+            "late_break_path_fraction": LATE_BREAK_PATH_FRACTION,
+            "route_breaks": {
+                route: (None if spec is None else
+                        {"break_depth_yd": spec[0],
+                         "post_break_angle_deg": spec[1]})
+                for route, spec in ROUTE_BREAKS.items()
+            },
+        },
         "realised_corr_leverage_time": round(corr_time, 6),
         "realised_corr_leverage_load": round(corr_load, 6),
         "planted_ceiling_frac_of_combine_vmax": 0.92,
@@ -600,6 +688,7 @@ def _build_world(out_root: Path, players, seed: int, *, world: str, beta: float,
         json.dumps(truth, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     return {"world": world, "efforts": len(efforts),
             "tracking_rows": len(tracking_rows),
+            "beta_time": beta_time,
             "corr_leverage_time": round(corr_time, 6),
             "corr_leverage_load": round(corr_load, 6)}
 
@@ -608,7 +697,7 @@ def _build_world(out_root: Path, players, seed: int, *, world: str, beta: float,
 # --------------------------------------------------------------------------- #
 def generate(out_root: str | Path, seed: int = DEFAULT_SEED, n_players: int = 60,
              n_games: int = 6, plays_per_game: int = 16,
-             frames_n: int = 28, hz: int = 10,
+             frames_n: int = 34, hz: int = 10,
              beta: float = 0.05, within_sd: float = 0.04,
              confounded_corr: float = 0.85,
              confounded_beta_time: float = -0.06) -> dict:
@@ -658,6 +747,16 @@ byte-identical files). Do not interpret any number here as a result.
 Each world has `player_play.csv`, `game_tracking.csv`, `players.csv`,
 `games.csv`, `ground_truth.json`. `ground_truth.json` lists every effort's
 leverage, planted ceiling and realised max speed.
+
+## Route geometry (D61)
+
+Every route is walked at its planted speed along a two-segment path: a straight
+downfield stem, then a corner at a known depth. `planted_break_depth_yd` in
+`ground_truth.json` is the geometric truth; `GO`, `WHEEL` and `FLAT` plant **no
+break** (the detector must return `break_found = false` and a missing depth).
+Every {LATE_BREAK_EVERY}th play plants a late break at
+{LATE_BREAK_PATH_FRACTION:.0%} of the route's path (~2.3 s, after the 2.0 s
+throw) to exercise `break_after_throw`.
 
 Regenerate: `python src/synthetic_lc_fixture.py --force`.
 """

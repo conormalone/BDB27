@@ -18,12 +18,22 @@ byte-identical files). Do not interpret any number here as a result.
 * `game/` — planted world: `beta = 0.05` log-speed per 1 SD leverage.
 * `game/null/` — same schedule, `beta = 0`.
 * `game/confounded/` — `beta = 0` but speed declines with game time
-  (`beta_time = `), and leverage is
+  (`beta_time = -0.06`), and leverage is
   strongly correlated with game time and cumulative load. A naive leverage
   model sees a spurious effect; the orthogonalised model must remove it.
 
 Each world has `player_play.csv`, `game_tracking.csv`, `players.csv`,
 `games.csv`, `ground_truth.json`. `ground_truth.json` lists every effort's
 leverage, planted ceiling and realised max speed.
+
+## Route geometry (D61)
+
+Every route is walked at its planted speed along a two-segment path: a straight
+downfield stem, then a corner at a known depth. `planted_break_depth_yd` in
+`ground_truth.json` is the geometric truth; `GO`, `WHEEL` and `FLAT` plant **no
+break** (the detector must return `break_found = false` and a missing depth).
+Every 5th play plants a late break at
+64% of the route's path (~2.3 s, after the 2.0 s
+throw) to exercise `break_after_throw`.
 
 Regenerate: `python src/synthetic_lc_fixture.py --force`.

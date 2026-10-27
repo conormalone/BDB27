@@ -8,7 +8,8 @@
 > python src/01_audit.py --mode sample            # gate -> outputs/audit/lc/decision.json
 > python src/02_combine_ceiling.py --mode sample  # ceiling -> outputs/ceiling/lc/
 > python src/00_thresholds.py --mode sample       # thresholds -> outputs/thresholds.json
-> python -m pytest tests                          # 86 tests
+> python src/03_route_depth.py --mode sample      # depth at the break (D61) -> outputs/game/lc/route_depth/
+> python -m pytest tests                          # 96 tests
 > ```
 >
 > Full mode uses `--mode full` on `01`/`02`/`00`; it additionally requires the three full

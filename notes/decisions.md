@@ -1816,3 +1816,102 @@ audit CSV, the decision, the ceiling CSV/summary and the Markdown header.
 **(10) `01_audit` no longer raises in full mode for item (g).** Full-mode effort counting needs the
 summary that `03_game_efforts` writes; the audit returns `PENDING FULL RUN` with that instruction instead
 of crashing, and a full run re-audits after 03.
+
+## D61 — 2026-10-27 — Route depth is *depth at the break*, realised from tracking
+
+**Decision (Conor, 2026-10-27).** The model's route-depth control is **option 2 of four**: depth is
+realised geometrically from the 10 Hz tracking as *downfield displacement at the receiver's break*, not
+route family alone (option 1), a design-predicted depth by route label (option 3), or depth bins
+(option 4). Alignment and cushion were also considered and are **not** depth measures. The definition is
+frozen in `bdb27_lc.route_depth` and carried into `notes/prereg.md` §17 (DRAFT; not frozen — see the open
+question below).
+
+**(1) Why realised start-to-end displacement was rejected.** Over a fixed route duration, start-to-end
+displacement is mechanically a function of speed: it is the same quantity that generates peak speed, so
+controlling for it would absorb the outcome (a collider). On the sample's 3,055 receiver route tracks
+(UNVALIDATED), `corr(max speed, start-to-end displacement) = 0.82`. It stays descriptive
+(`route_displacement_yd`) and is not a control.
+
+**(2) Why `pass_length` was rejected.** It is not a depth field. It is the literal string `"NA"` in
+**129,458 of 314,197** `player_play` rows (41.2%), and where present it tracks the *thrown ball*, not the
+route design: median `pass_length` on GO routes is **6.0 yd** (HITCH 6.0, CROSS 5.0, POST 7.0, SLANT 5.0).
+Those are target distances on completed/incomplete throws, not stem depths. Not usable as a control.
+
+**(3) The exact definition (frozen constants, all in `bdb27_lc.route_depth`).**
+
+1. Rotate each play into the play frame: `+x` = downfield. `play_direction == "right"` means field `+x`
+   is downfield; `"left"` means `-x`. The rotation also flips lateral `y` so handedness is preserved. The
+   origin is the receiver's **position at the snap frame** (tracking `ball_snap`; a play-level event time
+   is the fallback for rows whose event is recorded on another player).
+2. Smooth `x` and `y` with the **existing** centred rolling-median smoother
+   (`thresholds.smoothing.window_frames = 5`, i.e. 0.5 s). There is no second smoothing convention; a test
+   asserts the two config values agree.
+3. Heading `theta(t)` = direction of the centred displacement over a **0.2 s** window, interpolated onto
+   the actual frame times. Frames whose implied speed is below 2.0 yd/s get no heading (undefined, not
+   guessed).
+4. Stem = at least **0.8 s** of post-snap motion. No break is searched before that.
+5. Break = the first frame at/after the stem where the cumulative `|dtheta|` over a sliding **0.3 s**
+   window reaches **45 deg**, and the heading over the following **0.3 s** stays within **20 deg** of its
+   own circular mean. The break timestamp is the **first frame of that sustained change** (the algorithm
+   walks back over frames that already carry the post-break heading, at most one break-window).
+6. Depth at break = downfield displacement at that frame, in yards, relative to the snap position.
+7. A route with no detectable break gets `break_found = False` and a **missing** depth. Nothing is
+   imputed; route family carries it. There is no fallback to displacement, `pass_length` or a design
+   prediction.
+8. A break after the ball is thrown is flagged `break_after_throw`. The throw frame is the tracking
+   `pass_forward` event (play-level fallback), reused rather than re-derived. The flag never deletes a
+   row: sensitivity reports the model both with and without post-throw breaks.
+9. Model entry: **route family always + centred `break_depth_yd` + `break_found` indicator**. Depth is a
+   control and is **reported, never interpreted**. In the design matrix the depth term is centred on the
+   detected-break mean and coded 0 for no-break rows, with the indicator carrying those rows. That is
+   reference coding for a missing value, **not** an imputed depth: the efforts table keeps NaN for every
+   no-break route and a test asserts it.
+
+**(4) Validation on the synthetic fixture (truth known).** The fixture now walks every route at its
+planted speed along an exact two-segment path: a straight downfield stem, then a corner at a planted
+depth. `GO`, `WHEEL` and `FLAT` plant no break. Results at the frozen constants:
+
+* 204 planted breaks across seven route families; **204/204 detected**.
+* Depth recovery: **median absolute error 0.18 yd, maximum 0.91 yd** (tolerance ±1 yd). The residual
+  bias is the median smoother clipping a sharp reversal (HITCH has median −0.64 yd).
+* 84 no-break route snaps: **0 false positives**, all `break_found = False`, **no depth fabricated**.
+* 48 late breaks planted after the 2.0 s throw: **all 48 flagged** `break_after_throw`.
+* Specification curve (±10 deg on 45 deg × ±0.1 s on 0.3 s): every **one-step** perturbation recovers
+  ≥99.5% of planted breaks with max error ≤0.91 yd; the strictest double perturbation (55 deg, 0.2 s)
+  recovers 84.3% because a 60 deg corner spends most of a 0.2 s window below 55 deg. Depths of detected
+  breaks move by ≤0.3 yd (median) across the curve. The frozen point is not threshold-art; the short
+  window is the fragile axis.
+* Determinism: same seed → byte-identical tables (test).
+
+**(5) Sample coverage (UNVALIDATED SAMPLE OUTPUT — not a finding, and not a tuning input).** 3,054 WR/TE
+route snaps with tracking (WR 2,623; TE 431; 143 players). **89 breaks (2.9%)**: WR 74 (2.8%), TE 15
+(3.5%). Of the 81 breaks with a known throw frame, **62 (76.5%) are after the throw**. Only **27 breaks
+(0.9% of route snaps)** are before the throw. Coverage by family (count / median / IQR, detected breaks
+only): CORNER 2 / 33.5 / 29.4–37.6; CROSS 5 / 12.8 / 11.3–17.9; FLAT 5 / 7.2 / 4.1–7.9; GO 17 / 19.2 /
+15.9–27.3; HITCH 21 / 15.3 / 12.3–18.2; IN 11 / 9.8 / 5.8–16.1; OUT 18 / 12.9 / 8.4–15.7; POST 4 / 30.8 /
+27.8–33.1; SCREEN 1 / 4.1; SLANT 5 / 7.1 / 7.0–12.0; WHEEL 0. The declared curve moves coverage between
+0.5% (55 deg, 0.2 s) and 16.6% (35 deg, 0.4 s) at 45/0.3 s = 3.1%.
+
+**(6) What the coverage numbers mean (open question for Conor — blocking the freeze).** The frozen
+constants are *literal* in the brief and were implemented exactly, but the sample tracking's routes turn
+**gradually** (typical maximum cumulative turn ~20 deg per 0.3 s), not as sharp 45-deg cuts. As a
+consequence the depth control exists for ~3% of routes, and for most of those the "break" is a
+post-throw adjustment rather than the designed cut. If that generalises, the model's depth control is
+effectively route family + a rare indicator, and the continuous depth coefficient is estimated off a few
+dozen pre-throw breaks — not a usable control. This is **not** a reason to tune on the sample (TASK.md
+forbids it): it is a design risk that must be decided **before** the prereg freezes. The options are
+(a) freeze as specified and accept near-zero depth coverage; (b) relax the *window* (the fragile axis) —
+35 deg/0.4 s reaches 16.6% on the sample; (c) interpret the criterion as *total* turn since the snap
+(which would give near-100% coverage but is a different definition); (d) drop the continuous depth term
+and declare route family + break indicator as the control, reporting depth descriptively. Conor's call.
+
+**(7) Fixture design choices.** Planted post-break angles are 60–120 deg, deliberately clear of the
+45 deg threshold, because a 45 deg geometric corner is exactly at the estimator's resolution limit
+(smoothing consumes a few degrees). This is a fixture choice, not a change to the detector; the sample
+run is what shows how real 45 deg routes behave. The fixture's speed profile is unchanged, so D60's
+planted leverage recovery still holds (re-verified by the suite).
+
+**(8) What did not change.** The estimand, the primary hypothesis, the leverage definition, the ceiling
+feature, the effort definition and every other frozen prereg value are untouched. Depth enters only as a
+control. The power question from D60 (analytic MDE 0.044 at 40 efforts/player; 88 efforts/player needed
+for 0.03) is still open and is Conor's to settle with the depth-coverage question above.

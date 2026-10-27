@@ -11,6 +11,18 @@ are marked `PENDING FULL RUN`, not treated as failures.
 0.0443 log-speed, above the 0.03 target; 88 efforts/player are needed. Matched route snaps (median 254 WR /
 212 TE) make this plausible, but a full run must verify the count before the primary model is fitted.
 
+**Route-depth coverage (D61, 2026-10-27) — open design question, reported not hidden.**
+`src/03_route_depth.py` was run on the provided sample (UNVALIDATED, not a finding). Of 3,054 WR/TE route
+snaps with tracking, the frozen break definition detects a break in **89 (2.9%)**; only **27 (0.9%)** are
+before the throw. 62 of the 81 breaks with a known throw (76.5%) are post-throw adjustments. Per-play
+support counts are complete rather than dropped: `play_direction` is missing on 0 route rows,
+`ball_snap` on 1 track, and heading is unavailable on 4 tracks. 50,162 route snaps have no tracking in the
+provided sample because the sample covers 333 of the 967 games that contain WR/TE routes — a sample-scope
+limit, not a missing field. The continuous depth control is therefore estimated off very few pre-throw
+breaks if this generalises. This does **not** stop the implementation; it is recorded here and in
+`notes/decisions.md` D61 §6 because it must be settled **before** the prereg freezes. Constants were not
+changed (TASK.md forbids tuning on sample output).
+
 The sections below are the retired cycles' record, preserved for history.
 
 **Status: 0 ACTIVE · 1 OPEN-WORKAROUND** (game `a` fails its definition check — worked around, not closed;

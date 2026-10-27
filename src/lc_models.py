@@ -18,18 +18,34 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-# `route_depth_yd` is deliberately *not* a default control.  In tracking it is
+import lc_common as C
+
+# `route_displacement_yd` is deliberately *not* a control.  In tracking it is
 # total start-to-end displacement, which is mechanically a function of speed over
-# a fixed route duration and therefore post-treatment.  The full-data stage must
-# use the designed route depth at the break; until that column exists, route
-# family is the depth control and the realized displacement stays descriptive.
+# a fixed route duration and therefore post-treatment.  The depth control is
+# `break_depth_yd` (geometric depth at the break, `lc_route_depth`, D61) plus the
+# `break_found` indicator.  Depth is a control: report it, never interpret it.
 DEFAULT_CONTROLS = ("route_family", "time_to_throw_s", "score_margin", "down",
-                    "yards_to_go", "prior_efforts")
+                    "yards_to_go", "prior_efforts", "break_depth_yd",
+                    "break_found")
 TIME_LOAD_CONTROLS = ("game_elapsed_s", "prior_efforts")
 
 
-def _numeric_controls(df: pd.DataFrame, controls) -> tuple[list[np.ndarray], list[str]]:
+def _model_control_block(cfg: dict | None) -> dict:
+    if cfg is None:
+        return {"centre": True}
+    try:
+        return dict(C.lc(cfg)["route_depth"]["model_control"])
+    except (KeyError, TypeError):
+        return {"centre": True}
+
+
+def _numeric_controls(df: pd.DataFrame, controls,
+                      cfg: dict | None = None) -> tuple[list[np.ndarray], list[str]]:
     cols, names = [], []
+    control_block = _model_control_block(cfg)
+    depth_col = control_block.get("depth_column", "break_depth_yd")
+    indicator_col = control_block.get("indicator_column", "break_found")
     for name in controls:
         if name == "route_family":
             dummies = pd.get_dummies(df["route_family"].astype(str), drop_first=True,
@@ -37,6 +53,23 @@ def _numeric_controls(df: pd.DataFrame, controls) -> tuple[list[np.ndarray], lis
             for col in dummies.columns:
                 cols.append(dummies[col].to_numpy(dtype=float))
                 names.append(f"route={col}")
+        elif name == depth_col:
+            # Reference coding, not imputation: a route with no detected break
+            # contributes 0 on the centred depth term and is carried entirely by
+            # the indicator below.  No depth is invented for it.
+            if indicator_col not in df.columns:
+                continue
+            found = df[indicator_col].fillna(False).astype(bool)
+            values = pd.to_numeric(df[depth_col], errors="coerce").astype(float)
+            values = values.fillna(0.0)
+            if bool(control_block.get("centre", True)) and found.any():
+                values = values - float(values[found].mean())
+            cols.append(values.to_numpy(dtype=float))
+            names.append(f"{depth_col}_centred")
+        elif name == indicator_col:
+            indicator = df[indicator_col].fillna(False).astype(bool)
+            cols.append(indicator.astype(float).to_numpy())
+            names.append(indicator_col)
         elif name in df.columns:
             values = pd.to_numeric(df[name], errors="coerce").astype(float)
             values = values.fillna(values.median() if values.notna().any() else 0.0)
@@ -47,12 +80,13 @@ def _numeric_controls(df: pd.DataFrame, controls) -> tuple[list[np.ndarray], lis
 
 
 def design_matrix(df: pd.DataFrame, leverage_col: str, controls=DEFAULT_CONTROLS,
-                  player_col: str = "nfl_id") -> tuple[np.ndarray, list[str], int]:
+                  player_col: str = "nfl_id",
+                  cfg: dict | None = None) -> tuple[np.ndarray, list[str], int]:
     """Return (X, names, leverage_index) with player fixed effects."""
     players = pd.get_dummies(df[player_col].astype(str), drop_first=True, dtype=float)
     cols = [np.ones(len(df)), df[leverage_col].to_numpy(dtype=float)]
     names = ["intercept", leverage_col]
-    numeric, numeric_names = _numeric_controls(df, controls)
+    numeric, numeric_names = _numeric_controls(df, controls, cfg=cfg)
     cols.extend(numeric)
     names.extend(numeric_names)
     for col in players.columns:
@@ -63,7 +97,8 @@ def design_matrix(df: pd.DataFrame, leverage_col: str, controls=DEFAULT_CONTROLS
 
 
 def _ols_cluster(df: pd.DataFrame, y: np.ndarray, X: np.ndarray,
-                 leverage_idx: int, player_col: str) -> dict:
+                 leverage_idx: int, player_col: str,
+                 names: list[str] | None = None) -> dict:
     beta, *_ = np.linalg.lstsq(X, y, rcond=None)
     resid = y - X @ beta
     n, k = X.shape
@@ -89,19 +124,24 @@ def _ols_cluster(df: pd.DataFrame, y: np.ndarray, X: np.ndarray,
     t_stat = b / se if se > 0 else float("nan")
     p_value = float(2.0 * stats.t.sf(abs(t_stat), dof)) if np.isfinite(t_stat) else float("nan")
     crit = float(stats.t.ppf(0.975, dof))
-    return {
+    result = {
         "beta": b, "se": se, "t": float(t_stat), "p": p_value,
         "ci_low": b - crit * se, "ci_high": b + crit * se,
         "n": int(n), "n_players": int(g), "n_params": int(k),
         "resid_sd": float(np.std(resid, ddof=1)) if n > 1 else float("nan"),
         "cluster": "player",
     }
+    if names is not None:
+        result["coefficients"] = {str(name): float(value)
+                                  for name, value in zip(names, beta)}
+    return result
 
 
 def fit_within_player(df: pd.DataFrame, outcome: str = "log_max_speed",
                       leverage_col: str = "leverage_z",
                       controls=DEFAULT_CONTROLS,
-                      player_col: str = "nfl_id") -> dict:
+                      player_col: str = "nfl_id",
+                      cfg: dict | None = None) -> dict:
     """Player-FE OLS with player-clustered SE on the leverage coefficient."""
     needed = [outcome, leverage_col, player_col]
     work = df.dropna(subset=needed).copy()
@@ -110,12 +150,56 @@ def fit_within_player(df: pd.DataFrame, outcome: str = "log_max_speed",
                 "p": float("nan"), "ci_low": float("nan"), "ci_high": float("nan"),
                 "n": int(len(work)), "n_players": int(work[player_col].nunique()),
                 "n_params": 0, "resid_sd": float("nan"), "cluster": "player"}
-    X, _, idx = design_matrix(work, leverage_col, controls, player_col)
-    result = _ols_cluster(work, work[outcome].to_numpy(dtype=float), X, idx, player_col)
+    X, names, idx = design_matrix(work, leverage_col, controls, player_col, cfg=cfg)
+    result = _ols_cluster(work, work[outcome].to_numpy(dtype=float), X, idx,
+                          player_col, names=names)
     result["model"] = "within_player_fe"
     result["leverage_col"] = leverage_col
     result["controls"] = list(controls)
     return result
+
+
+def fit_route_depth_control(df: pd.DataFrame, outcome: str = "log_max_speed",
+                            leverage_col: str = "leverage_z",
+                            controls=DEFAULT_CONTROLS,
+                            player_col: str = "nfl_id",
+                            cfg: dict | None = None) -> dict:
+    """Fit the depth control both INCLUDING and EXCLUDING post-throw breaks.
+
+    The headline fit keeps every detected break; the sensitivity fit drops the
+    breaks that happen after the ball is thrown.  The depth coefficient is
+    returned for reporting only -- it is a control, never interpreted.
+    """
+    block = _model_control_block(cfg)
+    depth_name = f"{block.get('depth_column', 'break_depth_yd')}_centred"
+    indicator_name = block.get("indicator_column", "break_found")
+
+    def _fit(frame: pd.DataFrame) -> dict:
+        result = fit_within_player(frame, outcome, leverage_col, controls,
+                                   player_col, cfg=cfg)
+        coefficients = result.get("coefficients", {})
+        result["depth_coef"] = coefficients.get(depth_name, float("nan"))
+        result["break_found_coef"] = coefficients.get(indicator_name, float("nan"))
+        result["depth_control"] = {
+            "depth_column": block.get("depth_column", "break_depth_yd"),
+            "indicator_column": indicator_name,
+            "centre": bool(block.get("centre", True)),
+            "note": "control only; reported, never interpreted",
+        }
+        return result
+
+    headline = _fit(df)
+    if "break_after_throw" in df.columns:
+        keep = ~df["break_after_throw"].fillna(False).astype(bool)
+        sensitivity = _fit(df.loc[keep])
+        sensitivity["dropped_post_throw_breaks"] = int((~keep).sum())
+    else:
+        sensitivity = _fit(df)
+        sensitivity["dropped_post_throw_breaks"] = 0
+    return {
+        "including_post_throw_breaks": headline,
+        "excluding_post_throw_breaks": sensitivity,
+    }
 
 
 def orthogonalise_leverage(df: pd.DataFrame, leverage_col: str = "leverage_z",
@@ -155,10 +239,12 @@ def orthogonalise_leverage(df: pd.DataFrame, leverage_col: str = "leverage_z",
 def fit_orthogonalised(df: pd.DataFrame, outcome: str = "log_max_speed",
                        leverage_col: str = "leverage_z",
                        controls=DEFAULT_CONTROLS,
-                       player_col: str = "nfl_id") -> dict:
+                       player_col: str = "nfl_id",
+                       cfg: dict | None = None) -> dict:
     work = df.copy()
     work["_lev_orth"] = orthogonalise_leverage(work, leverage_col, player_col=player_col)
-    result = fit_within_player(work, outcome, "_lev_orth", controls, player_col)
+    result = fit_within_player(work, outcome, "_lev_orth", controls, player_col,
+                               cfg=cfg)
     result["model"] = "within_player_fe_orthogonalised"
     result["orthogonalised_on"] = list(TIME_LOAD_CONTROLS)
     return result
