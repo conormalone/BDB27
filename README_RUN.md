@@ -1,5 +1,21 @@
 # README_RUN — how to run the BDB27 ceiling-binding pipeline
 
+> **CURRENT TASK (D59/D60, 2026-10-27): leverage × ceiling.** The rest of this file still describes the
+> retired ceiling-v1 / db-decay / security pipeline and its commands are **not** the current run order.
+> The current pipeline is:
+>
+> ```bash
+> python src/01_audit.py --mode sample            # gate -> outputs/audit/lc/decision.json
+> python src/02_combine_ceiling.py --mode sample  # ceiling -> outputs/ceiling/lc/
+> python src/00_thresholds.py --mode sample       # thresholds -> outputs/thresholds.json
+> python -m pytest tests                          # 86 tests
+> ```
+>
+> Full mode uses `--mode full` on `01`/`02`/`00`; it additionally requires the three full
+> `game_tracking_{2023,24,25}.csv` files, and `00_thresholds` refuses to stamp `FULL` on sample-sized
+> input. Current status is `GO_PENDING_FULL_RUN`; see `notes/decisions.md` D59–D60 and
+> `notes/pending_full_run.md`.
+
 > **Deliverable model:** a **scripts engine** (`src/`) + a **public Kaggle notebook** that runs the same
 > logic end-to-end and renders the writeup figures. Stage scripts take `--mode sample|full` and `--force`
 > with **one code path** for both; all paths/thresholds come from `config.yaml`. Heavy files are converted

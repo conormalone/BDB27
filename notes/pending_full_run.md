@@ -1,5 +1,25 @@
 # Pending full run — questions only the full data can answer
 
+## Current task — leverage × ceiling (D59/D60, 2026-10-27)
+
+The sections below describe the retired ceiling-v1 / db-decay / security cycles and are kept for history.
+For the **current** task the open questions are:
+
+| # | Question | Stage | Status |
+|---|---|---|---|
+| L1 | Frame-level matched receivers, games/plays per matched receiver | `01_audit` (c) | Player-level match already evaluated from complete `player_play` (WR 105, TE 38); frame-level count needs `game_tracking_{2023,24,25}.csv`. |
+| L2 | Efforts per receiver per leverage bin; receivers with enough efforts in both extremes | `03_game_efforts` then re-run `01_audit` (g) | `PENDING FULL RUN`; sample tracking has ~1.16 players/play. |
+| L3 | In-game exceedance rate above the shrunken ceiling, by leverage bin | `03`/`04`, reported by `01_audit` (h) | `PENDING FULL RUN`. |
+| L4 | Effort-level leverage/time/load partial correlation | `03`/`05`, reported by `01_audit` (i) | `PENDING FULL RUN`; play-level corr is −0.331. |
+| L5 | Empirical minimum detectable effect from real effort counts | `01_audit` (j) | Analytic check says 88 efforts/player are needed for MDE 0.03 at SD 0.10; actual counts pending. |
+| L6 | Full-data route depth at the break (not total displacement) as a control | `03_game_efforts` / `04_models` | Current shared core records displacement but deliberately does not control for it. |
+
+The sample-mode gate is `GO_PENDING_FULL_RUN` (`outputs/audit/lc/decision.json`). A real `GO` requires L1–L5
+to be evaluated and `notes/prereg.md` to be rewritten and frozen for this task (config status is
+`PENDING_REWRITE_FOR_LC_TASK`).
+
+---
+
 These cannot be answered on this Pi (game tracking here is a non-representative 2²⁰-row sample; the full
 `game_tracking_{2023,24,25}.csv` are **absent**). Each lists the stage that answers it. **Combine-side work
 is NOT pending** — the Combine file is complete, so `02_combine_envelope` runs for real in both modes.

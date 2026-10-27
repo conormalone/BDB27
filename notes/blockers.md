@@ -1,5 +1,18 @@
 # Blockers — BDB27
 
+## Current task — leverage × ceiling (D60, 2026-10-27)
+
+**0 active blockers.** Sample-mode Phases 1–2 ran clean and the gate is `GO_PENDING_FULL_RUN`
+(`outputs/audit/lc/decision.json`). No field required by the leverage definition is missing: the provided
+pre-snap WP covers 100% of plays and no external model is used. Items (c/g/h/i/j) that need full tracking
+are marked `PENDING FULL RUN`, not treated as failures.
+
+**Watch item (not a blocker until counts exist):** the analytic MDE at the configured 40 efforts/player is
+0.0443 log-speed, above the 0.03 target; 88 efforts/player are needed. Matched route snaps (median 254 WR /
+212 TE) make this plausible, but a full run must verify the count before the primary model is fitted.
+
+The sections below are the retired cycles' record, preserved for history.
+
 **Status: 0 ACTIVE · 1 OPEN-WORKAROUND** (game `a` fails its definition check — worked around, not closed;
 see the entry at the end of this file). Per `TASK.md`, a blocker stops work and must be written here. **Prior
 (combine-fatigue) blockers B1–B7 are archived at git tag `archive/combine-fatigue-v1`** (HEAD `fdc794c`).

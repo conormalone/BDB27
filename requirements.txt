@@ -1,16 +1,25 @@
-# BDB27 pinned dependencies — verified working on ARM64 (Raspberry Pi OS, Python 3.13)
-# Minimum supported Python 3.12 (numpy==2.5.3 / scipy require >=3.12; Kaggle currently ships 3.13).
-# and expected to work on x86_64 Linux/macOS. Install into a venv:
+# BDB27 pinned dependencies — taken from the working ARM64 venv on 2026-10-26.
+# Python 3.13.5 (Raspberry Pi OS, aarch64). The same wheels are expected on
+# x86_64 Linux/macOS; install into a venv:
 #   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 #
-# Versions below were resolved on the ARM64 Pi (2026-10-09).
+# Versions are `pip show` values, not guesses. `scipy` is 1.18.1 here (an older
+# pin of 1.16.3 was stale and would have downgraded the working environment).
+
+# --- imported by the current pipeline (src/lc_common.py, fixtures, tests) ---
 duckdb==1.5.6
-polars==2.0.0
-pyarrow==26.0.0
 pandas==3.0.6
 numpy==2.5.3
-statsmodels==0.15.0
-scikit-learn==1.9.1
-scipy==1.16.3
-matplotlib==3.11.2
 PyYAML==6.0.3
+psutil==7.2.2
+pytest==9.1.1
+
+# --- required by the parquet cache and later modelling stages (TASK.md 02-05) ---
+pyarrow==26.0.0
+polars==2.0.0
+scipy==1.18.1
+scikit-learn==1.9.1
+statsmodels==0.15.0
+
+# --- deliverable figures (Phase 6 notebook) ---
+matplotlib==3.11.2

@@ -787,3 +787,219 @@ db_decay:
     reliability_threshold: 0.5
     slope_spec: "(1 + cumulative_load | player)"
     fallbacks: [uncorrelated_re, eb_slopes, random_intercept]
+
+# =========================================================================== #
+# ACTIVE TASK — leverage x ceiling (NFL BDB 2027). Added 2026-10-26.
+# Binding spec: TASK.md. EVERY number in this block is a DESIGN PLACEHOLDER:
+# none was estimated from the sample or from outcomes. Sample mode emits
+# provenance PLACEHOLDER_SAMPLE and stamps every artefact
+# "UNVALIDATED SAMPLE OUTPUT"; full mode emits FULL only after the full
+# tracking input passes the row-cap check in src/00_thresholds.py.
+# Do not tune any value against sample results.
+# =========================================================================== #
+bdb27_lc:
+  provenance_note: >-
+    Design placeholders pending full-data freeze. Sample-mode provenance is
+    PLACEHOLDER_SAMPLE; full-mode provenance requires the full tracking input
+    to exist and its parsed row count to exceed the provided sample row cap.
+
+  paths:
+    raw: data/raw
+    interim: data/interim
+    parquet: data/interim/parquet
+    checkpoints: data/interim/checkpoints
+    tmp: data/interim/tmp
+    outputs: outputs
+    figures: outputs/figures
+    fixtures: fixtures
+    synthetic: fixtures/synthetic/lc
+    thresholds: outputs/thresholds.json
+    run_log: outputs/run_log.csv
+
+  files:
+    combine_tracking: combine_tracking.csv
+    combine_results: combine_results.csv
+    players: players.csv
+    games: games.csv
+    player_play: player_play.csv
+    game_tracking_sample: game_tracking_2023_sample.csv
+    game_tracking_full:
+      - game_tracking_2023.csv
+      - game_tracking_2024.csv
+      - game_tracking_2025.csv
+
+  seeds:
+    base: 20270106            # mirrors top-level `seed`
+    fixture: 20270107
+    bootstrap: 20270108
+    permutation: 20270109
+    model: 20270110
+
+  mode:
+    default: sample
+    sample:
+      tracking_key: game_tracking_sample
+      provenance: PLACEHOLDER_SAMPLE
+      sample_row_cap: 1048575   # 2^20-1: the provided sample is exactly this many rows
+    full:
+      tracking_key: game_tracking_full
+      provenance: FULL
+
+  runtime:
+    duckdb_threads: 1                  # single-threaded => deterministic reductions
+    duckdb_memory_limit: "1200MB"      # 4 GB box; ~1.8 GB was available at setup
+    temp_directory: data/interim/tmp   # USB volume; root tmpfs has ~104 MB free
+    csv_null_marker: "NA"              # raw CSVs encode missing as NA (see notes/schema.md)
+    empty_string_is_category: true     # pass_result "" is a real category, not NULL
+    parquet_compression: zstd
+    parquet_row_group_size: 122880
+    chunk_rows: 250000
+    min_free_mb_root: 40
+    min_free_mb_interim: 2048
+    rss_sample_interval_s: 0.2
+
+  thresholds:
+    speed_cap_yds: 12.0                # combine sanity flag (PLAYER rows only)
+    combine_sampling_hz: 10
+    combine_dt_tolerance_s: 0.02
+    despike:
+      method: speed_cap_replace
+      replacement: linear_interpolate
+      max_consecutive_frames: 5
+    peak_window:
+      frac_of_max: 0.9
+      pad_s: 0.2
+    gap:
+      interp_max_s: 0.5
+      interpolate_inside_peak_window: false
+    smoothing:
+      method: centered_rolling_median
+      window_frames: 5
+    icc_min: 0.50
+    vif_max: 5.0
+    max_features: 3
+    min_attempts_per_player: 1
+    min_receivers_both_extremes:
+      WR: 30
+      TE: 10
+    min_efforts_per_player: 20
+    min_efforts_per_bin: 5
+    smallest_effect_of_interest: 0.03  # log max-speed, ~3 %
+    equivalence_margin: 0.02
+
+  audit:
+    positions: [WR, TE]
+    primary_position: WR
+    replication_position: TE
+    coverage_years: [2023, 2024, 2025]
+    straight_line_drills: [FORTY_YARD_DASH]
+    track_entity: PLAYER
+    straight_line_sinuosity_max: 1.10
+    straight_line_min_attempts: 50
+    min_matched:
+      WR: 40
+      TE: 12
+    pending_full_run: [c_tracking, d_leverage, e_seasons, g_effort_counts, h_icc, i_confound]
+    out_subdir: audit/lc
+    summary_filename: SUMMARY.md
+
+  ceiling:
+    fit_drills: [FORTY_YARD_DASH]
+    model: "vmax * (1 - exp(-t / tau))"
+    a0_definition: vmax_over_tau
+    fit_method: bounded_least_squares
+    bounds:
+      vmax_yds: [5.0, 13.0]            # 40-yd times 4.2-5.5 s
+      tau_s: [0.3, 3.0]                # upper bound deliberately generous; probe pinned 3.0
+    initial:
+      vmax_frac_of_peak: 1.05
+      tau_s: 1.4
+    min_frames: 20
+    min_r2: 0.90
+    max_speed_over_vmax: 1.5
+    candidate_features: [vmax, tau, a0]
+    max_features: 3
+    icc_min: 0.50
+    vif_max: 5.0
+    shrinkage:
+      method: reliability_weighted_mean
+      min_attempts: 1
+    sanity:
+      duplicate_attempt_flag: true
+      peak_window_gap_flag: true
+    out_subdir: ceiling/lc
+    summary_filename: summary.json
+    output_schema: [nfl_id, draft_year, position, feature, estimate, se, n_attempts, icc, reliability, selected, vif]
+
+  leverage:
+    definition_id: wp_swing_4p1mp
+    formula: "4 * wp_pre * (1 - wp_pre)"
+    source_column: pre_snap_home_team_win_probability
+    perspective: home
+    require_pre_snap_only: true
+    binning:
+      method: terciles
+      n_bins: 3
+      labels: [low, medium, high]
+      computed_on: FULL
+    garbage_time:
+      status: placeholder
+      rule: quarter_and_margin
+      q4_margin: 21
+      any_quarter_margin: 28
+
+  efforts:
+    definition_id: route_depth_and_duration
+    min_route_depth_yd: 5.0
+    min_route_depth_yd_sensitivity: 8.0
+    min_duration_s: 1.0
+    require_pass_route: true
+    target_conditioned_primary: false
+    sensitivity_without_target: true
+    max_speed_source: tracking_s
+    load_measures:
+      primary: prior_high_intensity_efforts
+      secondary: prior_distance_yd
+
+  power:
+    reps: 1000
+    alpha: 0.05
+    power: 0.80
+    smallest_effect_of_interest: 0.03
+    equivalence_margin: 0.02
+    assumed_within_player_sd_log_speed: 0.10
+    assumed_efforts_per_player: 40
+    min_detectable_effect_target: 0.03
+
+  gate:
+    min_matched_wr: 40
+    min_matched_te: 12
+    max_leverage_time_partial_corr: 0.50
+    min_mde: 0.03
+    min_icc: 0.50
+    min_efforts_per_player: 20
+    min_efforts_per_bin: 5
+    min_receivers_both_extremes:
+      WR: 30
+      TE: 10
+    require_wp_available: true
+    require_thresholds_provenance: FULL
+
+  prereg:
+    path: notes/prereg.md
+    status: PENDING_REWRITE_FOR_LC_TASK
+    required_before: full
+    frozen_utc: ""
+
+  fixture:
+    seed: 20270107
+    n_players: 60
+    n_games: 6
+    plays_per_game: 16
+    frames_per_effort: 28
+    tracking_hz: 10
+    planted_beta_leverage: 0.05          # log max speed per 1 SD leverage
+    planted_within_player_sd: 0.04
+    confounded_beta_leverage: 0.0
+    confounded_leverage_time_corr: 0.85
+    confounded_beta_time_log_speed_per_sd: -0.06

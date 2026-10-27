@@ -1662,3 +1662,157 @@ green suite" is **wrong as stated** for those 12. Two remedies, both Conor's cal
    `outputs/audit/db_decay/audit_decision.json`; `src/gate.py` still points at the legacy path and will need a
    task-aware prereg/decision path before the DB game-side stages (03–05) can be gated.
 3. P27 is closed. `notes/pending_full_run.md` keeps it as a closed item rather than deleting the history.
+
+## D59 — 2026-10-26 — Leverage × ceiling task: foundations, parking, and provenance (coder pass 1)
+
+**Context.** `TASK.md` was rewritten for a new question (does pre-snap leverage change how much of
+the Combine-derived ceiling a receiver uses on max-effort routes?). The D51/D58 DB-decay work and the
+older WR/TE security work are retired, not wrong. This decision records the structural choices made
+while laying the new task's foundations.
+
+**(1) The retired DB-decay code is parked, not deleted.** `git mv` (history preserved):
+`src/01_db_audit.py`, `src/synthetic_db_decay_fixture.py` and `src/tests/test_db_audit.py` moved to
+`src/legacy_db_decay/`. The DB-decay task answered a different question (defensive-back effort decay);
+keeping it in the import path would let two audited pipelines share file names and confuse the gate.
+
+**(2) The retired ceiling-v1 modules are parked.** Every other old module and its test moved to
+`src/legacy_ceiling_v1/` (00b, 02–10, `common.py`, feature builders, `gate.py`, stage runner, all
+synthetic fixture generators, `src/README.md`, and the 24 remaining `src/tests/test_*.py`). Nothing was
+deleted. Legacy modules are outside the new pipeline's test scope by construction: `pytest.ini` sets
+`testpaths = tests`, so only the new top-level suite is collected. Import failures in parked code are
+expected and are not chased; they are provenance, not a supported product. `src/legacy_ceiling_v1/common.py`
+still imports under the old name, which is fine because nothing in the new pipeline imports it.
+
+**(3) One shared helper module: `src/lc_common.py`.** The new task gets a single helper surface for
+config, paths, disk guard, DuckDB, parquet conversion, provenance writers, run log, checkpoints,
+hashing and schema checks. Rationale: the previous cycle accumulated `common.py`, `stage_runner.py`,
+`gate.py`, `run_diagnostics.py` with overlapping responsibilities, and sample-stamping was left to
+callers. Here the stamp lives *inside* `write_csv`/`write_json`, keyed off `mode`; a caller cannot emit
+an unstamped sample artefact even if it tries. Two deliberate consequences:
+* `write_csv` always adds a leading `provenance` column; full-mode rows say `FULL`, sample-mode rows say
+  `PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT`. The schema is stable across modes.
+* `write_json` always adds a leading `provenance` key. Sample values contain both the level and the
+  literal stamp, satisfying the two requirements at once (level for logic, phrase for humans).
+
+**(4) New config is namespaced, never rewritten.** `config.yaml` keeps every existing block
+(`paths`, `files`, `runtime`, `audit`, `envelope`, `game`, `models`, `validate`, `external`, `security`,
+`route_robustness`, `draft_target`, `dose`, `deliverables`, `db_decay`) untouched. One new top-level
+block, `bdb27_lc:`, holds paths, files, seeds, runtime, thresholds, audit, ceiling, leverage, efforts,
+power, gate, prereg and fixture parameters. Reason: other agents' history and checkpoints depend on the
+old keys; deleting them would silently change old provenance. Code for the new task reads only
+`bdb27_lc` via `lc_common.lc(cfg)`. Duplicated constants that the brief requires in two places
+(`icc_min`, `vif_max`, `max_features`, `min_attempts_per_player`, `min_receivers_both_extremes`) are
+declared in both `thresholds` and `ceiling`/`gate`; tests assert they agree so drift is impossible.
+
+**(5) `dis` is declared unusable, with numeric evidence.** It is not yards and is not monotone: across
+793 40-yard attempts the per-attempt `dis` span is 0.699–1.436 (median 1.136) while `x` spans 40.433 yd;
+in one traced attempt `dis` peaks at 0.835 then falls to 0.813 as `x` rises to 51.0 yd. The pipeline
+derives distance from `x`,`y` and avoids `dis` entirely. `EXPECTED_SCHEMAS` marks the unit
+`UNRESOLVED (NOT yards; do not use)`. See `notes/schema.md` §4.
+
+**(6) There is no timeouts field, and we do not invent one.** Header checks over all seven files find
+no `timeout` column; `play_description` only mentions the word in prose. We accept the gap because the
+provided pre-snap win probability already embeds timeout state, and leverage is defined from pre-snap
+WP only. Recorded as an accepted gap, not a blocker.
+
+**(7) Thresholds are placeholders, and the code cannot pretend otherwise.** Every constant is a
+design choice under `bdb27_lc`, never estimated from the sample or from outcomes. `00_thresholds.py`
+writes `outputs/thresholds.json` with `PLACEHOLDER_SAMPLE` provenance in sample mode. In full mode it
+refuses to write `FULL` unless the full tracking input exists and its parsed row count exceeds the
+provided sample cap (1,048,575 = 2²⁰−1); otherwise it exits non-zero naming the missing files or the
+actual row count. `require_full_provenance` is the assertion scripts 03–05 will call; it is tested now
+in both directions.
+
+**(8) No timeouts on stages.** Stages are checkpointed per `stage + mode + config fingerprint`
+(`data/interim/checkpoints/`) and skip completed work unless `--force`. We deliberately do **not** add
+wall-clock timeouts: this Pi is slow and heavily loaded (root FS 99 % full, swap nearly full), so a
+timeout would convert a slow-but-correct full run into a false failure. The PM watchdog covers stalls,
+not the code.
+
+**(9) Brief corrections found while grounding the schema.** Three facts in the PM brief were wrong or
+imprecise, and the measurements win:
+* PLAYER rows never exceed `s = 11.854 yd/s` / `a = 10.718 yd/s²`; the 25.79 / 44.6 extremes are BALL
+  rows. The >12 yd/s sanity rule therefore has zero triggers in the real PLAYER data (it still runs).
+* FORTY attempt labels are not limited to {1,2}: labels 3 and 4 occur, even though each player has only
+  one or two attempts. Attempt is a trial id, not a count.
+* There are 56 distinct `drill_name` values, not 62.
+
+**(10) Legacy run log migrated once, non-destructively.** The old `outputs/run_log.csv` used a
+different header (`timestamp,stage,...,peak_ram_mb,error,notes`), so appending the new
+`stage,mode,provenance,wall_s,peak_rss_mb,when,notes` rows would have corrupted the CSV. The legacy file
+was moved to `outputs/run_log_legacy_2026-10-26.csv` (preserved, not deleted) and a fresh log started
+with the new header. `outputs/` is gitignored; this is local run evidence only.
+
+**(11) `pytest.ini` makes the new suite authoritative.** `testpaths = tests`, `addopts = -q`. The
+parked suites are not collected by default, so a green board means the new pipeline is green rather than
+"green except the retired pipeline".
+
+---
+
+## D60 — 2026-10-27 — Phases 1–2 implemented; sample gate is GO_PENDING_FULL_RUN (coder pass 2)
+
+**(1) Ceiling core is shared, not duplicated.** `src/ceiling_core.py` owns the per-attempt
+`vmax*(1-exp(-t/tau))` fit, the empirical-Bayes shrinkage, the ICC(1) calculation and the ICC/VIF feature
+screen. `01_audit` calls it for item (h) and `02_combine_ceiling` calls it for the published feature table,
+so the audit cannot disagree with the stage. Estimates are reported on the natural scale with a delta-method
+SE; the pooled quantity is the log parameter (positivity preserved). Shrinkage uses
+`theta_hat = mu + B*(ybar - mu)` with `B = tau2/(tau2 + se_ybar^2)`; `tau2` is the method-of-moments
+between-minus-within variance. `se_log_a0` treats `vmax` and `tau` errors as independent (a documented
+conservative approximation, not a claim of zero covariance).
+
+**(2) Real Combine result (complete file, so this is not sample-limited).** 127 WR/TE players have usable
+40-yard-dash fits (238 attempts; 4 attempts dropped for `r2 < 0.90`, 1 for sinuosity > 1.10). Test-retest
+ICC: **vmax 0.725, tau 0.263, a0 0.193**. Only `vmax` passes `icc_min = 0.50`; the VIF screen then keeps
+`vmax` alone (tau and a0 are mechanically collinear with it). This is weaker than the old
+`peak_speed` ICC of 0.975 because fitting a curve and pooling attempts adds parameter noise; it still
+clears the gate. `02` writes `outputs/ceiling/lc/player_ceiling.csv` (one row per player-feature, SE
+included) and `summary.json`.
+
+**(3) The audit has its own output path and its own gate.** `01_audit` writes only
+`outputs/audit/lc/{a..j}.csv`, `decision.json` and `SUMMARY.md`; it never touches
+`outputs/audit/db_decay/` or the retired `outputs/audit/*` files. The gate verdict is
+`GO_PENDING_FULL_RUN`, not GO: items (c frame-level), (g), the load half of (i), the in-game half of (h)
+and the empirical half of (j) need full tracking and are marked `PENDING FULL RUN` with no imputed value.
+Items (a), (b), (d), (e), (f), the ICC half of (h) and the play-level diagnostic in (i) are evaluated.
+
+**(4) Item (c) is stronger than the old audit.** `player_play.csv` is complete, so matched players, games,
+plays and route snaps are evaluated there: **WR 105/106, TE 38/42** matched; WR median 254 route snaps,
+TE 212. Only the frame-level match needs tracking. On sample tracking the frame-level match is 38 WR / 12
+TE and is explicitly non-representative.
+
+**(5) Leverage is definable without external data.** Provided pre-snap home WP covers 100% of plays
+(314,194 / 314,194 rows; 3 nulls are in rows with no play-level loss), is constant within every play, and
+`4*p*(1-p)` is used. No external WP/EP model and no post-snap `*_added` column enters the definition.
+Play-level leverage-time correlation is **-0.331**; the gate criterion is residual collinearity after load,
+which stays pending because load is effort-level.
+
+**(6) Power warning, not a hidden pass.** At the configured assumption (within-player SD 0.10 log speed, 40
+efforts) the analytic MDE is **0.0443**, above the 0.03 target; **88 efforts/player** are needed for MDE
+0.03. Matched route snaps suggest this is plausible (median 254 / 212), but the empirical MDE needs item
+(g) counts. This is recorded in `j_power.csv` and must be checked before a full run. It is not converted
+into a GO.
+
+**(7) Effort extraction uses a non-post-treatment depth control.** `lc_efforts` records
+`route_displacement_yd`, but the model does **not** control for it: over a fixed route duration,
+displacement is mechanically a function of speed and would absorb the outcome. `lc_models` controls route
+family, time-to-throw, score margin, down, distance and prior efforts. The full-data stage must derive
+designed route depth at the break before adding a depth control; this is logged as a design gap, not
+papered over.
+
+**(8) The confounded synthetic world now has a real confound.** The old generator made leverage correlate
+with time but gave time no effect on speed, so a naive model could not be fooled. `synthetic_lc_fixture`
+now plants a within-player speed decline with elapsed time (`beta_time = -0.06`) in the confounded world
+while keeping `beta_leverage = 0`; leverage-time correlation is ~0.92. The naive within-player slope is
+about **-0.061** (p < 0.001); the time/load-orthogonalised slope is about **-0.006** (p = 0.59). Planting
+world recovers **+0.053** against a planted 0.05; null world **+0.0001** (p = 0.86). The orthogonalisation
+demeans and standardises time/load *within player* — a global slope plus player intercepts does not remove
+player-specific time trends, which was the first version's bug.
+
+**(9) Every artefact goes through a provenance writer.** `lc_common.write_markdown` was added so
+`SUMMARY.md` is stamped by the shared writer like CSV/JSON; the caller cannot emit an unstamped sample
+document. `write_csv`/`write_json` already stamp internally. Test coverage asserts the stamp on every
+audit CSV, the decision, the ceiling CSV/summary and the Markdown header.
+
+**(10) `01_audit` no longer raises in full mode for item (g).** Full-mode effort counting needs the
+summary that `03_game_efforts` writes; the audit returns `PENDING FULL RUN` with that instruction instead
+of crashing, and a full run re-audits after 03.

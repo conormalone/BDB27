@@ -1,1025 +1,789 @@
 #!/usr/bin/env python3
-"""01_audit.py — Phase 1 Audit (the go/no-go gate) for the BDB27 ceiling-binding task.
+"""01_audit.py — Phase 1 audit (items a-j) and the go/no-go gate.
 
-Implements evidence for audit items (a)-(i) from `TASK.md`:
+Every item records ``status in {EVALUATED, PARTIAL, PENDING FULL RUN, BLOCKED}``,
+its measured value(s), the query/command that produced them, and the artefact
+under ``outputs/audit/lc/``.  Item (h) calls :mod:`ceiling_core` directly, the
+same code path script 02 uses, so the audit never depends on 02 having run.
 
-  (a) WR/TE Combine drills present; straight-line vs cut/route classification.
-  (b) Attempts per player per drill; Combine class years covered.
-  (c) Matched Combine->NFL players per position; route snaps per matched player. [game side]
-  (d) Route type/depth availability; trajectory-derived depth/break; 22-player tracking; ball/TTT.
-  (e) Which plays are included; confirm NON-targeted routes are covered.
-  (f) Reliability of the provided Combine `dis`/`a` vs x/y-derived; rate/units/frames.
-  (g) Test-retest ICC of candidate Combine features (thin repeats -> explicit UNESTIMABLE). [Combine]
-  (h) Exceedance rate: in-game speed/accel beating the Combine ceiling. [game side]
-  (i) Combine peak speed vs in-game top speed on deep routes. [game side]
+The gate is written to its own path, ``outputs/audit/lc/decision.json``.  It
+never touches ``outputs/audit/db_decay/`` or any legacy artefact.
 
-Game-side items (c/d/e/h/i) need the full game-tracking files, which are absent on this Pi; they
-are SCRIPTED here and emit `PENDING FULL RUN` placeholders in sample mode. A schema-compliant
-synthetic fixture with a planted binding ceiling (src/synthetic_fixture.py) exercises those paths
-(fixture outputs stamped `SYNTHETIC FIXTURE (not a finding)` and never interpreted).
-
-Discipline (TASK.md): one code path for --mode sample|full + --force; config-driven thresholds;
-Parquet + DuckDB (never load full CSVs into pandas); downcast; wall/RAM logged to run_log.csv;
-every CSV has `provenance` as its FIRST column; sample outputs stamped `UNVALIDATED SAMPLE OUTPUT`.
+Sample mode cannot answer the effort-level items (g, the load half of i, the
+in-game half of h, and the empirical half of j) because the provided tracking
+sample has ~1.16 players per play.  Those are marked **PENDING FULL RUN** and
+are never guessed.  The verdict in sample mode is therefore at best
+``GO_PENDING_FULL_RUN``, never ``GO``.
 """
+
 from __future__ import annotations
 
-import argparse
-import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Sequence
 
-import duckdb
-import numpy as np
+import lc_common as C
+import ceiling_core
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common
-import combine_features as cf
-import game_features as gf
-import gate
-import security_audit as sa
+STAGE = "01_audit"
 
-PENDING = "PENDING FULL RUN"
-PROV_SYNTH = "SYNTHETIC FIXTURE (not a finding)"
+CSV_FIELDS = {
+    "a_drills.csv": ["position", "drill_name", "drill_type", "n_players",
+                     "n_attempts", "median_sinuosity", "straight_line", "status"],
+    "b_attempts.csv": ["position", "drill_name", "n_players", "n_one_attempt",
+                       "n_two_attempts", "n_three_plus", "median_attempts",
+                       "max_attempts", "class_years", "status"],
+    "c_matched.csv": ["position", "combine_players", "matched_players",
+                      "matched_pct", "games", "plays", "route_snaps",
+                      "median_route_snaps_per_player", "frame_level_matched",
+                      "status", "note"],
+    "d_leverage.csv": ["metric", "value", "n", "status", "note"],
+    "e_seasons.csv": ["season", "season_type", "weeks", "games", "min_week",
+                      "max_week", "receivers", "status"],
+    "f_routes.csv": ["route_ran", "rows", "players", "targets",
+                     "pass_length_nonnull", "dropback_nonnull", "status", "note"],
+    "g_effort_counts.csv": ["nfl_id", "position", "leverage_bin", "n_efforts",
+                            "status", "note"],
+    "h_icc.csv": ["feature", "icc", "reliability_mean", "n_players",
+                  "n_attempts", "selected", "status", "note"],
+    "i_confound.csv": ["metric", "value", "n", "status", "note"],
+    "j_power.csv": ["metric", "value", "status", "note"],
+}
 
-REQUIRED_GAME_FIELDS = [
-    "route_ran",
-    "pass_length",
-    "target",
-    "separation_at_pass_forward",
-    "coverage_assignment",
-    "coverage_assignment_at_snap",
-    "team_coverage_man_zone",
-    "team_coverage_type",
-]
-GAME_TRACKING_COLS = ["game_id", "play_id", "nfl_id", "time", "x", "y", "s", "a", "dis", "o", "dir", "event"]
-COMBINE_TRACKING_COLS = [
-    "draft_year", "event_id", "nfl_id", "entity_type", "time", "drill_type", "drill_name",
-    "attempt", "x", "y", "s", "a", "dis", "dir",
-]
+PENDING_NOTE = ("PENDING FULL RUN: the provided tracking sample has ~1.16 "
+                "tracked players per play, so effort-level counts cannot be "
+                "estimated from it. No value is guessed.")
 
 
 # --------------------------------------------------------------------------- #
-# ctx / plumbing
+# SQL helpers
 # --------------------------------------------------------------------------- #
-def _pq(path: Path | Sequence[Path]) -> str:
-    """DuckDB ``read_parquet`` call string for a single Parquet path or a list of them.
-
-    Full mode exposes a *union* of the per-season `game_tracking` parquets, so callers may pass a
-    sequence (see `game_features.pq_list`)."""
-    if isinstance(path, (list, tuple)):
-        return gf.pq_list(path)
-    return common.pq(path)
+def _reader(path: Path) -> str:
+    return f"read_csv_auto('{Path(path).as_posix()}', nullstr=['NA'])"
 
 
-def _parquet_full(con, cfg: dict, name: str, force: bool, log) -> list[Path]:
-    """Materialise every raw file listed under ``cfg['files'][name]`` and return the Parquet paths.
-
-    Mirrors the helper used by `00_thresholds.py` / `03_game_demand.py` so full-mode multi-file
-    inputs share one code path; a missing raw file is a blocker."""
-    parq = common.resolve(cfg, "parquet")
-    out = []
-    for fn in cfg["files"][name]:
-        src = common.resolve(cfg, "raw", fn)
-        if not src.exists():
-            raise FileNotFoundError(f"full mode requires {src} (absent on this Pi) -> notes/blockers.md")
-        dst = parq / (Path(fn).stem + ".parquet")
-        out.append(common.to_parquet(con, src, dst, force=force, logger=log))
-    return out
+def _q(con, sql: str):
+    return con.execute(sql)
 
 
-def emit(ctx: dict, name: str, rows: Iterable[dict], subdir: str | None = None) -> Path:
-    """Write a CSV with `provenance` as the FIRST column (ordered union of all fields)."""
-    rows = [dict(r) for r in rows] or [{}]
-    fields: list[str] = []
-    for r in rows:
-        for k in r:
-            if k not in fields:
-                fields.append(k)
-    fields = ["provenance"] + [f for f in fields if f != "provenance"]
-
-    def _clean(v):
-        if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
-            return ""
-        return v
-
-    norm = []
-    for r in rows:
-        d = {"provenance": ctx["prov"]}
-        for k, v in r.items():
-            if k == "provenance":
-                continue
-            d[k] = _clean(v)
-        norm.append(d)
-    sub = subdir if subdir is not None else ctx.get("subdir")
-    out = (ctx["audit_dir"] / sub) if sub else ctx["audit_dir"]
-    path = out / name
-    common.write_csv(path, norm, fieldnames=fields)
-    try:
-        shown = path.relative_to(common.REPO_ROOT)
-    except ValueError:
-        shown = path
-    ctx["logger"].info("wrote %s (%d rows)", shown, len(norm))
-    return path
+def _dicts(con, sql: str) -> list[dict]:
+    frame = con.execute(sql).df()
+    return frame.to_dict(orient="records")
 
 
-def _scalar(con: duckdb.DuckDBPyConnection, sql: str):
+def _one(con, sql: str):
     row = con.execute(sql).fetchone()
-    return None if row is None else row[0]
-
-
-def _rows(con: duckdb.DuckDBPyConnection, sql: str) -> list[tuple]:
-    return con.execute(sql).fetchall()
+    return row[0] if row else None
 
 
 # --------------------------------------------------------------------------- #
-# schema assertions (fail loudly)
+# Items
 # --------------------------------------------------------------------------- #
-def assert_schemas(ctx: dict) -> None:
-    con, cfg = ctx["con"], ctx["cfg"]
-    log = ctx["logger"]
-    audit = cfg["audit"]
-
-    def describe(p: Path) -> dict[str, str]:
-        return {r[0]: r[1] for r in con.execute(f"describe select * from {_pq(p)}").fetchall()}
-
-    # --- combine_tracking ---
-    ct = describe(ctx["tables"]["combine_tracking"])
-    assert list(ct.keys()) == COMBINE_TRACKING_COLS, f"combine_tracking columns changed: {list(ct.keys())}"
-    for c in ("x", "y", "s", "a", "dis", "dir"):
-        assert ct[c] in ("DOUBLE", "FLOAT"), f"combine_tracking.{c} not float: {ct[c]}"
-    assert ct["nfl_id"] == "BIGINT", f"combine_tracking.nfl_id not BIGINT: {ct['nfl_id']}"
-
-    # --- combine_results ---
-    cr = describe(ctx["tables"]["combine_results"])
-    for c in ("nfl_id", "combine_position", "forty", "ten_yd_split"):
-        assert c in cr, f"combine_results missing {c}"
-
-    # --- player_play required fields ---
-    pp = describe(ctx["tables"]["player_play"])
-    missing = [c for c in REQUIRED_GAME_FIELDS if c not in pp]
-    assert not missing, f"player_play missing required fields: {missing}"
-
-    # --- game tracking schema ---
-    gt = describe(ctx["tables"]["game_tracking"])
-    missing_gt = [c for c in GAME_TRACKING_COLS if c not in gt]
-    assert not missing_gt, f"game tracking missing columns: {missing_gt}"
-
-    # --- units / sampling rate / frames (combine) ---
-    CT = _pq(ctx["tables"]["combine_tracking"])
-    med_dt = _scalar(con, f"""
-        WITH f AS (SELECT event_id, epoch_ms(time) t FROM {CT} WHERE entity_type='PLAYER'),
-             d AS (SELECT (t - lag(t) OVER (PARTITION BY event_id ORDER BY t))/1000.0 dt FROM f)
-        SELECT median(dt) FROM d WHERE dt IS NOT NULL""")
-    assert med_dt is not None and abs(med_dt - 1.0 / audit["sampling_rate_hz"]) < 1e-6, \
-        f"combine sampling rate {med_dt}s != 1/{audit['sampling_rate_hz']}Hz"
-    xr = con.execute(f"SELECT min(x),max(x),min(y),max(y) FROM {CT}").fetchone()
-    assert xr[0] >= 0 and xr[1] <= 110 and xr[3] <= 70, f"combine x/y out of local-frame bounds: {xr}"
-
-    # --- no residual literal 'NA' in numeric columns (A11) ---
-    na_ct = _scalar(con, f"SELECT count(*) FROM {CT} WHERE CAST(s AS VARCHAR)='NA'")
-    assert na_ct == 0, "residual literal 'NA' in combine_tracking.s"
-
-    # --- A1: combine_tracking complete vs combine_results ---
-    n1 = _scalar(con, f"SELECT count(DISTINCT nfl_id) FROM {CT}")
-    n2 = _scalar(con, f"SELECT count(DISTINCT nfl_id) FROM {_pq(ctx['tables']['combine_results'])}")
-    assert n1 == n2, f"A1 violated: combine_tracking nfl_ids {n1} != combine_results {n2}"
-
-    log.info("schema assertions PASS (combine cols, PP fields, game cols, 10Hz, frames, no-NA, A1)")
-
-
-# --------------------------------------------------------------------------- #
-# (a) drills present for WR/TE + family classification
-# --------------------------------------------------------------------------- #
-def item_a(ctx: dict) -> list[dict]:
-    con, cfg = ctx["con"], ctx["cfg"]
-    audit = cfg["audit"]
-    CT, CR = _pq(ctx["tables"]["combine_tracking"]), _pq(ctx["tables"]["combine_results"])
-    pos = ",".join(f"'{p}'" for p in audit["positions"])
-    straight = set(audit["straight_line_drills"])
-    cutting = set(audit["cutting_drills"])
-    prefix = audit["skill_drill_prefix"]
-
-    def family(dt: str) -> str:
-        if dt in straight:
-            return "straight_line"
-        if dt in cutting:
-            return "cutting"
-        if dt.startswith(prefix):
-            return "skill_block"
-        return "other"
-
-    base = f"""
-        WITH wt AS (SELECT nfl_id, combine_position FROM {CR} WHERE combine_position IN ({pos}))
-        SELECT wt.combine_position, ct.drill_type,
-               count(DISTINCT ct.nfl_id) n_players, count(DISTINCT ct.event_id) n_attempts
-        FROM {CT} ct JOIN wt USING(nfl_id)
-        GROUP BY 1,2 ORDER BY 1,2"""
-    out = []
-    for position, drill, np_, na_ in _rows(con, base):
-        out.append(dict(item="a", combine_position=position, drill_type=drill,
-                        family=family(drill), n_players=np_, n_attempts=na_))
-    emit(ctx, "a_drills_wr_te.csv", out)
-
-    names = f"""
-        WITH wt AS (SELECT nfl_id, combine_position FROM {CR} WHERE combine_position IN ({pos}))
-        SELECT wt.combine_position, ct.drill_type, ct.drill_name,
-               count(DISTINCT ct.nfl_id) n_players, count(DISTINCT ct.event_id) n_attempts
-        FROM {CT} ct JOIN wt USING(nfl_id)
-        GROUP BY 1,2,3 ORDER BY 1,2,5 DESC"""
-    emit(ctx, "a_drill_names.csv",
-         [dict(item="a", combine_position=p, drill_type=d, drill_name=dn, n_players=np_, n_attempts=na_)
-          for p, d, dn, np_, na_ in _rows(con, names)])
-    return out
-
-
-# --------------------------------------------------------------------------- #
-# (b) attempts per player per drill; class years
-# --------------------------------------------------------------------------- #
-def item_b(ctx: dict) -> list[dict]:
-    con, cfg = ctx["con"], ctx["cfg"]
-    audit = cfg["audit"]
-    CT, CR = _pq(ctx["tables"]["combine_tracking"]), _pq(ctx["tables"]["combine_results"])
-    pos = ",".join(f"'{p}'" for p in audit["positions"])
-
-    per = f"""
-        WITH wt AS (SELECT nfl_id, combine_position FROM {CR} WHERE combine_position IN ({pos})),
-             a AS (SELECT ct.nfl_id, wt.combine_position pos, ct.drill_type,
-                          count(DISTINCT ct.event_id) n
-                   FROM {CT} ct JOIN wt USING(nfl_id) GROUP BY 1,2,3)
-        SELECT pos, drill_type, count(*) n_players,
-               sum(CASE WHEN n=1 THEN 1 ELSE 0 END) n_with_1,
-               sum(CASE WHEN n>=2 THEN 1 ELSE 0 END) n_with_ge2,
-               min(n), median(n), avg(n), max(n), sum(n) total_attempts
-        FROM a GROUP BY 1,2 ORDER BY 1,2"""
-    out = []
-    for pos_, drill, npl, n1, n2, mn, med, av, mx, tot in _rows(con, per):
-        out.append(dict(item="b", combine_position=pos_, drill_type=drill, n_players=npl,
-                        n_with_1_attempt=n1, n_with_ge2_attempts=n2, min_attempts=mn,
-                        median_attempts=med, mean_attempts=round(float(av), 3), max_attempts=mx,
-                        total_attempts=tot))
-    emit(ctx, "b_attempts_per_player.csv", out)
-
-    years = f"""
-        WITH wt AS (SELECT nfl_id, combine_position FROM {CR} WHERE combine_position IN ({pos})),
-             t AS (SELECT ct.nfl_id, ct.draft_year FROM {CT} ct JOIN wt USING(nfl_id) GROUP BY 1,2)
-        SELECT t.draft_year, count(DISTINCT t.nfl_id) n_players,
-               (SELECT count(DISTINCT ct.event_id) FROM {CT} ct JOIN wt USING(nfl_id)
-                 WHERE ct.draft_year=t.draft_year) n_attempts
-        FROM t GROUP BY 1 ORDER BY 1"""
-    emit(ctx, "b_class_years.csv",
-         [dict(item="b", draft_year=y, n_players_wrte=npl, n_attempts=na_) for y, npl, na_ in _rows(con, years)])
-
-    # class years overall (all positions) for coverage statement
-    allc = _rows(con, f"SELECT draft_year, count(DISTINCT nfl_id) FROM {CT} GROUP BY 1 ORDER BY 1")
-    emit(ctx, "b_class_years_all_positions.csv",
-         [dict(item="b", draft_year=y, n_players_all=npl) for y, npl in allc])
-    return out
-
-
-# --------------------------------------------------------------------------- #
-# (c) matched Combine->NFL players per position + route snaps per player
-# --------------------------------------------------------------------------- #
-def item_c(ctx: dict) -> list[dict]:
-    con, cfg = ctx["con"], ctx["cfg"]
-    log = ctx["logger"]
-    CR = _pq(ctx["tables"]["combine_results"])
-    GT = _pq(ctx["tables"]["game_tracking"])
-    PP = _pq(ctx["tables"]["player_play"])
-
-    # sample-partial matched count (game tracking available now)
-    matched = _rows(con, f"""
-        WITH gt AS (SELECT DISTINCT nfl_id FROM {GT})
-        SELECT cr.combine_position, count(DISTINCT cr.nfl_id) n_prospects,
-               count(DISTINCT CASE WHEN gt.nfl_id IS NOT NULL THEN cr.nfl_id END) n_matched
-        FROM {CR} cr LEFT JOIN gt USING(nfl_id)
-        GROUP BY 1 ORDER BY 1""")
-    status = ctx["game_side_status"]  # PENDING / SAMPLE_PARTIAL / AVAILABLE
-    rows = [dict(item="c", check="matched_combine_to_game_tracking", combine_position=p,
-                 n_prospects=np_, n_matched=nm, status=status,
-                 note="sample-prefix tracking is non-representative" if status != "AVAILABLE" else "")
-            for p, np_, nm in matched]
-    emit(ctx, "c_matched_sample.csv", rows)
-
-    # PREVIEW: matching against the (complete) player_play file, which lists every game appearance
-    # by nfl_id. This is the strongest match currently computable here; the authoritative frame-level
-    # match still needs the full game-tracking files (PENDING FULL RUN).
-    pmat = _rows(con, f"""
-        WITH pp AS (SELECT DISTINCT nfl_id FROM {PP})
-        SELECT cr.combine_position, count(DISTINCT cr.nfl_id) n_prospects,
-               count(DISTINCT CASE WHEN pp.nfl_id IS NOT NULL THEN cr.nfl_id END) n_matched
-        FROM {CR} cr LEFT JOIN pp USING(nfl_id) GROUP BY 1 ORDER BY 1""")
-    emit(ctx, "c_matched_player_play_preview.csv",
-         [dict(item="c", check="matched_via_player_play", combine_position=p, n_prospects=np_,
-               n_matched=nm, status=PENDING,
-               note="preview from complete player_play.csv; authoritative match pending frame-level tracking")
-          for p, np_, nm in pmat])
-
-    # route snaps per matched player, from the (complete) player_play route_ran field
-    rsp = _rows(con, f"""
-        WITH rs AS (SELECT nfl_id, count(*) route_snaps
-                    FROM {PP} WHERE route_ran IS NOT NULL GROUP BY 1)
-        SELECT cr.combine_position, cr.nfl_id, rs.route_snaps
-        FROM {CR} cr JOIN rs USING(nfl_id)
-        WHERE cr.combine_position IN ('WR','TE') ORDER BY 1,3 DESC""")
-    emit(ctx, "c_route_snaps_per_matched_player.csv",
-         [dict(item="c", combine_position=p, nfl_id=nid, route_snaps=rs,
-               status=PENDING, note="authoritative route-snap gate needs full game-tracking match")
-          for p, nid, rs in rsp])
-
-    # summary
-    summ = _rows(con, f"""
-        WITH rs AS (SELECT nfl_id, count(*) route_snaps FROM {PP} WHERE route_ran IS NOT NULL GROUP BY 1),
-             j AS (SELECT cr.combine_position pos, rs.route_snaps
-                   FROM {CR} cr JOIN rs USING(nfl_id) WHERE cr.combine_position IN ('WR','TE'))
-        SELECT pos, count(*) n_players, min(route_snaps), median(route_snaps), avg(route_snaps), max(route_snaps)
-        FROM j GROUP BY 1 ORDER BY 1""")
-    emit(ctx, "c_route_snaps_summary.csv",
-         [dict(item="c", combine_position=p, n_players=npl, min_route_snaps=mn, median_route_snaps=med,
-               mean_route_snaps=round(float(av), 2), max_route_snaps=mx, status=PENDING)
-          for p, npl, mn, med, av, mx in summ])
-    log.info("(c) matched (sample) + route-snap preview written; authoritative count = %s", PENDING)
-    return rows
-
-
-# --------------------------------------------------------------------------- #
-# (d) route type/depth, derivable trajectory metrics, 22-player tracking, ball/TTT
-# --------------------------------------------------------------------------- #
-def item_d(ctx: dict) -> list[dict]:
-    con, cfg = ctx["con"], ctx["cfg"]
-    PP = _pq(ctx["tables"]["player_play"])
-    GT = _pq(ctx["tables"]["game_tracking"])
-    pp = {r[0] for r in con.execute(f"describe select * from {PP}").fetchall()}
-
-    use = {
-        "route_ran": "route snap + route type (categorical)",
-        "pass_length": "route depth proxy (yards)",
-        "target": "whether the route was targeted",
-        "separation_at_pass_forward": "separation at pass-forward",
-        "coverage_assignment": "per-play coverage assignment",
-        "coverage_assignment_at_snap": "coverage assignment at snap",
-        "team_coverage_man_zone": "man/zone",
-        "team_coverage_type": "coverage family",
-        "dropback_duration": "time-to-throw proxy",
-    }
-    nrows = _scalar(con, f"SELECT count(*) FROM {PP}")
-    out = []
-    for f in list(use) + ["cushion", "receiver_alignment", "player_get_off"]:
-        present = f in pp
-        if present:
-            nn = _scalar(con, f'SELECT count(*) FROM {PP} WHERE "{f}" IS NOT NULL')
-            nd = _scalar(con, f'SELECT count(DISTINCT "{f}") FROM {PP}')
-        else:
-            nn = nd = None
-        out.append(dict(item="d", check="field_available", field=f, present=present,
-                        used_for=use.get(f, "context"), n_nonnull=nn, n_distinct=nd,
-                        pct_nonnull=(round(100.0 * nn / nrows, 2) if nn is not None else None)))
-    emit(ctx, "d_field_profile.csv", out)
-
-    # route_ran is CATEGORICAL (route type) -> rt snap = NOT NULL
-    rr = _rows(con, f"""SELECT route_ran, count(*) n FROM {PP} GROUP BY 1
-                        ORDER BY (route_ran IS NULL) DESC, n DESC LIMIT 15""")
-    emit(ctx, "d_route_type_values.csv",
-         [dict(item="d", route_ran=(v if v is not None else "<NULL:no route>"), n=n) for v, n in rr])
-
-    pl = _rows(con, f"""SELECT pass_length, count(*) n FROM {PP} WHERE pass_length IS NOT NULL
-                        GROUP BY 1 ORDER BY 1""")
-    emit(ctx, "d_pass_length_values.csv", [dict(item="d", pass_length=v, n=n) for v, n in pl])
-
-    # players tracked per play (sample partial; full needed for 22-player verification)
-    ppp = con.execute(f"""
-        WITH p AS (SELECT game_id, play_id, count(DISTINCT nfl_id) n FROM {GT} GROUP BY 1,2)
-        SELECT min(n), median(n), max(n), count(*) FROM p""").fetchone()
-    emit(ctx, "d_players_per_play.csv",
-         [dict(item="d", check="n_players_tracked_per_play", dataset=ctx["game_dataset"],
-               min_players=ppp[0], median_players=ppp[1], max_players=ppp[2], n_plays=ppp[3],
-               status=ctx["game_side_status"],
-               note="22-player tracking (nearest-defender/ball-distance controls) verifiable only on FULL data")])
-
-    # qualitative answers to (d)
-    emit(ctx, "d_answers.csv", [
-        dict(item="d", question="Is route type provided?", answer="YES",
-             evidence="player_play.route_ran is a categorical route string (GO/HITCH/CROSS/...); NULL = no route run"),
-        dict(item="d", question="Is route depth provided?", answer="YES",
-             evidence="player_play.pass_length (integer yards) provided; deep threshold in config"),
-        dict(item="d", question="Can depth/break angle be derived from trajectories?",
-             answer=PENDING, evidence="needs full game-tracking x,y per frame (derivable in principle)"),
-        dict(item="d", question="Are all 22 players tracked per play?",
-             answer=PENDING, evidence="sample is a truncated prefix; full-run check required"),
-        dict(item="d", question="Ball location available?",
-             answer=PENDING, evidence="combine_tracking has a BALL entity; game ball location needs full tracking"),
-        dict(item="d", question="Time-to-throw available?",
-             answer="PROXY", evidence="player_play.dropback_duration (+ time_to_pressure/time_to_qb_hurry) = TTT proxy"),
-    ])
-    return out
-
-
-# --------------------------------------------------------------------------- #
-# (e) plays included; NON-targeted route coverage
-# --------------------------------------------------------------------------- #
-def item_e(ctx: dict) -> list[dict]:
-    con, cfg = ctx["con"], ctx["cfg"]
-    PP = _pq(ctx["tables"]["player_play"])
-    GAMES = _pq(ctx["tables"]["games"])
-    CR = _pq(ctx["tables"]["combine_results"])
-
-    ct = con.execute(f"""
-        SELECT
-          count(*) FILTER (WHERE route_ran IS NOT NULL) route_snaps,
-          count(*) FILTER (WHERE route_ran IS NOT NULL AND target) targeted,
-          count(*) FILTER (WHERE route_ran IS NOT NULL AND NOT target) non_targeted,
-          count(*) FILTER (WHERE route_ran IS NULL AND target) target_no_route,
-          count(*) FILTER (WHERE target) all_targets,
-          count(*) FILTER (WHERE route_ran IS NOT NULL AND pass_length IS NOT NULL) with_length
-        FROM {PP}""").fetchone()
-    rs, tg, nt, tnr, at, wl = ct
-    out = [dict(item="e", metric="route_snaps", value=rs),
-           dict(item="e", metric="route_snaps_targeted", value=tg),
-           dict(item="e", metric="route_snaps_non_targeted", value=nt),
-           dict(item="e", metric="share_route_snaps_non_targeted", value=round(nt / rs, 4) if rs else None),
-           dict(item="e", metric="all_targets_in_file", value=at),
-           dict(item="e", metric="targets_without_route_ran", value=tnr),
-           dict(item="e", metric="route_snaps_with_pass_length", value=wl)]
-    emit(ctx, "e_route_target_crosstab.csv", out)
-
-    # by WR/TE position
-    byp = _rows(con, f"""
-        SELECT cr.combine_position, count(*) route_snaps,
-               count(*) FILTER (WHERE pp.target) targeted,
-               count(*) FILTER (WHERE NOT pp.target) non_targeted
-        FROM {PP} pp JOIN {CR} cr USING(nfl_id)
-        WHERE pp.route_ran IS NOT NULL AND cr.combine_position IN ('WR','TE')
-        GROUP BY 1 ORDER BY 1""")
-    emit(ctx, "e_route_target_by_position.csv",
-         [dict(item="e", combine_position=p, route_snaps=rs_, targeted=t,
-               non_targeted=nt_, share_non_targeted=(round(nt_ / rs_, 4) if rs_ else None))
-          for p, rs_, t, nt_ in byp])
-
-    # coverage: seasons/games/plays included
-    cov = _rows(con, f"""
-        SELECT g.season, count(DISTINCT pp.game_id) n_games,
-               count(DISTINCT (pp.game_id||'-'||pp.play_id)) n_plays,
-               count(*) FILTER (WHERE pp.route_ran IS NOT NULL) route_snaps
-        FROM {PP} pp JOIN {GAMES} g USING(game_id)
-        GROUP BY 1 ORDER BY 1""")
-    emit(ctx, "e_coverage_by_season.csv",
-         [dict(item="e", season=s, n_games=ng, n_plays=npl, route_snaps=rs_) for s, ng, npl, rs_ in cov])
-    tot = con.execute(f"""SELECT count(DISTINCT game_id), count(DISTINCT (game_id||'-'||play_id))
-                          FROM {PP}""").fetchone()
-    emit(ctx, "e_coverage_total.csv",
-         [dict(item="e", metric="distinct_games", value=tot[0]),
-          dict(item="e", metric="distinct_plays", value=tot[1])])
-    return out
-
-
-# --------------------------------------------------------------------------- #
-# (f) provided dis/a reliability + sampling rate/units/frames
-# --------------------------------------------------------------------------- #
-def item_f(ctx: dict) -> list[dict]:
-    con, cfg = ctx["con"], ctx["cfg"]
-    rtol = cfg["audit"]["distance_rtol"]
-    out = []
-    for label, tbl in (("combine", _pq(ctx["tables"]["combine_tracking"])),):
-        r = con.execute(f"""SELECT min(x),max(x),min(y),max(y),min(s),max(s),min(a),max(a),min(dis),max(dis)
-                            FROM {tbl} WHERE entity_type='PLAYER'""").fetchone()
-        dt = _scalar(con, f"""WITH f AS (SELECT event_id, epoch_ms(time) t FROM {tbl} WHERE entity_type='PLAYER'),
-            d AS (SELECT (t-lag(t) OVER (PARTITION BY event_id ORDER BY t))/1000.0 dt FROM f)
-            SELECT median(dt) FROM d WHERE dt IS NOT NULL""")
-        out.append(dict(item="f", dataset=label, axis="x/y/s/a/dis ranges",
-                        x_min=r[0], x_max=r[1], y_min=r[2], y_max=r[3], s_min=r[4], s_max=r[5],
-                        a_min=r[6], a_max=r[7], dis_min=r[8], dis_max=r[9], median_dt_s=dt,
-                        frame="local Combine frame"))
-    # game sample frame ranges (units)
-    GT = _pq(ctx["tables"]["game_tracking"])
-    rg = con.execute(f"SELECT min(x),max(x),min(y),max(y),min(s),max(s),min(a),max(a) FROM {GT}").fetchone()
-    out.append(dict(item="f", dataset=ctx["game_dataset"], axis="x/y/s/a ranges",
-                    x_min=rg[0], x_max=rg[1], y_min=rg[2], y_max=rg[3], s_min=rg[4], s_max=rg[5],
-                    a_min=rg[6], a_max=rg[7], median_dt_s=None, frame="NFL 120x53.3 yd game frame"))
-    emit(ctx, "f_sampling_units.csv", out)
-
-    CT = _pq(ctx["tables"]["combine_tracking"])
-    dis_rows = con.execute(f"""
+def item_a(con, cfg, mode) -> tuple[list[dict], dict]:
+    trk = _reader(C.source_paths(cfg, "combine_tracking")[0])
+    players = _reader(C.source_paths(cfg, "players")[0])
+    block = C.lc(cfg)["audit"]
+    positions = "', '".join(block["positions"])
+    straight = {str(d) for d in block["straight_line_drills"]}
+    sql = f"""
         WITH f AS (
-          SELECT event_id, drill_type, x, y, dis,
-                 lag(x) OVER w lx, lag(y) OVER w ly
-          FROM {CT} WHERE entity_type='PLAYER'
-          WINDOW w AS (PARTITION BY event_id ORDER BY time)),
-        per AS (
-          SELECT event_id, drill_type,
-                 sum(dis) sum_dis,
-                 sum(CASE WHEN lx IS NOT NULL THEN sqrt((x-lx)^2+(y-ly)^2) ELSE 0 END) path_xy
-          FROM f GROUP BY 1,2)
-        SELECT drill_type, count(*) n_attempts,
-               median(under) median_under_count,
-               avg(CASE WHEN under > {rtol} THEN 1.0 ELSE 0.0 END) share_under_more_than_rtol
-        FROM (SELECT drill_type, event_id, 1.0 - sum_dis/path_xy AS under
-              FROM per WHERE path_xy > 0) GROUP BY 1 ORDER BY 1""").fetchall()
-    emit(ctx, "f_dis_reliability.csv",
-         [dict(item="f", drill_type=d, n_attempts=na, median_under_count_fraction=(
-             round(float(mu), 4) if mu is not None else None),
-             rtol=rtol, share_attempts_beyond_rtol=(round(float(sh), 4) if sh is not None else None))
-          for d, na, mu, sh in dis_rows])
-
-    acc_rows = con.execute(f"""
-        WITH f AS (
-          SELECT event_id, drill_type, s, a, epoch_ms(time) t,
-                 lag(s) OVER w ls, lag(epoch_ms(time)) OVER w lt
-          FROM {CT} WHERE entity_type='PLAYER'
-          WINDOW w AS (PARTITION BY event_id ORDER BY time))
-        SELECT drill_type, count(*) n,
-               corr(a, (s-ls)/((t-lt)/1000.0)) corr_a_vs_dvdt,
-               median(a / NULLIF((s-ls)/((t-lt)/1000.0),0)) median_ratio
-        FROM f WHERE ls IS NOT NULL AND t>lt GROUP BY 1 ORDER BY 1""").fetchall()
-    emit(ctx, "f_accel_reliability.csv",
-         [dict(item="f", drill_type=d, n=n, corr_provided_a_vs_derived_dvdt=(
-             round(float(c), 4) if c is not None else None),
-             median_ratio_provided_over_derived=(round(float(mr), 4) if mr is not None else None))
-          for d, n, c, mr in acc_rows])
-
-    fr = con.execute(f"""
-        WITH per AS (SELECT event_id, drill_type, count(*) nf FROM {CT} WHERE entity_type='PLAYER' GROUP BY 1,2)
-        SELECT drill_type, count(*) n_attempts, avg(nf), median(nf), max(nf) FROM per GROUP BY 1 ORDER BY 1""").fetchall()
-    frames_rows = [dict(item="f", drill_type=d, n_attempts=na, mean_frames=round(float(a0), 2),
-                        median_frames=m0, max_frames=mx) for d, na, a0, m0, mx in fr]
-    emit(ctx, "f_frames_per_attempt.csv", frames_rows)
-    out += [dict(item="f", drill_type=d, n_attempts=na,
-                 median_under_count_fraction=(round(float(mu), 4) if mu is not None else None),
-                 rtol=rtol, share_attempts_beyond_rtol=(round(float(sh), 4) if sh is not None else None))
-            for d, na, mu, sh in dis_rows]
-    return out
-
-
-# --------------------------------------------------------------------------- #
-# (g) test-retest ICC of candidate Combine features
-# --------------------------------------------------------------------------- #
-def _features_for_attempt(x, y, s, a, t, cfg) -> dict[str, float]:
-    audit = cfg["audit"]
-    x = np.asarray(x, float); y = np.asarray(y, float); s = np.asarray(s, float); t = np.asarray(t, float)
-    dt = np.diff(t)
-    dt[dt <= 0] = np.nan
-    step = np.hypot(np.diff(x), np.diff(y))
-    v = np.nan_to_num(np.concatenate([[0.0], step / dt]))
-    dist = np.concatenate([[0.0], np.cumsum(step)])
-    feats: dict[str, float] = {}
-    feats["peak_speed"] = float(np.max(v))
-    feats["peak_speed_provided_s"] = float(np.max(s))
-    # anchor splits at MOVEMENT ONSET (first frame above the onset speed), because the
-    # 40-yd dash starts from a stance and the pre-movement delay varies between attempts.
-    onset = audit["movement_onset_speed_yds"]
-    idx = np.where(v >= onset)[0]
-    i0 = int(idx[0]) if len(idx) else 0
-    t_rel, d_rel = t - t[i0], dist - dist[i0]
-
-    def _interp(arr_x, arr_y, q):
-        if arr_x[-1] < q:
-            return np.nan
-        pos = max(int(np.searchsorted(arr_x, q)), 1)
-        denom = arr_x[pos] - arr_x[pos - 1]
-        f = 0.0 if denom <= 0 else (q - arr_x[pos - 1]) / denom
-        return float(arr_y[pos - 1] + f * (arr_y[pos] - arr_y[pos - 1]))
-
-    for d in audit["split_distances_yd"]:
-        feats[f"time_to_{d}yd"] = _interp(d_rel, t_rel, d)
-        feats[f"speed_at_{d}yd"] = _interp(d_rel, v, d)
-    for ts in audit.get("speed_at_times_s", []):
-        feats[f"speed_at_t{ts}s"] = _interp(t_rel, v, ts)
-    dv = np.gradient(v, t)
-    feats["min_accel"] = float(np.nanmin(dv))
-    feats["max_decel"] = float(-np.nanmin(dv))
-    if len(v) >= 3:
-        ipk = int(np.argmax(v))
-        feats["min_speed_after_peak"] = float(np.min(v[ipk:]))
-        feats["speed_deficit_after_peak"] = float(feats["peak_speed"] - feats["min_speed_after_peak"])
-    else:
-        feats["min_speed_after_peak"] = np.nan
-        feats["speed_deficit_after_peak"] = np.nan
-    # exponential envelope fit v(t)=vmax*(1-exp(-t/tau)) -> vmax, tau, a0=vmax/tau.
-    # Single config-driven fitter shared with Phase 2 (src/combine_features.py; no magic numbers).
-    feats["env_vmax"], feats["env_tau"], feats["env_a0"] = cf.fit_envelope(t_rel, v, cfg)
-    return feats
-
-
-def _icc_1_1(groups: dict[int, list[float]], min_players: int) -> dict:
-    """Test-retest ICC(1,1) over repeated attempts within players.
-
-    Only players with >=2 attempts contribute (a repeat/paired test-retest requires within-player
-    replication); players with a single attempt carry no test-retest information.
+          SELECT t.nfl_id, t.drill_name, t.drill_type, t.attempt, t.event_id,
+                 t.x, t.y, t.time, p.nfl_position
+          FROM {trk} t JOIN {players} p ON t.nfl_id = p.nfl_id
+          WHERE t.entity_type = 'PLAYER' AND p.nfl_position IN ('{positions}')
+        ), steps AS (
+          SELECT *,
+                 sqrt(pow(x - lag(x) OVER (PARTITION BY nfl_id, drill_name,
+                          attempt, event_id ORDER BY time), 2)
+                    + pow(y - lag(y) OVER (PARTITION BY nfl_id, drill_name,
+                          attempt, event_id ORDER BY time), 2)) AS step
+          FROM f
+        ), att AS (
+          SELECT nfl_id, drill_name, attempt, event_id,
+                 sum(step) AS path,
+                 sqrt(pow(max(x) - min(x), 2) + pow(max(y) - min(y), 2)) AS disp
+          FROM steps GROUP BY 1, 2, 3, 4
+        )
+        SELECT f.nfl_position AS position, f.drill_name,
+               any_value(f.drill_type) AS drill_type,
+               count(DISTINCT f.nfl_id) AS n_players,
+               count(DISTINCT f.nfl_id || '|' || f.attempt || '|' || f.event_id) AS n_attempts,
+               median(a.path / nullif(a.disp, 0)) AS median_sinuosity
+        FROM f JOIN att a USING (nfl_id, drill_name, attempt, event_id)
+        GROUP BY 1, 2 ORDER BY 2, 1
     """
-    clean = {k: [v for v in vals if not (isinstance(v, float) and np.isnan(v))] for k, vals in groups.items()}
-    all_groups = {k: vals for k, vals in clean.items() if len(vals) >= 1}
-    rep = {k: vals for k, vals in all_groups.items() if len(vals) >= 2}
-    n_with_repeat = len(rep)
-    k = len(rep)
-    N = sum(len(v) for v in rep.values())
-    res = {"n_players_total": len(all_groups), "n_players_with_repeat": n_with_repeat, "n_attempts_used": N,
-           "icc": None, "status": None}
-    if n_with_repeat < min_players:
-        res["status"] = f"UNESTIMABLE: only {n_with_repeat} players with >=2 attempts (<{min_players})"
-        return res
-    if k < 2 or N <= k:
-        res["status"] = f"UNESTIMABLE: too few groups/observations (k={k}, N={N})"
-        return res
-    allv = np.concatenate([np.asarray(vals) for vals in rep.values()])
-    grand = float(np.mean(allv))
-    ssb = sum(len(vals) * (np.mean(vals) - grand) ** 2 for vals in rep.values())
-    ssw = sum(float(np.sum((np.asarray(vals) - np.mean(vals)) ** 2)) for vals in rep.values())
-    dfb, dfw = k - 1, N - k
-    if dfw <= 0:
-        res["status"] = f"UNESTIMABLE: no within-player df (dfw={dfw})"
-        return res
-    msb, msw = ssb / dfb, ssw / dfw
-    k0 = (N - sum(len(v) ** 2 for v in rep.values()) / N) / (k - 1)
-    if msw <= 1e-12:
-        res["status"] = "UNESTIMABLE: zero within-player variance"
-        return res
-    res["icc"] = float((msb - msw) / (msb + (k0 - 1) * msw))
-    res["msb"] = float(msb)
-    res["msw"] = float(msw)
-    res["mean_attempts_k0"] = float(k0)
-    res["status"] = "ESTIMATED"
-    return res
-
-
-def item_g(ctx: dict) -> list[dict]:
-    con, cfg = ctx["con"], ctx["cfg"]
-    audit = cfg["audit"]
-    CT = _pq(ctx["tables"]["combine_tracking"])
-    drills = audit["icc_repeat_feature_drills"]
-    dlist = ",".join(f"'{d}'" for d in drills)
-    arr = con.execute(f"""
-        SELECT nfl_id, event_id, drill_type, x, y, s, a,
-               (epoch_ms(time) - min(epoch_ms(time)) OVER (PARTITION BY event_id))/1000.0 t
-        FROM {CT} WHERE entity_type='PLAYER' AND drill_type IN ({dlist})
-        ORDER BY nfl_id, event_id, t""").fetchnumpy()
-
-    groups: dict[str, dict[str, dict[int, list[float]]]] = {}  # drill -> feature -> player -> vals
-    n_attempts: dict[tuple[str, str], int] = {}
-    feats_all = []
-    n = len(arr["nfl_id"])
-    cur: dict | None = None
-    key = None
-    def _s(x) -> str:
-        return x.decode() if isinstance(x, (bytes, bytearray)) else str(x)
-
-    for i in range(n):
-        k2 = (int(arr["nfl_id"][i]), _s(arr["event_id"][i]), _s(arr["drill_type"][i]))
-        if key != k2:
-            if cur is not None:
-                feats = _features_for_attempt(cur["x"], cur["y"], cur["s"], cur["a"], cur["t"], cfg)
-                for fname, fval in feats.items():
-                    groups.setdefault(key[2], {}).setdefault(fname, {}).setdefault(key[0], []).append(fval)
-                n_attempts[(key[2], str(key[0]))] = n_attempts.get((key[2], str(key[0])), 0) + 1
-                feats_all.append(dict(drill_type=key[2], nfl_id=key[0], **feats))
-            key = k2
-            cur = {"x": [], "y": [], "s": [], "a": [], "t": []}
-        cur["x"].append(float(arr["x"][i]))
-        cur["y"].append(float(arr["y"][i]))
-        cur["s"].append(float(arr["s"][i]))
-        cur["a"].append(float(arr["a"][i]))
-        cur["t"].append(float(arr["t"][i]))
-    if cur is not None:
-        feats = _features_for_attempt(cur["x"], cur["y"], cur["s"], cur["a"], cur["t"], cfg)
-        for fname, fval in feats.items():
-            groups.setdefault(key[2], {}).setdefault(fname, {}).setdefault(key[0], []).append(fval)
-        n_attempts[(key[2], str(key[0]))] = n_attempts.get((key[2], str(key[0])), 0) + 1
-        feats_all.append(dict(drill_type=key[2], nfl_id=key[0], **feats))
-
     rows = []
-    for drill in drills:
-        for fname in sorted(groups.get(drill, {})):
-            r = _icc_1_1(groups[drill][fname], audit["icc_min_players_with_repeat"])
-            rows.append(dict(item="g", drill_type=drill, feature=fname,
-                             repeat_source="distinct event_id (attempts) of same (nfl_id, drill_type)",
-                             icc=(round(r["icc"], 4) if r["icc"] is not None else None),
-                             status=r["status"],
-                             n_players_total=r["n_players_total"],
-                             n_players_with_repeat=r["n_players_with_repeat"],
-                             n_attempts_used=r["n_attempts_used"]))
-    emit(ctx, "g_feature_icc.csv", rows)
-    # per-attempt feature dump (transparency)
-    emit(ctx, "g_attempt_features.csv",
-         [dict(item="g", **{k: (round(v, 4) if isinstance(v, float) and not np.isnan(v) else v)
-                            for k, v in fa.items()}) for fa in feats_all])
-    return rows
-
-
-# --------------------------------------------------------------------------- #
-# (h)/(i) game-side exceedance & scatter (full-run; scripted)
-# --------------------------------------------------------------------------- #
-def _combine_ceiling(ctx: dict) -> dict[int, float]:
-    CT = _pq(ctx["tables"]["combine_tracking"])
-    rows = ctx["con"].execute(f"""
-        WITH f AS (SELECT nfl_id, event_id, x, y, epoch_ms(time) t,
-                          lag(x) OVER w lx, lag(y) OVER w ly, lag(epoch_ms(time)) OVER w lt
-                   FROM {CT} WHERE entity_type='PLAYER' AND drill_type='FORTY_YARD_DASH'
-                   WINDOW w AS (PARTITION BY event_id ORDER BY time)),
-             per AS (SELECT nfl_id, event_id,
-                          max(sqrt((x-lx)^2+(y-ly)^2)/NULLIF((t-lt)/1000.0,0)) peak
-                     FROM f WHERE lx IS NOT NULL GROUP BY 1,2)
-        SELECT nfl_id, max(peak) FROM per GROUP BY 1""").fetchall()
-    return {int(nid): float(p) for nid, p in rows}
-
-
-def _game_effort_peaks(ctx: dict) -> list[tuple]:
-    """Per (game,play,player) peak x/y-derived **game** speed under the frame-level despike.
-
-    Shares the SAME greedy forward despike as ``game_features.effort_kinematics_sql`` (revision 3,
-    D35): an impossible per-frame speed sample (> ``game.speed_cap_yds``) is **discarded** and the
-    peak is recomputed from the **retained** frames, so the audit exceedance (items h/i) is not
-    contaminated by impossible tracking spikes. The effort is never dropped; a degenerate effort
-    (<2 retained frames) is kept with peak ``0.0`` (the empty max is coalesced). The Combine side
-    (``_combine_ceiling``) is deliberately NOT bounded — the speed bound is game-side only.
-    """
-    GT = _pq(ctx["tables"]["game_tracking"])
-    cap = float(ctx["cfg"]["game"]["speed_cap_yds"])
-    scan = gf._despike_scan_sql(GT, cap)
-    return ctx["con"].execute(scan + """
-        SELECT game_id, play_id, nfl_id, COALESCE(max(spd), 0.0) peak_speed
-        FROM scan WHERE kept GROUP BY 1, 2, 3""").fetchall()
-
-
-def _route_efforts(ctx: dict) -> dict[int, list[tuple]]:
-    """Per-player list of (peak_speed, pass_length) over route snaps, joining
-    frame-derived per-play peaks to the route/pass context in player_play."""
-    PP = _pq(ctx["tables"]["player_play"])
-    peaks = {}
-    for gid, pid, nid, peak in _game_effort_peaks(ctx):
-        peaks[(int(gid), int(pid), int(nid))] = float(peak)
-    ctxmap = {}
-    for gid, pid, nid, plen in ctx["con"].execute(
-            f"SELECT game_id, play_id, nfl_id, pass_length FROM {PP} WHERE route_ran IS NOT NULL").fetchall():
-        ctxmap[(int(gid), int(pid), int(nid))] = (int(plen) if plen is not None else None)
-    out: dict[int, list[tuple]] = {}
-    for k, plen in ctxmap.items():
-        if k in peaks:
-            out.setdefault(k[2], []).append((peaks[k], plen))
-    return out
-
-
-def item_h(ctx: dict) -> list[dict]:
-    if not ctx["game_side_available"]:
-        rows = [dict(item="h", check="exceedance_rate", status=PENDING,
-                     note="in-game speed/accel vs Combine envelope; needs full game-tracking (see notes/pending_full_run.md P3)")]
-        emit(ctx, "h_exceedance.csv", rows)
-        return rows
-    ceiling = _combine_ceiling(ctx)
-    margin = ctx["cfg"]["audit"]["exceedance_margin_rel"]
-    efforts = _route_efforts(ctx)
-    rows, tot_eff, tot_exc = [], 0, 0
-    for nid, effs in sorted(efforts.items()):
-        if nid not in ceiling:
-            continue
-        c = ceiling[nid]
-        ne = len(effs)
-        nex = sum(1 for pk, _ in effs if pk > c * (1 + margin))
-        tot_eff += ne
-        tot_exc += nex
-        rows.append(dict(item="h", nfl_id=nid, combine_ceiling_yds=round(c, 4), n_efforts=ne,
-                         n_exceed=nex, exceedance_rate=(round(nex / ne, 4) if ne else None)))
-    rows.append(dict(item="h", nfl_id="OVERALL", n_efforts=tot_eff, n_exceed=tot_exc,
-                     exceedance_rate=(round(tot_exc / tot_eff, 4) if tot_eff else None),
-                     note=f"margin_rel={margin}"))
-    emit(ctx, "h_exceedance.csv", rows, subdir=ctx.get("subdir"))
-    return rows
-
-
-def item_i(ctx: dict) -> list[dict]:
-    if not ctx["game_side_available"]:
-        rows = [dict(item="i", check="combine_vs_ingame_deep", status=PENDING,
-                     note="scatter of Combine peak speed vs in-game top speed on deep routes; needs full game-tracking")]
-        emit(ctx, "i_scatter.csv", rows)
-        return rows
-    ceiling = _combine_ceiling(ctx)
-    deep = ctx["cfg"]["audit"]["deep_pass_length_yd"]
-    top: dict[int, float] = {}
-    ndeep: dict[int, int] = {}
-    for nid, effs in _route_efforts(ctx).items():
-        if nid not in ceiling:
-            continue
-        for pk, plen in effs:
-            if plen is not None and plen >= deep:
-                top[nid] = max(top.get(nid, 0.0), pk)
-                ndeep[nid] = ndeep.get(nid, 0) + 1
-    rows = [dict(item="i", nfl_id=nid, combine_peak_speed_yds=round(ceiling[nid], 4),
-                 in_game_top_speed_deep_yds=round(top[nid], 4), n_deep_efforts=ndeep[nid])
-            for nid in sorted(top)]
-    emit(ctx, "i_scatter.csv", rows, subdir=ctx.get("subdir"))
-    return rows
-
-
-# --------------------------------------------------------------------------- #
-# go/no-go decision
-# --------------------------------------------------------------------------- #
-def decide(ctx: dict, results: dict) -> dict:
-    cfg = ctx["cfg"]
-    audit = cfg["audit"]
-    gates = {
-        "min_matched_wr": audit.get("min_matched_wr"),
-        "min_route_snaps_per_player": audit.get("min_route_snaps_per_player"),
-        "min_icc": audit.get("min_icc"),
+    for r in _dicts(con, sql):
+        sinuosity = float(r["median_sinuosity"] or 0.0)
+        is_straight = (r["drill_name"] in straight
+                       and sinuosity <= float(block["straight_line_sinuosity_max"]))
+        rows.append({**r, "straight_line": bool(is_straight),
+                     "status": "EVALUATED"})
+    forty = [r for r in rows if r["drill_name"] in straight]
+    evidence = {
+        "has_straight_line_drill": bool(forty),
+        "max_straight_sinuosity": max([r["median_sinuosity"] for r in forty], default=None),
+        "n_straight_players": sum(r["n_players"] for r in forty),
     }
-    frozen = [k for k, v in gates.items() if v is not None]
-    icc_rows = results.get("g", [])
-    icc_est = [r for r in icc_rows if str(r.get("status", "")).startswith("ESTIMATED")]
-    icc_unest = [r for r in icc_rows if str(r.get("status", "")).startswith("UNESTIMABLE")]
-    missing_fields = [r for r in results.get("d", []) if r.get("check") == "field_available" and not r.get("present")]
-
-    if not frozen:
-        decision = "CONDITIONAL — thresholds not frozen (prereg skeleton); sample cannot exercise the game-side gate"
-    elif missing_fields:
-        decision = "NO-GO — required Combine/game field missing (see notes/blockers.md)"
-    else:
-        decision = "see gate values"
-    return dict(decision=decision, gates=gates, frozen_gates=frozen, missing_fields=[r["field"] for r in missing_fields],
-                n_icc_estimated=len(icc_est), n_icc_unestimable=len(icc_unest),
-                game_side_status=ctx["game_side_status"])
+    return rows, evidence
 
 
-# --------------------------------------------------------------------------- #
-# main
-# --------------------------------------------------------------------------- #
-def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="BDB27 Phase 1 audit (go/no-go gate)")
-    ap.add_argument("--mode", choices=["sample", "full"], default=None)
-    ap.add_argument("--force", action="store_true", help="ignore checkpoints / rebuild Parquet")
-    ap.add_argument("--synthetic", action="store_true",
-                    help="run the game-side items against the committed synthetic fixture")
-    ap.add_argument("--synthetic-regime", choices=["binding", "null"], default="binding")
-    ap.add_argument("--config", default=None)
-    return ap.parse_args()
+def item_b(con, cfg, mode) -> tuple[list[dict], dict]:
+    trk = _reader(C.source_paths(cfg, "combine_tracking")[0])
+    players = _reader(C.source_paths(cfg, "players")[0])
+    positions = "', '".join(C.lc(cfg)["audit"]["positions"])
+    sql = f"""
+        WITH per AS (
+          SELECT p.nfl_position AS position, t.drill_name, t.nfl_id,
+                 count(DISTINCT t.attempt || '|' || t.event_id) AS n
+          FROM {trk} t JOIN {players} p ON t.nfl_id = p.nfl_id
+          WHERE t.entity_type = 'PLAYER' AND p.nfl_position IN ('{positions}')
+          GROUP BY 1, 2, 3
+        )
+        SELECT position, drill_name, count(*) AS n_players,
+               count(*) FILTER (WHERE n = 1) AS n_one_attempt,
+               count(*) FILTER (WHERE n = 2) AS n_two_attempts,
+               count(*) FILTER (WHERE n >= 3) AS n_three_plus,
+               median(n) AS median_attempts, max(n) AS max_attempts
+        FROM per GROUP BY 1, 2 ORDER BY 2, 1
+    """
+    rows = _dicts(con, sql)
+    years_sql = f"""
+        SELECT p.nfl_position AS position,
+               string_agg(DISTINCT CAST(t.draft_year AS VARCHAR), '/'
+                          ORDER BY CAST(t.draft_year AS VARCHAR)) AS class_years
+        FROM {trk} t JOIN {players} p ON t.nfl_id = p.nfl_id
+        WHERE t.entity_type = 'PLAYER' AND p.nfl_position IN ('{positions}')
+        GROUP BY 1
+    """
+    years = {r["position"]: r["class_years"] for r in _dicts(con, years_sql)}
+    for r in rows:
+        r["class_years"] = years.get(r["position"], "")
+        r["status"] = "EVALUATED"
+    min_attempts = int(C.lc(cfg)["thresholds"]["min_attempts_per_player"])
+    evidence = {
+        "min_attempts_per_player": min_attempts,
+        "n_players_at_or_above_min": sum(
+            r["n_players"] for r in rows
+            if r["drill_name"] in C.lc(cfg)["audit"]["straight_line_drills"]
+            and r["median_attempts"] >= min_attempts),
+    }
+    return rows, evidence
 
 
-def main() -> None:
-    args = parse_args()
-    cfg = common.load_config(args.config)
-    mode = args.mode or cfg["mode"]["default"]
-    common.seed_everything(cfg["seed"])
-    log = common.get_logger()
-    con = common.connect(cfg["runtime"]["duckdb_threads"])
-
-    audit_dir = common.resolve(cfg, "outputs", cfg["audit"]["out_subdir"])
-    audit_dir.mkdir(parents=True, exist_ok=True)
-
-    # Pre-registration freeze gate: a --mode full audit may not proceed on an unfrozen/missing prereg.
-    # (The audit itself produces the go/no-go decision, so only the freeze is required here.)
-    gate.enforce(cfg, mode, "01_audit", requires_game_side=False, logger=log)
-
-    prov = PROV_SYNTH if args.synthetic else common.provenance(cfg, mode)
-    ctx: dict[str, Any] = dict(cfg=cfg, mode=mode, prov=prov, con=con, logger=log, audit_dir=audit_dir,
-                               synthetic=bool(args.synthetic),
-                               synthetic_regime=args.synthetic_regime)
-
-    # ---- resolve tables (identical code path; synthetic swaps the game + combine inputs) ----
-    tables = {}
-    with common.timed_stage(cfg, f"01_audit[{mode}{'-synthetic' if args.synthetic else ''}]", mode,
-                            synthetic=args.synthetic) as _:
-        parq = common.resolve(cfg, "parquet")
-        if args.synthetic:
-            fixdir = common.resolve(cfg, "synthetic") / args.synthetic_regime
-            cache = audit_dir / "_synthetic_cache" / args.synthetic_regime
-            for name, fn in (("combine_tracking", "combine_tracking.csv"), ("combine_results", "combine_results.csv"),
-                             ("game_tracking", "game_tracking.csv"), ("player_play", "player_play.csv"),
-                             ("games", "games.csv")):
-                dst = cache / (name + ".parquet")
-                common.to_parquet(con, fixdir / fn, dst, force=args.force, logger=None)
-                tables[name] = dst
-            ctx["game_dataset"] = f"synthetic:{args.synthetic_regime}"
-            ctx["game_side_status"] = "AVAILABLE"
-            ctx["game_side_available"] = True
-            ctx["subdir"] = "synthetic"
+def item_c(con, cfg, mode) -> tuple[list[dict], dict]:
+    players = _reader(C.source_paths(cfg, "players")[0])
+    trk = _reader(C.source_paths(cfg, "combine_tracking")[0])
+    pp = _reader(C.source_paths(cfg, "player_play")[0])
+    positions = "', '".join(C.lc(cfg)["audit"]["positions"])
+    sql = f"""
+        WITH cp AS (
+          SELECT nfl_id, nfl_position AS position FROM {players}
+        ), comb AS (
+          SELECT DISTINCT nfl_id FROM {trk} WHERE entity_type = 'PLAYER'
+        ), route AS (
+          SELECT nfl_id, count(*) AS route_snaps,
+                 count(DISTINCT game_id) AS games,
+                 count(DISTINCT game_id || '|' || play_id) AS plays
+          FROM {pp} WHERE route_ran IS NOT NULL GROUP BY 1
+        )
+        SELECT cp.position, count(*) AS combine_players,
+               count(route.nfl_id) AS matched_players,
+               coalesce(sum(route.games), 0) AS games,
+               coalesce(sum(route.plays), 0) AS plays,
+               coalesce(sum(route.route_snaps), 0) AS route_snaps,
+               median(route.route_snaps) AS median_route_snaps_per_player
+        FROM cp JOIN comb ON cp.nfl_id = comb.nfl_id
+        LEFT JOIN route ON cp.nfl_id = route.nfl_id
+        WHERE cp.position IN ('{positions}')
+        GROUP BY 1 ORDER BY 1
+    """
+    rows = _dicts(con, sql)
+    # The sample tracking file has a different files key; build it explicitly.
+    tracking_path = C.tracking_source(cfg, mode)[0]
+    tracked_sql = f"""
+        SELECT p.nfl_position AS position, count(DISTINCT t.nfl_id) AS n
+        FROM {_reader(tracking_path)} t JOIN {players} p ON t.nfl_id = p.nfl_id
+        WHERE p.nfl_position IN ('{positions}')
+        GROUP BY 1
+    """
+    tracked = {r["position"]: int(r["n"]) for r in _dicts(con, tracked_sql)}
+    frame_level_available = mode == "full"
+    if mode == "full":
+        files = C.tracking_source(cfg, "full")
+        missing = [str(f) for f in files if not f.exists()]
+        if missing:
+            frame_level_available = False
         else:
-            for name in ("combine_tracking", "combine_results", "player_play", "games"):
-                src = common.csv_path(cfg, name)
-                dst = parq / (Path(cfg["files"][name]).stem + ".parquet")
-                common.to_parquet(con, src, dst, force=args.force, logger=log)
-                tables[name] = dst
-            if mode == "full":
-                # Expose ONE normalised `game_tracking` entry = the union of the per-season parquets,
-                # so assert_schemas + items c/d/f/h/i see all seasons through the single key.
-                tables["game_tracking"] = _parquet_full(con, cfg, "game_tracking_full", args.force, log)
-                ctx["game_dataset"] = "game_tracking_2023/24/25 (full)"
-                ctx["game_side_status"] = "AVAILABLE"
-                ctx["game_side_available"] = True
-            else:
-                key = cfg["mode"]["sample"]["game_tracking"]
-                src = common.csv_path(cfg, key)
-                dst = parq / (Path(cfg["files"][key]).stem + ".parquet")
-                common.to_parquet(con, src, dst, force=args.force, logger=log)
-                tables["game_tracking"] = dst
-                ctx["game_dataset"] = "game_tracking_2023_sample (2^20-row prefix, non-representative)"
-                ctx["game_side_status"] = "SAMPLE_PARTIAL"
-                ctx["game_side_available"] = False
-        ctx["tables"] = tables
-
-        assert_schemas(ctx)
-        results = {}
-        results["a"] = item_a(ctx)
-        results["b"] = item_b(ctx)
-        results["c"] = item_c(ctx)
-        results["d"] = item_d(ctx)
-        results["e"] = item_e(ctx)
-        results["f"] = item_f(ctx)
-        results["g"] = item_g(ctx)
-        results["h"] = item_h(ctx)
-        results["i"] = item_i(ctx)
-        dec = decide(ctx, results)
-        # ---- Phase-1 board/security audit extension (additive; never alters a-i) ----
-        try:
-            sec = sa.run(ctx, results)
-        except Exception as exc:  # noqa: BLE001 - extension must never kill the audit
-            log.error("security audit extension error: %s: %s", type(exc).__name__, exc)
-            sec = {"gate": {"evaluated": False, "note": f"extension error: {exc}"}}
-        results["security"] = sec
-        dec["security_gate"] = sec.get("gate")
-        dec["board_source"] = ctx.get("board_source")
-        # The security HEADLINE gate is informational: a failure demotes the security story to
-        # exploratory (TASK.md "Headline gate" -> fall back to the ceiling design), it does NOT stop
-        # the pipeline. Only a HARD stop (external board data not permitted) downgrades the decision.
-        if sec.get("gate", {}).get("blocking"):
-            dec["decision"] = "NO-GO — " + sec["gate"].get("block_reason", "headline gate")
-
-    # ---- SUMMARY.md ----
-    out_dir = (audit_dir / ctx["subdir"]) if ctx.get("subdir") else audit_dir
-    out_dir.mkdir(parents=True, exist_ok=True)
-    summary = render_summary(ctx, results, dec)
-    (out_dir / "SUMMARY.md").write_text(summary, encoding="utf-8")
-    (out_dir / "audit_decision.json").write_text(json.dumps(dec, indent=2), encoding="utf-8")
-    log.info("audit complete: decision=%s", dec["decision"])
+            listing = "[" + ", ".join(f"'{f.as_posix()}'" for f in files) + "]"
+            full_sql = f"""
+                SELECT p.nfl_position AS position, count(DISTINCT t.nfl_id) AS n
+                FROM read_csv_auto({listing}, nullstr=['NA'],
+                                   union_by_name=true) t
+                JOIN {players} p ON t.nfl_id = p.nfl_id
+                WHERE p.nfl_position IN ('{positions}')
+                GROUP BY 1
+            """
+            tracked = {r["position"]: int(r["n"]) for r in _dicts(con, full_sql)}
+    min_matched = C.lc(cfg)["audit"]["min_matched"]
+    for r in rows:
+        r["matched_pct"] = (100.0 * r["matched_players"] / r["combine_players"]
+                            if r["combine_players"] else 0.0)
+        r["frame_level_matched"] = tracked.get(r["position"], 0)
+        r["status"] = "EVALUATED" if frame_level_available else "PARTIAL"
+        r["note"] = ("Player-level match and route snaps are complete from "
+                     "player_play; frame-level match counted on full tracking."
+                     if frame_level_available else
+                     "Player-level match and route snaps are complete from "
+                     "player_play. Frame-level match in the sample tracking is "
+                     "non-representative; authoritative count PENDING FULL RUN.")
+    evidence = {
+        "matched": {r["position"]: int(r["matched_players"]) for r in rows},
+        "threshold": dict(min_matched),
+        "frame_level_available": frame_level_available,
+        "passes": all(int(r["matched_players"]) >= int(min_matched.get(r["position"], 0))
+                      for r in rows if r["position"] in min_matched),
+    }
+    return rows, evidence
 
 
-def _fmt_rows(rows: list[dict], cols: list[str], limit: int | None = None) -> str:
-    lines = ["| " + " | ".join(cols) + " |", "|" + "|".join(["---"] * len(cols)) + "|"]
-    for r in (rows[:limit] if limit else rows):
-        lines.append("| " + " | ".join(str(r.get(c, "")) for c in cols) + " |")
+def item_d(con, cfg, mode) -> tuple[list[dict], dict]:
+    pp = _reader(C.source_paths(cfg, "player_play")[0])
+    wp = "pre_snap_home_team_win_probability"
+    base = _dicts(con, f"""
+        SELECT count(*) AS rows,
+               count(DISTINCT game_id || '|' || play_id) AS plays,
+               count(DISTINCT CASE WHEN {wp} IS NOT NULL
+                     THEN game_id || '|' || play_id END) AS wp_plays,
+               count(*) FILTER (WHERE {wp} IS NOT NULL) AS wp_nonnull,
+               min({wp}) AS wp_min, max({wp}) AS wp_max,
+               count(*) FILTER (WHERE expected_points IS NOT NULL) AS ep_nonnull,
+               count(*) FILTER (WHERE quarter IS NULL) AS quarter_null,
+               count(*) FILTER (WHERE down IS NULL) AS down_null,
+               count(*) FILTER (WHERE yards_to_go IS NULL) AS distance_null,
+               count(*) FILTER (WHERE yardline_number IS NULL) AS yardline_null,
+               count(*) FILTER (WHERE possession_team IS NULL) AS possession_null,
+               count(*) FILTER (WHERE game_clock IS NULL) AS clock_null,
+               count(*) FILTER (WHERE pre_snap_home_score IS NULL
+                                  OR pre_snap_visitor_score IS NULL) AS score_null
+        FROM {pp}
+    """)[0]
+    spread = _dicts(con, f"""
+        WITH p AS (
+          SELECT game_id, play_id, max({wp}) - min({wp}) AS spread
+          FROM {pp} WHERE {wp} IS NOT NULL GROUP BY 1, 2
+        )
+        SELECT max(spread) AS max_within_play_spread,
+               count(*) FILTER (WHERE spread > 1e-12) AS plays_not_constant,
+               count(*) AS plays
+        FROM p
+    """)[0]
+    lev = _dicts(con, f"""
+        WITH p AS (
+          SELECT game_id, play_id, any_value({wp}) AS wp
+          FROM {pp} WHERE {wp} IS NOT NULL GROUP BY 1, 2
+        )
+        SELECT quantile_cont(4 * wp * (1 - wp), [0.01, 0.25, 0.50, 0.75, 0.99]) AS q
+        FROM p
+    """)[0]["q"]
+    rows = [
+        {"metric": "player_play_rows", "value": base["rows"], "n": base["rows"],
+         "status": "EVALUATED", "note": ""},
+        {"metric": "distinct_plays", "value": base["plays"], "n": base["plays"],
+         "status": "EVALUATED", "note": ""},
+        {"metric": "win_probability_nonnull", "value": base["wp_nonnull"],
+         "n": base["rows"], "status": "EVALUATED",
+         "note": "Provided pre-snap WP; no external model needed."},
+        {"metric": "plays_with_win_probability", "value": base["wp_plays"],
+         "n": base["plays"], "status": "EVALUATED",
+         "note": f"coverage {base['wp_plays'] / base['plays']:.4f} of plays"},
+        {"metric": "win_probability_min", "value": base["wp_min"],
+         "n": base["wp_nonnull"], "status": "EVALUATED", "note": ""},
+        {"metric": "win_probability_max", "value": base["wp_max"],
+         "n": base["wp_nonnull"], "status": "EVALUATED", "note": ""},
+        {"metric": "expected_points_nonnull", "value": base["ep_nonnull"],
+         "n": base["rows"], "status": "EVALUATED",
+         "note": "Provided expected points; not required by the leverage formula."},
+        {"metric": "plays_with_inconsistent_wp", "value": spread["plays_not_constant"],
+         "n": spread["plays"], "status": "EVALUATED",
+         "note": f"max within-play spread {spread['max_within_play_spread']}"},
+        {"metric": "null_quarter", "value": base["quarter_null"],
+         "n": base["rows"], "status": "EVALUATED", "note": ""},
+        {"metric": "null_down", "value": base["down_null"],
+         "n": base["rows"], "status": "EVALUATED", "note": ""},
+        {"metric": "null_yards_to_go", "value": base["distance_null"],
+         "n": base["rows"], "status": "EVALUATED", "note": ""},
+        {"metric": "null_yardline", "value": base["yardline_null"],
+         "n": base["rows"], "status": "EVALUATED", "note": ""},
+        {"metric": "null_possession", "value": base["possession_null"],
+         "n": base["rows"], "status": "EVALUATED", "note": ""},
+        {"metric": "null_game_clock", "value": base["clock_null"],
+         "n": base["rows"], "status": "EVALUATED", "note": ""},
+        {"metric": "null_score", "value": base["score_null"],
+         "n": base["rows"], "status": "EVALUATED", "note": ""},
+        {"metric": "leverage_q01", "value": lev[0], "n": spread["plays"],
+         "status": "EVALUATED", "note": "4*p*(1-p)"},
+        {"metric": "leverage_q25", "value": lev[1], "n": spread["plays"],
+         "status": "EVALUATED", "note": ""},
+        {"metric": "leverage_median", "value": lev[2], "n": spread["plays"],
+         "status": "EVALUATED", "note": ""},
+        {"metric": "leverage_q75", "value": lev[3], "n": spread["plays"],
+         "status": "EVALUATED", "note": ""},
+        {"metric": "leverage_q99", "value": lev[4], "n": spread["plays"],
+         "status": "EVALUATED", "note": ""},
+        {"metric": "timeouts_field", "value": 0, "n": 0, "status": "EVALUATED",
+         "note": ("No timeout column exists in any provided file; accepted gap "
+                  "because pre-snap WP already embeds timeout state (D59).")},
+    ]
+    coverage = base["wp_plays"] / base["plays"] if base["plays"] else 0.0
+    evidence = {
+        "wp_available": base["wp_nonnull"] > 0,
+        "wp_coverage_of_plays": coverage,
+        "max_within_play_spread": spread["max_within_play_spread"],
+        "leverage_derivable_without_external_model": True,
+    }
+    return rows, evidence
+
+
+def item_e(con, cfg, mode) -> tuple[list[dict], dict]:
+    games = _reader(C.source_paths(cfg, "games")[0])
+    pp = _reader(C.source_paths(cfg, "player_play")[0])
+    sql = f"""
+        WITH recv AS (
+          SELECT DISTINCT game_id, nfl_id FROM {pp} WHERE route_ran IS NOT NULL
+        )
+        SELECT g.season, g.season_type, count(DISTINCT g.week) AS weeks,
+               count(DISTINCT g.game_id) AS games,
+               min(g.week) AS min_week, max(g.week) AS max_week,
+               count(DISTINCT recv.nfl_id) AS receivers
+        FROM {games} g LEFT JOIN recv USING (game_id)
+        GROUP BY 1, 2 ORDER BY 1, 2
+    """
+    rows = _dicts(con, sql)
+    for r in rows:
+        r["status"] = "EVALUATED"
+    seasons = sorted({int(r["season"]) for r in rows})
+    evidence = {"seasons": seasons,
+                "season_types": sorted({r["season_type"] for r in rows}),
+                "coverage_years": C.lc(cfg)["audit"]["coverage_years"],
+                "covers_all_configured": set(C.lc(cfg)["audit"]["coverage_years"]
+                                             ).issubset(set(seasons))}
+    return rows, evidence
+
+
+def item_f(con, cfg, mode) -> tuple[list[dict], dict]:
+    pp = _reader(C.source_paths(cfg, "player_play")[0])
+    rows = _dicts(con, f"""
+        SELECT route_ran, count(*) AS rows, count(DISTINCT nfl_id) AS players,
+               count(*) FILTER (WHERE target) AS targets,
+               count(*) FILTER (WHERE pass_length IS NOT NULL) AS pass_length_nonnull,
+               count(*) FILTER (WHERE dropback_duration IS NOT NULL) AS dropback_nonnull
+        FROM {pp} WHERE route_ran IS NOT NULL
+        GROUP BY 1 ORDER BY rows DESC, route_ran
+    """)
+    total = _dicts(con, f"""
+        SELECT count(*) AS rows, count(DISTINCT nfl_id) AS players,
+               count(*) FILTER (WHERE target) AS targets,
+               count(*) FILTER (WHERE pass_length IS NOT NULL) AS pass_length_nonnull,
+               count(*) FILTER (WHERE dropback_duration IS NOT NULL) AS dropback_nonnull,
+               count(*) FILTER (WHERE NOT target) AS non_targeted
+        FROM {pp} WHERE route_ran IS NOT NULL
+    """)[0]
+    for r in rows:
+        r["status"] = "EVALUATED"
+        r["note"] = ""
+    rows.append({"route_ran": "ALL", **total, "status": "PARTIAL",
+                 "note": ("Route type and pass_length are provided. Route depth "
+                          "from trajectory, ball location, 22-player completeness "
+                          "and time-to-throw beyond dropback_duration are "
+                          "PENDING FULL RUN.")})
+    evidence = {
+        "route_types": len(rows) - 1,
+        "targeted": int(total["targets"]),
+        "non_targeted": int(total["non_targeted"]),
+        "non_targeted_share": (total["non_targeted"] / total["rows"]
+                               if total["rows"] else 0.0),
+        "pass_length_coverage": (total["pass_length_nonnull"] / total["rows"]
+                                 if total["rows"] else 0.0),
+    }
+    return rows, evidence
+
+
+def item_g(con, cfg, mode) -> tuple[list[dict], dict]:
+    """Effort counts per receiver per leverage bin -- full tracking only."""
+    if mode != "full":
+        return ([{"nfl_id": "", "position": "", "leverage_bin": "",
+                  "n_efforts": "", "status": "PENDING FULL RUN",
+                  "note": PENDING_NOTE}], {"status": "PENDING FULL RUN"})
+    tracking = C.tracking_source(cfg, "full")
+    missing = [str(f) for f in tracking if not f.exists()]
+    if missing:
+        return ([{"nfl_id": "", "position": "", "leverage_bin": "",
+                  "n_efforts": "", "status": "PENDING FULL RUN",
+                  "note": f"full tracking missing: {missing}"}],
+                {"status": "PENDING FULL RUN"})
+    return ([{"nfl_id": "", "position": "", "leverage_bin": "",
+              "n_efforts": "", "status": "PENDING FULL RUN",
+              "note": ("requires the effort summary that 03_game_efforts "
+                       "writes; re-run 01 after 03 on full data")}],
+            {"status": "PENDING FULL RUN"})
+
+
+def item_h(con, cfg, mode) -> tuple[list[dict], dict]:
+    result = ceiling_core.compute_ceiling_features(cfg)
+    summary = result["summary"]
+    rows = []
+    for feature, icc in summary["icc"].items():
+        rel = [r["reliability"] for r in result["rows"] if r["feature"] == feature]
+        rows.append({
+            "feature": feature, "icc": icc,
+            "reliability_mean": (sum(rel) / len(rel)) if rel else 0.0,
+            "n_players": summary["n_players_with_fits"],
+            "n_attempts": summary["n_attempts_used"],
+            "selected": feature in result["selected"],
+            "status": "PARTIAL",
+            "note": ("Test-retest ICC from repeat Combine attempts (EVALUATED). "
+                     "In-game exceedance rate needs game tracking: PENDING FULL RUN."),
+        })
+    rows.append({"feature": "in_game_exceedance", "icc": "", "reliability_mean": "",
+                 "n_players": "", "n_attempts": "", "selected": False,
+                 "status": "PENDING FULL RUN", "note": PENDING_NOTE})
+    evidence = {"icc": summary["icc"], "selected": result["selected"],
+                "icc_min": summary["icc_min"], "vif": summary["vif"],
+                "reliable": summary["reliable"]}
+    return rows, evidence
+
+
+def item_i(con, cfg, mode) -> tuple[list[dict], dict]:
+    pp = _reader(C.source_paths(cfg, "player_play")[0])
+    wp = "pre_snap_home_team_win_probability"
+    sql = f"""
+        WITH plays AS (
+          SELECT game_id, play_id, any_value({wp}) AS wp,
+                 any_value(quarter) AS quarter, any_value(game_clock) AS clock
+          FROM {pp} WHERE {wp} IS NOT NULL GROUP BY 1, 2
+        ), t AS (
+          SELECT *, (quarter - 1) * 900
+                    + (900 - (date_part('minute', clock) * 60
+                              + date_part('second', clock))) AS elapsed
+          FROM plays
+        )
+        SELECT corr(4 * wp * (1 - wp), elapsed) AS corr_leverage_time,
+               count(*) AS n
+        FROM t
+    """
+    overall = _dicts(con, sql)[0]
+    by_q = _dicts(con, f"""
+        WITH plays AS (
+          SELECT game_id, play_id, any_value({wp}) AS wp,
+                 any_value(quarter) AS quarter, any_value(game_clock) AS clock
+          FROM {pp} WHERE {wp} IS NOT NULL GROUP BY 1, 2
+        )
+        SELECT quarter,
+               corr(4 * wp * (1 - wp),
+                    (quarter - 1) * 900
+                    + (900 - (date_part('minute', clock) * 60
+                              + date_part('second', clock)))) AS corr,
+               count(*) AS n
+        FROM plays GROUP BY 1 ORDER BY 1
+    """)
+    rows = [{"metric": "play_level_corr_leverage_time",
+             "value": overall["corr_leverage_time"], "n": overall["n"],
+             "status": "PARTIAL",
+             "note": ("Play-level diagnostic. The gate criterion is residual "
+                      "collinearity after load is accounted for, which needs "
+                      "effort-level tracking: PENDING FULL RUN.")}]
+    for r in by_q:
+        rows.append({"metric": f"play_level_corr_leverage_time_q{int(r['quarter'])}",
+                     "value": r["corr"], "n": r["n"], "status": "PARTIAL",
+                     "note": ""})
+    rows.append({"metric": "effort_level_partial_corr_after_load", "value": "",
+                 "n": "", "status": "PENDING FULL RUN", "note": PENDING_NOTE})
+    threshold = float(C.lc(cfg)["gate"]["max_leverage_time_partial_corr"])
+    evidence = {"play_level_corr": overall["corr_leverage_time"],
+                "threshold": threshold,
+                "effort_level_after_load": "PENDING FULL RUN"}
+    return rows, evidence
+
+
+def item_j(con, cfg, mode) -> tuple[list[dict], dict]:
+    from scipy.stats import norm
+
+    power = C.lc(cfg)["power"]
+    gate = C.lc(cfg)["gate"]
+    alpha = float(power["alpha"])
+    target_power = float(power["power"])
+    sd = float(power["assumed_within_player_sd_log_speed"])
+    n_assumed = int(power["assumed_efforts_per_player"])
+    mde_target = float(gate["min_mde"])
+    z = float(norm.ppf(1 - alpha / 2) + norm.ppf(target_power))
+    mde_at_assumed = z * sd / (n_assumed ** 0.5)
+    n_required = int(-(-((z * sd / mde_target) ** 2) // 1))
+    rows = [
+        {"metric": "assumed_within_player_sd_log_speed", "value": sd,
+         "status": "EVALUATED", "note": "config placeholder; not estimated"},
+        {"metric": "assumed_efforts_per_player", "value": n_assumed,
+         "status": "EVALUATED", "note": "config placeholder"},
+        {"metric": "analytic_mde_at_assumed_efforts", "value": mde_at_assumed,
+         "status": "PARTIAL", "note": "two-sided alpha, 80% power, leverage z"},
+        {"metric": "efforts_per_player_required_for_mde", "value": n_required,
+         "status": "PARTIAL",
+         "note": f"to detect {mde_target} at the configured SD and power"},
+        {"metric": "actual_mde_from_effort_counts", "value": "",
+         "status": "PENDING FULL RUN",
+         "note": "requires item (g) counts; PENDING FULL RUN."},
+    ]
+    evidence = {"mde_at_assumed": mde_at_assumed,
+                "n_required": n_required, "min_mde": mde_target,
+                "power": target_power, "alpha": alpha,
+                "sufficient_at_assumption": mde_at_assumed <= mde_target}
+    return rows, evidence
+
+
+# --------------------------------------------------------------------------- #
+# Gate
+# --------------------------------------------------------------------------- #
+def decide(checks: list[dict]) -> str:
+    """GO / GO_PENDING_FULL_RUN / NO-GO from per-item verdicts."""
+    if any(c["status"] == "BLOCKED" or c["verdict"] == "FAIL" for c in checks):
+        return "NO-GO"
+    if any(c["verdict"] == "PENDING" for c in checks):
+        return "GO_PENDING_FULL_RUN"
+    return "GO"
+
+
+def build_checks(a, b, c, d, e, f, g, h, i, j, cfg) -> list[dict]:
+    audit = C.lc(cfg)["audit"]
+    gate = C.lc(cfg)["gate"]
+    attempts_ok = b["n_players_at_or_above_min"] > 0
+    c_pass = bool(c["passes"])
+    d_pass = bool(d["wp_available"]) and d["wp_coverage_of_plays"] >= 0.99
+    e_pass = bool(e["covers_all_configured"])
+    f_pass = f["route_types"] > 0 and f["pass_length_coverage"] > 0.0
+    h_pass = bool(h["reliable"]) and h["icc"].get("vmax", 0.0) >= float(gate["min_icc"])
+    checks = [
+        {"id": "a", "name": "WR/TE Combine drills; straight-line identified",
+         "status": "EVALUATED", "verdict": "PASS" if a["has_straight_line_drill"] else "FAIL",
+         "value": f"{a['n_straight_players']} players, max sinuosity "
+                  f"{a['max_straight_sinuosity']}",
+         "threshold": f"sinuosity <= {audit['straight_line_sinuosity_max']}",
+         "basis": "a_drills.csv"},
+        {"id": "b", "name": "Attempts per player / class years",
+         "status": "EVALUATED", "verdict": "PASS" if attempts_ok else "FAIL",
+         "value": f"{b['n_players_at_or_above_min']} players with >= "
+                  f"{b['min_attempts_per_player']} straight-line attempt",
+         "threshold": f">= {b['min_attempts_per_player']}",
+         "basis": "b_attempts.csv"},
+        {"id": "c", "name": "Matched Combine-to-NFL receivers",
+         "status": "EVALUATED" if c.get("frame_level_available") else "PARTIAL",
+         "verdict": ("FAIL" if not c_pass else
+                     "PASS" if c.get("frame_level_available") else "PENDING"),
+         "value": c["matched"], "threshold": c["threshold"],
+         "basis": "c_matched.csv",
+         "note": ("player-level pass; frame-level match PENDING FULL RUN"
+                  if not c.get("frame_level_available") else "")},
+        {"id": "d", "name": "Leverage inputs / win probability",
+         "status": "EVALUATED", "verdict": "PASS" if d_pass else "FAIL",
+         "value": f"WP coverage {d['wp_coverage_of_plays']:.4f} of plays",
+         "threshold": ">= 0.99 and derivable without external data",
+         "basis": "d_leverage.csv"},
+        {"id": "e", "name": "Season / week coverage",
+         "status": "EVALUATED", "verdict": "PASS" if e_pass else "FAIL",
+         "value": f"seasons {e['seasons']} ({', '.join(e['season_types'])})",
+         "threshold": f"all of {e['coverage_years']}",
+         "basis": "e_seasons.csv"},
+        {"id": "f", "name": "Route type / depth / non-targeted routes",
+         "status": "PARTIAL", "verdict": "PASS" if f_pass else "FAIL",
+         "value": f"{f['route_types']} route types, "
+                  f"{f['non_targeted_share']:.1%} non-targeted",
+         "threshold": "route type and depth provided",
+         "basis": "f_routes.csv",
+         "note": "trajectory depth and 22-player completeness PENDING FULL RUN"},
+        {"id": "g", "name": "Efforts per receiver per leverage bin",
+         "status": "PENDING FULL RUN", "verdict": "PENDING",
+         "value": "not estimable from sample tracking", "threshold": "see gate",
+         "basis": "g_effort_counts.csv"},
+        {"id": "h", "name": "Combine ceiling reliability (ICC)",
+         "status": "PARTIAL",
+         "verdict": "PENDING" if h_pass else "FAIL",
+         "value": {k: round(v, 3) for k, v in h["icc"].items()},
+         "threshold": f"ICC(vmax) >= {gate['min_icc']}",
+         "basis": "h_icc.csv",
+         "note": "ICC evaluated; in-game exceedance PENDING FULL RUN"},
+        {"id": "i", "name": "Leverage vs game time / load",
+         "status": "PARTIAL", "verdict": "PENDING",
+         "value": f"play-level corr {i['play_level_corr']:.3f}",
+         "threshold": f"residual corr <= {i['threshold']}",
+         "basis": "i_confound.csv",
+         "note": "load separation needs effort-level tracking"},
+        {"id": "j", "name": "Power / minimum detectable effect",
+         "status": "PENDING FULL RUN", "verdict": "PENDING",
+         "value": f"MDE {j['mde_at_assumed']:.4f} at "
+                  f"{C.lc(cfg)['power']['assumed_efforts_per_player']} efforts; "
+                  f"{j['n_required']} efforts needed for {j['min_mde']}",
+         "threshold": f"MDE <= {j['min_mde']}",
+         "basis": "j_power.csv",
+         "note": "actual MDE requires item (g) counts"},
+    ]
+    return checks
+
+
+# --------------------------------------------------------------------------- #
+# Summary / run
+# --------------------------------------------------------------------------- #
+def _summary_markdown(cfg, mode, decision, checks, evidence) -> str:
+    stamp = C.provenance_stamp(cfg, mode)
+    lines = [
+        "# Phase 1 audit — leverage x ceiling (WR primary, TE replication)",
+        "",
+        f"**PROVENANCE: {stamp}**",
+        "",
+        "This is a data audit and gate decision, not a result. Sample-mode "
+        "numbers describe the supplied files and must never be read as findings.",
+        "",
+        f"- mode: `{mode}`",
+        f"- generated: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+        f"- **verdict: `{decision['verdict']}`**",
+        "",
+        "## Gate",
+        "",
+        "| item | check | status | verdict | value |",
+        "|---|---|---|---|---|",
+    ]
+    for c in checks:
+        lines.append(f"| {c['id']} | {c['name']} | {c['status']} | "
+                     f"{c['verdict']} | {c['value']} |")
+    lines += ["", "## Pending full run", ""]
+    for c in checks:
+        if c["verdict"] == "PENDING":
+            lines.append(f"- **{c['id']}** {c['name']}: "
+                         f"{c.get('note', 'requires full tracking')}")
+    lines += ["", "## Evaluated evidence", ""]
+    lines.append("```json")
+    import json
+    lines.append(json.dumps(evidence, indent=2, default=str))
+    lines.append("```")
+    lines += [
+        "",
+        "## Why the sample cannot close the gate",
+        "",
+        "The provided tracking sample is row-capped at 1,048,575 rows and "
+        "contains ~1.16 tracked players per play. It cannot produce per-receiver "
+        "effort counts, leverage-bin occupancy, matched pairs, or a "
+        "leverage/load separation. Those items stay PENDING FULL RUN and no "
+        "value is imputed.",
+        "",
+        "## Artefacts",
+        "",
+    ]
+    for name in CSV_FIELDS:
+        lines.append(f"- `{name}`")
+    lines += ["- `decision.json`", ""]
     return "\n".join(lines)
 
 
-def render_summary(ctx: dict, results: dict, dec: dict) -> str:
-    a, b, d, e, g = results["a"], results["b"], results["d"], results["e"], results["g"]
-    f = results["f"]
-    lines = []
-    lines.append(f"# Phase 1 Audit — SUMMARY ({ctx['prov']})")
-    lines.append("")
-    lines.append(f"- **mode:** `{ctx['mode']}`  ·  **synthetic:** {ctx.get('subdir') == 'synthetic'}  ·  "
-                 f"**game dataset:** {ctx['game_dataset']}")
-    lines.append(f"- **game-side status:** {ctx['game_side_status']}  ·  "
-                 f"frame-level game side (speed/accel) = `PENDING FULL RUN`")
-    lines.append("- **sources:** (a,b,f,g) `combine_tracking.csv` **complete**; (d,e) `player_play.csv` "
-                 "**complete** (present here — not sample-limited); (c) match preview from the complete "
-                 "`player_play.csv` + non-representative tracking sample; (h,i) full game tracking = "
-                 "`PENDING FULL RUN`. (All tables carry the run-mode provenance label regardless of source.)")
-    lines.append(f"- **go/no-go:** {dec['decision']}")
-    lines.append("")
-    lines.append("## (a) WR/TE Combine drills")
-    lines.append(_fmt_rows(a, ["combine_position", "drill_type", "family", "n_players", "n_attempts"]))
-    lines.append("")
-    lines.append("## (b) attempts per player per drill (WR/TE)")
-    lines.append(_fmt_rows(b, ["combine_position", "drill_type", "n_players", "n_with_1_attempt",
-                               "n_with_ge2_attempts", "median_attempts", "max_attempts", "total_attempts"]))
-    lines.append("")
-    lines.append("## (d) field availability / answers")
-    lines.append(_fmt_rows([r for r in d if r.get("check") == "field_available"],
-                           ["field", "present", "pct_nonnull", "used_for"]))
-    lines.append("")
-    lines.append("## (e) route vs target (non-targeted coverage)")
-    lines.append(_fmt_rows(e, ["metric", "value"]))
-    lines.append("")
-    lines.append("## (f) provided dis / a reliability (by drill)")
-    disrows = [r for r in f if "median_under_count_fraction" in r]
-    lines.append(_fmt_rows(disrows, ["drill_type", "n_attempts", "median_under_count_fraction",
-                                     "share_attempts_beyond_rtol"]))
-    lines.append("")
-    lines.append("## (g) test-retest ICC of candidate Combine features")
-    lines.append(_fmt_rows(g, ["drill_type", "feature", "icc", "status", "n_players_with_repeat",
-                               "n_attempts_used"]))
-    lines.append("")
-    lines.append("## go/no-go decision")
-    lines.append(f"- decision: **{dec['decision']}**")
-    lines.append(f"- gates: `{dec['gates']}`  (frozen: {dec['frozen_gates'] or 'none'})")
-    lines.append(f"- missing required fields: {dec['missing_fields'] or 'none'}")
-    lines.append(f"- ICC: {dec['n_icc_estimated']} estimated, {dec['n_icc_unestimable']} unestimable")
-    sec = results.get("security") or {}
-    if sec:
-        gate = sec.get("gate") or {}
-        lines.append("")
-        lines.append("## board/security audit extension (Phase 1, items c/d/e/h/l)")
-        lines.append(f"- board source: `{sec.get('board_source', ctx.get('board_source'))}`")
-        lines.append(f"- board rows: {sec.get('n_board_rows')}  ·  board players (nfl_id): {sec.get('n_board_players')}")
-        lines.append(f"- item row counts: `{sec.get('items')}`")
-        lines.append(f"- merged headline gate (full-mode only): evaluated={gate.get('evaluated')} "
-                     f"blocking={gate.get('blocking')} failed={gate.get('failed')} "
-                     f"note={gate.get('note', '')}")
-        lines.append("- tables: `outputs/audit/security/{c_snapshot_timing,c_testing_windows,"
-                     "c_player_testing_days,d_match_rates,e_prospect_pool,h_security_groups,l_power}.csv`")
-        lines.append("")
-    lines.append("## Note on synthetic fixtures")
-    lines.append("Game-side items that need full data are `PENDING FULL RUN`. If run with `--synthetic`, "
-                 "outputs go to `outputs/audit/synthetic/` and are stamped "
-                 f"`{PROV_SYNTH}` — they exercise the code path and are NEVER presented as findings.")
-    lines.append("")
-    return "\n".join(lines)
+def collect(cfg, mode="sample") -> dict:
+    paths = C.resolve_paths(cfg, mode)
+    con = C.duckdb_connect(cfg)
+    try:
+        a_rows, a_ev = item_a(con, cfg, mode)
+        b_rows, b_ev = item_b(con, cfg, mode)
+        c_rows, c_ev = item_c(con, cfg, mode)
+        d_rows, d_ev = item_d(con, cfg, mode)
+        e_rows, e_ev = item_e(con, cfg, mode)
+        f_rows, f_ev = item_f(con, cfg, mode)
+        g_rows, g_ev = item_g(con, cfg, mode)
+        h_rows, h_ev = item_h(con, cfg, mode)
+        i_rows, i_ev = item_i(con, cfg, mode)
+        j_rows, j_ev = item_j(con, cfg, mode)
+    finally:
+        con.close()
+
+    checks = build_checks(a_ev, b_ev, c_ev, d_ev, e_ev, f_ev, g_ev, h_ev,
+                          i_ev, j_ev, cfg)
+    verdict = decide(checks)
+    decision = {
+        "stage": STAGE,
+        "mode": mode,
+        "verdict": verdict,
+        "gate_evaluated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "checks": checks,
+        "pending_full_run": [c["id"] for c in checks if c["verdict"] == "PENDING"],
+        "blockers": [c["id"] for c in checks if c["verdict"] == "FAIL"],
+        "note": ("GO_PENDING_FULL_RUN is the strongest verdict sample mode can "
+                 "support. GO requires items c/g/h/i/j to be evaluated on full "
+                 "tracking."),
+    }
+    return {
+        "rows": {"a_drills.csv": a_rows, "b_attempts.csv": b_rows,
+                 "c_matched.csv": c_rows, "d_leverage.csv": d_rows,
+                 "e_seasons.csv": e_rows, "f_routes.csv": f_rows,
+                 "g_effort_counts.csv": g_rows, "h_icc.csv": h_rows,
+                 "i_confound.csv": i_rows, "j_power.csv": j_rows},
+        "decision": decision,
+        "evidence": {"a": a_ev, "b": b_ev, "c": c_ev, "d": d_ev, "e": e_ev,
+                     "f": f_ev, "g": g_ev, "h": h_ev, "i": i_ev, "j": j_ev},
+        "paths": paths,
+    }
+
+
+def write_outputs(cfg, mode, collected) -> dict:
+    paths = collected["paths"]
+    out_dir = paths["outputs"] / C.lc(cfg)["audit"]["out_subdir"]
+    written = []
+    for name, rows in collected["rows"].items():
+        path = C.write_csv(out_dir / name, rows, CSV_FIELDS[name],
+                           mode=mode, cfg=cfg)
+        written.append(str(path))
+    decision_path = C.write_json(out_dir / "decision.json",
+                                 collected["decision"], mode=mode, cfg=cfg)
+    summary = _summary_markdown(cfg, mode, collected["decision"],
+                                collected["decision"]["checks"],
+                                collected["evidence"])
+    summary_path = out_dir / C.lc(cfg)["audit"]["summary_filename"]
+    C.write_markdown(summary_path, summary + "\n", mode=mode, cfg=cfg)
+    written.append(str(decision_path))
+    written.append(str(summary_path))
+    return {"out_dir": str(out_dir), "files": written}
+
+
+def run(cfg, mode="sample", force=False) -> dict:
+    if C.is_done(cfg, STAGE, mode, force=force):
+        return {"skipped": True}
+    C.assert_disk_space(C.resolve_paths(cfg, mode), cfg)
+    collected = collect(cfg, mode)
+    written = write_outputs(cfg, mode, collected)
+    C.mark_done(cfg, STAGE, mode, extra={
+        "verdict": collected["decision"]["verdict"],
+        "pending": collected["decision"]["pending_full_run"],
+    })
+    return {"skipped": False, **collected, "written": written}
+
+
+def main(argv=None) -> int:
+    args = C.mode_from_argv(argv)
+    cfg = C.load_config(args.config)
+    C.seed_everything(int(C.lc(cfg)["seeds"]["base"]))
+    try:
+        with C.timed_stage(cfg, STAGE, args.mode) as st:
+            outcome = run(cfg, args.mode, force=args.force)
+            if outcome.get("skipped"):
+                st.note("skipped: checkpoint current")
+                print("01_audit: up to date (use --force to rebuild)")
+                return 0
+            decision = outcome["decision"]
+            st.note(f"verdict={decision['verdict']} "
+                    f"pending={','.join(decision['pending_full_run']) or 'none'}")
+            print(f"01_audit: verdict {decision['verdict']}")
+            for check in decision["checks"]:
+                print(f"  {check['id']} {check['status']:<17} "
+                      f"{check['verdict']:<8} {check['value']}")
+            print(f"  wrote {outcome['written']['out_dir']}")
+    except (RuntimeError, FileNotFoundError, KeyError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
