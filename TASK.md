@@ -20,7 +20,7 @@ You run on a Raspberry Pi with limited RAM. Game tracking here is a ~100 MB SAMP
 - Official competition docs and rules are the source of truth; third-party repos are unverified hints. No external data or external win-probability models unless the rules permit them.
 - Log decisions and reasons in /notes/decisions.md. Report null results honestly.
 - Fixed seeds, scripts not ad-hoc cells, strict sequential gating.
-- Before the first full-data run, write /notes/prereg.md fixing: the leverage definition and bin cutoffs, max-effort definition, outcome, controls, matching rules, minimum efforts per player, smallest effect of interest, equivalence margin, reliability thresholds. Do not change it after seeing full-data results; log any deviation as exploratory.
+- Every design choice (leverage definition and bin cutoffs, max-effort definition, outcome, controls, matching rules, minimum efforts per player, smallest effect of interest, equivalence margin, reliability thresholds) is logged in /notes/decisions.md. **There is no pre-registration document in this project**; a missing document is never a blocker. A real blocker is missing required data or fields.
 
 ## Engineering
 - Scripts take `--mode sample|full` and `--force`, one code path for both. Paths, thresholds and sizes live in config.yaml; no magic numbers.
@@ -52,36 +52,36 @@ Go/no-go: stop if a required field is missing, leverage cannot be defined withou
 2. Combine ceiling (run for real if the Combine data fits in RAM).
 - Smooth the speed curve and fit v(t) = vmax * (1 - exp(-t/tau)) per attempt on straight-line drills; derive a0 = vmax/tau. Do not differentiate raw positions for acceleration.
 - Pool attempts per player with hierarchical shrinkage. Use shrunken estimates with standard errors everywhere downstream; never a best attempt.
-- Keep at most three features, chosen by ICC and VIF fixed in prereg. Keep original attempt numbers and real clock time.
+- Keep at most three features, chosen by ICC and VIF fixed in notes/decisions.md. Keep original attempt numbers and real clock time.
 - Sanity checks: flag speeds above 12 yd/s, duplicate attempts, gaps inside the peak window. Interpolate gaps under 0.5 s only outside peak windows.
 - Output a per-player feature table with uncertainty (SE).
 
 3. Game efforts and leverage (full data only for final; scripted and unit-tested now).
 - 00_thresholds.py writes outputs/thresholds.json (effort cutoffs, leverage bin cutoffs, minimum efforts, garbage-time rule). Provenance is "PLACEHOLDER_SAMPLE" in sample mode and "FULL" in full mode; scripts 03 to 05 assert provenance == "FULL" in full mode. Never set thresholds from the sample. Freeze before Phase 4.
 - Identify route snaps (WR; TE restricted to pass-route snaps; state that TE blocking exertion is invisible to the chips). Derive route family, and route depth **geometrically as depth at the break** (D61): rotate into the play frame, smooth with the existing centred median, find the first sustained ≥45° turn over 0.3 s after a ≥0.8 s stem, and take downfield displacement at that frame. A route with no detectable break keeps `break_found = False` and a **missing** depth — never impute it, and never use `pass_length` or start-to-end displacement as depth.
-- Leverage (pre-snap information only): use the provided win probability if available, defined as the absolute change in win probability that the play outcome could produce, or a leverage index derived from score margin, time remaining, down, distance and field position with the formula fixed in prereg. Bins (for example low, medium, high) set from counts in prereg. Never use post-snap information (play result, target, completion).
+- Leverage (pre-snap information only): use the provided win probability if available, defined as the absolute change in win probability that the play outcome could produce, or a leverage index derived from score margin, time remaining, down, distance and field position with the formula fixed in notes/decisions.md. Bins (for example low, medium, high) set from counts, logged in notes/decisions.md. Never use post-snap information (play result, target, completion).
 - Max-effort definition: fixed before looking at outcomes and independent of leverage and of play result where possible (for example, routes with a minimum depth and duration, not only targeted routes). If the definition requires the ball in the air or a target, note that this conditions on outcomes and run a sensitivity version without it.
 - Per effort: max speed, peak acceleration, route family, depth, time to throw if available, defender distance if available, cumulative load before the effort (distance and count of high-intensity efforts so far in the game), game clock, quarter, score margin, down and distance, field position.
 - Outcome: log of max speed on the effort. Secondary outcome: effort fraction (speed / shrunken vmax). Keep the ceiling out of the primary outcome so ceiling error cannot create an effect; the within-player design absorbs the ceiling itself.
 - Write one row per effort; modeling stages read only these tables.
 
 4. Models.
-- Primary (within-player): log(max_speed) ~ leverage + route family + depth + time_to_throw (if available) + cumulative_load + quarter + score margin + down and distance + (1 + leverage | player). **Depth is the D61 break depth (continuous, centred) plus a `break_found` indicator**; it is a control — report it, never interpret it. Estimand: the population-level coefficient on leverage. Player-clustered SEs. Convergence fallbacks, logged in decisions.md: (1) uncorrelated random effects (1|player) + (0+leverage|player); (2) player fixed effects; (3) random intercept only.
+- Primary (within-player): log(max_speed) ~ leverage + route family + depth + time_to_throw (if available) + cumulative_load + quarter + score margin + down and distance + (1 + leverage | player). **Depth is the D61 break depth (continuous, centred) plus a `break_found` indicator**; it is a control — report it, never interpret it. Estimand: the population-level coefficient on leverage. Player-clustered SEs. **Power limitation (stated, not a gate):** at the configured 40 efforts/player the achieved analytic MDE is 0.0443 log-speed (D60), above the 0.03 smallest effect of interest; the report must state the achieved MDE alongside every interval. The smallest effect of interest stays 0.03 and no minimum-efforts-per-player requirement is imposed. Convergence fallbacks, logged in decisions.md: (1) uncorrelated random effects (1|player) + (0+leverage|player); (2) player fixed effects; (3) random intercept only.
 - Matched design (sensitivity): within each player, coarsened exact matching of high- and low-leverage efforts on route family, depth bin, quarter and load bin; compare matched pairs with a clustered bootstrap.
 - Headroom moderation (secondary): add leverage x baseline utilization, where baseline utilization = the player's median effort fraction on low-leverage max-effort routes. Estimate it in an independent half of the player's low-leverage efforts, not the ones used in the comparison, to avoid regression-to-the-mean artifacts. Also test leverage x ceiling (vmax, tau). Handle error in ceiling and utilization with posterior SEs and report corrected and naive estimates.
 - Ceiling bound check: verify that predicted effort fraction under high leverage does not exceed the plausible ceiling; report exceedance rates by leverage bin.
 - Dose-response: estimate the effect across leverage bins and report whether it is monotone.
 - Repeat for TE as replication; label exploratory if the sample is small.
-- Per-player leverage slopes: report only if model-based reliability (slope variance / (slope variance + mean squared SE)) exceeds the prereg threshold. Do not use odd/even split-half.
+- Per-player leverage slopes: report only if model-based reliability (slope variance / (slope variance + mean squared SE)) exceeds the reliability threshold fixed in notes/decisions.md. Do not use odd/even split-half.
 
 5. Validation.
 - Leverage permutation: shuffle leverage labels within player-game (and within route family); the effect should vanish.
 - Time-and-load confound check: refit with leverage orthogonalized to game time and cumulative load; report whether the effect survives. High leverage clusters late in games, so a leverage effect that disappears here is a fatigue or game-clock effect.
 - Placebos: leverage should not predict route depth or other pre-snap features after matching; the effect should be weaker or absent on non-max-effort plays.
 - Tactical-demand checks: include defender distance and time to throw where available; run a version restricted to plays with comparable time to throw. State that defensive adjustments and offensive play-calling in high-leverage situations cannot be fully separated from receiver effort.
-- Garbage time: exclude it per the prereg rule; report results with and without.
+- Garbage time: exclude it per the rule in notes/decisions.md; report results with and without.
 - Sensitivity: leverage definition and bin cutoffs, effort threshold, matching tolerances, minimum efforts per player, excluding the final two minutes of each half, alternate ceiling features.
-- State final sample sizes and the smallest detectable effect. Run an equivalence test against the prereg margin; interpret a null as informative only if the interval excludes the smallest effect of interest.
+- State final sample sizes and the smallest detectable effect. Run an equivalence test against the equivalence margin fixed in notes/decisions.md; interpret a null as informative only if the interval excludes the smallest effect of interest.
 
 6. Deliverables. Public Kaggle notebook and writeup within official limits (placeholders for results until the full run), max 5 figures. Sections: problem, data audit, ceiling model, leverage definition, results, headroom, limitations. /notes/limitations.md lists every threat and mitigation (tactical demand in high-leverage moments, confounding with fatigue and game time, conditioning on max-effort definitions, rare high-leverage efforts, draftee-only selection, short follow-up for the 2025 class, no direct measure of psychological state).
 
@@ -100,7 +100,7 @@ Go/no-go: stop if a required field is missing, leverage cannot be defined withou
 - .gitignore data; commit only code, configs, notes and synthetic fixtures.
 
 ## Stop and write to blockers.md if
-A required Combine or game field is missing; leverage cannot be defined from permitted data; too few receivers have efforts in both leverage extremes; leverage is nearly collinear with game time and load; Combine features are unreliable; thresholds provenance is not "FULL" in a full run; prereg.md is missing before a full run; or any instruction conflicts with competition rules.
+A required Combine or game field is missing; leverage cannot be defined from permitted data; too few receivers have efforts in both leverage extremes; leverage is nearly collinear with game time and load; Combine features are unreliable; thresholds provenance is not "FULL" in a full run; or any instruction conflicts with competition rules.
 
 ## Layout and run order
 /data/raw /data/interim /src /notebooks /notes /outputs/figures

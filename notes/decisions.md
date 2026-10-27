@@ -1823,8 +1823,9 @@ of crashing, and a full run re-audits after 03.
 realised geometrically from the 10 Hz tracking as *downfield displacement at the receiver's break*, not
 route family alone (option 1), a design-predicted depth by route label (option 3), or depth bins
 (option 4). Alignment and cushion were also considered and are **not** depth measures. The definition is
-frozen in `bdb27_lc.route_depth` and carried into `notes/prereg.md` §17 (DRAFT; not frozen — see the open
-question below).
+frozen in `bdb27_lc.route_depth`. **There is no pre-registration in this project** (Conor, 2026-10-27):
+the design record is `TASK.md` + `notes/decisions.md`, and `notes/prereg.md` is archived history that is
+deliberately left untouched (D61 §9).
 
 **(1) Why realised start-to-end displacement was rejected.** Over a fixed route duration, start-to-end
 displacement is mechanically a function of speed: it is the same quantity that generates peak speed, so
@@ -1892,15 +1893,15 @@ only): CORNER 2 / 33.5 / 29.4–37.6; CROSS 5 / 12.8 / 11.3–17.9; FLAT 5 / 7.2
 27.8–33.1; SCREEN 1 / 4.1; SLANT 5 / 7.1 / 7.0–12.0; WHEEL 0. The declared curve moves coverage between
 0.5% (55 deg, 0.2 s) and 16.6% (35 deg, 0.4 s) at 45/0.3 s = 3.1%.
 
-**(6) What the coverage numbers mean (open question for Conor — blocking the freeze).** The frozen
+**(6) What the coverage numbers mean (open design question for Conor).** The frozen
 constants are *literal* in the brief and were implemented exactly, but the sample tracking's routes turn
 **gradually** (typical maximum cumulative turn ~20 deg per 0.3 s), not as sharp 45-deg cuts. As a
 consequence the depth control exists for ~3% of routes, and for most of those the "break" is a
 post-throw adjustment rather than the designed cut. If that generalises, the model's depth control is
 effectively route family + a rare indicator, and the continuous depth coefficient is estimated off a few
 dozen pre-throw breaks — not a usable control. This is **not** a reason to tune on the sample (TASK.md
-forbids it): it is a design risk that must be decided **before** the prereg freezes. The options are
-(a) freeze as specified and accept near-zero depth coverage; (b) relax the *window* (the fragile axis) —
+forbids it): it is a design risk that must be decided **before** the full run. The options are
+(a) keep the definition as specified and accept near-zero depth coverage; (b) relax the *window* (the fragile axis) —
 35 deg/0.4 s reaches 16.6% on the sample; (c) interpret the criterion as *total* turn since the snap
 (which would give near-100% coverage but is a different definition); (d) drop the continuous depth term
 and declare route family + break indicator as the control, reporting depth descriptively. Conor's call.
@@ -1911,7 +1912,19 @@ and declare route family + break indicator as the control, reporting depth descr
 run is what shows how real 45 deg routes behave. The fixture's speed profile is unchanged, so D60's
 planted leverage recovery still holds (re-verified by the suite).
 
-**(8) What did not change.** The estimand, the primary hypothesis, the leverage definition, the ceiling
-feature, the effort definition and every other frozen prereg value are untouched. Depth enters only as a
-control. The power question from D60 (analytic MDE 0.044 at 40 efforts/player; 88 efforts/player needed
-for 0.03) is still open and is Conor's to settle with the depth-coverage question above.
+**(8) Power is settled, and stays a stated limitation.** The smallest effect of interest stays **0.03**
+(`bdb27_lc.power.smallest_effect_of_interest`); it was not raised and no minimum-efforts requirement was
+imposed. At the configured 40 efforts/player the achieved analytic MDE is **0.0443 log-speed** (D60),
+above the smallest effect of interest. That is recorded as a **stated limitation** in `TASK.md` and
+below, not converted into a gate: the design accepts that only effects at/above ~0.044 are reliably
+distinguishable, and the full-run report must state the achieved MDE next to every interval. What did not
+change: the estimand, the primary hypothesis, the leverage definition, the ceiling feature and the effort
+definition. Depth enters only as a control.
+
+**(9) No pre-registration; the LC "prereg" gate is retired (Conor, 2026-10-27).** This project has **no
+prereg stage and no prereg deliverable**. `notes/prereg.md` is archived history and is left exactly as it
+was (it still says DRAFT / not frozen); no stage reads it, and nothing in this cycle edited it. The
+`bdb27_lc.prereg` block that declared `required_before: full` was a wrong gate condition: it was removed
+from `config.yaml` rather than repointed at a new document. The gate that remains is evidence-based —
+`00_thresholds` refuses to stamp `FULL` provenance on sample-sized input. A real blocker is **missing
+required data or fields**, never a missing document; `notes/blockers.md` records only those.

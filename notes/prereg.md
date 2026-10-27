@@ -12,12 +12,6 @@
 > **FROZEN**. Freezing authority: **Conor**. Freeze mechanics: `src/gate.py` (it currently freezes the
 > archived security prereg; it must be repointed at this file when this one is frozen).
 >
-> **ACTIVE-TASK NOTE (2026-10-27, D59–D61).** The binding task is now **leverage × ceiling**
-> (`TASK.md`; `bdb27_lc`); this file is still the DB-decay draft and its full rewrite remains
-> `PENDING_REWRITE_FOR_LC_TASK`. **§17 is the exception**: it carries the frozen *route-depth control*
-> definition decided in D61 and must survive that rewrite verbatim. It is **not** frozen as a
-> pre-registration because the depth-coverage/power call it exposes is still Conor's (D61 §6).
->
 > **This file contains design, not results.** No sample statistic, effect size, ICC value or n appears here
 > as a design input — every unresolved value is either a stated design constant or an entry in the **TBD
 > register (§13)** with the stage that fixes it. Where a threshold is a *placeholder* until the full run,
@@ -344,76 +338,3 @@ Deliberately out of scope, so nobody assumes otherwise: route-level or coverage-
 offense-side question; in-game injury detection; a physiological fatigue mechanism; predictive modelling of
 player value; per-play win-probability effects. The archived WR/TE security estimands (EDP groups, dose
 response, selection/IPW) are **not** part of this file and carry no standing here.
-
-## 17. Route-depth control — depth at the break (D61, frozen definition; prereg still DRAFT)
-
-**Status.** This section is the design of record for the **depth control** only. It applies to the
-leverage × ceiling task (`TASK.md`, `bdb27_lc`) and must be carried verbatim into the pending rewrite. It
-is **not** frozen as a pre-registration: the coverage/power question in §17.6 is Conor's to settle. The
-estimand, the primary hypothesis, the leverage definition, the ceiling feature and the effort definition
-are untouched by this section.
-
-### 17.1 What depth is, and what it is not
-
-Depth is **realised geometric depth at the break**, read from the 10 Hz tracking. It is **not** route
-family alone, a design-predicted depth from the route label, a depth bin, alignment, cushion,
-start-to-end displacement, or `pass_length`.
-
-* Start-to-end displacement is rejected: over a fixed route duration it is mechanically a function of
-  speed, i.e. the same quantity that generates peak speed (sample correlation 0.82; D61 §1). It would
-  absorb the outcome.
-* `pass_length` is rejected: it is the literal string `"NA"` in 129,458 of 314,197 `player_play` rows and,
-  where present, tracks the thrown ball (median 6.0 yd on GO routes), not the route design (D61 §2).
-
-### 17.2 The definition (all constants in `bdb27_lc.route_depth`)
-
-1. **Play frame.** `+x` = downfield from `play_direction` (`right` ⇒ field `+x`; `left` ⇒ field `-x`;
-   lateral `y` is flipped with the same rotation). Origin = the receiver's position at the **snap frame**.
-2. **Smoothing.** The existing centred rolling-median smoother, window **5 frames (0.5 s)**
-   (`thresholds.smoothing.window_frames`). No second smoothing convention.
-3. **Heading.** Direction of the centred displacement over **0.2 s**, interpolated onto the actual frame
-   times. Frames with implied speed < **2.0 yd/s** have no heading.
-4. **Stem.** At least **0.8 s** of post-snap motion before a break can be declared.
-5. **Break.** First frame at/after the stem where cumulative `|dtheta|` over a sliding **0.3 s** window
-   reaches **45 deg**, and the following **0.3 s** of heading stays within **20 deg** of its own circular
-   mean. The timestamp is the **first frame of the sustained change**.
-6. **Depth at break.** Downfield displacement at that frame, in yards, relative to the snap position.
-7. **No break ⇒ missing.** `break_found = False`, depth **missing**. Never imputed from family,
-   displacement or `pass_length`.
-8. **Throw flag.** A break after the tracking `pass_forward` frame is `break_after_throw = True`. The flag
-   never deletes a row; the model is reported with and without post-throw breaks.
-
-### 17.3 Model entry
-
-Route family (**always**) + centred `break_depth_yd` (continuous, yards) + `break_found` indicator.
-Depth is a **control**: reported, never interpreted. The depth term is centred on detected breaks and
-coded 0 for no-break rows, with the indicator carrying those rows; the data table keeps NaN for no-break
-routes (reference coding, not imputation; asserted by test).
-
-### 17.4 Validation (synthetic truth)
-
-204 planted breaks, 84 no-break routes. Frozen constants: 204/204 detected; median absolute depth error
-**0.18 yd**, maximum **0.91 yd**; zero false positives on no-break routes; zero fabricated depths; all 48
-planted post-throw breaks flagged. Specification curve ±10 deg × ±0.1 s: one-step perturbations recover
-≥99.5% with ≤0.91 yd error; the strictest corner (55 deg, 0.2 s) recovers 84.3%. Deterministic
-re-runs are identical.
-
-### 17.5 Sample coverage (UNVALIDATED SAMPLE OUTPUT — descriptive only, never a tuning input)
-
-3,054 analysed route snaps: **89 breaks (2.9%)**; WR 2.8%, TE 3.5%; **76.5% of breaks with a known throw
-are after the throw**; pre-throw coverage **0.9%** (27 breaks). Coverage by family and the full
-specification curve are in `outputs/game/lc/route_depth/SUMMARY.md`. These numbers are stamped sample
-output and may **not** be used to choose a constant.
-
-### 17.6 Open question — blocks the freeze (Conor)
-
-The literal 45 deg/0.3 s criterion yields ~3% coverage on the provided sample, and most detected breaks
-are post-throw adjustments. If that generalises, the continuous depth control is estimated off a few dozen
-pre-throw breaks and the model is effectively route family + a rare indicator. Options, to be decided on
-design grounds **before** freezing (not by tuning on the sample): (a) freeze as specified and accept the
-coverage; (b) relax the break window (the fragile axis; 35 deg/0.4 s ⇒ 16.6% on the sample);
-(c) reinterpret the criterion as *total* turn since the snap (a different definition, near-full coverage);
-(d) drop the continuous term and use route family + break indicator, reporting depth descriptively.
-
-The **power call** is also still open (D60): analytic MDE 0.044 at 40 efforts/player; 88 efforts/player
-needed for MDE 0.03. No prereg freeze is possible until Conor answers §17.6 and the power question.

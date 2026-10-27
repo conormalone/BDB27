@@ -6,6 +6,11 @@
 # No value below is `null`/`TBD`: a `--mode full` run is gated on this (src/gate.py) — all keys the
 # consuming stage needs must be non-null and notes/prereg.md must read FROZEN. Sample mode may run with
 # a-priori placeholders, always labelled `UNVALIDATED SAMPLE OUTPUT`.
+#
+# NOTE (D61, 2026-10-27): the active leverage x ceiling task has NO pre-registration stage. The
+# bdb27_lc.prereg gate condition was retired; notes/prereg.md is archived history and is not read by any
+# stage. The only full-run gate is evidence-based (`00_thresholds` requires genuinely FULL input). The
+# ceiling-v1 comments above describe the retired task and are kept for provenance only.
 
 project: BDB27
 pipeline_version: 1       # D49: bumped whenever a config change must invalidate every checkpoint
@@ -1021,12 +1026,6 @@ bdb27_lc:
       TE: 10
     require_wp_available: true
     require_thresholds_provenance: FULL
-
-  prereg:
-    path: notes/prereg.md
-    status: PENDING_REWRITE_FOR_LC_TASK
-    required_before: full
-    frozen_utc: ""
 
   fixture:
     seed: 20270107

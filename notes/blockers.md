@@ -20,8 +20,9 @@ support counts are complete rather than dropped: `play_direction` is missing on 
 provided sample because the sample covers 333 of the 967 games that contain WR/TE routes — a sample-scope
 limit, not a missing field. The continuous depth control is therefore estimated off very few pre-throw
 breaks if this generalises. This does **not** stop the implementation; it is recorded here and in
-`notes/decisions.md` D61 §6 because it must be settled **before** the prereg freezes. Constants were not
-changed (TASK.md forbids tuning on sample output).
+`notes/decisions.md` D61 §6 because it must be settled **before** the full run. Constants were not
+changed (TASK.md forbids tuning on sample output). There is no prereg in this project (D61 §9); the
+absence of a document is not a blocker.
 
 The sections below are the retired cycles' record, preserved for history.
 
@@ -51,8 +52,9 @@ Trigger a blocker on:
 - **Matched receivers or route snaps below config minima**.
 - **Key Combine features unreliable** (below the ICC threshold).
 - **Thresholds provenance not `FULL` in a full run**.
-- **`notes/prereg.md` missing / unfrozen before a full run**.
 - Any instruction **conflicting with competition rules**.
+
+(A missing or unfrozen pre-registration is **not** a blocker: the project has no prereg stage; D61 §9.)
 
 ## Watch-items (documented, not blockers)
 
