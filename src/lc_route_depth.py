@@ -17,9 +17,9 @@ Frozen definition (``bdb27_lc.route_depth`` holds every number):
 3. heading theta(t) from smoothed velocity over a 0.2 s window;
 4. the stem is at least 0.8 s of post-snap motion;
 5. the break is the first frame inside the stem where the cumulative |dtheta|
-   over a 0.3 s window reaches 45 deg and the new heading persists within
+   over a 0.4 s window reaches 35 deg and the new heading persists within
    20 deg for at least 0.3 s; the break timestamp is the first frame of that
-   sustained change;
+   sustained change (D62 relaxed 45 deg/0.3 s to 35 deg/0.4 s);
 6. depth at break is the downfield displacement at that frame, in yards,
    relative to the snap position;
 7. a route with no detectable break keeps ``break_found = False`` and a
@@ -514,13 +514,16 @@ def sensitivity_grid(cfg: dict) -> list[dict]:
     """The declared specification curve: threshold and window perturbations.
 
     The heading window stays at the frozen value; the curve is the required
-    ±10 deg on the break angle crossed with ±0.1 s on the break window.
+    ±10 deg on the break angle crossed with ±0.1 s on the break window.  The
+    chosen point (``break_angle_deg`` x ``break_window_s``) is returned first
+    and flagged ``primary`` so every table can name the row the answer uses.
     """
     p = params(cfg)
     block = p.get("robustness", {})
     angles = block.get("break_angle_deg", [float(p["break_angle_deg"])])
     windows = block.get("break_window_s", [float(p["break_window_s"])])
     heading = float(p["heading_window_s"])
+    chosen = (float(p["break_angle_deg"]), float(p["break_window_s"]))
     specs = []
     for angle in angles:
         for window in windows:
@@ -528,5 +531,9 @@ def sensitivity_grid(cfg: dict) -> list[dict]:
                 "break_angle_deg": float(angle),
                 "break_window_s": float(window),
                 "heading_window_s": heading,
+                "primary": (float(angle), float(window)) == chosen,
             })
+    specs.sort(key=lambda spec: (not spec["primary"],
+                                 -spec["break_angle_deg"],
+                                 spec["break_window_s"]))
     return specs

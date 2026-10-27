@@ -1839,6 +1839,8 @@ route design: median `pass_length` on GO routes is **6.0 yd** (HITCH 6.0, CROSS 
 Those are target distances on completed/incomplete throws, not stem depths. Not usable as a control.
 
 **(3) The exact definition (frozen constants, all in `bdb27_lc.route_depth`).**
+*Superseded on resolution only (D62): the break is 35 deg over 0.4 s, not 45 deg over 0.3 s. Every other
+step below is unchanged and still current.*
 
 1. Rotate each play into the play frame: `+x` = downfield. `play_direction == "right"` means field `+x`
    is downfield; `"left"` means `-x`. The rotation also flips lateral `y` so handedness is preserved. The
@@ -1884,7 +1886,9 @@ depth. `GO`, `WHEEL` and `FLAT` plant no break. Results at the frozen constants:
   window is the fragile axis.
 * Determinism: same seed → byte-identical tables (test).
 
-**(5) Sample coverage (UNVALIDATED SAMPLE OUTPUT — not a finding, and not a tuning input).** 3,054 WR/TE
+**(5) Sample coverage at 45 deg/0.3 s (UNVALIDATED SAMPLE OUTPUT — not a finding, and not a tuning input).**
+*Superseded by D62 §(3), which reruns the same stage at 35 deg/0.4 s.*
+3,054 WR/TE
 route snaps with tracking (WR 2,623; TE 431; 143 players). **89 breaks (2.9%)**: WR 74 (2.8%), TE 15
 (3.5%). Of the 81 breaks with a known throw frame, **62 (76.5%) are after the throw**. Only **27 breaks
 (0.9% of route snaps)** are before the throw. Coverage by family (count / median / IQR, detected breaks
@@ -1893,7 +1897,8 @@ only): CORNER 2 / 33.5 / 29.4–37.6; CROSS 5 / 12.8 / 11.3–17.9; FLAT 5 / 7.2
 27.8–33.1; SCREEN 1 / 4.1; SLANT 5 / 7.1 / 7.0–12.0; WHEEL 0. The declared curve moves coverage between
 0.5% (55 deg, 0.2 s) and 16.6% (35 deg, 0.4 s) at 45/0.3 s = 3.1%.
 
-**(6) What the coverage numbers mean (open design question for Conor).** The frozen
+**(6) What the coverage numbers mean (open design question for Conor).** *Resolved by D62: Conor chose
+option (b), the relaxed window. This paragraph is kept as the record of the question.* The frozen
 constants are *literal* in the brief and were implemented exactly, but the sample tracking's routes turn
 **gradually** (typical maximum cumulative turn ~20 deg per 0.3 s), not as sharp 45-deg cuts. As a
 consequence the depth control exists for ~3% of routes, and for most of those the "break" is a
@@ -1906,7 +1911,8 @@ forbids it): it is a design risk that must be decided **before** the full run. T
 (which would give near-100% coverage but is a different definition); (d) drop the continuous depth term
 and declare route family + break indicator as the control, reporting depth descriptively. Conor's call.
 
-**(7) Fixture design choices.** Planted post-break angles are 60–120 deg, deliberately clear of the
+**(7) Fixture design choices.** *Superseded by D62 §(5): the fixture now also plants 38 deg and 42 deg
+corners inside the 35–45 deg band.* Planted post-break angles are 60–120 deg, deliberately clear of the
 45 deg threshold, because a 45 deg geometric corner is exactly at the estimator's resolution limit
 (smoothing consumes a few degrees). This is a fixture choice, not a change to the detector; the sample
 run is what shows how real 45 deg routes behave. The fixture's speed profile is unchanged, so D60's
@@ -1928,3 +1934,100 @@ was (it still says DRAFT / not frozen); no stage reads it, and nothing in this c
 from `config.yaml` rather than repointed at a new document. The gate that remains is evidence-based —
 `00_thresholds` refuses to stamp `FULL` provenance on sample-sized input. A real blocker is **missing
 required data or fields**, never a missing document; `notes/blockers.md` records only those.
+
+## D62 — 2026-10-27 — Break resolution relaxed to 35 deg / 0.4 s (D61 option 2)
+
+**Decision (Conor, 2026-10-27).** The route-depth control keeps D61's *depth at the break* definition, but
+the break is now a cumulative **|dtheta| >= 35 deg within 0.4 s** — **option 2** of the four put to him in
+D61 §6. Rejected: (1) freezing 45 deg/0.3 s and accepting 2.9% coverage / 0.9% pre-throw; (3)
+reinterpreting the criterion as *total* turn since the snap (near-100% coverage but a different
+definition); (4) dropping the continuous term for route family + alignment + cushion. Option 2 was chosen
+because the specification curve already showed 35 deg/0.4 s at 16.6% on the sampled tracks, i.e. the
+coverage problem was a resolution problem, not a definition problem. The purpose of this cycle was to
+confirm that on the full sample stage and measure what it does to the pre-throw rate.
+
+**(1) Exactly two constants changed.** In `bdb27_lc.route_depth`: `break_angle_deg` 45.0 -> **35.0** and
+`break_window_s` 0.3 -> **0.4**. **Nothing else moved**: the play-frame rotation and snap origin, the
+5-frame centred rolling-median smoother, the 0.2 s heading window, the 2.0 yd/s heading-speed floor, the
+0.8 s stem, the 20 deg/0.3 s sustained-heading requirement, the `max_gap_s` rule, the "timestamp = first
+frame of the sustained change" rule, the throw-frame flagging and the model entry (family + centred depth
++ indicator) are all as frozen in D61. `test_config_break_constants_are_the_chosen_relaxation` asserts
+every one of those values, so a future edit cannot drift them silently. One variable at a time: the
+constants were **not** tuned further after this run (TASK.md forbids tuning on sample output), and no
+other threshold was touched.
+
+**(2) Declared curve.** The robustness block (`[35, 45, 55] deg` x `[0.2, 0.3, 0.4] s`) is unchanged as a
+*set*; the chosen point is now flagged `primary` and sorted first in `route_depth_sensitivity.csv` and the
+`SUMMARY.md` table, so every table names the row the answer uses.
+
+**(3) Sample-stage evidence (UNVALIDATED SAMPLE OUTPUT — not a finding, not a tuning input).** Rerun of
+`src/03_route_depth.py --mode sample` on the same 3,054 WR/TE route snaps with tracking (WR 2,623; TE 431;
+143 players; 967 games). Old numbers (45/0.3) alongside:
+
+| quantity | 45 deg / 0.3 s | 35 deg / 0.4 s |
+|---|---:|---:|
+| breaks detected | 89 (2.9%) | **448 (14.7%)** |
+| WR | 74 / 2,623 (2.8%) | **374 / 2,623 (14.3%)** |
+| TE | 15 / 431 (3.5%) | **74 / 431 (17.2%)** |
+| breaks with a known throw frame | 81 / 89 (91.0%) | 401 / 448 (89.5%) |
+| ... of those, before the throw | 19 (23.5%) | **164 (40.9%)** |
+| pre-throw share of route snaps (known throw only) | 0.6% | **5.4%** |
+| post-throw share of known-throw breaks | 76.5% | **59.1%** |
+| module `break_rate_before_throw` (includes breaks with no throw frame) | 27 (0.9%) | **211 (6.9%)** |
+| median break depth (IQR) | — | 10.94 yd (5.27–17.37) |
+| median break time from snap (IQR) | — | 3.45 s (2.30–4.60) |
+
+The module definition of "pre-throw" (`break_found & ~break_after_throw`) includes 47 breaks on routes
+with **no** tracking throw event; the strict count — breaks on routes whose throw frame is known, occurring
+before it — is **164**, and that is the number to quote. Coverage rose **5.0x** overall and the pre-throw
+count rose **8.6x** (19 -> 164) while the post-throw share fell from 76.5% to 59.1%: the relaxation is
+finding earlier, designed cuts, not only late adjustments.
+
+Break depth by route family at 35 deg/0.4 s (detected breaks only; count / median / IQR yd): CORNER 17 /
+24.87 / 20.27–28.10; CROSS 16 / 10.08 / 1.19–17.50; FLAT 27 / 4.32 / 2.16–6.14; GO 66 / 18.89 /
+14.50–24.56; HITCH 93 / 11.50 / 6.71–16.49; IN 76 / 10.04 / 5.49–12.99; OUT 72 / 7.04 / 4.58–12.33;
+POST 23 / 21.20 / 18.23–29.99; SCREEN 15 / 1.00 / 0.27–3.00; SLANT 42 / 5.63 / 4.16–11.50; WHEEL 1 /
+19.60 (single). The ordering is the one a route tree predicts (CORNER/POST deep, OUT/FLAT/SCREEN shallow),
+which is weak evidence that the detector is reading geometry rather than noise.
+
+**(4) How the depth estimate shifts versus 45 deg/0.3 s.** The 89 old detections are a **strict subset** of
+the 448 (0 routes detected only by the old spec; 359 are new). On the 89 routes detected by **both**, the
+depth estimate moves by **median -0.14 yd (IQR -0.33 to 0.00)**, mean |shift| 0.86 yd (dragged by one
+SCREEN outlier at -2.80 yd), Pearson r = 0.954, and 14.6% of routes move by more than 1 yd; median depth
+on that common set is 13.47 yd (new) vs 14.83 yd (old). So the relaxation mostly **adds** routes rather
+than moving the depth of routes already detected — the timestamp rule "first frame of the sustained
+change" walks back over the same frames at either threshold.
+
+**(5) Fixture at the new resolution (truth known).** `ROUTE_BREAKS` now plants two *shallow* corners —
+SLANT 38 deg and CORNER -42 deg — inside the 35–45 deg band that D61 §7 deliberately avoided as
+unresolvable; the other five broken families stay at 60–120 deg. Results at 35 deg/0.4 s: **203/204 planted
+breaks recovered (99.5%)** — 150/150 high-angle, **53/54 shallow**. Recovery error is reported honestly:
+shallow band median 0.36 yd / max 0.78 yd versus high-angle median 0.08 yd / max 0.91 yd (one-sided
+positive bias: the smoothed corner reaches the threshold one frame late). The single miss is a 38 deg
+corner whose measured cumulative turn peaks at ~33 deg, just under the threshold — a genuine
+near-resolution case, not a bug. No-break routes: 84, **0 false positives**, no depth fabricated. Late
+breaks: 48 planted, all flagged. Curve: at 45 or 55 deg the shallow band is invisible *by definition*
+(and 45/0.3 recovers 100% of what it can see), while 35 deg/0.2 s recovers only 86.8% — the **window** is
+the fragile axis, which is why the relaxation moved both constants. On the breaks every spec detects, the
+median depth spread across the whole curve is <= 0.75 yd. Under 0.05 yd position jitter 3/288 tracks flip
+(1.0%): two 38 deg corners on the line and one 120 deg HITCH crossing the sustained-heading test.
+
+**(6) Determinism.** Two consecutive `--mode sample` runs produced byte-identical `route_depth.csv`,
+`route_depth_summary.json`, `route_depth_sensitivity.csv` and `SUMMARY.md` (sha256 of the table:
+`d4fd13a3d2fe42e383dd8e4e1296ff283463d1e6ff0ee8f2868b537ec93474f9`). Fixed seed, single-threaded
+DuckDB, stable sort order.
+
+**(7) Plain judgement: the continuous depth control is still thin.** Coverage is 5x better and the
+geometric ordering by family is right, so the control is no longer absurd. But **164 pre-throw breaks
+across 143 players** is ~1.1 per player, and the headline fit admits post-throw breaks too (448, ~3 per
+player). A continuous depth coefficient identified off that few breaks, on routes where the model already
+carries family fixed effects, will have a wide interval and will mostly restate family. This is **reported,
+not tuned away**: no further threshold change was made, and none should be. If the full run reproduces
+~5% pre-throw coverage, the honest reading is that geometric depth is a **descriptive/rare indicator**, and
+the control should revert to **option 4** (route family + break indicator, depth reported not estimated) —
+which is also what the full run's interval will show in practice. Conversely, if the full tracking (967
+games, 3.3x this sample) lifts pre-throw breaks to the high hundreds, the continuous term becomes
+estimable; that is the one number to check first after the full `03_route_depth` run.
+
+**(8) No prereg.** Per D61 §9 this project has no prereg stage and no prereg deliverable; nothing in this
+cycle created, edited or reinstated one. The design record is `TASK.md` + this file.

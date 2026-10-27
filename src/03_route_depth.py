@@ -226,7 +226,9 @@ def sensitivity(cfg: dict, sens_input: dict) -> list[dict]:
 
 def _markdown(summary: dict, sens: list[dict], mode: str) -> str:
     lines = [
-        "# Route depth at the break — coverage (D61)",
+        f"# Route depth at the break — coverage (D61, break at "
+        f"{summary.get('break_angle_deg', float('nan')):.0f}° over "
+        f"{summary.get('break_window_s', float('nan')):.1f} s — D62)",
         "",
         f"Definition: `{summary['definition']}`. Depth is a CONTROL; these are "
         "coverage diagnostics, not findings.",
@@ -260,14 +262,17 @@ def _markdown(summary: dict, sens: list[dict], mode: str) -> str:
             f"| {row['route_family']} | {row['n_routes']} | {row['n_break_found']} | "
             f"{row['break_rate']:.3f} | {row['median_break_depth_yd']:.2f} | "
             f"{row['iqr_low_yd']:.2f}–{row['iqr_high_yd']:.2f} |")
-    lines += ["", "## Threshold sensitivity (declared curve)", "",
-              "| angle° | window s | heading s | routes | break rate | median yd |",
-              "|---:|---:|---:|---:|---:|---:|"]
+    lines += ["", "## Threshold sensitivity (declared curve; **bold** = the chosen row)", "",
+              "| angle° | window s | heading s | routes | break rate | median yd | primary |",
+              "|---:|---:|---:|---:|---:|---:|---|"]
     for row in sens:
+        mark = "**" if row.get("primary") else ""
         lines.append(
-            f"| {row['break_angle_deg']:.0f} | {row['break_window_s']:.1f} | "
+            f"| {mark}{row['break_angle_deg']:.0f}{mark} | "
+            f"{mark}{row['break_window_s']:.1f}{mark} | "
             f"{row['heading_window_s']:.2f} | {row['n_routes']} | "
-            f"{row['break_rate']:.3f} | {row['median_break_depth_yd']:.2f} |")
+            f"{row['break_rate']:.3f} | {row['median_break_depth_yd']:.2f} | "
+            f"{'yes' if row.get('primary') else ''} |")
     lines += ["", "## Flags (plays the definition could not use)", ""]
     for flag, count in sorted(summary["coverage"]["flag_counts"].items()):
         lines.append(f"- `{flag}`: {count}")
@@ -301,6 +306,8 @@ def main(argv=None) -> int:
             route_family=work["route_family"])
         summary = {
             "definition": RD.params(cfg)["definition_id"],
+            "break_angle_deg": float(RD.params(cfg)["break_angle_deg"]),
+            "break_window_s": float(RD.params(cfg)["break_window_s"]),
             "n_route_snaps": diag["n_route_snaps"],
             "n_route_snaps_analysed": diag["n_route_snaps_analysed"],
             "n_route_snaps_without_tracking": diag["n_route_snaps_without_tracking"],

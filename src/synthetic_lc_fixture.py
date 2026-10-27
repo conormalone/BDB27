@@ -44,6 +44,9 @@ ROUTES = ["GO", "HITCH", "CROSS", "IN", "OUT", "POST", "CORNER", "SLANT",
 #: with 0 deg = straight downfield and a positive angle turning to the
 #: receiver's right.  ``None`` means the fixture plants NO break: the detector
 #: must report ``break_found = False`` and a missing depth for these.
+#: SLANT (38 deg) and CORNER (-42 deg) sit inside the shallow 35-45 deg band the
+#: D62 relaxation exists to resolve; the rest stay well clear of the threshold so
+#: the curve keeps a clean high-angle reference.
 ROUTE_BREAKS = {
     "GO": None,
     "WHEEL": None,
@@ -53,8 +56,8 @@ ROUTE_BREAKS = {
     "IN": (10.0, 90.0),
     "OUT": (9.0, -90.0),
     "POST": (12.0, 60.0),
-    "CORNER": (11.0, -66.0),
-    "SLANT": (4.5, 60.0),
+    "CORNER": (11.0, -42.0),
+    "SLANT": (4.5, 38.0),
 }
 #: Every 5th play plants a deliberately LATE break (a fixed fraction of the
 #: route's total path, which lands at ~2.26 s for every receiver because the
@@ -656,8 +659,8 @@ def _build_world(out_root: Path, players, seed: int, *, world: str, beta: float,
                      "so planted_break_depth_yd is the geometric truth."),
             "definition_id": "depth_at_break_v1",
             "stem_min_s": 0.8,
-            "break_window_s": 0.3,
-            "break_angle_deg": 45.0,
+            "break_window_s": 0.4,
+            "break_angle_deg": 35.0,
             "sustain_window_s": 0.3,
             "sustain_angle_deg": 20.0,
             "heading_window_s": 0.2,

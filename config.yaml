@@ -967,8 +967,9 @@ bdb27_lc:
       secondary: prior_distance_yd
 
   # --- D61: route depth as DEPTH AT THE BREAK (the depth control in the model) ---
-  # Every number below is a design constant frozen in notes/decisions.md D61 and
-  # carried into notes/prereg.md.  The smoother is the existing ceiling smoother
+  # Every number below is a design constant frozen in notes/decisions.md D61
+  # (D62 relaxes only the break resolution: 45 deg/0.3 s -> 35 deg/0.4 s).
+  # The smoother is the existing ceiling smoother
   # (thresholds.smoothing.window_frames); no second smoothing convention exists.
   route_depth:
     definition_id: depth_at_break_v1
@@ -976,8 +977,8 @@ bdb27_lc:
     smoothing_window_frames: 5       # must equal thresholds.smoothing.window_frames (asserted)
     heading_window_s: 0.2            # heading from smoothed velocity over this window
     stem_min_s: 0.8                  # minimum post-snap motion before a break can count
-    break_window_s: 0.3              # cumulative |dtheta| is summed over this window
-    break_angle_deg: 45.0            # cumulative turn that defines a break
+    break_window_s: 0.4              # cumulative |dtheta| is summed over this window (D62)
+    break_angle_deg: 35.0            # cumulative turn that defines a break (D62)
     sustain_window_s: 0.3            # the new heading must persist this long
     sustain_angle_deg: 20.0          # ...within this tolerance
     min_frames: 10                   # below this a track cannot support the definition
