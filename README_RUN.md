@@ -16,6 +16,12 @@
 > `game_tracking_{2023,24,25}.csv` files, and `00_thresholds` refuses to stamp `FULL` on sample-sized
 > input. Current status is `GO_PENDING_FULL_RUN`; see `notes/decisions.md` D59–D60 and
 > `notes/pending_full_run.md`.
+>
+> **D63 (2026-10-28): the deliverable notebook runs this chain.** `notebooks/bdb27_full_run.ipynb`
+> now executes the LC chain above first, then the preserved ceiling-v1 chain, and its **§13** prints
+> break coverage, coverage by route family, and the D63 keep-or-fall-back rule for the continuous
+> `break_depth_yd` control. No terminal is needed for the deciding run. The commands below remain the
+> reference for a headless run and for testing (`python -m pytest tests`, now **97 tests**).
 
 > **Deliverable model:** a **scripts engine** (`src/`) + a **public Kaggle notebook** that runs the same
 > logic end-to-end and renders the writeup figures. Stage scripts take `--mode sample|full` and `--force`
@@ -61,9 +67,22 @@ the drive (or copy the CSVs to a laptop and point `data/raw` there) before any g
 
 ## 3. Run order
 
+**Current chain (D59–D63)** — what the notebook runs first:
+
 ```
-01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 07_security_models → 10_dose_response → 00b_external_proxies → 04_models → 05_validate
+01_audit → 02_combine_ceiling → 00_thresholds → 03_route_depth
 ```
+
+**Retired ceiling-v1 chain (D27–D50, preserved under `src/legacy_ceiling_v1/`)** — still runnable, and
+what §5–§12 of the notebook read:
+
+```
+02_combine_envelope → 06_security → 03_game_demand → 07_security_models → 10_dose_response → 00b_external_proxies → 04_models → 05_validate
+```
+
+`02_combine_envelope` / `03_game_demand` are *different stages* from the LC `02_combine_ceiling` /
+`03_route_depth`, not renames: different code, different outputs. Stage names resolve against `src/`
+first, then the parked tree.
 
 ```bash
 # Phase 1 audit (go/no-go gate); frame-level game items (c/h/i speed+accel) are full-run only

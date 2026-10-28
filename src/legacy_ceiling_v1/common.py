@@ -32,7 +32,23 @@ import duckdb
 import numpy as np
 import yaml
 
-REPO_ROOT: Path = Path(__file__).resolve().parent.parent
+
+def _find_repo_root(start: Path) -> Path:
+    """Repo root = nearest ancestor holding ``config.yaml``.
+
+    D63: the legacy engine was parked under ``src/legacy_ceiling_v1/`` (D59), which moved this
+    file one level deeper and made ``parents[1]`` resolve to ``src/`` — every relative path in
+    ``config.yaml`` then pointed at ``src/data/...``. Walking up to the directory that actually
+    contains ``config.yaml`` is location-independent, so the parked legacy stages still run from
+    where they now live (the deliverable notebook imports them from there).
+    """
+    for candidate in [start, *start.parents]:
+        if (candidate / "config.yaml").exists():
+            return candidate
+    return start.parents[1]
+
+
+REPO_ROOT: Path = _find_repo_root(Path(__file__).resolve().parent)
 DEFAULT_CONFIG: Path = REPO_ROOT / "config.yaml"
 
 _LOGGER_NAME = "bdb27"

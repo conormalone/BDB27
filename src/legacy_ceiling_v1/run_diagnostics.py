@@ -159,9 +159,17 @@ def git_state(repo_root: str | Path) -> dict[str, Any]:
 def check_capabilities(repo_root: str | Path) -> list[dict[str, Any]]:
     """Which D43 capabilities are present in the files on disk."""
     root = Path(repo_root)
+    # D63: these modules were parked under src/legacy_ceiling_v1/ (D59). A capability is a property
+    # of the code, not of its directory, so look next to this file first and fall back to the
+    # historical src/ path. Without this the guard reports a clean checkout as missing D43/D44.
+    here = Path(__file__).resolve().parent
     out: list[dict[str, Any]] = []
     for spec in REQUIRED_CAPABILITIES:
         path = root / spec["path"]
+        if not path.exists():
+            candidate = here / Path(spec["path"]).name
+            if candidate.exists():
+                path = candidate
         detail = ""
         ok = False
         try:

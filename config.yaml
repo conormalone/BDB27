@@ -1003,6 +1003,22 @@ bdb27_lc:
       centre: true                   # depth centred; no scaling (yards stay yards)
       include_after_throw: true      # headline fit keeps every detected break
       exclude_after_throw_sensitivity: true   # sensitivity refit drops them
+    # --- D63: the keep-or-fall-back rule for the continuous depth control ---------------
+    # D62 fixed the resolution (35 deg / 0.4 s) but no number for choosing between the
+    # continuous depth term and the option-4 fallback. This block IS that number. It is
+    # evaluated on FULL data only; sample counts are descriptive and never decide it.
+    # Derivation (D63): a control must be estimated to ~1/3 of the smallest effect of
+    # interest, delta = power.smallest_effect_of_interest / 3 = 0.01; with
+    # sigma = power.assumed_within_player_sd_log_speed = 0.10,
+    # n_min = (1.96 * sigma / delta)^2 = 384.2; x design-effect allowance 1.3 (efforts
+    # cluster within player) = 499.4 -> 500.
+    decision_rule:
+      definition: "continuous_depth_vs_option4"
+      min_pre_throw_breaks: 500        # condition (a): breaks with a known pre-throw timestamp
+      min_families_meeting_bar: 6      # condition (b): families carrying within-family depth
+      min_pre_throw_breaks_per_family: 25   # per-family floor (SE of median depth ~1 yd)
+      fallback: "route_family_plus_break_indicator (D61 option 4)"
+      evaluated_on: FULL               # sample output can never satisfy or fail this rule
 
   power:
     reps: 1000

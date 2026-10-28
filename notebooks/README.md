@@ -11,11 +11,13 @@ require it.
 **The primary interface; no terminal needed.** Open it, set `MODE` (`sample` | `full`) and — only if the
 data is not in the usual place — `DATA_DIR`, then **Run All**. It:
 
-- runs the `../src/` engine end-to-end in the frozen order
-  `01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 07_security_models
-  → 00b_external_proxies → 04_models → 05_validate`, invoking
-  each stage through **its own entry point** (so `--mode` / `--force` / checkpoint behaviour and the
-  pre-registration **freeze gate** all apply exactly as on the command line);
+- runs the `../src/` engine end-to-end, **current chain first** (D63):
+  `01_audit → 02_combine_ceiling → 00_thresholds → 03_route_depth`, then the preserved ceiling-v1
+  chain `02_combine_envelope → 06_security → 03_game_demand → 07_security_models → 10_dose_response
+  → 00b_external_proxies → 04_models → 05_validate`, invoking each stage through **its own entry
+  point** (so `--mode` / `--force` / checkpoint behaviour and the checkout guard all apply exactly as
+  on the command line). `02_combine_ceiling`/`03_route_depth` are the LC stages;
+  `02_combine_envelope`/`03_game_demand` are different, retired stages — not renames;
 - is **cross-platform** (ARM64 Pi, Windows, macOS) and **Kaggle-ready** (auto-detects the attached dataset
   under `/kaggle/input/…`, otherwise uses `../data/raw`) — `pathlib` only, no bash-only calls, and the
   peak-RAM probe (`../src/common.py`) is portable too: POSIX `resource.getrusage` where present, a stdlib
@@ -23,17 +25,23 @@ data is not in the usual place — `DATA_DIR`, then **Run All**. It:
 - renders the **≤5 writeup figures** into `../outputs/figures/` and shows them inline;
 - **degrades gracefully**: with only partial data it runs everything it can and reports the game-side
   stages as `PENDING FULL RUN`, demonstrating the game-side path on the committed synthetic fixture
-  (planted-ceiling `binding` **and** `null`), and ends with **§8 Headline results**, which prints the
-  pre-declared verdict from the output files (or a `PREVIEW ONLY — not a result` banner in sample mode).
+  (planted-ceiling `binding` **and** `null`);
+- **prints the current task's evidence in §13** — break coverage, coverage by route family and the
+  D63 keep-or-fall-back rule for the continuous `break_depth_yd` control, all read from
+  `../outputs/game/lc/route_depth/` with no hand-typed numbers. In `sample` mode §13 names the missing
+  full-data inputs and states that the decision is **not taken** on sample counts.
 
 **Labels.** `sample` outputs → `UNVALIDATED SAMPLE OUTPUT`; `full` outputs → `FULL`; fixture outputs →
-`SYNTHETIC FIXTURE (not a finding)`. §8 computes the verdict only when `MODE="full"` **and** the
-thresholds and security outputs are `FULL`; otherwise it shows the preview banner and suppresses it.
+`SYNTHETIC FIXTURE (not a finding)`. §13 takes the D63 decision only when `MODE="full"` **and** the
+route-depth and thresholds provenance are both `FULL`. §8–§12 are the **retired** ceiling-v1 results:
+§8 prints its pre-declared verdict only on a full run with `FULL` security outputs, otherwise a
+`PREVIEW ONLY — not a result` banner.
 
 **Checkpoints.** `CLEAN=False` (default) keeps existing stage outputs; `FORCE_STAGES=["…"]` rebuilds
 only the named stages. `CLEAN=True` is inert unless `CLEAN_CONFIRM="DELETE"`; when armed it deletes
-every stage output under `outputs/` — including the Combine envelope — and so forces a full ceiling
-refit (the slowest stage). It prints the directories and file counts before deleting.
+every stage output under `outputs/` (including the Combine envelope) **and the LC stage checkpoints
+under `../data/interim/checkpoints/`**, so the next run is a genuine rebuild rather than a skip against
+a checkpoint whose outputs no longer exist. It prints the directories and file counts before deleting.
 
 ## Conventions
 - **Self-contained**: each notebook opens with its imports + data paths and runs top-to-bottom, no hidden state.

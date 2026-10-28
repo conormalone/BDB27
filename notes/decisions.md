@@ -2031,3 +2031,127 @@ estimable; that is the one number to check first after the full `03_route_depth`
 
 **(8) No prereg.** Per D61 §9 this project has no prereg stage and no prereg deliverable; nothing in this
 cycle created, edited or reinstated one. The design record is `TASK.md` + this file.
+
+## D63 — 2026-10-28 — The deliverable notebook runs the LC chain; the depth control gets a numeric keep-or-fall-back rule
+
+**Decision (Conor, 2026-10-28).** The notebook is the deliverable and there is no command-line path
+("notebooks only"). `notebooks/bdb27_full_run.ipynb` now runs the **current LC chain first, then the
+preserved ceiling-v1 chain**, and it prints the route-depth evidence and the keep-or-fall-back rule.
+This decision also supplies the number D62 §7 deliberately left out: the threshold for keeping the
+continuous `break_depth_yd` control rather than falling back to D61 option 4.
+
+**(1) What was broken, and since when.** The notebook was last edited at D50 (2026-10-20). At D59
+(2026-10-26) the shared engine moved from `src/common.py` to `src/lc_common.py` and the ceiling-v1
+modules were parked under `src/legacy_ceiling_v1/`. The notebook bootstrap required
+`config.yaml + src/common.py`, so since D59 it stopped at cell 2 with
+`RuntimeError: Cannot locate the BDB27 repo root`; its `STAGE_ORDER` was the ceiling-v1 chain and
+contained no reference to `route_depth`, `lc_efforts`, `lc_models` or `lc_`. The deciding full-data
+run was therefore reachable only from a shell — exactly the thing Conor's working rule forbids. This
+is a regression introduced by the D59 move, not a notebook defect.
+
+**(2) The real dependency order, read from the code.** No LC stage consumes another's output file.
+`01_audit` reads Combine + `players`/`player_play` (+ sample tracking) and writes
+`outputs/audit/lc/decision.json`; `02_combine_ceiling` reads only Combine files and writes
+`outputs/ceiling/lc/`; `00_thresholds` writes `outputs/thresholds.json` from design constants and
+refuses `FULL` on sample-sized input; `03_route_depth` reads `players`/`player_play` + tracking and
+calls `lc_common.require_full_provenance`, which is the only cross-stage assertion in the chain. The
+notebook keeps `TASK.md`'s declared phase order — `01_audit → 02_combine_ceiling → 00_thresholds →
+03_route_depth` — because that is the order that reproduces the documented command sequence, and it
+prints that reasoning next to `LC_STAGE_ORDER`.
+
+**(3) Naming reconciled, not renamed.** Four pairs look like renames and are not:
+
+| name | chain | output | reads |
+|---|---|---|---|
+| `02_combine_ceiling` | LC (current) | `outputs/ceiling/lc/` | Combine tracking/results/players |
+| `02_combine_envelope` | ceiling-v1 (retired) | `outputs/envelope/` | Combine tracking/results |
+| `03_route_depth` | LC (current) | `outputs/game/lc/route_depth/` | `player_play` + tracking |
+| `03_game_demand` | ceiling-v1 (retired) | `outputs/game/` | legacy efforts + legacy thresholds |
+
+`src/` is searched before `src/legacy_ceiling_v1/`, so `00_thresholds` and `01_audit` always resolve
+to the **current** modules (there is no ceiling-v1 `01_audit` on disk any more; the legacy thresholds
+module was rewritten for the LC task and keeps the name). Legacy names that no longer exist in `src/`
+fall through to the parked copy.
+
+**(4) Legacy preserved, with two location-only fixes in parked code.** Both were necessary to make
+the preserved stages run at all, and neither changes behaviour:
+* `legacy_ceiling_v1/common.py` — `REPO_ROOT` now walks up to the directory holding `config.yaml`.
+  After the move, `parents[1]` was `src/`, so every relative path in `config.yaml` resolved to
+  `src/data/raw/...` and **every** legacy stage died on a missing CSV.
+* `legacy_ceiling_v1/run_diagnostics.py` — `check_capabilities()` looks next to itself for the D43/D44
+  modules it inspects. It previously required `src/07_security_models.py` and
+  `src/model_features.py`, which no longer exist there, so the checkout guard reported a clean tree as
+  "STOP — this run needs safe odds ratios (D43)…" and blocked the whole notebook.
+After both fixes the ceiling-v1 chain re-runs end-to-end in sample mode (8/8 stages `ok=True`, forced
+where it matters), and §5–§12 keep reading its outputs.
+
+**(5) Notebook changes.**
+* `STAGE_ORDER = LC_STAGE_ORDER + LEGACY_STAGE_ORDER`; `GAME_SIDE` covers the full-data side of both
+  chains. `02_combine_ceiling` is **not** in `GAME_SIDE`: the Combine file is complete, so a failure
+  there must read `FAILED`, not `PENDING FULL RUN`.
+* `run_stage()` passes `--config bdb27_run/config.yaml` explicitly to every stage and reloads the LC
+  helpers (`lc_common`, `lc_route_depth`, `ceiling_core`, `lc_efforts`, `lc_models`) on every call, so
+  D46's "always run the code on disk" holds for the new chain too.
+* Stage status is read from each LC stage's own artefact (`audit/lc/decision.json`,
+  `ceiling/lc/summary.json`, `game/lc/route_depth/route_depth_summary.json`); the LC checkpoint
+  fingerprints (`data/interim/checkpoints/<stage>__<mode>__<fp16>.json`) are compared by the same D49
+  rejection report the ceiling-v1 stages use.
+* `CLEAN` now also clears those LC checkpoints. Without it, a cleaned LC stage would report
+  "up to date" from a checkpoint whose outputs no longer exist — CLEAN promises a rebuild, so it is
+  made one.
+* §4's synthetic demo no longer calls `00_thresholds`: that name now resolves to the LC stage, which
+  has no `--synthetic` mode. The ceiling-v1 synthetic path starts at `03_game_demand` (verified forced,
+  both regimes).
+* §7's run-log reader accepts `peak_rss_mb` (LC engine) or `peak_ram_mb` (ceiling-v1) — one log file,
+  two writers.
+
+**(6) The D63 rule (the number D62 left out).** Evaluated **on FULL data only**; sample counts are
+descriptive and can neither satisfy nor fail it:
+
+> KEEP the continuous centred `break_depth_yd` term iff
+> **(a)** pre-throw breaks (break found, throw frame known, before the throw) **≥ 500**, **AND**
+> **(b)** at least **6** route families each have **≥ 25** pre-throw breaks.
+> Otherwise FALL BACK to D61 option 4: route family + `break_found` indicator, with depth reported
+> descriptively and never estimated.
+
+The constants live in `config.yaml` (`bdb27_lc.route_depth.decision_rule`) so nothing is typed into
+the notebook. Derivation, using constants already in the project:
+* A control must be estimated appreciably better than the estimand it adjusts for, or it adds variance
+  without adjusting. Precision target δ = `power.smallest_effect_of_interest / 3` = **0.01** log-speed.
+* σ = `power.assumed_within_player_sd_log_speed` = **0.10**, which is the value D60's analytic MDE
+  implies (0.0443 ≈ 2.802 × 0.10 / √40 at 40 efforts/player).
+* n = (z₀.₉₇₅ · σ / δ)² = (1.96 × 0.10 / 0.01)² = **384.2**.
+* Allow a design effect of **1.3** for clustering of efforts within player: 384.2 × 1.3 = 499.4 →
+  **500**. This also matches D62 §7's own language ("if the full tracking lifts pre-throw breaks to the
+  high hundreds, the continuous term becomes estimable").
+* Condition (b) exists because the model carries route-family fixed effects, so the depth slope is
+  identified by **within-family** variation. At the tightest within-family spread observed in D62
+  (σ_f ≈ 4 yd), n = 25 gives SE(median depth) ≈ 1.253 × 4 / √25 = **1.0 yd** — enough for a family to
+  carry depth variation rather than one lever — and 6 of the 11 families is a majority of the route
+  menu excluding the single-digit tails.
+
+Consequences. If either condition fails on the full run, the depth column stays in the effort table
+(missing for no-break routes, never imputed) and is reported descriptively by family; the model drops
+the continuous term and keeps the indicator. The rule is allowed to return FALL BACK — D62 §7 expects
+it to — and a re-run that fails (a) or (b) is an answer, not a failure. Nothing here was tuned on
+sample output; the constants were fixed from precision arithmetic before the full run exists.
+
+**(7) Provenance correction found while wiring (no design change).** D62 §3 describes the 3,054
+tracked route snaps as "143 players; 967 games". The tracked table contains **50 players and 290
+games**; 143/967 are the route-snap **key-table** counts *before* the tracking join (53,216 snaps, of
+which 50,162 have no tracking). So 164 pre-throw breaks is 3.3 per tracked player, not 1.1. The
+conclusion in D62 §7 does not change — total pre-throw coverage and per-family counts are the binding
+constraints, not the per-player average — but §13 now prints both counts with their definitions so
+they cannot be conflated again. Recorded here rather than silently edited into D62.
+
+**(8) Acceptance evidence (sample).** Notebook executed end-to-end in `MODE="sample"`: **37 cells, 0
+cell errors**, 67–100 s wall on the Pi, outputs cleared in the committed file. The LC chain rebuilt
+from scratch after the config fingerprint change and reproduces D62 exactly: 3,054 tracked route
+snaps, 448 breaks (14.67%), 401 breaks with a known throw frame, **164 pre-throw breaks (5.37%)**,
+median break depth 10.94 yd — all `UNVALIDATED SAMPLE OUTPUT`, none of it a finding. `pytest tests`:
+97 passed. No `data/` or `outputs/` artefact committed.
+
+**(9) No prereg, no reviewer.** Per D61 §9 this project has no prereg stage and no reviewer role. The
+only blocker recorded for this cycle is the absent full tracking files
+(`game_tracking_{2023,24,25}.csv`), which is data, not a document — §13 names those three files when
+it refuses to take the decision.
