@@ -1032,7 +1032,47 @@ bdb27_lc:
       exclude_final_two_minutes: true
       final_two_minutes_s: 120
       ceiling_features: [vmax]             # not applicable: no ceiling in D65
-      matching_tolerances: null            # CEM matched design: Phase 4, not wired
+      matching_tolerances: null            # CEM tolerances: exact strata, see phase4.matched
+
+  # --- D67: the remaining TASK.md Phase 4 analyses (stage 07_phase4) -------------
+  # Every constant below is a design choice frozen in notes/decisions.md D67.
+  # 07 reads 04's effort table (plus 02's ceiling and the players mirror) and
+  # never re-specifies the D65 primary model or the D66 validation logic.
+  phase4:
+    definition_id: phase4_remainder_v1
+    out_subdir: game/lc/phase4
+    summary_filename: phase4_result.json
+    ceiling_file: player_ceiling.csv     # 02_combine_ceiling long-format table
+    players_parquet: lc_players          # written by 04_efforts' key join
+    matched:
+      treatment_bin: high
+      control_bin: low
+      coarsen:
+        depth_bin_edges: [0.0, 5.0, 10.0, 15.0, 20.0, 1000.0]  # break depth, yd
+        load_bin_edges: [0.0, 2.0, 5.0, 9.0, 100000.0]         # prior efforts
+      min_pairs: 2                # below this the matched sample is COLLAPSED (reported)
+      bootstrap_reps: 1000        # player-clustered bootstrap
+      seed_key: bootstrap         # RNG = seeds.bootstrap (+1 for the bootstrap draws)
+    headroom:
+      baseline_bin: low           # utilisation is measured on low-leverage efforts
+      min_low_efforts_for_split: 4   # need >= 2 per half after the seeded split
+      half_split_seed_key: model     # split seed is logged in the output
+    ceiling_bound:
+      exceedance_ratio: 1.0       # effort fraction above 1.0 = above the ceiling
+      leverage_bin: high          # counterfactual leverage reference bin
+    dose_response:
+      bins: [low, medium, high]
+      monotonicity_tolerance: 1.0e-9
+    per_player:
+      reliability_threshold: 0.5  # model-based; no odd/even split-half (TASK.md)
+      min_efforts: 8              # below this a within-player slope is not attempted
+      min_players: 10             # the gate also needs a usable population
+    replication:
+      position: TE
+      exploratory_below_players: 30   # label, never a reason to hide the estimate
+    tactical_demand:
+      defender_distance_field: defender_distance_yd  # absent -> NOT RUN, never proxied
+      comparable_window_s: 0.30   # +/- window around the median time to throw
 
   # --- D61: route depth as DEPTH AT THE BREAK (the depth control in the model) ---
   # Every number below is a design constant frozen in notes/decisions.md D61
