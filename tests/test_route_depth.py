@@ -162,6 +162,41 @@ def test_break_after_throw_is_flagged(world, table):
             > late["throw_time_s"] - 1e-9).all()
 
 
+def test_pre_throw_count_requires_a_known_throw_frame():
+    """D64: unknown-throw breaks are not pre-throw breaks.
+
+    Reproduces the sample counts the defect was found on: 3,054 analysed
+    snaps, 448 found breaks, 401 with a known throw frame, 164 of them
+    before the throw.  The 47 found breaks with no known throw frame are a
+    third category; the old mask (``found & ~break_after_throw``) counted
+    them as pre-throw and reported 211.
+    """
+    n_pre, n_after, n_unknown, n_no_break = 164, 237, 47, 2606
+    n_found = n_pre + n_after + n_unknown
+    rows = pd.DataFrame({
+        "break_found": [True] * n_found + [False] * n_no_break,
+        "throw_known": ([True] * (n_pre + n_after)
+                        + [False] * (n_unknown + n_no_break)),
+        "break_after_throw": ([False] * n_pre + [True] * n_after
+                              + [False] * (n_unknown + n_no_break)),
+        "break_depth_yd": np.arange(n_found + n_no_break, dtype=float),
+        "flags": [""] * (n_found + n_no_break),
+    })
+    # Sanity: the old expression is the 211 the defect reported.
+    old_mask = rows["break_found"] & ~rows["break_after_throw"]
+    assert int(old_mask.sum()) == 211
+
+    summary = RD.coverage_summary(rows)
+    assert summary["n_break_before_throw"] == n_pre == 164
+    assert summary["n_break_after_throw"] == n_after
+    # The partition is exhaustive and disjoint.
+    unknown = int((rows["break_found"] & ~rows["throw_known"]).sum())
+    assert (summary["n_break_before_throw"] + summary["n_break_after_throw"]
+            + unknown) == summary["n_break_found"] == n_found
+    # Denominator is unchanged (all analysed snaps), so the rate is stable.
+    assert summary["break_rate_before_throw"] == pytest.approx(164 / 3054)
+
+
 def test_threshold_specification_curve_is_stable_on_truth(world, cfg, table):
     """The chosen 35 deg/0.4 s row is primary and is not threshold art.
 

@@ -487,15 +487,26 @@ def coverage_summary(table: pd.DataFrame, positions: pd.Series | None = None,
             })
     summary["by_route_family"] = rows
 
+    # D63 defines a pre-throw break as: break found, throw frame known, and
+    # before the throw.  The throw_known term is not optional -- without it an
+    # unknown-throw break is silently counted as "before the throw" (D64).
     found = work["break_found"].astype(bool)
     known = work["throw_known"].astype(bool) & found
+    after_throw = known & work["break_after_throw"].astype(bool)
+    pre_throw = known & ~work["break_after_throw"].astype(bool)
+    unknown_throw = found & ~work["throw_known"].astype(bool)
+    n_found = int(found.sum())
+    n_after = int(after_throw.sum())
+    n_pre = int(pre_throw.sum())
+    n_unknown = int(unknown_throw.sum())
+    assert n_found == n_pre + n_after + n_unknown, (
+        "break partition must be exhaustive and disjoint: "
+        f"found={n_found} != pre={n_pre} + after={n_after} + unknown={n_unknown}")
     summary["break_after_throw_rate"] = (
         float(work.loc[known, "break_after_throw"].astype(bool).mean())
         if known.any() else float("nan"))
-    summary["n_break_after_throw"] = int(
-        work["break_after_throw"].astype(bool).sum())
-    pre_throw = found & ~work["break_after_throw"].astype(bool)
-    summary["n_break_before_throw"] = int(pre_throw.sum())
+    summary["n_break_after_throw"] = n_after
+    summary["n_break_before_throw"] = n_pre
     summary["break_rate_before_throw"] = (
         float(pre_throw.mean()) if len(work) else float("nan"))
     pre_depths = work.loc[pre_throw, "break_depth_yd"]

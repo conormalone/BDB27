@@ -2155,3 +2155,90 @@ median break depth 10.94 yd — all `UNVALIDATED SAMPLE OUTPUT`, none of it a fi
 only blocker recorded for this cycle is the absent full tracking files
 (`game_tracking_{2023,24,25}.csv`), which is data, not a document — §13 names those three files when
 it refuses to take the decision.
+
+---
+
+## D64 — 2026-10-29 — Full-run gate PASSED: KEEP the continuous break depth; pre-throw count corrected
+
+**Decision.** The D63 rule was evaluated on the **full run** (executed on Conor's laptop; the deciding
+run this project has been waiting for since D62). Both conditions pass, so the outcome is **KEEP
+D63 option 2**: the continuous, centred `break_depth_yd` term stays in the effort model. The same entry
+records a counting defect in the summary builder that would have overstated the pre-throw count had
+anyone read that field instead of §13.
+
+**(1) Full-run result.**
+* Key table **53,216** tracked route snaps; **52,860** analysed after the tracking join — **356** snaps
+  lost to the join.
+* **143 players**, **967 games**.
+* **7,526 breaks** (14.24% of analysed snaps); **6,472** have a known throw frame (86.0% of breaks).
+* **2,614 PRE-THROW breaks** (4.95% of analysed snaps; 40.4% of known-throw breaks).
+* Per player: mean **18.28**, median **10**, max **113**; **134/143** players with ≥ 1 pre-throw break,
+  **124/143** with ≥ 2.
+
+**(2) The D63 rule, evaluated.**
+* (a) `≥ 500` pre-throw breaks: **2,614 ≥ 500 → PASS**.
+* (b) at least 6 route families with `≥ 25` pre-throw breaks: **9 families → PASS** (6 required).
+* Therefore the fallback in D62 §7 did **not** trigger, and the depth term is kept as declared. The
+  gate constants, the D63 rule and every detector threshold are unchanged by this entry — only the
+  counter below was wrong.
+
+**(3) The sample's per-player thinness was an artefact, not a property of the data.** D62 §7 worried
+that pre-throw breaks were too thin per player to support a continuous term. That reading came from the
+sample: **1.1 per player** on a **50-player / 290-game** tracked sample. On the full run the median
+player has **10** pre-throw breaks and **124/143** players have at least two. The constraint was sample
+coverage (the 290-game tracking slice), not the phenomenon. Total coverage and per-family counts —
+the binding constraints named in D62 §7 — pass comfortably.
+
+**(4) Stability, and where the loss actually is.** The pre-throw rate is **5.37%** on the sample and
+**4.95%** on the full run. That is the detector's strongest generalisation evidence so far: a 6x
+increase in games barely moves the rate, against a definition frozen before either run (D61/D62). The
+binding loss is the **throw join**, not break detection: **14% of breaks** (1,054 of 7,526) have no
+usable throw frame, and those are excluded from the pre/post split by definition. Detection itself
+finds breaks at a stable 14.2–14.7% across sample and full.
+
+**(5) Effective analysis sample.** The **143 players / 967 games** are the route-snap key-table counts;
+they are *not* 510 draft prospects. The 143 are the players with at least one tracked route snap, and
+the full-run per-player figures above are over those 143. "510 prospects" is the Combine population and
+must never be quoted as the analysed n for this route-depth question.
+
+**(6) Design effect.** D63's **1.3** clustering allowance was an a-priori assumption (n = 384.2 × 1.3 →
+500), not a fitted value. With **2,614** observed pre-throw breaks the margin over the 500 threshold is
+**5.2x**. Even a design effect several times larger than 1.3 would leave condition (a) satisfied; the
+decision does not depend on the clustering guess. Condition (b) passes with 9 families against 6, which
+is the within-family identification D63 §6 required.
+
+**(7) Counting defect fixed (the reason this entry is not just a result).** `coverage_summary()` in
+`src/lc_route_depth.py` computed
+
+```python
+pre_throw = found & ~work["break_after_throw"].astype(bool)
+```
+
+which classifies **every** break with an unknown throw frame as "before the throw", because
+`break_after_throw` is False by construction when the frame is unknown. D63 §6 defines a pre-throw break
+as **break found, throw frame known, and before the throw**. On the sample the field reported **211**
+instead of the true **164**: 47 found breaks have no known throw frame and were absorbed into "pre".
+Applied to the full run the same expression would have added the **1,054** unknown-throw breaks,
+reporting 3,668 for a true 2,614. The gate number quoted in (1) is §13's **independent** mask
+(`found & known & ~after`), which was already correct and is unchanged; the stored field was the broken
+one.
+
+The fix:
+* `pre_throw = found & throw_known & ~break_after_throw`;
+* `after_throw = found & throw_known & break_after_throw` (made explicit rather than relying on the
+  detector never setting the flag without a known frame);
+* `unknown_throw = found & ~throw_known`;
+* an **invariant asserted in the summary builder**: `n_found == n_pre + n_after + n_unknown`, so this
+  class of double-count cannot return silently;
+* denominators unchanged — `break_rate_before_throw` stays over **all analysed snaps** (164/3,054 =
+  5.37% on the sample; 2,614/52,860 = 4.95% on the full run), so the reported rate and every downstream
+  comparison are unaffected. The companion `median_break_depth_before_throw_yd` now also excludes the
+  unknown-throw rows (sample: 7.05 → 5.75 yd); that is the same correction, not a new exclusion;
+* a regression test (`test_pre_throw_count_requires_a_known_throw_frame`) reconstructs the sample split
+  (164 pre / 237 post / 47 unknown / 2,606 no-break of 3,054), asserts the old mask gives **211**, the
+  fixed field gives **164**, and the three found components sum to 448.
+
+**Acceptance evidence.** `pytest tests`: **106 passed** (105 before this entry; the D63 note's "97" is
+stale by the tests added since). The notebook's committed outputs stay cleared; no `data/` or
+`outputs/` artefact is committed. §13 continues to compute pre-throw breaks from
+`route_depth.csv` with its own mask and does not read the fragile summary field.
