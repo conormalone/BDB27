@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NB_PATH = ROOT / "notebooks" / "bdb27_full_run.ipynb"
 
 LC_CHAIN = ["01_audit", "02_combine_ceiling", "00_thresholds", "03_route_depth",
-            "04_efforts", "05_models"]
+            "04_efforts", "05_models", "06_validation"]
 LEGACY_CHAIN = ["02_combine_envelope", "06_security", "03_game_demand", "07_security_models",
                 "10_dose_response", "00b_external_proxies", "04_models", "05_validate"]
 
@@ -99,6 +99,32 @@ def test_section_13_reads_the_lc_outputs_and_types_no_threshold(code_text):
                 "min_pre_throw_breaks_per_family"):
         assert key in code_text
         assert not re.search(rf"^\s*{key}\s*=", code_text, re.M), f"{key} is typed into the notebook"
+
+
+def test_section_15_reads_the_validation_outputs_and_types_no_number(code_text):
+    """D66: §15 renders 06_validation from disk; the verdict is not asserted in code."""
+    assert "validation_result.json" in code_text
+    assert "permutation_null.csv" in code_text
+    assert "sensitivity_curve.csv" in code_text
+    for token in ("p_value_rule", "attenuation_fraction", "equivalent_at_margin"):
+        assert token in code_text, token
+    # the verdict must come from the artefact, never from a literal in the notebook
+    assert "verdict" in code_text
+    assert not re.search(r"^\s*(p_player_game|attenuation|equivalence_margin)\s*=",
+                         code_text, re.M)
+
+
+def test_d66_validation_constants_live_in_config(cfg):
+    block = C.lc(cfg)["validation"]
+    assert block["permutations"]["reps"] == 1000
+    assert block["permutations"]["block_columns"]["player_game"] == ["nfl_id", "game_id"]
+    assert block["permutations"]["block_columns"]["route_family"] == ["nfl_id", "route_family"]
+    assert block["equivalence"]["margin"] == C.lc(cfg)["power"]["equivalence_margin"]
+    assert block["equivalence"]["smallest_effect_of_interest"] == \
+        C.lc(cfg)["power"]["smallest_effect_of_interest"]
+    # the garbage-time margins stay in exactly one place
+    assert "q4_margin" not in block["garbage_time"]
+    assert "any_quarter_margin" not in block["garbage_time"]
 
 
 def test_committed_notebook_has_no_executed_outputs(notebook):

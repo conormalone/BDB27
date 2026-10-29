@@ -11,7 +11,8 @@
 > python src/03_route_depth.py --mode sample      # depth at the break (D61) -> outputs/game/lc/route_depth/
 > python src/04_efforts.py --mode sample          # one row per max-effort route (D65) -> outputs/game/lc/efforts/
 > python src/05_models.py --mode sample           # primary within-player estimand (D65) -> outputs/game/lc/models/
-> python -m pytest tests                          # 111 tests
+> python src/06_validation.py --mode sample       # Phase 5 validation (D66) -> outputs/game/lc/validation/
+> python -m pytest tests                          # 132 tests
 > ```
 >
 > Full mode uses `--mode full` on `01`/`02`/`00`; it additionally requires the three full
@@ -25,11 +26,18 @@
 > Phase 4's matched design, headroom, ceiling bound, dose-response, per-player slopes, TE replication and
 > all of Phase 5 remain **not yet wired** — see D65.
 >
+> **D66 (2026-10-29): Phase 5 is wired.** `06_validation` runs after `05_models`: leverage permutation
+> within player-game and within player-route-family (declared shuffle count, full null distribution on
+> disk), the time-and-load orthogonalised refit, placebos, the garbage-time exclusion with and without,
+> the declared sensitivity curve and the TOST equivalence test. §15 renders it. The matched design,
+> headroom moderation, ceiling bound, dose-response, per-player slopes, TE replication and the
+> non-max-effort placebo remain **not wired** — see D66.
+>
 > **D63 (2026-10-28): the deliverable notebook runs this chain.** `notebooks/bdb27_full_run.ipynb`
 > now executes the LC chain above first, then the preserved ceiling-v1 chain, and its **§13** prints
 > break coverage, coverage by route family, and the D63 keep-or-fall-back rule for the continuous
 > `break_depth_yd` control. No terminal is needed for the deciding run. The commands below remain the
-> reference for a headless run and for testing (`python -m pytest tests`, now **97 tests**).
+> reference for a headless run and for testing (`python -m pytest tests`; 132 tests at D66).
 
 > **Deliverable model:** a **scripts engine** (`src/`) + a **public Kaggle notebook** that runs the same
 > logic end-to-end and renders the writeup figures. Stage scripts take `--mode sample|full` and `--force`
@@ -75,10 +83,10 @@ the drive (or copy the CSVs to a laptop and point `data/raw` there) before any g
 
 ## 3. Run order
 
-**Current chain (D59–D65)** — what the notebook runs first:
+**Current chain (D59–D66)** — what the notebook runs first:
 
 ```
-01_audit → 02_combine_ceiling → 00_thresholds → 03_route_depth → 04_efforts → 05_models
+01_audit → 02_combine_ceiling → 00_thresholds → 03_route_depth → 04_efforts → 05_models → 06_validation
 ```
 
 **Retired ceiling-v1 chain (D27–D50, preserved under `src/legacy_ceiling_v1/`)** — still runnable, and

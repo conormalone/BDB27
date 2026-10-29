@@ -990,6 +990,50 @@ bdb27_lc:
       Analytic MDE at n efforts/player; D60's 0.0443 log-speed at 40
       efforts/player is stated alongside every interval and is not a gate.
 
+  # --- Phase 5: validation of the within-player leverage estimand (D66) ---
+  # Every number here is a declared design constant.  The module reads this
+  # block and nothing else: the permutation block structure, the
+  # orthogonalisation controls, the equivalence test and the sensitivity curve
+  # are data, not code.  Duplicated constants are asserted equal in tests so
+  # they cannot drift.
+  validation:
+    out_subdir: game/lc/validation
+    summary_filename: validation_result.json
+    permutations:
+      reps: 1000                   # declared shuffle count (both schemes)
+      seed_offset: 0               # RNG seed = seeds.permutation + this
+      schemes: [player_game, route_family]
+      block_columns:               # shuffle leverage WITHIN these blocks
+        player_game: [nfl_id, game_id]
+        route_family: [nfl_id, route_family]
+      p_value_rule: "(1 + #{|null| >= |observed|}) / (reps + 1), two-sided"
+    orthogonalisation:
+      controls: [game_elapsed_s, prior_efforts]   # time and cumulative load
+      time_column: game_elapsed_s
+      load_column: prior_efforts
+    equivalence:
+      margin: 0.02                 # must equal power.equivalence_margin (asserted)
+      alpha: 0.05                  # must equal power.alpha (asserted)
+      smallest_effect_of_interest: 0.03   # must equal power.smallest_effect_of_interest
+    garbage_time:
+      rule: quarter_and_margin     # the margins live in leverage.garbage_time
+      q4: 4                        # "fourth quarter or later"
+    placebo_outcomes: [break_depth_yd, break_found, time_to_throw_s]
+    tactical_demand:
+      defender_distance_available: false   # not in the effort table; stated, not faked
+      time_to_throw_restriction: true
+    # The declared TASK.md Phase 5 sensitivity list.  A spec is a row of data
+    # here; `apply_spec` filters, nothing is invented in code.
+    sensitivity:
+      leverage_definitions: [leverage]     # alternate definition: raw 4p(1-p)
+      bin_cutoffs: [tercile, quartile]     # high-vs-low contrast per cut
+      effort_thresholds: [5.0, 8.0]        # route extension, yd
+      min_efforts_grid: [0, 20]            # no floor in the primary spec
+      exclude_final_two_minutes: true
+      final_two_minutes_s: 120
+      ceiling_features: [vmax]             # not applicable: no ceiling in D65
+      matching_tolerances: null            # CEM matched design: Phase 4, not wired
+
   # --- D61: route depth as DEPTH AT THE BREAK (the depth control in the model) ---
   # Every number below is a design constant frozen in notes/decisions.md D61
   # (D62 relaxes only the break resolution: 45 deg/0.3 s -> 35 deg/0.4 s).

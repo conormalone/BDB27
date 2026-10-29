@@ -2332,3 +2332,130 @@ if it ran.
 **(9) No prereg, no reviewer.** Per D61 §9 this project has no pre-registration stage and no reviewer
 role. Self-review plus mechanical validation (schema, determinism, edge cases, regression) is the
 gate; the real blockers are missing data or missing required fields, not documents.
+
+---
+
+## D66 — 2026-10-29 — Phase 5 is wired: validation, and a salvage review of the dead run's draft
+
+**Decision.** Phase 5 validation is a real stage. `src/06_validation.py` runs after `05_models` in
+`LC_STAGE_ORDER`, takes the same `--mode` / `--force` / `--config` contract, checkpoints through
+`lc_common`, refuses non-`FULL` provenance in full mode (both the effort table and the `05_models`
+result), and writes `outputs/game/lc/validation/`: `validation_result.json`,
+`permutation_null.csv`, `placebo_checks.csv`, `garbage_time.csv`, `sensitivity_curve.csv`,
+`orthogonalisation.csv`, `SUMMARY.md`. Notebook §15 renders it from disk with no hand-typed numbers.
+
+**Why salvage rather than a clean rewrite.** A previous PM run died at 24 minutes and left one
+untracked artefact, `src/lc_validation.py` (860 lines), containing every Phase-5 function by name but
+never executed. It was reviewed as another author's draft and repaired in place; the function surface,
+the estimator choice and most prose survived. The config block it assumed did **not** exist, which is
+why it had never run.
+
+**(1) The garbage-time rule, restated here because the log only pointed at a retired document.**
+A play is garbage time when `|score_margin| >= 21` in Q4 or later, **or** `|score_margin| >= 28` in any
+quarter. The margins live in exactly one place, `bdb27_lc.leverage.garbage_time` (`q4_margin: 21`,
+`any_quarter_margin: 28`); `validation.garbage_time` supplies only `rule` and `q4: 4`. A conflicting
+margin in the validation block raises rather than overriding, and a missing `quarter` or
+`score_margin` column is reported as "rule not evaluable" rather than silently returning "no garbage
+time". The rule is reported with and without the exclusion, plus the garbage-time share of each
+leverage bin (blowouts are low-leverage, so the exclusion is not leverage-neutral).
+
+**(2) The equivalence rule, restated.** TOST against the **margin 0.02** log-speed
+(`power.equivalence_margin`, duplicated in `validation.equivalence` and asserted equal), alpha 0.05,
+with the smallest effect of interest **0.03**. A null is *informative* only when the whole 95% interval
+lies inside ±0.03; equivalence at 0.02 is reported separately. The stage returns an explicit verdict
+string, not a bare p-value.
+
+**(3) What the draft got wrong.** Thirteen defects, fixed in place:
+
+1. **The config block it read did not exist.** `validation_block()` returned `{}`, so every permutation
+   returned `status="no block columns available"` with a NaN p-value — and `run_validation` would have
+   written a "successful" validation artefact containing nothing. The block is now declared in
+   `config.yaml` (shuffle count, block columns, orthogonalisation controls, equivalence, garbage-time
+   reference, placebo outcomes, sensitivity lists) and a missing block raises.
+2. **The sensitivity grid was invented, not declared.** Booleans were read with `.get(key, True)`
+   defaults and the 120 s window was hard-coded, so absent config produced specs nobody declared. The
+   grid is now built only from configured lists; a missing key shortens the curve.
+3. **The `median` bin cut kept every row** (`(x >= median) | (x < median)`), so that spec was a copy of
+   the primary mislabelled as a sensitivity.
+4. **Bin-cutoff specs fitted a continuous slope inside the extreme bins** while describing themselves
+   as bin cutoffs. They are now explicit high-vs-low indicators (`_leverage_high_vs_low`), with the
+   comparison labelled in the CSV; `beta_per_within_player_sd` is not reported for them.
+5. **`apply_spec` silently no-opped when `route_displacement_yd` was absent** — the effort-threshold
+   sensitivity would have been the primary again. A missing column now yields an empty frame and a
+   "no rows after filter" status.
+6. **Garbage-time margins could be silently ignored.** The merge dropped a local `q4_margin`, and the
+   mask defaulted 21/28/4 in code. Margins now come from one place, conflicts raise, and the defaults
+   are gone.
+7. **A missing `quarter`/`score_margin` produced an all-False mask**, i.e. a false claim of "no garbage
+   time". It is now an error reported into the result.
+8. **The orthogonalised fit bypassed `fit_orthogonalised`**: it called `fit_within_player` on a
+   hand-made residual, with a second demean+least-squares implementation for the R² diagnostic. The fit
+   now goes through `lc_models.fit_orthogonalised`, and `lc_models.fit_orthogonalised` gained an
+   `orth_controls` argument so the configured control list is authoritative rather than the module
+   constant. The diagnostic is a variance ratio plus within-player correlations.
+9. **`fit_design` was an unverified second FE estimator.** It is kept — 2,000 refits cannot afford the
+   full `design_matrix` each time — but a test pins its beta and clustered SE to
+   `lc_models.fit_within_player` at 1e-10, so there is one estimator with a fast path.
+10. **The edge-case counter called every single-effort player "zero within-player leverage variance"**
+    (NaN std → `fillna(0)` → `<= 1e-12`). It now counts only players with >= 2 efforts and SD <= 1e-12,
+    and writes that rule into the output next to the count.
+11. **Unguarded `table["quarter"]` and `game_id` lookups** would have crashed the stage on a table
+    without those columns. Both are guarded.
+12. **`_shuffle` rebuilt a DataFrame and re-grouped inside every replicate.** Blocks are computed once;
+    the stage runs 1,000 shuffles × 2 schemes on the sample in about 14 s.
+13. **The equivalence verdicts were ambiguous** ("informative null" with no statement of which interval
+    test produced it) and the margin was not checked against the `power` block. Verdicts are explicit,
+    `null_is_informative` is boolean, and drift raises.
+
+**(4) What was written new.** The config block; `src/06_validation.py`; notebook §15 and the
+`LC_STAGE_ORDER` / `GAME_SIDE` / status-reader wiring; `tests/test_validation_stage.py` (19 tests) plus
+2 notebook-contract tests; README_RUN and notebooks/README updates; this entry.
+
+**(5) The validation design, stated once.** Every refit uses the declared `player_fixed_effects`
+fallback so the observed statistic and its permutation null come from the same estimator. The mixed
+rung is not refit 2,000 times; the permutation null would otherwise mix estimators across replicates.
+The permutation preserves each block's leverage mean, so the null is **not forced to zero** — the exact
+randomisation test compares the observed statistic with its orbit, and the null mean, SD, 2.5/97.5%
+quantiles and the full 2,000-row distribution are written out rather than only the p-value.
+`break_depth_yd` remains a control in the primary model and a *placebo outcome* here; those are
+different questions and the output labels both.
+
+**(6) Sample-mode numbers (plumbing; NOT findings).** On the provided sample (2,993 efforts / 50
+players / 289 games):
+
+* permutation, 1,000 shuffles: `player_game` p = **0.2388** (480 blocks, 87 rows in singletons),
+  `route_family` p = **0.1518** (336 blocks, 75 singletons); observed FE beta +0.0036 (SE 0.0050);
+* orthogonalisation: naive **+0.0036** → orthogonalised **+0.0026**, attenuation **27.2%**, within-player
+  R² of leverage on time+load **0.168**, within-player correlations time **-0.349**, load **-0.356**;
+  the effect does not survive;
+* placebos: break depth -0.4124 (SE 0.6366, p 0.52, n 441 among detected breaks), `break_found` +0.0072
+  (p 0.42), time to throw +0.0023 (p 0.37);
+* garbage time 125/2,993 (4.18%), all in the low-leverage bin (12.5% of that bin); with +0.0036 vs
+  without +0.0063;
+* sensitivity curve: 8 estimable specs, all null; high-vs-low tercile -0.0015, quartile -0.0027;
+* equivalence: primary +0.0070 (SE 0.0054), 95% CI [-0.0039, +0.0180], TOST p = 0.0104, equivalent at
+  0.02, **verdict "informative null"** — i.e. on this sample the interval rules out ±0.03.
+
+None of that is evidence about receivers. The equivalence verdict in particular is a statement about
+the sample's precision, and the sample is not the population the claim is about.
+
+**(7) What still is not wired.** Phase 4: the CEM matched high-vs-low design with a clustered bootstrap;
+headroom moderation (`leverage × baseline utilization`, with utilization estimated in an independent
+half of low-leverage efforts); the ceiling-bound exceedance check; dose-response across leverage bins;
+per-player leverage slopes with the reliability screen; TE replication. Phase 5: the non-max-effort
+placebo, which needs the gate-rejected rows written by `04_efforts` (they are counted, not written) —
+a new extraction pass, not a refit of the effort table. All are listed in `validation_result.json`
+under `not_wired` and printed in §15; nothing is stubbed as if it ran.
+
+**(8) Verification.** `pytest tests`: **132 passed** (111 at HEAD; +19 validation, +2 notebook
+contract). The confounded synthetic world is run through the **wired stage** (not just the library) with
+a deliberately stronger confound (`beta_time=-0.18`, `corr=0.9`): the naive FE estimate is -0.0185
+(p = 0.015) and the orthogonalised estimate is -0.0023 (p = 0.75), attenuation 0.87. A separate test
+uses the default confounded fixture. The planted world gives p < 0.01 and the null world p > 0.05. The
+notebook executes end to end in `MODE="sample"` with **0 cell errors** (20 code cells, 2 min 07 s) and
+committed outputs stay cleared. No `data/` or `outputs/` artefact is committed; the tracked writeup
+figures were restored to HEAD after the execution.
+
+**(9) No prereg, no reviewer.** Per D61 §9 there is no pre-registration stage and no reviewer role.
+Self-review plus mechanical validation (schema, determinism, edge cases, regression) is the gate; the
+real blockers are missing data or missing required fields, not documents.

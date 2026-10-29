@@ -532,11 +532,20 @@ def fit_orthogonalised(df: pd.DataFrame, outcome: str = "log_max_speed",
                        leverage_col: str = "leverage_z",
                        controls=DEFAULT_CONTROLS,
                        player_col: str = "nfl_id",
-                       cfg: dict | None = None) -> dict:
+                       cfg: dict | None = None,
+                       orth_controls=None) -> dict:
+    """Refit with leverage residualised on game time and cumulative load.
+
+    ``orth_controls`` lets the caller pass the declared configuration list
+    (``bdb27_lc.validation.orthogonalisation.controls``); the default keeps the
+    historical behaviour for callers that have no config.
+    """
     work = df.copy()
-    work["_lev_orth"] = orthogonalise_leverage(work, leverage_col, player_col=player_col)
+    on = tuple(orth_controls) if orth_controls is not None else TIME_LOAD_CONTROLS
+    work["_lev_orth"] = orthogonalise_leverage(work, leverage_col, on,
+                                               player_col=player_col)
     result = fit_within_player(work, outcome, "_lev_orth", controls, player_col,
                                cfg=cfg)
     result["model"] = "within_player_fe_orthogonalised"
-    result["orthogonalised_on"] = list(TIME_LOAD_CONTROLS)
+    result["orthogonalised_on"] = list(on)
     return result

@@ -11,8 +11,9 @@ require it.
 **The primary interface; no terminal needed.** Open it, set `MODE` (`sample` | `full`) and — only if the
 data is not in the usual place — `DATA_DIR`, then **Run All**. It:
 
-- runs the `../src/` engine end-to-end, **current chain first** (D63):
-  `01_audit → 02_combine_ceiling → 00_thresholds → 03_route_depth`, then the preserved ceiling-v1
+- runs the `../src/` engine end-to-end, **current chain first** (D63–D66):
+  `01_audit → 02_combine_ceiling → 00_thresholds → 03_route_depth → 04_efforts → 05_models →
+  06_validation`, then the preserved ceiling-v1
   chain `02_combine_envelope → 06_security → 03_game_demand → 07_security_models → 10_dose_response
   → 00b_external_proxies → 04_models → 05_validate`, invoking each stage through **its own entry
   point** (so `--mode` / `--force` / checkpoint behaviour and the checkout guard all apply exactly as
