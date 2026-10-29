@@ -11,9 +11,9 @@ require it.
 **The primary interface; no terminal needed.** Open it, set `MODE` (`sample` | `full`) and — only if the
 data is not in the usual place — `DATA_DIR`, then **Run All**. It:
 
-- runs the `../src/` engine end-to-end, **current chain first** (D63–D66):
+- runs the `../src/` engine end-to-end, **current chain first** (D63–D67):
   `01_audit → 02_combine_ceiling → 00_thresholds → 03_route_depth → 04_efforts → 05_models →
-  06_validation`, then the preserved ceiling-v1
+  06_validation → 07_phase4`, then the preserved ceiling-v1
   chain `02_combine_envelope → 06_security → 03_game_demand → 07_security_models → 10_dose_response
   → 00b_external_proxies → 04_models → 05_validate`, invoking each stage through **its own entry
   point** (so `--mode` / `--force` / checkpoint behaviour and the checkout guard all apply exactly as
@@ -31,6 +31,12 @@ data is not in the usual place — `DATA_DIR`, then **Run All**. It:
   D63 keep-or-fall-back rule for the continuous `break_depth_yd` control, all read from
   `../outputs/game/lc/route_depth/` with no hand-typed numbers. In `sample` mode §13 names the missing
   full-data inputs and states that the decision is **not taken** on sample counts.
+
+  §14 renders the effort table and the primary leverage model (D65), §15 the Phase 5 validation
+  (D66), and **§16 the Phase 4 remainder (D67)** — matched vs regression, headroom moderation
+  (naive and corrected), ceiling-bound exceedance by bin, dose-response monotonicity, the per-player
+  reliability gate and the labelled TE replication, all read from `../outputs/game/lc/phase4/`.
+  A check whose field is absent is printed as **NOT RUN with the field named**, never proxied.
 
 **Labels.** `sample` outputs → `UNVALIDATED SAMPLE OUTPUT`; `full` outputs → `FULL`; fixture outputs →
 `SYNTHETIC FIXTURE (not a finding)`. §13 takes the D63 decision only when `MODE="full"` **and** the

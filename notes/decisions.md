@@ -2459,3 +2459,99 @@ figures were restored to HEAD after the execution.
 **(9) No prereg, no reviewer.** Per D61 §9 there is no pre-registration stage and no reviewer role.
 Self-review plus mechanical validation (schema, determinism, edge cases, regression) is the gate; the
 real blockers are missing data or missing required fields, not documents.
+
+## D67 — 2026-10-29 — Phase 4 is wired: two salvaged failures fixed at the root, and the chain now runs Phases 1–5
+
+**(1) What this cycle was.** The previous Phase 4 run died after 34 minutes with no commit, leaving
+`src/lc_phase4.py` (~56 KB), `src/07_phase4.py` (~18 KB), `tests/test_phase4_stage.py` (~26 KB) and a
+41-line `config.yaml` block untracked in the working tree, the suite at 159 collected (was 132) and two
+tests failing. This cycle salvaged that work rather than rebuilding it: the two failures were diagnosed,
+fixed, the suite went green, and the library + stage + tests + config were committed immediately
+(`7e72c8f`) — before the notebook section — because two consecutive runs had already died holding hours
+of uncommitted work. Incremental commits are the protection; the notebook was a second commit.
+
+**(2) Failure 1 — `test_player_with_one_high_leverage_effort_is_counted_not_crashed`.**
+Expected `n_players_contributing == 6`, got 5. Root cause was the **fixture, not the estimator**: the
+test built 6 players × 10 efforts over the exact-match strata (route family × depth bin × quarter ×
+load bin — up to 48 cells), and at that density one planted player legitimately had no stratum holding
+both a high and a low effort, so it contributed a one-sided cell and no pair. That is the design doing
+its job and being counted (`n_strata_one_sided`). Fix: the fixture now gives the world 24 efforts per
+player (the `_base_table` default) so every planted player reliably pairs; the assertion `== 6` is
+unchanged, and the test additionally asserts the new `n_players_without_pair == 1`, which is exactly the
+edge-case player the test is about. No assertion was weakened.
+
+**(3) Failure 2 — `test_headroom_recovers_the_planted_moderation` (and the empty-slice warnings).**
+Expected `n_players == 40`, got 25. Root cause was again the fixture: leverage was drawn
+`N(0, 1)` per effort, so only ~24% of 16 efforts fell below the −0.7 low-leverage threshold; roughly
+15/40 players had fewer than the configured `min_low_efforts_for_split: 4` low-leverage efforts and two
+had none at all. The independent-half utilisation baseline therefore could not be formed for them
+(correctly excluded), and the fixture's own fixed-point loop called `np.median` on an empty low slice —
+the source of the "Mean of empty slice" / "invalid value encountered in scalar divide" RuntimeWarnings.
+The estimator itself was right: on the 25 eligible players it recovered 0.297 against a planted 0.30.
+Fix: `_headroom_table` now guarantees `n_low = max(4, n_efforts // 3)` low-leverage efforts per player
+(sign forced below the threshold), so every planted player supports the split and the recovery assertion
+holds at 40 players. The `np.median` guard is no longer reachable from the fixture.
+
+**Hardening that came out of the diagnosis** (the "report, never silently drop" rule):
+* `half_split_utilisation` returns `n_players_excluded` and a per-player `excluded_players` list with
+  status "not estimable" and the reason (fewer low-leverage efforts than the split needs), and the count
+  is printed in §16. Before, those players vanished without a trace.
+* `matched_design` now reports `n_players_eligible` / `n_players_without_pair` alongside
+  `n_players_contributing`, so a one-sided player is named rather than implied.
+* `dose_response` marks an unestimable bin contrast `not estimable` and sets `monotone: null` /
+  "not evaluable" instead of computing monotonicity over whichever bins happened to survive.
+* `tactical_demand`'s time-to-throw comparison reports "not estimable" when the ±window sample is empty
+  or has no within-player variation, instead of returning a NaN coefficient under `status: ok`.
+
+**(4) A note on the "empty stratum must be reported" rule.** The matched design already reported empty
+cells (`n_strata_one_sided`) and a collapsed sample (`status: collapsed`, `n_pairs == 0`); the remaining
+silent paths were the four above. After the fixes, an empty stratum or an empty half produces an entry
+with a status and a reason, and no NaN reaches a reported coefficient.
+
+**(5) Sample-mode numbers (plumbing; NOT findings).** Sample: 2,993 efforts / 50 players / 289 games.
+* matched (CEM within player, 1,000-rep clustered bootstrap): **130 pairs**, 30 of 50 eligible players
+  contribute a pair (20 have no paired cell), 120 strata matched, 1,317 one-sided, 35/37 unmatched
+  high/low; matched estimate **−0.0204** log-speed (SE 0.0180, 95% CI [−0.0529, +0.0172]);
+* regression on the matched rows: **−0.0021** per within-player SD → **−0.0046** high-minus-low
+  (matched-sample `leverage_z` gap 2.1495, 260 rows, 9 controls). The two differ in estimand by
+  construction — the match is unadjusted beyond the strata — and both are labelled as such;
+* headroom: 36 players with a baseline (14 excluded, ≥4 low-leverage efforts required), 395 baseline
+  rows, 1,931 comparison rows; `leverage × baseline utilization` naive **+0.1052** (SE 0.0729),
+  λ = **0.388**, corrected **+0.2712** (SE 0.1879); `× vmax` +0.0035 (λ 0.979); `× tau` −0.0230
+  (λ 0.967);
+* ceiling bound: 2,404 efforts carry a ceiling (589 do not); observed and predicted-at-high exceedance
+  rates are **0.0000 in every bin**; max predicted fraction at high leverage 0.9629 (observed max
+  0.8961) — no sample evidence of a binding ceiling, and that is a sample statement only;
+* dose-response: medium −0.0069, high +0.0017 against low; **not monotone**, trend +0.0024 per bin
+  (SE 0.0045, p 0.60);
+* per-player slopes: **withheld**, reliability 0.000 against threshold 0.50 on 45 eligible players — no
+  per-player table is emitted, which is the gate working;
+* TE replication: −0.0013 (SE 0.0076, 95% CI [−0.0181, +0.0154]), 429 efforts / 12 players, labelled
+  **exploratory** (threshold 30 players);
+* time-to-throw contrast ran; **NOT RUN**: `defender_distance` — `defender_distance_yd` is not written by
+  `04_efforts` and is not proxied from post-snap positions.
+
+**(6) Checks that ran vs did not.** Ran: matched design + regression-on-matched, headroom moderation
+(three moderators, naive + corrected), ceiling bound, dose-response, reliability-gated per-player
+slopes, TE replication, time-to-throw. NOT RUN: defender distance (field absent, named in
+`checks_not_run.csv` and §16). Still not wired anywhere: the Phase 5 non-max-effort placebo, which needs
+the gate-rejected rows written by `04_efforts` (they are counted, not written) — a new extraction pass,
+not a refit.
+
+**(7) Pipeline completeness.** With `07_phase4` wired into `LC_STAGE_ORDER`, `GAME_SIDE`, the helper
+reload list, the status reader and a new §16, the LC chain now runs **Phases 1–5 end to end**:
+`01_audit → 02_combine_ceiling → 00_thresholds → 03_route_depth → 04_efforts → 05_models →
+06_validation → 07_phase4`. Every Phase 4 item in `TASK.md` is either estimated or explicitly NOT RUN
+with its missing field. What is *not* complete is the **full-data run**: sample-mode results above are
+plumbing and the full tracking files are still required before any of them is a finding.
+
+**(8) Verification.** `pytest tests`: **159 passed** (was 132 at D66; +27 Phase 4 acceptance tests, of
+which the two failing ones now pass without any assertion being relaxed). The notebook executes end to
+end in `MODE="sample"` with **0 cell errors**, `07_phase4` reporting
+`OK (sample) · matched ok (130 pairs) · dose monotone=False · slopes=withheld · 1 NOT RUN`, and committed
+outputs stay cleared. No `data/` or `outputs/` artefact is committed. Commits: `7e72c8f` (library, stage,
+tests, config) and the notebook/docs commit that follows this entry.
+
+**(9) No prereg, no reviewer.** Unchanged from D61/D66: no pre-registration stage and no reviewer role
+in this project. Self-review plus mechanical validation (schema, determinism, edge cases, regression) is
+the gate; the real blockers are missing data or missing required fields, not documents.

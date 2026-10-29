@@ -12,7 +12,8 @@
 > python src/04_efforts.py --mode sample          # one row per max-effort route (D65) -> outputs/game/lc/efforts/
 > python src/05_models.py --mode sample           # primary within-player estimand (D65) -> outputs/game/lc/models/
 > python src/06_validation.py --mode sample       # Phase 5 validation (D66) -> outputs/game/lc/validation/
-> python -m pytest tests                          # 132 tests
+> python src/07_phase4.py --mode sample           # Phase 4 remainder (D67) -> outputs/game/lc/phase4/
+> python -m pytest tests                          # 159 tests
 > ```
 >
 > Full mode uses `--mode full` on `01`/`02`/`00`; it additionally requires the three full
@@ -33,11 +34,20 @@
 > headroom moderation, ceiling bound, dose-response, per-player slopes, TE replication and the
 > non-max-effort placebo remain **not wired** — see D66.
 >
+> **D67 (2026-10-29): Phase 4 is wired, and the chain now covers Phases 1–5.** `07_phase4` runs after
+> `06_validation` on the same effort table: matched high-vs-low design (CEM within player, clustered
+> bootstrap) against the primary fit on the matched rows, headroom moderation (naive and
+> errors-in-variables corrected, plus `vmax` and `tau`), ceiling-bound exceedance by leverage bin,
+> dose-response with an explicit monotonicity statement, the reliability-gated per-player slopes, and
+> TE replication with its label. §16 renders it. `defender_distance_yd` is still absent from the effort
+> table, so that one check is printed as **NOT RUN with the field named**; the non-max-effort placebo
+> in Phase 5 remains not wired (it needs the gate-rejected rows written by `04_efforts`).
+>
 > **D63 (2026-10-28): the deliverable notebook runs this chain.** `notebooks/bdb27_full_run.ipynb`
 > now executes the LC chain above first, then the preserved ceiling-v1 chain, and its **§13** prints
 > break coverage, coverage by route family, and the D63 keep-or-fall-back rule for the continuous
 > `break_depth_yd` control. No terminal is needed for the deciding run. The commands below remain the
-> reference for a headless run and for testing (`python -m pytest tests`; 132 tests at D66).
+> reference for a headless run and for testing (`python -m pytest tests`; 159 tests at D67).
 
 > **Deliverable model:** a **scripts engine** (`src/`) + a **public Kaggle notebook** that runs the same
 > logic end-to-end and renders the writeup figures. Stage scripts take `--mode sample|full` and `--force`
