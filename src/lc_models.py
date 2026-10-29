@@ -14,6 +14,8 @@ the real code path rather than a test-only approximation.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -26,9 +28,18 @@ import lc_common as C
 # `break_depth_yd` (geometric depth at the break, `lc_route_depth`, D61) plus the
 # `break_found` indicator.  Depth is a control: report it, never interpret it.
 DEFAULT_CONTROLS = ("route_family", "time_to_throw_s", "score_margin", "down",
-                    "yards_to_go", "prior_efforts", "break_depth_yd",
-                    "break_found")
+                    "yards_to_go", "prior_efforts", "quarter",
+                    "break_depth_yd", "break_found")
 TIME_LOAD_CONTROLS = ("game_elapsed_s", "prior_efforts")
+
+#: Convergence fallbacks in the order TASK.md Phase 4 declares them.  The
+#: primary fit is rung 0 (uncorrelated random intercept + random slope); each
+#: later rung is strictly more conservative.
+FALLBACK_ORDER = ("uncorrelated_re", "player_fixed_effects", "random_intercept")
+
+#: Exact stamp written by lc_common in sample mode.  The stage refuses a
+#: reportable full-mode fit if the effort table carries this instead of FULL.
+SAMPLE_STAMP = "UNVALIDATED SAMPLE OUTPUT"
 
 
 def _model_control_block(cfg: dict | None) -> dict:
@@ -38,6 +49,16 @@ def _model_control_block(cfg: dict | None) -> dict:
         return dict(C.lc(cfg)["route_depth"]["model_control"])
     except (KeyError, TypeError):
         return {"centre": True}
+
+
+def _models_block(cfg: dict | None) -> dict:
+    """Stage tunables (mixed-model iteration cap, variance floor)."""
+    if cfg is None:
+        return {}
+    try:
+        return dict(C.lc(cfg).get("models") or {})
+    except (KeyError, TypeError):
+        return {}
 
 
 def _numeric_controls(df: pd.DataFrame, controls,
@@ -134,7 +155,42 @@ def _ols_cluster(df: pd.DataFrame, y: np.ndarray, X: np.ndarray,
     if names is not None:
         result["coefficients"] = {str(name): float(value)
                                   for name, value in zip(names, beta)}
+        result["terms"] = _term_table(beta, cov, names, leverage_idx)
     return result
+
+
+def _term_table(beta: np.ndarray, cov: np.ndarray, names: list[str],
+                leverage_idx: int) -> list[dict]:
+    """Per-term estimate with the same clustered covariance used for the CI."""
+    rows = []
+    for index, (name, value) in enumerate(zip(names, beta)):
+        if str(name).startswith("player="):
+            continue  # fixed-effect dummies are absorbed, not reported
+        se = float(np.sqrt(max(cov[index, index], 0.0)))
+        rows.append({
+            "term": str(name),
+            "estimate": float(value),
+            "se": se,
+            "ci_low": float(value - 1.96 * se),
+            "ci_high": float(value + 1.96 * se),
+            "role": "estimand" if index == leverage_idx else "control",
+        })
+    return rows
+
+
+def _cluster_cov(X: np.ndarray, resid: np.ndarray, clusters: np.ndarray) -> np.ndarray:
+    """Player-clustered sandwich covariance (same correction as _ols_cluster)."""
+    n, k = X.shape
+    xtx_inv = np.linalg.pinv(X.T @ X)
+    meat = np.zeros((k, k), dtype=float)
+    for cluster in np.unique(clusters):
+        mask = clusters == cluster
+        score = X[mask].T @ resid[mask]
+        meat += np.outer(score, score)
+    g = int(len(np.unique(clusters)))
+    correction = ((g / (g - 1.0)) * ((n - 1.0) / max(1.0, n - k))
+                  if g > 1 else 1.0)
+    return xtx_inv @ meat @ xtx_inv * correction
 
 
 def fit_within_player(df: pd.DataFrame, outcome: str = "log_max_speed",
@@ -234,6 +290,242 @@ def orthogonalise_leverage(df: pd.DataFrame, leverage_col: str = "leverage_z",
     beta, *_ = np.linalg.lstsq(X, y_dm.to_numpy(dtype=float), rcond=None)
     resid = y_dm.to_numpy(dtype=float) - X @ beta
     return pd.Series(resid, index=work.index, name=f"{leverage_col}_orth")
+
+
+def analytic_mde(efforts_per_player: float, cfg: dict | None = None) -> dict:
+    """Analytic minimum detectable effect at a given efforts/player.
+
+    ``MDE = (z_{1-alpha/2} + z_{power}) * sigma / sqrt(n_per_player)``.  At the
+    configured 40 efforts/player, sigma=0.10 it reproduces D60's **0.0443**
+    log-speed.  Reported alongside every interval; never a gate.
+    """
+    if cfg is None:
+        cfg = C.load_config()
+    power = C.lc(cfg)["power"]
+    alpha = float(power["alpha"])
+    beta = 1.0 - float(power["power"])
+    z = float(stats.norm.ppf(1.0 - alpha / 2.0) + stats.norm.ppf(1.0 - beta))
+    sigma = float(power["assumed_within_player_sd_log_speed"])
+    configured_n = float(power["assumed_efforts_per_player"])
+    n = max(float(efforts_per_player), 1e-9)
+    return {
+        "efforts_per_player": float(n),
+        "sigma_log_speed": sigma,
+        "alpha": alpha,
+        "power": float(power["power"]),
+        "z": z,
+        "mde": z * sigma / np.sqrt(n),
+        "configured_efforts_per_player": configured_n,
+        "mde_at_configured": z * sigma / np.sqrt(configured_n),
+        "smallest_effect_of_interest": float(power["smallest_effect_of_interest"]),
+    }
+
+
+def assert_effort_provenance(df: pd.DataFrame, mode: str,
+                             stage: str = "05_models") -> str:
+    """Refuse a reportable full-mode fit on a non-FULL effort table.
+
+    Sample mode is allowed (outputs are stamped and non-reportable).  In full
+    mode the table must carry ``provenance == "FULL"`` on every row; anything
+    else — a sample stamp copied into the full path, a missing column — raises.
+    """
+    if "provenance" not in df.columns:
+        raise RuntimeError(
+            f"STAGE {stage!r}: effort table has no provenance column; refusing "
+            "to fit (the writer always stamps it).")
+    values = {str(v) for v in df["provenance"].dropna().unique()}
+    if mode == "full":
+        if values != {"FULL"}:
+            raise RuntimeError(
+                f"STAGE {stage!r}: mode=full but the effort table provenance is "
+                f"{sorted(values)}, not ['FULL']. Rebuild 04_efforts on the full "
+                "tracking input before fitting.")
+        return "FULL"
+    if not any(SAMPLE_STAMP in value for value in values):
+        raise RuntimeError(
+            f"STAGE {stage!r}: sample mode but the effort table is not stamped "
+            f"{SAMPLE_STAMP!r} (found {sorted(values)}).")
+    return "PLACEHOLDER_SAMPLE"
+
+
+def _depth_control_columns(work: pd.DataFrame, cfg: dict | None) -> pd.DataFrame:
+    """Add the reference-coded depth control used by the mixed-model formula."""
+    block = _model_control_block(cfg)
+    depth_col = block.get("depth_column", "break_depth_yd")
+    indicator_col = block.get("indicator_column", "break_found")
+    found = (work[indicator_col].fillna(False).astype(bool)
+             if indicator_col in work.columns
+             else pd.Series(False, index=work.index))
+    depth = (pd.to_numeric(work[depth_col], errors="coerce").astype(float)
+             if depth_col in work.columns else pd.Series(np.nan, index=work.index))
+    depth = depth.fillna(0.0)
+    if bool(block.get("centre", True)) and found.any():
+        depth = depth - float(depth[found].mean())
+    work["_break_depth_centred"] = depth
+    work["_break_found"] = found.astype(float)
+    return work
+
+
+def _formula_terms(controls, cfg: dict | None) -> list[str]:
+    block = _model_control_block(cfg)
+    depth_col = block.get("depth_column", "break_depth_yd")
+    indicator_col = block.get("indicator_column", "break_found")
+    terms = []
+    for name in controls:
+        if name == "route_family":
+            continue  # expanded by _prepare_mixed_frame into rf_* columns
+        elif name == depth_col:
+            terms.append("_break_depth_centred")
+        elif name == indicator_col:
+            terms.append("_break_found")
+        elif name in ("leverage", "leverage_z"):
+            continue  # added explicitly by the caller
+        else:
+            terms.append(name)
+    return terms
+
+
+def _prepare_mixed_frame(df: pd.DataFrame, outcome: str, leverage_col: str,
+                         controls, player_col: str,
+                         cfg: dict | None) -> pd.DataFrame:
+    work = _depth_control_columns(df.copy(), cfg)
+    work = work.dropna(subset=[outcome, leverage_col, player_col]).copy()
+    for name in controls:
+        if name in work.columns and name not in ("route_family",):
+            values = pd.to_numeric(work[name], errors="coerce").astype(float)
+            work[name] = values.fillna(values.median() if values.notna().any() else 0.0)
+    work[player_col] = work[player_col].astype(str)
+    if "route_family" in work.columns:
+        work["route_family"] = work["route_family"].fillna("UNKNOWN").astype(str)
+        # Pre-build the dummies: `C(...)` in a patsy formula would resolve to
+        # the lc_common module imported as `C` in this file, not patsy's C().
+        dummies = pd.get_dummies(work["route_family"], drop_first=True,
+                                 dtype=float)
+        for column in dummies.columns:
+            work[f"rf_{column}"] = dummies[column].to_numpy(dtype=float)
+    return work
+
+
+def _mixed_result(res, work: pd.DataFrame, outcome: str, leverage_col: str,
+                  player_col: str, model_name: str) -> dict:
+    """Wrap a MixedLM result with player-clustered SEs on the fixed effects."""
+    X = np.asarray(res.model.exog, dtype=float)
+    beta = np.asarray(res.fe_params, dtype=float)
+    names = list(res.model.exog_names)
+    leverage_idx = names.index(leverage_col)
+    resid = work[outcome].to_numpy(dtype=float) - X @ beta
+    clusters = work[player_col].astype(str).to_numpy()
+    cov = _cluster_cov(X, resid, clusters)
+    se = float(np.sqrt(max(cov[leverage_idx, leverage_idx], 0.0)))
+    b = float(beta[leverage_idx])
+    g = int(len(np.unique(clusters)))
+    dof = max(1, g - 1)
+    t_stat = b / se if se > 0 else float("nan")
+    p_value = float(2.0 * stats.t.sf(abs(t_stat), dof)) if np.isfinite(t_stat) else float("nan")
+    crit = float(stats.t.ppf(0.975, dof))
+    return {
+        "beta": b, "se": se, "t": float(t_stat), "p": p_value,
+        "ci_low": b - crit * se, "ci_high": b + crit * se,
+        "n": int(len(work)), "n_players": g, "n_params": int(X.shape[1]),
+        "resid_sd": float(np.std(resid, ddof=1)) if len(work) > 1 else float("nan"),
+        "cluster": "player", "model": model_name,
+        "leverage_col": leverage_col,
+        "terms": _term_table(beta, cov, names, leverage_idx),
+    }
+
+
+def fit_uncorrelated_re(df: pd.DataFrame, outcome: str = "log_max_speed",
+                        leverage_col: str = "leverage_z",
+                        controls=DEFAULT_CONTROLS,
+                        player_col: str = "nfl_id",
+                        cfg: dict | None = None) -> dict:
+    """Rung 0: (1|player) + (0+leverage|player), uncorrelated, clustered SE."""
+    import statsmodels.formula.api as smf
+
+    work = _prepare_mixed_frame(df, outcome, leverage_col, controls, player_col, cfg)
+    terms = [leverage_col, *_formula_terms(controls, cfg),
+             *[c for c in work.columns if c.startswith("rf_")]]
+    formula = f"{outcome} ~ " + " + ".join(terms)
+    block = _models_block(cfg)
+    max_iter = int(block.get("mixed_max_iter", 500))
+    floor = float(block.get("variance_component_floor", 1.0e-8))
+    model = smf.mixedlm(formula, work, groups=work[player_col],
+                        vc_formula={"leverage_slope": f"0 + {leverage_col}"})
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")
+        res = model.fit(reml=False, method="lbfgs", maxiter=max_iter)
+    if not bool(getattr(res, "converged", False)):
+        raise RuntimeError("mixed model did not converge")
+    vcomp = np.asarray(getattr(res, "vcomp", []), dtype=float)
+    if vcomp.size and (not np.all(np.isfinite(vcomp)) or float(np.min(vcomp)) <= floor):
+        raise RuntimeError("random-slope variance on the boundary (0)")
+    return _mixed_result(res, work, outcome, leverage_col, player_col,
+                         "uncorrelated_re")
+
+
+def fit_random_intercept(df: pd.DataFrame, outcome: str = "log_max_speed",
+                         leverage_col: str = "leverage_z",
+                         controls=DEFAULT_CONTROLS,
+                         player_col: str = "nfl_id",
+                         cfg: dict | None = None) -> dict:
+    """Rung 2: random intercept only (no random slope), clustered SE."""
+    import statsmodels.formula.api as smf
+
+    work = _prepare_mixed_frame(df, outcome, leverage_col, controls, player_col, cfg)
+    terms = [leverage_col, *_formula_terms(controls, cfg),
+             *[c for c in work.columns if c.startswith("rf_")]]
+    formula = f"{outcome} ~ " + " + ".join(terms)
+    max_iter = int(_models_block(cfg).get("mixed_max_iter", 500))
+    model = smf.mixedlm(formula, work, groups=work[player_col])
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")
+        res = model.fit(reml=False, method="lbfgs", maxiter=max_iter)
+    if not bool(getattr(res, "converged", False)):
+        raise RuntimeError("random-intercept model did not converge")
+    return _mixed_result(res, work, outcome, leverage_col, player_col,
+                         "random_intercept")
+
+
+def fit_ladder(df: pd.DataFrame, outcome: str = "log_max_speed",
+               leverage_col: str = "leverage_z",
+               controls=DEFAULT_CONTROLS, player_col: str = "nfl_id",
+               cfg: dict | None = None) -> dict:
+    """Try the declared convergence fallbacks IN ORDER and record what was used."""
+    ladder: list[dict] = []
+    for rung in FALLBACK_ORDER:
+        try:
+            result = _RUNG_FITTERS[rung](df, outcome, leverage_col, controls,
+                                         player_col, cfg=cfg)
+            if not (np.isfinite(result.get("beta", np.nan))
+                    and np.isfinite(result.get("se", np.nan))
+                    and result.get("se", 0) > 0):
+                raise RuntimeError("non-finite estimate or zero clustered SE")
+        except Exception as exc:  # noqa: BLE001 - any failed rung falls through
+            ladder.append({"rung": rung, "status": "failed",
+                           "reason": f"{type(exc).__name__}: {exc}"})
+            continue
+        ladder.append({"rung": rung, "status": "used"})
+        result["fallback_used"] = rung
+        result["ladder"] = ladder
+        result["controls"] = list(controls)
+        return result
+    ladder.append({"rung": "none", "status": "failed",
+                   "reason": "all declared fallbacks failed"})
+    return {"beta": float("nan"), "se": float("nan"), "t": float("nan"),
+            "p": float("nan"), "ci_low": float("nan"),
+            "ci_high": float("nan"), "n": int(len(df)),
+            "n_players": int(df[player_col].nunique()) if len(df) else 0,
+            "n_params": 0, "resid_sd": float("nan"), "cluster": "player",
+            "fallback_used": None, "ladder": ladder,
+            "controls": list(controls)}
+
+
+#: Rung name -> fitter.  A test monkeypatches this mapping to prove the order.
+_RUNG_FITTERS = {
+    "uncorrelated_re": fit_uncorrelated_re,
+    "player_fixed_effects": fit_within_player,
+    "random_intercept": fit_random_intercept,
+}
 
 
 def fit_orthogonalised(df: pd.DataFrame, outcome: str = "log_max_speed",

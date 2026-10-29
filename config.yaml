@@ -955,6 +955,8 @@ bdb27_lc:
 
   efforts:
     definition_id: route_depth_and_duration
+    out_subdir: game/lc/efforts
+    summary_filename: efforts_summary.json
     min_route_depth_yd: 5.0
     min_route_depth_yd_sensitivity: 8.0
     min_duration_s: 1.0
@@ -965,6 +967,28 @@ bdb27_lc:
     load_measures:
       primary: prior_high_intensity_efforts
       secondary: prior_distance_yd
+
+  # --- Phase 4: the within-player leverage estimand (D65 wires it as a stage) ---
+  # Every value here mirrors TASK.md Phase 4 as written; no feature is added
+  # beyond the declared specification.  `break_depth_yd` is a CONTROL and is
+  # reported, never interpreted.
+  models:
+    out_subdir: game/lc/models
+    summary_filename: model_result.json
+    outcome: log_max_speed
+    leverage_column: leverage_z        # per 1 within-player SD of leverage
+    controls: [route_family, break_depth_yd, break_found, time_to_throw_s,
+               prior_efforts, quarter, score_margin, down, yards_to_go]
+    cluster: player
+    # TASK.md Phase 4 convergence fallbacks, in the declared order.
+    fallbacks: [uncorrelated_re, player_fixed_effects, random_intercept]
+    mixed_max_iter: 500
+    variance_component_floor: 1.0e-08  # a slope variance at 0 is a failed rung
+    report_depth_control: true
+    depth_note: "break_depth_yd is a control; reported, never interpreted"
+    mde_note: >-
+      Analytic MDE at n efforts/player; D60's 0.0443 log-speed at 40
+      efforts/player is stated alongside every interval and is not a gate.
 
   # --- D61: route depth as DEPTH AT THE BREAK (the depth control in the model) ---
   # Every number below is a design constant frozen in notes/decisions.md D61

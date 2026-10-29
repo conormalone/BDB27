@@ -98,9 +98,12 @@ def _tracking_summary(tracking: pd.DataFrame) -> pd.DataFrame:
         disp = float(np.hypot(g["x"].iloc[-1] - g["x"].iloc[0],
                               g["y"].iloc[-1] - g["y"].iloc[0]))
         duration = float((g["time"].iloc[-1] - g["time"].iloc[0]).total_seconds())
+        accel = (float(np.nanmax(np.abs(g["a"].to_numpy(dtype=float))))
+                 if "a" in g.columns and g["a"].notna().any() else np.nan)
         rows.append({
             "game_id": key[0], "play_id": key[1], "nfl_id": key[2],
             "max_speed_yds": float(g["s"].max()),
+            "peak_accel_yds2": accel,
             "start_time": g["time"].iloc[0], "duration_s": duration,
             "n_frames": int(len(g)), "route_path_yd": path,
             "route_displacement_yd": disp,
@@ -109,11 +112,98 @@ def _tracking_summary(tracking: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _field_position(merged: pd.DataFrame) -> pd.Series:
+    """Yards to the opponent's goal line (0-100), from pre-snap field position."""
+    if not {"yardline_side", "yardline_number", "possession_team"}.issubset(merged.columns):
+        return pd.Series(np.nan, index=merged.index, dtype=float)
+    side = merged["yardline_side"].astype(str)
+    own = side == merged["possession_team"].astype(str)
+    number = pd.to_numeric(merged["yardline_number"], errors="coerce")
+    return pd.Series(np.where(own, 100.0 - number, number), index=merged.index)
+
+
+def assign_leverage_bins(df: pd.DataFrame, cfg: dict | None = None) -> pd.DataFrame:
+    """Add ``leverage_bin`` from the configured count-based tercile rule.
+
+    Edges are quantiles of the leverage values in *this* table; in a full run
+    that is the full distribution (``leverage.binning.computed_on: FULL``).
+    Small or degenerate tables (fewer rows than bins, or a constant leverage)
+    fall back to a single ``all``/``low`` label rather than raising: the stage
+    reports the edge case instead of crashing.
+    """
+    out = df.copy()
+    if cfg is None:
+        cfg = C.load_config()
+    block = C.lc(cfg).get("leverage", {}).get("binning", {})
+    labels = list(block.get("labels", ["low", "medium", "high"]))
+    n_bins = int(block.get("n_bins", len(labels)))
+    n_bins = max(2, min(n_bins, len(labels)))
+    values = pd.to_numeric(out.get("leverage"), errors="coerce")
+    if out.empty or values.nunique(dropna=True) < 2 or len(out) < n_bins:
+        out["leverage_bin"] = "single"
+        return out
+    # Rank first: qcut on ties can raise on duplicate edges.
+    ranked = values.rank(method="first")
+    bins = pd.qcut(ranked, q=n_bins, labels=labels[:n_bins])
+    out["leverage_bin"] = bins.astype(str)
+    return out
+
+
+def finalise_efforts(out: pd.DataFrame, cfg: dict | None = None) -> pd.DataFrame:
+    """Compute within-player standardisation, load and bins on a full table.
+
+    Kept public because the stage assembles one game at a time and must apply
+    these *globally* (a per-game z-score would silently change the estimand).
+    """
+    if out.empty:
+        return out.copy()
+    work = out.copy()
+    work["start_time"] = pd.to_datetime(work["start_time"], errors="coerce")
+    work = work.sort_values(
+        ["nfl_id", "game_id", "start_time", "play_id"], kind="stable"
+    ).reset_index(drop=True)
+    grp = work.groupby(["nfl_id", "game_id"], sort=False)
+    work["prior_efforts"] = grp.cumcount().astype(float)
+    work["effort_seq"] = grp.cumcount().astype(int)
+    work["prior_distance_yd"] = (grp["route_path_yd"].cumsum()
+                                 - work["route_path_yd"])
+
+    def _z(col: str) -> pd.Series:
+        g = work.groupby("nfl_id")[col]
+        mean = g.transform("mean")
+        sd = g.transform("std").replace(0, np.nan)
+        return ((work[col] - mean) / sd).fillna(0.0)
+
+    work["leverage_z"] = _z("leverage")
+    work["time_z"] = _z("game_elapsed_s")
+    work["load_z"] = _z("prior_efforts")
+
+    # Players with no leverage variation (one bin) contribute no within-player
+    # information; keep the rows but mark them so the model can report it.
+    spread = work.groupby("nfl_id")["leverage"].transform("std").fillna(0.0)
+    work["one_bin_player"] = spread <= 1e-12
+
+    for col in ("time_to_throw_s", "score_margin", "yards_to_go"):
+        values = pd.to_numeric(work[col], errors="coerce")
+        fill = values.median() if values.notna().any() else 0.0
+        work[col] = values.fillna(fill)
+    work["down"] = pd.to_numeric(work["down"], errors="coerce").fillna(0)
+    work["quarter"] = pd.to_numeric(work["quarter"], errors="coerce").fillna(1)
+    return assign_leverage_bins(work, cfg)
+
+
 def extract_efforts(player_play: pd.DataFrame, tracking: pd.DataFrame,
                     players: pd.DataFrame | None = None, cfg: dict | None = None,
                     min_depth: float = 0.0, min_duration: float = 0.0,
-                    min_frames: int = 5) -> tuple[pd.DataFrame, dict]:
-    """Build the one-row-per-effort table plus extraction diagnostics."""
+                    min_frames: int = 5, depth_table: pd.DataFrame | None = None,
+                    finalise: bool = True) -> tuple[pd.DataFrame, dict]:
+    """Build the one-row-per-effort table plus extraction diagnostics.
+
+    ``depth_table`` lets the stage pass the already-written 03_route_depth
+    table instead of re-deriving depth inside this function.  ``finalise=False``
+    returns raw per-game rows; :func:`finalise_efforts` then applies the global
+    within-player standardisation once the games are concatenated.
+    """
     pp = player_play.copy()
     diag = {"n_player_play_rows": int(len(pp))}
     if cfg is None:
@@ -141,10 +231,13 @@ def extract_efforts(player_play: pd.DataFrame, tracking: pd.DataFrame,
     tr = _tracking_summary(tracking)
     diag["n_tracked_player_plays"] = int(len(tr))
     wanted = set(zip(pp["game_id"], pp["play_id"], pp["nfl_id"]))
-    track_subset = tracking[[(g, p, n) in wanted for g, p, n in
-                             zip(tracking["game_id"], tracking["play_id"],
-                                 tracking["nfl_id"])]]
-    depth_table = RD.route_depth_table(track_subset, direction_map, cfg)
+    if depth_table is None:
+        track_subset = tracking[[(g, p, n) in wanted for g, p, n in
+                                 zip(tracking["game_id"], tracking["play_id"],
+                                     tracking["nfl_id"])]]
+        depth_table = RD.route_depth_table(track_subset, direction_map, cfg)
+    else:
+        depth_table = depth_table.copy()
     diag["n_route_depth_rows"] = int(len(depth_table))
     diag["n_break_found"] = int(depth_table["break_found"].astype(bool).sum())
     diag["n_no_break"] = int((~depth_table["break_found"].astype(bool)).sum())
@@ -153,16 +246,20 @@ def extract_efforts(player_play: pd.DataFrame, tracking: pd.DataFrame,
     depth_columns = ["game_id", "play_id", "nfl_id", "break_found",
                      "break_depth_yd", "break_time_from_snap_s",
                      "break_after_throw", "throw_known", "flags"]
-    depth_table = depth_table[depth_columns].rename(
-        columns={"flags": "route_depth_flags"})
+    depth_table = depth_table[[c for c in depth_columns
+                               if c in depth_table.columns]].copy()
+    if "flags" in depth_table.columns:
+        depth_table = depth_table.rename(columns={"flags": "route_depth_flags"})
     merged = pp.merge(tr, on=["game_id", "play_id", "nfl_id"], how="left")
     merged = merged.merge(depth_table, on=["game_id", "play_id", "nfl_id"],
                           how="left")
     diag["n_without_tracking"] = int(merged["max_speed_yds"].isna().sum())
     diag["n_without_depth"] = int(merged["break_found"].isna().sum())
     merged = merged[merged["max_speed_yds"].notna() & (merged["n_frames"] >= min_frames)]
+    diag["n_before_effort_gate"] = int(len(merged))
     merged = merged[(merged["route_displacement_yd"] >= min_depth) &
                     (merged["duration_s"] >= min_duration)]
+    diag["n_dropped_min_depth"] = int(diag["n_before_effort_gate"] - len(merged))
     diag["n_efforts"] = int(len(merged))
     if merged.empty:
         return merged, diag
@@ -180,6 +277,9 @@ def extract_efforts(player_play: pd.DataFrame, tracking: pd.DataFrame,
         "time_to_throw_s": pd.to_numeric(merged.get("dropback_duration"), errors="coerce"),
         "wp_pre": pd.to_numeric(merged["pre_snap_home_team_win_probability"], errors="coerce"),
         "max_speed_yds": merged["max_speed_yds"].astype(float),
+        "peak_accel_yds2": pd.to_numeric(merged["peak_accel_yds2"],
+                                         errors="coerce").astype(float),
+        "field_position_yd": _field_position(merged).astype(float),
         "route_displacement_yd": merged["route_displacement_yd"].astype(float),
         "break_found": merged["break_found"].fillna(False).astype(bool),
         "break_depth_yd": pd.to_numeric(merged["break_depth_yd"],
@@ -202,33 +302,12 @@ def extract_efforts(player_play: pd.DataFrame, tracking: pd.DataFrame,
     out.loc[out["quarter"] >= 5, "game_elapsed_s"] = (
         3600.0 + (900.0 - out["game_clock_s"]))
     out["log_max_speed"] = np.log(out["max_speed_yds"].clip(lower=1e-6))
-
-    # Cumulative load: only earlier efforts by the same player in the same game.
-    out = out.sort_values(["nfl_id", "game_id", "start_time", "play_id"]).reset_index(drop=True)
-    grp = out.groupby(["nfl_id", "game_id"], sort=False)
-    out["prior_efforts"] = grp.cumcount().astype(float)
-    out["prior_distance_yd"] = grp["route_path_yd"].cumsum() - out["route_path_yd"]
-
-    # Standardise within player so the coefficient is "per 1 SD of leverage".
-    def _z(col: pd.Series) -> pd.Series:
-        g = out.groupby("nfl_id")[col]
-        mean = g.transform("mean")
-        sd = g.transform("std").replace(0, np.nan)
-        return ((out[col] - mean) / sd).fillna(0.0)
-
-    out["leverage_z"] = _z("leverage")
-    out["time_z"] = _z("game_elapsed_s")
-    out["load_z"] = _z("prior_efforts")
-
-    # Players with no leverage variation (one bin) contribute no within-player
-    # information; keep the rows but mark them so the model can report it.
-    spread = out.groupby("nfl_id")["leverage"].transform("std").fillna(0.0)
-    out["one_bin_player"] = spread <= 1e-12
-    diag["n_one_bin_players"] = int(out.loc[out["one_bin_player"], "nfl_id"].nunique())
     diag["n_players"] = int(out["nfl_id"].nunique())
-    out["time_to_throw_s"] = out["time_to_throw_s"].fillna(
-        out["time_to_throw_s"].median() if out["time_to_throw_s"].notna().any() else 0.0)
-    out["score_margin"] = out["score_margin"].fillna(out["score_margin"].median())
-    out["down"] = out["down"].fillna(0)
-    out["yards_to_go"] = out["yards_to_go"].fillna(out["yards_to_go"].median())
+    diag["n_single_effort_players"] = int(
+        (out.groupby("nfl_id").size() == 1).sum()) if len(out) else 0
+    if not finalise:
+        return out.reset_index(drop=True), diag
+    out = finalise_efforts(out, cfg)
+    diag["n_one_bin_players"] = int(
+        out.loc[out["one_bin_player"], "nfl_id"].nunique())
     return out.reset_index(drop=True), diag

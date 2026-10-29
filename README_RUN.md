@@ -9,13 +9,21 @@
 > python src/02_combine_ceiling.py --mode sample  # ceiling -> outputs/ceiling/lc/
 > python src/00_thresholds.py --mode sample       # thresholds -> outputs/thresholds.json
 > python src/03_route_depth.py --mode sample      # depth at the break (D61) -> outputs/game/lc/route_depth/
-> python -m pytest tests                          # 96 tests
+> python src/04_efforts.py --mode sample          # one row per max-effort route (D65) -> outputs/game/lc/efforts/
+> python src/05_models.py --mode sample           # primary within-player estimand (D65) -> outputs/game/lc/models/
+> python -m pytest tests                          # 111 tests
 > ```
 >
 > Full mode uses `--mode full` on `01`/`02`/`00`; it additionally requires the three full
 > `game_tracking_{2023,24,25}.csv` files, and `00_thresholds` refuses to stamp `FULL` on sample-sized
 > input. Current status is `GO_PENDING_FULL_RUN`; see `notes/decisions.md` D59–D60 and
 > `notes/pending_full_run.md`.
+>
+> **D65 (2026-10-29): the chain now ends in the estimand.** `04_efforts` and `05_models` are wired
+> after `03_route_depth` and run from the notebook like every other stage. §14 renders the effort-table
+> audit and the leverage coefficient (with the convergence fallback used and the achieved analytic MDE).
+> Phase 4's matched design, headroom, ceiling bound, dose-response, per-player slopes, TE replication and
+> all of Phase 5 remain **not yet wired** — see D65.
 >
 > **D63 (2026-10-28): the deliverable notebook runs this chain.** `notebooks/bdb27_full_run.ipynb`
 > now executes the LC chain above first, then the preserved ceiling-v1 chain, and its **§13** prints
@@ -67,10 +75,10 @@ the drive (or copy the CSVs to a laptop and point `data/raw` there) before any g
 
 ## 3. Run order
 
-**Current chain (D59–D63)** — what the notebook runs first:
+**Current chain (D59–D65)** — what the notebook runs first:
 
 ```
-01_audit → 02_combine_ceiling → 00_thresholds → 03_route_depth
+01_audit → 02_combine_ceiling → 00_thresholds → 03_route_depth → 04_efforts → 05_models
 ```
 
 **Retired ceiling-v1 chain (D27–D50, preserved under `src/legacy_ceiling_v1/`)** — still runnable, and

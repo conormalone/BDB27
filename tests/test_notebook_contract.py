@@ -21,7 +21,8 @@ import lc_common as C
 ROOT = Path(__file__).resolve().parents[1]
 NB_PATH = ROOT / "notebooks" / "bdb27_full_run.ipynb"
 
-LC_CHAIN = ["01_audit", "02_combine_ceiling", "00_thresholds", "03_route_depth"]
+LC_CHAIN = ["01_audit", "02_combine_ceiling", "00_thresholds", "03_route_depth",
+            "04_efforts", "05_models"]
 LEGACY_CHAIN = ["02_combine_envelope", "06_security", "03_game_demand", "07_security_models",
                 "10_dose_response", "00b_external_proxies", "04_models", "05_validate"]
 

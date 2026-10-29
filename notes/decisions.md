@@ -2242,3 +2242,93 @@ The fix:
 stale by the tests added since). The notebook's committed outputs stay cleared; no `data/` or
 `outputs/` artefact is committed. §13 continues to compute pre-throw breaks from
 `route_depth.csv` with its own mask and does not read the fragile summary field.
+
+## D65 — 2026-10-29 — The LC chain ends in the estimand: `04_efforts` and `05_models` are real stages
+
+**Decision.** Wire the two missing Phase 3/4 pieces as stages after `03_route_depth`:
+`04_efforts` (one row per max-effort route) and `05_models` (the primary within-player leverage
+estimand with its declared convergence fallbacks). Both join `LC_STAGE_ORDER` in the notebook, take
+the same `--mode` / `--force` / `--config` contract, checkpoint through `lc_common`, and are
+invocable from one Run All. The next full run therefore ends in the answer instead of stopping at
+route depth.
+
+**(1) Why this cycle exists.** The D64 full run produced the D63 gate result, but the notebook only
+scheduled the LC chain through `03_route_depth`. `lc_efforts` and `lc_models` existed as library
+code covered by synthetic recovery tests, yet they were not stages and not in `STAGE_ORDER`, so the
+actual estimand was reachable only by hand. D65 closes that gap without changing any D61–D64
+route-depth constant or the gate.
+
+**(2) `04_efforts` — what it does.** It reads the WR/TE route keys from `player_play` (Parquet +
+DuckDB), the tracking game by game (never the full file in pandas), and the **already-written**
+`outputs/game/lc/route_depth/route_depth.csv` for the D61 depth control. It writes one row per
+effort to `outputs/game/lc/efforts/efforts.csv`, plus `efforts_summary.json` and `SUMMARY.md`.
+Each row carries: `max_speed_yds`, `peak_accel_yds2`, `route_family`, `break_depth_yd` and
+`break_found`, `time_to_throw_s`, cumulative load before the effort (`prior_efforts`,
+`prior_distance_yd`), `game_clock_s` / `game_elapsed_s`, `quarter`, `score_margin`, down and
+distance, `field_position_yd` and `leverage` / `leverage_z` / `leverage_bin`. The outcome is
+`log_max_speed`; leverage is `4 p (1-p)` from the pre-snap win probability only. No post-snap field
+enters either definition. The effort gate (route extension >= 5 yd, duration >= 1.0 s) is applied
+before writing and its removed rows are counted. `effort_seq` gives a dense per-player-per-game
+index, so `(game_id, play_id, nfl_id, effort_seq)` is the effort key.
+
+**(3) `05_models` — what it does.** It reads only `efforts.csv` and fits the TASK.md Phase 4
+specification: `log_max_speed ~ leverage_z + route family + centred break_depth_yd + break_found +
+time_to_throw + prior_efforts (cumulative load) + quarter + score margin + down + yards_to_go`,
+player-clustered SEs, estimand = population coefficient on leverage. Depth is a **control** and the
+output labels it as such. The convergence ladder is tried in the declared order and the rung used is
+written into `model_result.json`:
+1. `uncorrelated_re` — `(1|player) + (0+leverage|player)`, uncorrelated variance components;
+2. `player_fixed_effects` — the existing player-FE OLS with clustered SE;
+3. `random_intercept` — random intercept only.
+A rung is rejected if it does not converge, returns a non-finite estimate or a zero clustered SE, or
+puts the random-slope variance on the boundary (zero). The achieved analytic MDE is computed from
+`z * sigma / sqrt(efforts_per_player)` and reported next to the interval; D60's 0.0443 at 40
+efforts/player is restated. It is stated, never a gate.
+
+**(4) Provenance and edge cases.** Both stages call `require_full_provenance`; in full mode
+`04_efforts` additionally refuses a `route_depth.csv` whose rows are not `FULL`, and `05_models`
+refuses an `efforts.csv` whose `provenance` column is not `FULL`. Sample runs are allowed and every
+artefact is stamped `UNVALIDATED SAMPLE OUTPUT`. Players with one leverage bin, single-effort
+players, players with no usable effort and games with no tracking are counted in the summaries and
+do not crash a stage.
+
+**(5) Notebook.** §14 reads `outputs/game/lc/efforts/` and `outputs/game/lc/models/` and renders
+the effort audit (efforts and players per leverage bin, players with >= 5 efforts in both extremes,
+per-player counts) and the model result (leverage coefficient with clustered CI, the fallback used,
+the achieved MDE). It prints an explicit "depth is a CONTROL, not a finding" line. No number is
+typed by hand. `LC_STAGE_ORDER` is now `01_audit -> 02_combine_ceiling -> 00_thresholds ->
+03_route_depth -> 04_efforts -> 05_models`; `04_efforts` and `05_models` are in `GAME_SIDE`, and
+their status is read from their own artefacts.
+
+**(6) Sample-mode numbers (plumbing; NOT findings).** On the provided sample:
+* key table 53,216 route-snap rows / 143 players / 967 games; **2,993 efforts** from **50 players**
+  in **289 games** after the tracking join (`7,576` key rows had no tracking; `61` removed by the
+  effort gate; `0` missing pre-snap WP);
+* leverage bins 998 low / 997 medium / 998 high; **36** players have >= 5 efforts in both extremes;
+  per-player efforts mean 59.9, median 46, range 5–174;
+* leverage coefficient **+0.0070** log-speed per 1 within-player SD, clustered SE 0.0054,
+  95% CI **[-0.0039, +0.0180]**, p = 0.2006; fallback used **`uncorrelated_re`** (rung 1 converged);
+* achieved MDE **0.0362** at 59.9 efforts/player (D60's 0.0443 at 40);
+* depth control: centred `break_depth_yd` 0.0105 (SE 0.0012), `break_found` -0.1510 (SE 0.0203) —
+  reported, not interpreted.
+These are sample-mode diagnostics and must not be quoted as results.
+
+**(7) Tests.** `pytest tests`: **111 passed** (106 at HEAD). New tests in `tests/test_efforts_stage.py`
+cover: exactly one row per effort key and dense `effort_seq`; the model stage refusing non-FULL
+provenance in full mode; the fallback ladder being exercised in order; the MDE identity reproducing
+D60; and a degenerate one-bin leverage table being labelled rather than crashing. The notebook
+contract test now asserts the six-stage LC chain. The notebook was executed end to end in
+`MODE="sample"` with **0 cell errors**; committed outputs stay cleared and no `data/` or `outputs/`
+artefact is committed.
+
+**(8) Phase 4/5 items deliberately NOT wired this cycle.** Recorded in `model_result.json` as
+`not_yet_wired` and in §14, in this order: matched high-vs-low leverage design (CEM + clustered
+bootstrap); headroom moderation (`leverage x baseline utilization`); ceiling-bound check; dose-response
+across leverage bins; per-player leverage slopes with the reliability screen; TE replication; and all
+of Phase 5 validation (leverage permutation, time/load orthogonalised refit, placebos,
+tactical-demand and garbage-time checks, equivalence test). Nothing is stubbed into the notebook as
+if it ran.
+
+**(9) No prereg, no reviewer.** Per D61 §9 this project has no pre-registration stage and no reviewer
+role. Self-review plus mechanical validation (schema, determinism, edge cases, regression) is the
+gate; the real blockers are missing data or missing required fields, not documents.
