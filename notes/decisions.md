@@ -2555,3 +2555,35 @@ tests, config) and the notebook/docs commit that follows this entry.
 **(9) No prereg, no reviewer.** Unchanged from D61/D66: no pre-registration stage and no reviewer role
 in this project. Self-review plus mechanical validation (schema, determinism, edge cases, regression) is
 the gate; the real blockers are missing data or missing required fields, not documents.
+
+## D68 — 2026-10-30 — Task pivots to DL pass-rush: Combine acceleration ceiling → pressure, and ceiling-relative load
+
+**(1) New binding spec.** Conor supplied a complete new `TASK.md` (four consecutive messages, transcribed
+verbatim). Subject changes from *do receivers use more of their ceiling in high-leverage moments* to
+*does a defensive lineman's Combine acceleration ceiling predict time to pressure, and does
+ceiling-relative load decay better than absolute load*. The old spec, its prereg and its
+prereg-deviations are archived in `notes/archive-tasks/` (not deleted); the LC code chain, its config
+block and its 159 tests are left intact and untouched by this decision.
+
+**(2) Pre-registration returns.** The 2026-10-27 correction (D61) retired the prereg stage: no prereg,
+no reviewer, self-review plus mechanical validation only. The new spec explicitly requires
+`/notes/prereg.md` fixing Combine features, outcome definitions, censoring rule, both load definitions
+and tuning procedure, controls, minimum snaps, comparison metric, smallest effect of interest and
+reliability thresholds, and lists a missing prereg as a stop condition before a full run. Newer explicit
+instruction wins: **the prereg gate is live again for this task**, and only gates `--mode full`. The
+no-reviewer rule is unchanged — self-review plus mechanical validation remains the gate.
+
+**(3) Namespace.** The new chain is `01_audit → 02_combine_ceiling → 00_thresholds → 03_game_snaps →
+04_models → 05_validate`, which collides by name with the live LC chain (`00_thresholds`, `01_audit`,
+`02_combine_ceiling`, `04_models`, `05_models` …). The new stages must live in their own namespace so
+both chains stay runnable and the existing suite keeps passing; resolution is left to the cycle that
+implements it, but "rename in place and break the old chain" is not acceptable without Conor.
+
+**(4) Carried-forward risk, stated up front.** The archived audit measured ICC on WR/TE straight-line
+attempts as **a0 0.193, tau 0.263, vmax 0.725, peak_speed 0.975, speed_at_20 0.969** — i.e. the derived
+acceleration parameters were the *least* reliable features and were dropped in favour of vmax. This spec
+makes a0 the primary feature and adds speed at 1.0 s. Those numbers are from a different position group
+and a different feature construction, so they are not evidence against the new task — but if the DL audit
+reproduces an a0 ICC near 0.2, the Phase 1 go/no-go condition "key Combine features have ICC below the
+config threshold" fires and the task needs a rethink before any modelling. This is the single largest
+known risk and it is settled by measurement in Phase 1, not by argument.
