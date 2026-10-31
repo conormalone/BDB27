@@ -2648,3 +2648,46 @@ variation in tau is large enough that vmax and a0 are **not** interchangeable ac
 players, so a0 is a distinct exposure rather than a reparameterised vmax. (Natural scale is
 used because the shrunken estimates are reported there; the log-scale analogue would be
 the more usual elasticity statement and is a candidate addition at M2.)
+
+## D70 — 2026-10-31 — Pre-registration frozen for the DL task
+
+**(1) What was frozen.** `notes/prereg.md`, marked FROZEN 2026-10-31, gating
+`--mode full` only. It fixes: primary exposure `a0` (unconditional, with the
+alternates used one-per-model as a specification curve); the three outcome
+definitions and their null semantics; the censoring rule (censor at
+`dropback_duration`, never a covariate, inconsistent `ttp > dropback` set to
+censored and counted); both load definitions with five-point grids, identical
+recency weighting and identical tuning budgets, tuned inside training folds
+only; the control list; the 100-snap minimum; the estimator ladder (Weibull AFT
+with log-normal frailty, Cox-cluster and AFT-cluster as reported rungs);
+player-grouped 5-fold CV with held-out log score and a player bootstrap;
+smallest effects of interest (HR 1.10; 0.005 nats/snap) with equivalence
+margins (1.05; 0.002); and the reliability floor (`icc_min` 0.50, never
+lowered).
+
+**(2) Rules, not numbers.** The prereg quotes the measured sample values (a0
+ICC 0.532, MDE 1.075 attenuated) only to justify the *rules*. Where a rule
+depends on a measurement it is written so a different full-data measurement
+changes the verdict, not the analysis. If the full-run a0 ICC falls below 0.50
+the outcome is NO-GO and `speed_at_1_0` is proposed to Conor; it is not adopted
+automatically and the threshold is not lowered.
+
+**(3) Why now.** TASK.md requires the prereg after the Phase 1 evidence and the
+Phase 2 ICC, and before Phase 4. Both are in hand (audit gate CONDITIONAL,
+ceiling gate PASS with a0 admitted first). No Phase 4 code exists yet, and no
+full-data file exists on this host, so nothing has been seen that could bias
+the freeze.
+
+**(4) The "no prereg" guidance is stale for this task.** `TOOLS.md` still
+records the 2026-10-27 process correction that retired the prereg stage. D68
+already noted that the newer TASK.md explicitly reinstates it. Confirmed: for
+this task the prereg gate is live, and `00_thresholds` carries
+`prereg_path`/`prereg_frozen`. The no-reviewer rule is unchanged — self-review
+plus mechanical validation is still the gate.
+
+**(5) Deliberate omission.** The prereg does not name a stopping alpha
+correction for the specification curve because the curve is descriptive; the
+two confirmatory tests (P1, P2) are each reported with their own interval and
+no multiplicity claim is made across them. If Conor wants a family-wise
+correction for the pair, that is a design change and must be decided before the
+full run, not after.
