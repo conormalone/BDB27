@@ -2587,3 +2587,64 @@ and a different feature construction, so they are not evidence against the new t
 reproduces an a0 ICC near 0.2, the Phase 1 go/no-go condition "key Combine features have ICC below the
 config threshold" fires and the task needs a rethink before any modelling. This is the single largest
 known risk and it is settled by measurement in Phase 1, not by argument.
+
+## D69 — 2026-10-30 — Ceiling stage: a0 is primary by design, not by screen vote
+
+**(1) What triggered it.** The first `02_combine_ceiling` implementation (sample mode,
+UNVALIDATED) computed the DL reliability table and then let its ICC/VIF screen choose the
+feature set. It selected `vmax` + `peak_accel` and therefore emitted
+`feature_gate = NO-GO_PRIMARY_NOT_SELECTED`, because `a0` lost the `max_features` race to
+`vmax`/`speed_at_2_0`. Reported ICCs for DL straight-line attempts: **a0 0.532, vmax 0.950,
+tau 0.566, speed@1.0 0.640, speed@2.0 0.814, peak_accel 0.633, 10-yd split not estimable**
+(71 players, 136 attempts, 6 one-attempt players excluded). These are sample numbers and are
+not interpreted.
+
+**(2) Correction: the screen may rank alternates; it may not remove the estimand.**
+`TASK.md` names the Part 1 estimand as "hazard ratio per 1 SD of the primary Combine
+acceleration feature", and Phase 2 names `a0` first. A selection rule that can drop `a0` makes
+Part 1 unestimable, so `a0` is retained unconditionally and the ICC/VIF screen ranks only the
+*alternative operationalisations* (`speed@1.0`, `speed@2.0`, `ten_yd_split`, `tau`, `vmax`,
+`peak_accel`). The gate fails only if `a0` itself is below `icc_min`.
+
+**(3) Why VIF cannot arbitrate here.** `a0 = vmax/tau` by definition. `vmax`, `tau` and `a0`
+are three coordinates of one fitted curve, not three covariates; their collinearity is
+arithmetic, not empirical. They are therefore *alternative* measures used in a specification
+curve (one per model), never joint regressors. VIF applies to the control set in Phase 4
+(alignment, depth, blitz, blockers, down/distance, margin, size, position), not to the
+ceiling-feature menu.
+
+**(4) Degenerate diagnostic removed.** The stage reported "within-player correlation of
+vmax and a0" as mean −0.69 / median −1.00. With two attempts per player a within-player
+correlation is identically ±1, so the statistic is an artefact. Report instead the
+between-player correlation of the shrunken estimates, and state that a within-player
+correlation is not estimable for this cohort (no player has ≥3 attempts in the fit drill).
+
+**(5) Reliability is borderline, and that is the finding.** a0 ICC 0.532 sits barely above the
+0.50 floor on 2 attempts per player. Required from here: a player-clustered bootstrap CI for
+each ICC; an attenuation factor `sqrt(ICC)` used explicitly in the prereg's power calculation;
+and a measurement-error (SIMEX-style) sensitivity analysis for the Part 1 coefficient. If the
+CI straddles 0.50 the honest verdict is CONDITIONAL, not GO, and the fallback (`speed@1.0`,
+ICC 0.640) is proposed to Conor — never adopted silently, and `icc_min` is never lowered.
+
+**(6) The carried-forward risk did not reproduce.** D68 flagged that the archived WR/TE audit
+measured a0 ICC 0.193, which would have fired the go/no-go condition. For DL straight-line
+attempts the measured value is 0.532 (sample, unvalidated). Different position group, different
+attempt structure (2 attempts, ~54 frames each). The risk is reduced, not eliminated: 0.53 is
+thin, and the full run must re-measure it before the prereg freezes the reliability claim.
+
+**(7) Lateral mechanics stay exploratory.** Shuttle/cone entry speed, peak, exit speed, total
+time and braking distance are computed for 33/33 and 46/47 attempts. Braking distance uses the
+first *local* speed maximum (the global maximum is the closing sprint, which would leave the
+metric defined for 4/33 attempts). No lateral feature may enter a confirmatory model.
+
+**D69 addendum (2026-10-31, after the correction landed).** `feature_gate` is now
+`PASS (a0 admitted first)`; selected = `a0, vmax, peak_accel`; sample ICCs unchanged
+(a0 0.532, vmax 0.950, tau 0.566, speed@1.0 0.640, speed@2.0 0.814, peak_accel 0.633;
+10-yd split not estimable; 71 players / 136 attempts / 6 one-attempt players excluded).
+The between-player correlation of the shrunken estimates is **vmax–a0 r = 0.07**,
+vmax–tau r = 0.46, vmax–speed@1.0 r = 0.33 (natural scale, n=71). The low vmax–a0
+correlation is the substantive point: although a0 = vmax/tau identically, between-player
+variation in tau is large enough that vmax and a0 are **not** interchangeable across
+players, so a0 is a distinct exposure rather than a reparameterised vmax. (Natural scale is
+used because the shrunken estimates are reported there; the log-scale analogue would be
+the more usual elasticity statement and is a candidate addition at M2.)

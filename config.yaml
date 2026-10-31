@@ -1164,3 +1164,121 @@ bdb27_lc:
     confounded_beta_leverage: 0.0
     confounded_leverage_time_corr: 0.85
     confounded_beta_time_log_speed_per_sd: -0.06
+
+bdb27_dl:
+  paths: {raw: data/raw, interim: data/interim, parquet: data/interim/dl_parquet,
+          checkpoints: data/interim/dl_checkpoints, tmp: data/interim/tmp,
+          outputs: outputs/dl, figures: outputs/dl/figures,
+          fixtures: fixtures/synthetic/dl, thresholds: outputs/dl/thresholds.json,
+          run_log: outputs/run_log.csv, prereg: notes/prereg.md}
+  files: {combine_tracking: combine_tracking.csv, combine_results: combine_results.csv,
+          players: players.csv, games: games.csv, player_play: player_play.csv,
+          game_tracking_sample: game_tracking_2023_sample.csv,
+          game_tracking_full: [game_tracking_2023.csv, game_tracking_2024.csv, game_tracking_2025.csv]}
+  seeds: {base: 20270106, fixture: 20270107, bootstrap: 20270108,
+          permutation: 20270109, model: 20270110}
+  mode: {default: sample,
+         sample: {tracking_key: game_tracking_sample, provenance: PLACEHOLDER_SAMPLE,
+                  sample_row_cap: 1048575, run_game_side: true},
+         full: {tracking_key: game_tracking_full, provenance: FULL,
+                sample_row_cap: 1048575, run_game_side: true}}
+  runtime: {duckdb_threads: 1, duckdb_memory_limit: "1200MB",
+            temp_directory: data/interim/tmp, csv_null_marker: "NA",
+            empty_string_is_category: true, parquet_compression: zstd,
+            parquet_row_group_size: 122880, chunk_rows: 250000,
+            min_free_mb_root: 40, min_free_mb_interim: 1024,
+            rss_sample_interval_s: 0.2}
+  positions: {dl: [DE, DT, NT], edge: [EDGE], interior: [INTERIOR_LINE],
+              ol: [G, T, C], qb: [QB]}
+  thresholds:
+    speed_cap_yds: 12.0
+    combine_sampling_hz: 10
+    combine_dt_tolerance_s: 0.02
+    smoothing: {method: centered_rolling_median, window_frames: 5}
+    peak_window: {frac_of_max: 0.9, pad_s: 0.2}
+    gap: {interp_max_s: 0.5, interpolate_inside_peak_window: false}
+    icc_min: 0.50
+    vif_max: 5.0
+    max_features: 3
+    min_attempts_for_icc: 2
+    min_frames: 20
+    min_r2: 0.90
+  ceiling:
+    fit_drills: [FORTY_YARD_DASH]
+    lateral_drills: [SHORT_SHUTTLE, THREE_CONE_DRILL]
+    model: "vmax * (1 - exp(-t / tau))"
+    a0_definition: vmax_over_tau
+    bounds: {vmax_yds: [4.0, 13.0], tau_s: [0.3, 3.0]}
+    initial: {vmax_frac_of_peak: 1.05, tau_s: 1.4}
+    candidate_features: [a0, vmax, tau, speed_at_1_0, speed_at_2_0,
+                         ten_yd_split, peak_accel]
+    primary_feature: a0
+    fallback_feature: speed_at_1_0        # only on Conor's decision, never automatic
+    lateral: {entry_window_s: 0.3, exit_window_s: 0.3, braking_min_drop_yds: 1.0}
+  audit:
+    min_matched_dl: 40
+    min_pass_rush_snaps_per_rusher: 100
+    min_players_meeting_snaps: 25
+    min_snap_coverage_share: 0.90         # Part 2 requirement
+    design_effect: 1.3
+    alpha: 0.05
+    power: 0.80
+    max_mde_hr: 1.15
+    out_subdir: audit
+  game:
+    snap_out_subdir: game/snaps
+    post_snap_window_s: [1.0, 2.0]
+    los_tolerance_yds: 1.0
+    blocker_radius_yds: 2.0
+    blitz_rusher_threshold: 4             # team rushers > 4 => blitz
+    min_snaps_per_player: 100
+    garbage_time: {q4_margin: 21, any_quarter_margin: 28, q4: 4}
+  load:
+    absolute_speed_grid_yds: [1.5, 2.0, 2.5, 3.0, 3.5]
+    relative_fraction_grid: [0.5, 0.6, 0.7, 0.8, 0.9]
+    recency_half_life_s: 300.0            # identical for both definitions
+    rest_column: seconds_since_last_snap
+    posterior_draws: 200
+  models:
+    out_subdir: models
+    primary_estimator: aft_frailty_lognormal
+    frailty_quadrature_nodes: 20
+    rungs: [aft_frailty_lognormal, cox_cluster, aft_cluster]
+    cluster: player
+    controls: [alignment, pre_snap_depth_yd, blitz, n_blockers, down, yards_to_go,
+               score_margin, position_group, height_in, weight_lb, years_since_combine]
+    random_effect: rusher
+    crossed_fixed_effects: [opponent_team, primary_blocker_group]
+    cv_folds: 5
+    bootstrap_reps: 1000
+    max_iter: 500
+    mde_note: "HR per 1 SD a0; smallest effect fixed in prereg"
+  validate:
+    out_subdir: validation
+    permutations: {reps: 1000, ceiling_scheme: within_position_group,
+                   order_scheme: within_player_game}
+    placebos: [alignment, pre_snap_depth_yd, height_in, weight_lb]
+    equivalence: {margin_hr: 1.05, soi_hr: 1.10, alpha: 0.05,
+                  margin_logscore: 0.002, soi_logscore: 0.005}
+    garbage_time: {rule: quarter_and_margin, q4: 4}
+    final_two_minutes_s: 120
+  power:
+    smallest_effect_hr: 1.10
+    equivalence_margin_hr: 1.05
+    smallest_effect_logscore: 0.005
+    equivalence_margin_logscore: 0.002
+    assumed_sd_a0: 1.0
+    design_effect: 1.3
+  fixture:
+    seed: 20270107
+    n_players: 60
+    n_games: 8
+    drives_per_game: 6
+    snaps_per_drive: 6
+    frames_per_snap: 40
+    tracking_hz: 10
+    planted_hr_a0: 1.35            # per 1 SD a0
+    planted_decay_relative: 0.35   # log-hazard per unit relative load
+    planted_decay_absolute: 0.0
+    null_world: false
+    rare_pressure_rate: 0.02

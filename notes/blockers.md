@@ -1,6 +1,28 @@
 # Blockers — BDB27
 
-## Current task — leverage × ceiling (D60, 2026-10-27)
+## Current task — DL acceleration ceiling → pressure (D68, 2026-10-30)
+
+**1 active blocker (full run only).** `--mode full` needs
+`game_tracking_2023.csv`, `game_tracking_2024.csv`, `game_tracking_2025.csv` in
+`data/raw/`. None of the three exists on this host; only the truncated 2023
+sample (`game_tracking_2023_sample.csv`, 2^20−1 rows) is present. This blocks
+Phases 3–5 population estimates, team-blitz derivation, snap coverage, and
+blocker assignments. It does **not** block `--mode sample`, Phase 1, or Phase 2,
+which run on `combine_tracking.csv`, `combine_results.csv`, `players.csv`,
+`player_play.csv`, `games.csv` — all present.
+
+**Second, non-blocking gap (reported, not stopping): no rusher–blocker
+assignment field exists in any provided file, and no data dictionary was
+available to confirm the provenance of `pressure_allowed` /
+`time_to_pressure` / `peak_pressure_probability_allowed`.** The pipeline derives
+assignments from snap-time proximity at full run and states the provenance
+limitation in the report; see `notes/dl-evidence.md` §3. Neither is a missing
+required field for the sample pipeline.
+
+**No other active blockers.** Every other Phase 1 item is evaluable from the
+files on disk.
+
+## Retired task — leverage × ceiling (D60, 2026-10-27)
 
 **0 active blockers.** Sample-mode Phases 1–2 ran clean and the gate is `GO_PENDING_FULL_RUN`
 (`outputs/audit/lc/decision.json`). No field required by the leverage definition is missing: the provided
