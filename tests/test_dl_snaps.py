@@ -326,7 +326,14 @@ def test_load_hook_materialises_the_sequence_columns(tmp_path, cfg):
     # no threshold is frozen in sample mode => the flat columns stay NA
     assert df["absolute_load"].isna().all()
     assert df["relative_load"].isna().all()
-    assert df["snaps_in_drive"].isna().all()
+    # D72: the drive key now exists (derived from the play list), so the
+    # sequence column is populated instead of NA.  Every snap has a known
+    # possession here, and the first snap of each drive is exactly 0.
+    assert df["snaps_in_drive"].notna().all()
+    assert first["snaps_in_drive"].eq(0.0).all()
+    # rusher 1: p1,p3 on one drive; p9,p10 after the score resets the drive.
+    assert list(df[df["nfl_id"] == 1].sort_values("play_id")["snaps_in_drive"]) \
+        == [0.0, 1.0, 0.0, 1.0]
 
 
 def test_first_snap_seconds_since_last_snap_is_na(tmp_path, cfg, monkeypatch):

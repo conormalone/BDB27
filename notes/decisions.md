@@ -2778,3 +2778,63 @@ integration path through `build_snaps` and the clock fix.
 * Load is currently accumulated over **pass-rush snaps only**: run-defense
   snaps are not in the DL table, so "total distance" undercounts total work.
   Flagged for the full-run design, not fixed here.
+
+## D72 — 2026-10-31 — Stage 03 lands; the drive key is real (possession sequence, D71 closed)
+
+**(1) `drive_id` is derived from the play list, not from play order in the snap
+table.** D71 refused a back-fill from play order, and this keeps that refusal:
+the key is built over `player_play`'s distinct `(game_id, play_id)` plays — the
+only play list the provided data contains — ordered by `play_id` within a game.
+`play_id` order is validated against the quarter/clock order: **20 inversions
+on the full sample** (pairs where the play_id order puts a later play at an
+earlier clock reading; every disagreement is a clock that runs backwards, which
+cannot be chronological), counted in `snaps_summary.json` rather than hidden.
+
+**(2) The rule.** Within a game, a new drive starts on: the first observed play;
+a change of `possession_team`; the play after an unknown possession; and **a
+score change between consecutive observed plays with the same possession**.
+The last clause is not a heuristic: any score (TD, FG, safety, defensive score)
+ends the possession, so if the same team has the ball on both sides of a score
+change, at least one possession of the opponent was played and is absent from
+the cohort play list — the previous drive must have ended. Without it the two
+drives merge; with it the key never splits a genuine drive, because a score
+cannot occur inside one. Counted separately (`boundaries.score_change_same_possession`).
+
+**(3) Missing / conflicting possession is never guessed.** A play whose
+`possession_team` is null (or disagrees across rows) gets `drive_id = NA` and
+the **next** play starts a new drive — an unknown possession could belong to
+either team, so continuity across it cannot be asserted. Both cases are counted
+(`n_plays_missing_possession`, `n_plays_conflicting_possession`), and every snap
+on such a play carries `snaps_in_drive = NA`, never a zero. On the provided
+sample there are **0** missing and **0** conflicting possession rows, so this
+path is exercised by the tests only.
+
+**(4) What it produces (sample mode, `PLACEHOLDER_SAMPLE`, not a finding).**
+`dl_load.add_load_columns` now receives the key and populates
+`snaps_in_drive`; `snaps.csv` is unchanged in schema (the key is an internal
+helper column, dropped before emission). Sample run: 17,159 snaps, 87 rushers,
+event rate 0.0821, **19,835 drives** over the 114,954-play list (median 20 per
+game, min 1, max 34), boundaries first-play 1,001 / possession-change 17,547 /
+score-change 1,287. `snaps_in_drive`: max 13, **0 snaps without a drive key**,
+32 snaps `NA` from an unusable game clock for the sequence (kept and counted).
+The emitted table is byte-identical across two `--force` runs.
+
+**(5) Residual exposure (declared, not corrected).** The play list is the
+cohort-observed list, not full participation: 11 games have <20 observed plays
+and the median is 115/game. A possession that is entirely unobserved **and
+contains no score** is invisible, so two of that team's drives can merge; the
+score rule removes every merge that involves a score, which is the detectable
+subset. `snaps_in_drive` is therefore a conservative lower bound on the true
+drive position for those rare rows. The count is not estimable from the
+provided data (the missing plays are, by definition, absent); it is recorded
+here and in the stage summary rather than patched with a clock-gap heuristic.
+
+**(6) Stage 03 (`src/dl/stage_03_snaps.py`).** Writes
+`outputs/dl/game/snaps/snaps.csv` in the exact `dl_snaps.SNAP_COLUMNS` order and
+`snaps_summary.json` with every exclusion counted (coverage rows, null censor
+times, `ttp > censor` demoted to `event = 0` while kept, unmapped alignments,
+snaps without a drive key, snaps whose sequence has no usable clock) plus the
+per-column NA rates. Full mode refuses unless the config provenance is `FULL`,
+`thresholds.json` carries `FULL` provenance, and `prereg.md` is `FROZEN`;
+sample mode stamps `PLACEHOLDER_SAMPLE`, sets `reportable: false`, and refuses
+to overwrite a `FULL` artefact. Nothing is zero-filled.

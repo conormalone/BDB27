@@ -32,6 +32,17 @@ Load-bearing rules, each enforced here rather than merely documented
   ``NA`` until a threshold is frozen inside a training fold (prereg §7), which
   the load module enforces.  The hook is looked for lazily, never imported at
   module import time, so a broken load module cannot break import of this one.
+* **``drive_id``** is derived here, from the possession sequence of the play
+  list (``player_play``'s distinct plays), never from play order inside the
+  snap table (D71/D72).  Plays are ordered by ``play_id`` within a game, which
+  is validated against the quarter/clock order (the inversions are counted).
+  A drive starts on the first observed play, on a change of
+  ``possession_team``, after a play whose possession is unknown, and after a
+  score change (any score ends a possession, so a same-possession score change
+  proves at least one unobserved drive in between).  A play whose possession
+  is missing or conflicting gets ``drive_id = NA`` and is counted; the next
+  play starts a new drive.  The column feeds ``dl_load.add_load_columns`` and
+  is dropped before emission — the emitted schema is unchanged.
 
 Determinism: rows are sorted by ``(game_id, play_id, nfl_id)`` and every value
 comes from a single-threaded DuckDB pass with an explicit column list.  No
@@ -104,6 +115,13 @@ NOT_DERIVABLE: dict[str, str] = {
     "relative_load": "computed by the load module (dl_load), not by this one",
 }
 
+#: Reason strings for the drive key, carried in the summary.
+DRIVE_RULE: str = (
+    "per game, in play_id order (validated against quarter/clock order): a new "
+    "drive starts on the first observed play, on a change of possession_team, "
+    "after a play whose possession is unknown, and after a score change"
+)
+
 _ALIGNMENT_MAP = {"EDGE": "edge", "INTERIOR_LINE": "interior"}
 
 _PP_COLUMNS = (
@@ -175,6 +193,143 @@ def _clock_seconds_sql(con, pplay_sql: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Drive key (possession sequence over the play list)
+# --------------------------------------------------------------------------- #
+def _drive_sequence(con, summary: dict) -> None:
+    """Create the per-play ``play_drive`` view and record its diagnostics.
+
+    The input is ``pp`` (every ``player_play`` row), so the play list is the
+    cohort-observed list — the only play list the provided data contains.  A
+    play can therefore be absent, and a possession change inside that gap is
+    invisible; the score-change boundary below catches every gap that contains
+    a score, and the remaining exposure is counted and reported, never guessed.
+    """
+    con.execute("""
+        CREATE OR REPLACE TEMP VIEW play_poss AS
+        SELECT game_id, play_id,
+               min(possession_team) AS poss,
+               count(DISTINCT possession_team) AS n_poss,
+               min(quarter) AS play_quarter,
+               min(game_clock) AS play_clock,
+               min(pre_snap_home_score) AS play_home_score,
+               min(pre_snap_visitor_score) AS play_visitor_score,
+               count(*) AS n_rows
+        FROM pp
+        GROUP BY game_id, play_id
+    """)
+    con.execute("""
+        CREATE OR REPLACE TEMP VIEW play_drive AS
+        WITH marked AS (
+            SELECT *,
+                   CASE WHEN n_poss = 1 THEN poss END AS known_poss,
+                   lag(CASE WHEN n_poss = 1 THEN poss END)
+                       OVER (PARTITION BY game_id ORDER BY play_id)
+                       AS prev_poss,
+                   lag(play_home_score)
+                       OVER (PARTITION BY game_id ORDER BY play_id)
+                       AS prev_home,
+                   lag(play_visitor_score)
+                       OVER (PARTITION BY game_id ORDER BY play_id)
+                       AS prev_visitor,
+                   row_number() OVER (PARTITION BY game_id ORDER BY play_id)
+                       AS rn
+            FROM play_poss
+        ),
+        flagged AS (
+            SELECT *,
+                   CASE
+                     WHEN rn = 1 THEN 'first_play'
+                     WHEN n_poss <> 1 THEN 'unknown_possession'
+                     WHEN prev_poss IS NULL THEN 'after_unknown_possession'
+                     WHEN known_poss IS DISTINCT FROM prev_poss
+                       THEN 'possession_change'
+                     WHEN play_home_score IS DISTINCT FROM prev_home
+                       OR play_visitor_score IS DISTINCT FROM prev_visitor
+                       THEN 'score_change_same_possession'
+                     ELSE NULL
+                   END AS boundary
+            FROM marked
+        )
+        SELECT *,
+               CASE WHEN n_poss <> 1 THEN NULL
+                    ELSE sum(CASE WHEN boundary IS NOT NULL THEN 1 ELSE 0 END)
+                         OVER (PARTITION BY game_id ORDER BY play_id) - 1
+               END AS drive_id
+        FROM flagged
+    """)
+
+    stats = con.execute("""
+        SELECT count(*) AS n_plays,
+               count(DISTINCT game_id) AS n_games,
+               count(*) FILTER (WHERE n_poss = 0) AS n_missing_possession,
+               count(*) FILTER (WHERE n_poss > 1) AS n_conflicting_possession,
+               count(*) FILTER (WHERE play_home_score IS NULL
+                                   OR play_visitor_score IS NULL)
+                   AS n_missing_score,
+               count(*) FILTER (WHERE play_quarter IS NULL
+                                   OR play_clock IS NULL)
+                   AS n_missing_clock
+        FROM play_poss
+    """).fetchone()
+    boundaries = dict(con.execute("""
+        SELECT boundary, count(*) FROM play_drive
+        WHERE boundary IS NOT NULL GROUP BY 1 ORDER BY 1
+    """).fetchall())
+    n_drives = con.execute("""
+        SELECT count(*) FROM (
+            SELECT DISTINCT game_id, drive_id FROM play_drive
+            WHERE drive_id IS NOT NULL)
+    """).fetchone()[0]
+    per_game = con.execute("""
+        SELECT min(n), median(n), max(n) FROM (
+            SELECT game_id, count(DISTINCT drive_id) AS n FROM play_drive
+            WHERE drive_id IS NOT NULL GROUP BY 1)
+    """).fetchone()
+
+    # ``_clock_seconds_sql`` reads a column named ``game_clock``; the play
+    # table names it ``play_clock`` to stay unambiguous next to ``prim``.
+    play_src = "(SELECT *, play_clock AS game_clock FROM play_poss)"
+    clock = _clock_seconds_sql(con, play_src)
+    inversions = con.execute(f"""
+        WITH c AS (
+            SELECT game_id, play_id, play_quarter,
+                   CAST({clock} AS DOUBLE) AS clk
+            FROM {play_src}
+        ),
+        x AS (
+            SELECT game_id, play_id, clk,
+                   lag(play_id) OVER (PARTITION BY game_id
+                                      ORDER BY play_quarter, clk DESC NULLS LAST,
+                                               play_id) AS prev_pid,
+                   lag(clk) OVER (PARTITION BY game_id
+                                  ORDER BY play_quarter, clk DESC NULLS LAST,
+                                           play_id) AS prev_clk
+            FROM c
+        )
+        SELECT count(*) FROM x
+        WHERE prev_pid IS NOT NULL AND play_id < prev_pid
+          AND clk IS NOT NULL AND prev_clk IS NOT NULL
+    """).fetchone()[0]
+
+    summary["drive"] = {
+        "rule": DRIVE_RULE,
+        "clock_order": "play_id ascending within each game",
+        "n_plays_in_list": int(stats[0]),
+        "n_games_in_list": int(stats[1]),
+        "n_plays_missing_possession": int(stats[2]),
+        "n_plays_conflicting_possession": int(stats[3]),
+        "n_plays_missing_score": int(stats[4]),
+        "n_plays_missing_clock": int(stats[5]),
+        "n_clock_order_inversions": int(inversions),
+        "boundaries": {k: int(v) for k, v in boundaries.items()},
+        "n_drives": int(n_drives),
+        "drives_per_game": {"min": int(per_game[0] or 0),
+                            "median": float(per_game[1] or 0.0),
+                            "max": int(per_game[2] or 0)},
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Main builder
 # --------------------------------------------------------------------------- #
 def build_snaps(cfg: Mapping, mode: str = "sample", *,
@@ -224,6 +379,9 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
         con.execute(f"CREATE OR REPLACE TEMP VIEW pp AS SELECT * FROM {pp_src}")
         con.execute(f"CREATE OR REPLACE TEMP VIEW pl AS SELECT * FROM {pl_src}")
         con.execute(f"CREATE OR REPLACE TEMP VIEW gm AS SELECT * FROM {gm_src}")
+
+        # -- the drive key: possession sequence over the whole play list ------
+        _drive_sequence(con, summary)
 
         # -- play-level facts: ONE row per play, from the OL-side rows --------
         con.execute("""
@@ -331,8 +489,10 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
                                ELSE p.pre_snap_visitor_score - p.pre_snap_home_score
                           END) >= {any_margin}
                      THEN TRUE ELSE FALSE END AS garbage_time,
-                p.yardline_side, p.yardline_number, p.play_direction
+                p.yardline_side, p.yardline_number, p.play_direction,
+                d.drive_id
             FROM prim p LEFT JOIN gm g USING (game_id)
+            LEFT JOIN play_drive d USING (game_id, play_id)
             WHERE p.censor_time IS NOT NULL
         """)
         n_base = con.execute("SELECT count(*) FROM base").fetchone()[0]
@@ -357,6 +517,12 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
         df = df.drop(columns=[c for c in ("yardline_side", "yardline_number",
                                           "play_direction") if c in df.columns])
 
+        # drive coverage, recorded before the helper column is dropped
+        if "drive_id" in df.columns:
+            summary["counts"]["n_snaps_with_drive_id"] = int(
+                df["drive_id"].notna().sum())
+            summary["counts"]["n_snaps_drive_na"] = int(df["drive_id"].isna().sum())
+
         # -- load module (lazy; omitted when it exposes no table hook) -------
         df = _apply_load_module(df, cfg, mode, summary)
 
@@ -369,14 +535,17 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
             for c in df.columns
         }
         summary["columns"] = list(df.columns)
-        if mode == "sample":
+        # An empty table has no event rate to test (no game data is an edge
+        # case the stage writes as a zero-row artefact, never a crash).
+        if mode == "sample" and len(df):
             rate = summary["event_rate"]
             assert rate < 0.5, (
                 f"event rate {rate:.3f} is not below 0.5 on {len(df)} snaps; "
                 "prereg §5 forbids fitting on pressured snaps only")
         summary["checks"] = {
             "join_rowcount_unchanged": True,
-            "event_rate_below_half": bool(summary["event_rate"] < 0.5),
+            "event_rate_below_half": bool(
+                len(df) and summary["event_rate"] < 0.5),
             "columns_in_declared_order": list(df.columns) == [
                 c for c in SNAP_COLUMNS if c in df.columns],
         }
@@ -581,6 +750,10 @@ def _numeric(series: pd.Series, dtype: str) -> pd.Series:
 
 def _finalise(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
     """Add NA columns, fix dtypes, and restore the declared column order."""
+    # ``drive_id`` is an internal key: it feeds the load module's
+    # ``snaps_in_drive`` and is never part of the emitted schema.
+    if "drive_id" in df.columns:
+        df = df.drop(columns=["drive_id"])
     for col in _NA_COLUMNS:
         if col not in df.columns:
             df[col] = np.nan
