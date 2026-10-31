@@ -93,3 +93,18 @@ stamped `UNVALIDATED SAMPLE OUTPUT` and are **never** reportable (D57).
 (it is currently `DRAFT — NOT FROZEN`), (2) the audit go/no-go gate has been re-expressed as "≥1 primary
 Combine feature passes ICC" (D53) and passes on full data, and (3) `00_thresholds` has written `FULL`
 provenance. Otherwise → `notes/blockers.md`.
+
+---
+
+## DL task (D70–D73) — what stage 04 needs from the full data
+
+Stage 04 refuses to fit P1 on the sample because the §8 control set is empty there
+(`blitz`, `n_blockers`, `primary_blocker_group`, `pre_snap_depth_yd`). Each of
+these is a **full-run derivation**, not a missing field in the provided files:
+
+| # | Question | Stage / command | Config key that decides it | Unblocks |
+|---|---|---|---|---|
+| **Q1** | Are `blitz` (team blitz: rushers > 4) and `n_blockers` derivable for every DL rush snap from full all-22 tracking? | `python src/dl/stage_03_snaps.py --mode full --force` | `bdb27_dl.game.blitz_rusher_threshold`, `blocker_radius_yds` | P1 and P2 (both carry the §8 controls) |
+| **Q2** | Are blocker assignments available for every rush snap (primary blocker group)? | stage 03 (same command) → `snaps.csv` `primary_blocker_group` | *(no key yet — the field does not exist in any provided file, F15)* | The §8 crossed effect |
+| **Q3** | Is the per-game snap sequence complete enough for the load definitions (snap coverage ≥ `audit.min_snap_coverage_share`)? | `01_audit` (c) then stage 03 | `bdb27_dl.audit.min_snap_coverage_share` (0.90) | Part 2 (dropped, never faked, if it fails; P1 continues) |
+| **Q4** | Does `thresholds.json` carry `FULL` provenance before the model run? | `python src/dl/stage_00_thresholds.py --mode full` | `bdb27_dl.mode.full.provenance` | Every reportable number in stage 04 |

@@ -1,0 +1,19 @@
+{
+  "world": "censoring",
+  "planted": {
+    "hr_a0": 2.0,
+    "decay": null,
+    "gamma": 0.0,
+    "rare": 0.02,
+    "shift": 2.1
+  },
+  "seed": 20270107,
+  "k_shape": 1.5,
+  "beta_a0_per_sd": -0.46209812037329684,
+  "beta_load_per_sd": 0.0,
+  "true_load_column": null,
+  "n_snaps": 4369,
+  "n_players": 40,
+  "event_rate": 0.018310826276035707,
+  "statement": "SYNTHETIC FIXTURE (not a finding)"
+}

@@ -2838,3 +2838,86 @@ per-column NA rates. Full mode refuses unless the config provenance is `FULL`,
 `thresholds.json` carries `FULL` provenance, and `prereg.md` is `FROZEN`;
 sample mode stamps `PLACEHOLDER_SAMPLE`, sets `reportable: false`, and refuses
 to overwrite a `FULL` artefact. Nothing is zero-filled.
+
+## D73 — 2026-10-31 — Stage 04 lands: estimators, tuning discipline, the SAMPLE gate verdict
+
+**(1) What was built.** `src/dl/dl_survival.py` (Weibull AFT with a log-normal
+frailty by Gauss–Hermite quadrature; the random-slope extension; a
+cluster-robust AFT; Cox PH via statsmodels `PHReg`; a logistic random-intercept
+model; a Gaussian random-intercept model; predictive log score and Harrell's C),
+`src/dl/dl_models_core.py` (frame construction, the §7 load panel, player-grouped
+folds, tuning inside the fold, the P2 fallback ladder, S1, E1, the §13/§15 gate),
+`src/dl/stage_04_models.py` (the artefacts and the summary) and
+`src/dl/dl_fixtures.py` (the four committed synthetic worlds). No new
+dependency: lifelines is not used; the frailty model is a direct maximum-
+likelihood implementation with an analytic gradient.
+
+**(2) The sample cannot support a prereg-conformant P1, and the stage says so.**
+On `outputs/dl/game/snaps/snaps.csv` (17,159 snaps, 1,409 events, 87 rushers)
+the §8 control set is incomplete **by construction**: `blitz` 0/17,159,
+`n_blockers` 0/17,159, `primary_blocker_group` absent, `pre_snap_depth_yd`
+399/17,159. Complete cases on the required set = **0**. P1 is therefore reported
+`NOT_ESTIMABLE` with the fields named; no reduced model is substituted, because
+dropping §8 controls would change the estimand. P2 is `NOT_ESTIMABLE` for the
+same reason plus the load columns (`absolute_load`, `relative_load`) being
+100% `NA` — the per-game tracking sequences the load needs are absent from the
+sample. The §15 verdict is **PENDING_FULL_RUN** in sample mode: every absent
+field is one the full run derives from tracking. The same absence in a full run
+is a **NO-GO** (`gate_evaluate` branches on mode; tested).
+
+**(3) Design decisions inside the build (all logged, none tuned on a result).**
+* A **constant column** is part of the design. Without it the Weibull scale is
+  forced through the covariates and the shape parameter drifts to a corner
+  (observed on the fixtures: k = 11.6, HR 7.6 against a planted 1.35). With the
+  constant the same data recover the planted value.
+* **Part 2's slope dimension uses a 20×7 product rule.** Prereg §10 fixes 20
+  nodes for the *frailty*; it does not fix a slope node count. A 20×20 product
+  rule is the literal extension but is ~7× the cost of the frailty model and
+  makes the CV unaffordable. `models.slope_quadrature_nodes: 7`; the intercept
+  dimension keeps 20. Every fit records both counts.
+* **CV fits use one optimiser start and `cv_max_iter: 250`**
+  (`cv_starts`, `cv_max_iter`); the reported fits keep `max_iter: 500` and two
+  starts. The CV score is a prediction metric; the reported models are fitted
+  with the full budget.
+* **`models.full_run_fields`** names the fields the full run supplies
+  (blitz, n_blockers, pre_snap_depth_yd, primary_blocker_group, both load
+  columns). It exists only so the *sample* verdict can be PENDING rather than a
+  false NO-GO; it cannot turn a full-run failure into a pass.
+* **§9 fold rule**: players below 100 snaps never enter Part 2; a fold needs
+  ≥10 such rushers or the fold count is reduced and logged. On the 40-player
+  fixtures this reduces 5 folds to 4 (logged in `fold_info`).
+* **P2 bootstrap** resamples players with all their snaps (1,000 seeded reps)
+  and evaluates the already-fitted per-snap scores. It is the sampling
+  variability of the CV metric, not a refit-uncertainty interval; the artefact
+  says so.
+* **E1** is a player-clustered *multiplier* bootstrap (same exponential weights
+  in both equations, so the covariance between the get-off and survival
+  coefficients is preserved) rather than 1,000 refits. It is labelled
+  DESCRIPTIVE and is suppressed (`NOT_ESTIMABLE`) when the information matrix
+  is not positive definite or the bootstrap spread is implausible.
+* **S1** carries a0's uncertainty by posterior draws: 200 seeded draws of `a0`
+  from its shrunken estimate and SE, each evaluated with a one-step Newton move
+  from the naive fit (labelled as such), plus the model-based slope reliability
+  `var(slope)/(var(slope)+mean(SE²))`.
+* **Verdict vocabulary** gained `GO_PART1_ONLY`: §15 says a snap-coverage
+  failure drops Part 2 and lets P1 continue, which is neither a GO nor a NO-GO.
+
+**(4) The four fixture worlds (committed, ~2.7 MB total).** `planted` (relative
+decay), `absolute` (absolute decay), `null`, `censoring` (~2% pressures).
+Fixture truths were chosen so the machinery is *identifiable* at 40 players:
+planted a0 HR 2.0, frailty sd 0.15, load γ 1.5. On the committed files the
+recovery is: absolute world HR 2.17 (planted 2.0), censoring world 2.13,
+null world 1.09, planted world 1.04 — **the relative world's total a0 effect is
+partly self-cancelling**, because a higher a0 raises the ceiling and therefore
+lowers relative load. That world exists to test the load-definition comparison,
+where it behaves as planted: relative − absolute = +0.055 nats/snap, 95% CI
+[0.030, 0.083], `RELATIVE_BETTER`; the absolute world gives −0.013
+[−0.028, 0.0003] favouring absolute. Both directions are tested.
+
+**(5) Test counts.** 403 passed (full suite, bdb27 venv), 0 failed, plus the
+17 recovery tests and 28 mechanical tests added here.
+
+**(6) Still open (not blockers).** `primary_blocker_group` has no source column
+in any provided file (F15); the fixture supplies it. Until the full tracking run
+derives blocker assignments, the §8 crossed effect cannot be fitted on real data
+— which is precisely why the sample verdict is PENDING, not GO.

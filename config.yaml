@@ -1239,10 +1239,24 @@ bdb27_dl:
     recency_half_life_s: 300.0            # identical for both definitions
     rest_column: seconds_since_last_snap
     posterior_draws: 200
+    # Matched in-game elapsed times for v_player(t_match) in the relative-load
+    # ceiling (prereg §7: "1.0 s and 2.0 s"). The per-rusher ceiling speed used
+    # is the draw-mean of v(t) over these times and the posterior draws.
+    t_match_s: [1.0, 2.0]
   models:
     out_subdir: models
     primary_estimator: aft_frailty_lognormal
     frailty_quadrature_nodes: 20
+    # Product-rule nodes for the *slope* dimension of Part 2's random-slope
+    # model.  The frailty/intercept dimension keeps the prereg's 20 nodes;
+    # a 20x7 product rule is the tractable 2-D extension (P2 does not fix a
+    # slope node count — recorded in every fit artefact).
+    slope_quadrature_nodes: 7
+    # CV fits: one optimiser start and a lower iteration cap (the CV score is a
+    # prediction metric; the reported fits keep the full max_iter and 2 starts).
+    cv_starts: 1
+    cv_max_iter: 250
+    p2_starts: 2
     rungs: [aft_frailty_lognormal, cox_cluster, aft_cluster]
     cluster: player
     controls: [alignment, pre_snap_depth_yd, blitz, n_blockers, down, yards_to_go,
@@ -1252,6 +1266,22 @@ bdb27_dl:
     cv_folds: 5
     bootstrap_reps: 1000
     max_iter: 500
+    # --- stage-04 wiring (no design value below is tunable against a result) ----
+    inputs:
+      snaps: game/snaps/snaps.csv          # relative to bdb27_dl.paths.outputs
+      ceiling: ceiling/player_ceiling.csv  # relative to bdb27_dl.paths.outputs
+      players: players.csv                 # relative to bdb27_dl.paths.raw
+      combine_results: combine_results.csv # relative to bdb27_dl.paths.raw
+    # §9: a player-grouped CV fold must contain >= 10 rushers with >= 100 snaps.
+    min_rushers_per_fold: 10
+    # Categorical treatment of the control list; everything else is continuous.
+    categorical_controls: [alignment, down, quarter, position_group]
+    # Chunk size for the (n x quadrature) matrices; a runtime memory knob only.
+    quadrature_chunk_rows: 2000
+    # Fields the full run derives from tracking.  A sample-mode absence of one of
+    # these is PENDING_FULL_RUN, never a silent GO and never a NO-GO on sample data.
+    full_run_fields: [blitz, n_blockers, pre_snap_depth_yd, primary_blocker_group,
+                      absolute_load, relative_load]
     mde_note: "HR per 1 SD a0; smallest effect fixed in prereg"
   validate:
     out_subdir: validation
@@ -1271,14 +1301,18 @@ bdb27_dl:
     design_effect: 1.3
   fixture:
     seed: 20270107
-    n_players: 60
-    n_games: 8
+    n_players: 40
+    n_games: 12
     drives_per_game: 6
     snaps_per_drive: 6
+    snaps_per_game: 9
     frames_per_snap: 40
     tracking_hz: 10
-    planted_hr_a0: 1.35            # per 1 SD a0
-    planted_decay_relative: 0.35   # log-hazard per unit relative load
-    planted_decay_absolute: 0.0
+    # Informational: the authoritative per-world truths are in
+    # src/dl/dl_fixtures.py::PLANT (each of the four worlds differs).  These two
+    # rows describe the two decay worlds; a test asserts they cannot drift.
+    planted_hr_a0: 2.0             # per 1 SD a0 (planted / absolute / censoring)
+    planted_decay_relative: 1.5    # log-hazard per SD of relative load (planted)
+    planted_decay_absolute: 1.5    # log-hazard per SD of absolute load (absolute)
     null_world: false
     rare_pressure_rate: 0.02

@@ -1,0 +1,19 @@
+{
+  "world": "planted",
+  "planted": {
+    "hr_a0": 2.0,
+    "decay": "relative",
+    "gamma": 1.5,
+    "rare": null,
+    "shift": 2.1
+  },
+  "seed": 20270107,
+  "k_shape": 1.5,
+  "beta_a0_per_sd": -0.46209812037329684,
+  "beta_load_per_sd": -1.0,
+  "true_load_column": "relative_load_0p7",
+  "n_snaps": 4320,
+  "n_players": 40,
+  "event_rate": 0.26851851851851855,
+  "statement": "SYNTHETIC FIXTURE (not a finding)"
+}

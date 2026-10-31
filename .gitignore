@@ -34,6 +34,8 @@ env/
 !fixtures/**
 !fixtures/**/*.csv
 !fixtures/**/*.json
+# ...but never generated stage output inside a fixture world
+fixtures/**/outputs/
 
 # --- OS / editor ---
 .DS_Store
