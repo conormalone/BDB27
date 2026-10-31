@@ -2691,3 +2691,90 @@ two confirmatory tests (P1, P2) are each reported with their own interval and
 no multiplicity claim is made across them. If Conor wants a family-wise
 correction for the pair, that is a design change and must be decided before the
 full run, not after.
+
+## D71 — 2026-10-31 — Load hook wired; evidence-doc corrections; clock fix
+
+**(1) `dl_load.add_load_columns` exists and is the table-level contract.**
+`dl_snaps._apply_load_module` was looking for `dl_load.add_load_columns` and
+falling back to omission; the function now exists.  It owns all five
+`LOAD_COLUMNS` and populates them from the module's existing arithmetic
+(`_weighted_sum` / `recency_weight`), not a second formula:
+
+| column | contract |
+|---|---|
+| `seconds_since_last_snap` | clock gap to the rusher's previous snap in the game; `NA` on the first snap and when a clock reading is unusable |
+| `total_distance_before` | unweighted yards on earlier snaps of the game; per-snap distance = mean of the two matched in-game speeds × the fixed `game.post_snap_window_s` width |
+| `snaps_in_drive` | earlier snaps in the same `drive_id`; `NA` because the snap table has no drive key (never back-filled from play order) |
+| `absolute_load` | causal, recency-weighted yards above the frozen `chosen.absolute_speed_yds` |
+| `relative_load` | same, above `fraction × v_ceiling_yds`; requires a per-row `v_ceiling_yds` |
+
+The flat load columns still stay `NA` until a threshold is frozen inside a
+training fold, exactly as `flat_load_column`/prereg §7 require; the hook reads
+`load.chosen` when a stage supplies it.  The relative column additionally needs
+the per-player ceiling on the row, so a future stage must join it; no ceiling
+is invented here.
+
+**Why causal evaluation.** The prereg definition is load *before* snap *s*, so
+each snap is weighted against its own clock.  `absolute_load` takes one fixed
+`seconds_ago` reference for the whole list, which would scale every row by a
+snap-specific constant; the hook therefore re-bases the gap per focal snap and
+calls `_weighted_sum`, the single shared arithmetic path.  Zero gaps are
+allowed (the clock has 1 s resolution, so consecutive plays can share a
+reading).  The fallback path is untouched: if `dl_load` is missing or broken,
+`dl_snaps` still imports and still omits the columns and says so.
+
+**(2) `game_clock_s` was 60× too large — fixed.**  `player_play.game_clock` is
+`mm:ss`, but `read_csv_auto` types `"08:42"` as TIME `08:42:00`, so the hour
+part holds *minutes*.  `_clock_seconds_sql` multiplied by 3600, making a 8:42
+clock read 31,320 s instead of 522 s.  That would have inflated every rest gap
+by 60 and silently defeated the 300 s load half-life.  The expression now
+multiplies the hour part by 60 (and the minute part is seconds).  New test:
+`test_game_clock_seconds_is_minutes_seconds_not_hours_minutes` (fixture 10:00
+→ 600.0 s).  No committed output used the old column (the DL snap table had
+never been written to `outputs/`), so nothing downstream is invalidated.
+
+**(3) Evidence doc corrected: the Q3 null boundary is the dropback play, not
+"live pass play".**  Reproduced on the sample (DuckDB, `player_play` +
+`players`):
+
+* DL rows 46,911 = 17,481 dropback + 29,430 non-dropback.
+* `sack` / `blitzing` / `unblocked_pressure` nulls **on the dropback frame:
+  0 / 0 / 0** (`d_null_semantics.csv` `null_rate_dropback = 0.0`).
+* Non-dropback: 7,739 / 7,854 / 7,740 non-null, 21,691 / 21,576 / 21,690 null;
+  the 352 `sack` / 351 `unblocked_pressure` nulls on live pass plays with no
+  recorded dropback are the recorded residual (109 after the participation
+  rule).
+
+The snap table and every model require `censor_time = dropback_duration`, so
+the dropback play **is** the analysis frame; on it these fields are complete and
+the verdict is *not applicable outside, observed inside*.  The `UNRESOLVED`
+label in the local item-d output is scored on the wider "live pass play"
+diagnostic frame and is superseded for modelling by this entry.  Per the rule
+that the doc follows the code, `dl_audit_ce.py` and `stage_01_audit.py` were
+**not** changed: their wider-frame residual stays as a reported diagnostic, and
+the document no longer claims it is the analysis boundary.
+
+Three further doc errors were corrected in `notes/dl-evidence.md` §3/§7:
+`quick_pressure` disagreement is 83 rows (not 15; agreement 1,396/1,479, with
+15 separate `ttp`-without-`quick` rows), the DL `time_to_pressure` count is
+1,455 plays / 1,494 rows (not 2,116), and the DL dropback hurry/ttp counts are
+1,520 / 1,494 (not the all-position 3,879 / 3,804).  `notes/prereg.md` §4 now
+states the dropback frame explicitly; **no rule changed** — the model set
+already required a censorable dropback snap and never included non-dropback
+plays.
+
+**(4) Verification.**  Full suite green in `/home/conormalone/.venvs/bdb27`:
+**338 passed, 0 failed in 82.9 s**.  New tests cover the wired hook
+(order/rest, cumulative distance with missing speeds, frozen absolute load hand
+arithmetic, relative load needing a per-row ceiling, `drive_id` requirement,
+order invariance, missing clock, empty frame, schema rejection) plus the
+integration path through `build_snaps` and the clock fix.
+
+**(5) Still open (not blockers).**
+* `snaps_in_drive` needs a drive key.  `player_play` has no drive column, and a
+  possession-run proxy would be wrong whenever a play has no cohort row, so the
+  column is `NA` and counted rather than guessed.  Stage 03 must add a
+  `drive_id` (possession sequence from the full play list) before Part 2.
+* Load is currently accumulated over **pass-rush snaps only**: run-defense
+  snaps are not in the DL table, so "total distance" undercounts total work.
+  Flagged for the full-run design, not fixed here.

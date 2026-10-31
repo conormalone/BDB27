@@ -67,18 +67,22 @@ DL rows on dropback plays (17,481 rows / 14,917 plays / 87 players):
 | field | null % | interpretation supported by evidence |
 |---|---:|---|
 | `time_to_pressure` | 91.45% | event absent (no pressure credited to this rusher) |
-| `time_to_qb_hurry` | 91.30% | event absent; superset of `time_to_pressure` (3,879 vs 3,804 rows, 3,804 overlap) |
+| `time_to_qb_hurry` | 91.30% | event absent; superset of `time_to_pressure` (DL dropback frame: 1,520 vs 1,494 rows, 0 violations — §7.4) |
 | `quick_pressure` | 91.54% | event absent; **not** a deterministic function of ttp |
 | `sack` | 0% | applicable; 0/0.5/1 = 17,269/50/162 |
 | `unblocked_pressure` | 0% | applicable; True on 101 rows |
 | `blitzing` | 0% | applicable; True 17,159, False 322 |
 
 `sack`, `blitzing`, `unblocked_pressure` are null on **non-dropback** plays →
-"not applicable", not missing. `time_to_pressure` etc. are null because no event
-was charged to that rusher → "no event", not missing.
+"not applicable", not missing. Strictly, 352 `sack` / 351 `unblocked_pressure`
+nulls survive on out-of-frame live pass plays with no recorded dropback (§7.1);
+on the dropback **analysis frame** all three are complete (0/17,481 nulls).
+`time_to_pressure` etc. are null because no event was charged to that rusher →
+"no event", not missing.
 
-`quick_pressure` vs `ttp <= 2.5`: agreement 94.4% (n=1,479 both non-null;
-15 rows quick=False with ttp set). Non-null quick ⇒ non-null ttp in every case.
+`quick_pressure` vs `ttp <= 2.5`: agreement 1,396/1,479 = 94.4% (83 rows
+quick=False with `ttp <= 2.5`; 15 rows have `ttp` and a null `quick_pressure`).
+Non-null quick ⇒ non-null ttp in every case (0 violations).
 
 ### `blitzing` is not a team blitz flag (semantics mismatch vs TASK.md)
 
@@ -116,8 +120,8 @@ Play level, dropback plays only:
 | no DL `time_to_pressure` | 39,571 | **4,030** |
 | ≥1 DL `time_to_pressure` | 811 | 644 |
 
-4,674 plays have `pressure_allowed`, but only 2,116 have a DL `time_to_pressure`
-row. Two reasons, both material:
+4,674 plays have `pressure_allowed`, but only 1,455 have a DL `time_to_pressure`
+row (1,494 DL rows — §7.3). Two reasons, both material:
 1. pressures by rushers outside the 510-prospect cohort have no DL row
    (~2,700 plays);
 2. 811 plays have a DL pressure but `pressure_allowed = False` — pressure
@@ -192,28 +196,41 @@ from this host** — `notes/blockers.md` records this as the only true blocker f
 5. Does `player_get_off` on run plays have the same distribution as on dropback
    plays (it should not be used as a pressure-only covariate)?
 
-## 7. ERRATA (2026-10-31, from the implemented audit)
+## 7. ERRATA (corrected 2026-10-31, D71)
 
 The audit reproduced every headline count in §1–§4 and contradicted four
-statements. The audit's values win; the bodies above are left intact so the
-disagreement is auditable.
+statements. The bodies above have now been **corrected in place**; this section
+records what was wrong and the evidence that settled it. Every number below is
+reproduced by `outputs/dl/audit/d_null_semantics.csv`,
+`outputs/dl/audit/d2_unexplained_nulls.csv` and the item-e 2×2, all written by
+`01_audit --mode sample`.
 
-1. **`sack` / `blitzing` / `unblocked_pressure` null boundary is "live pass
-   play", not "dropback play".** 7,739 rows on non-dropback plays are non-null
-   (all live pass plays). `dropback_duration` covers 45,056 plays, fewer than
-   the live pass plays, so it is the wrong boundary. 352 rows on live,
-   non-nullified pass plays are null for these three fields and remain
-   unexplained as of this audit → those fields are `UNRESOLVED`, not
-   `NOT_APPLICABLE`, until the 352 are explained.
-2. **`quick_pressure` disagreement with `ttp <= 2.5` is 83 rows**, not 15. The
-   "15" was `quick == FALSE` with a `ttp` value set; the 83 counts
-   `quick == FALSE` with `ttp <= 2.5`. Agreement is 1,396/1,479 = 94.4%.
+1. **The null boundary for `sack` / `blitzing` / `unblocked_pressure` is the
+   dropback play, not "live pass play".** Every row of the snap table needs
+   `censor_time = dropback_duration`, so the **dropback play is the analysis
+   frame**. On it `d_null_semantics.csv` reports `null_rate_dropback = 0.0` for
+   all three fields (0 nulls in 17,481 DL rows): null is not applicable, a
+   value is observed, and nothing is zero-filled. The wider `player_play`
+   universe also carries these fields on 7,739 / 7,854 / 7,740 live pass plays
+   that have no recorded dropback; 352 `sack` / 351 `unblocked_pressure` nulls
+   on those out-of-frame plays (109 after the participation rule) are a
+   recorded **data-quality residual**, not a modelling question. Verdict on the
+   analysis frame: **not applicable outside, observed inside** — `sack` and
+   `unblocked_pressure` are therefore *not* `UNRESOLVED` for modelling. The
+   `UNRESOLVED` string in the local item-d output is scored on the wider
+   diagnostic frame; it never gated Part 1 and is superseded by D71.
+2. **`quick_pressure` disagreement with `ttp <= 2.5` is 83 rows**, not 15.
+   Agreement is 1,396/1,479 = 94.4%. The 83 are `quick == FALSE` with
+   `ttp <= 2.5`; a separate 15 rows have `ttp` and a null `quick_pressure`,
+   and 0 have `quick_pressure` with a null `ttp`. The old "15" conflated the
+   two counts.
 3. **1,455 plays have a DL `time_to_pressure` row** (1,494 rows), not 2,116.
-   The 2,116 figure in §3 was mis-transcribed; it resembles the OL-side
-   `time_to_pressure_allowed` count.
+   The 2,116 figure was mis-transcribed; it resembles the OL-side
+   `time_to_pressure_allowed` count. The item-e 2×2 is unaffected
+   (39,571 / 4,030 / 811 / 644 plays).
 4. **On the DL dropback frame, `time_to_qb_hurry` = 1,520 rows and
    `time_to_pressure` = 1,494 rows** with 0 superset violations. The 3,879 /
-   3,804 counts in §3 are all-position counts, not DL.
+   3,804 counts were all-position counts, not DL.
 
 5. **Snap coverage is not identifiable from `player_play`.** Median share of
    team defensive plays with a row is 0.126 (0/88 players ≥ 0.90). That number

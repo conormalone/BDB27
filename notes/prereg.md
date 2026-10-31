@@ -88,10 +88,13 @@ model-derived.
 
 **Null semantics fixed here:** null `time_to_pressure` / `quick_pressure` /
 `time_to_qb_hurry` = no event charged to that rusher (event absent), **not
-zero** and **not missing**. `sack` / `unblocked_pressure` on a live pass play
-are treated as observed (null ≠ 0); 109 rows with unexplained nulls are
-excluded from models that use those fields and counted. No imputation of any
-label.
+zero** and **not missing**. `sack` / `unblocked_pressure` on the **dropback
+analysis frame** are treated as observed (null ≠ 0); that frame has zero nulls
+in both fields, so no rows are excluded. Out-of-frame nulls on live pass plays
+without a recorded dropback are a recorded data-quality residual and never enter
+the table (wording corrected 2026-10-31, D71: the earlier text said "live pass
+play" and "109 rows excluded"; the rule itself is unchanged — the model frame
+was always the censorable dropback snap). No imputation of any label.
 
 ## 5. Censoring rule
 
