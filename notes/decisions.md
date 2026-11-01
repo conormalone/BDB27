@@ -2921,3 +2921,54 @@ where it behaves as planted: relative − absolute = +0.055 nats/snap, 95% CI
 in any provided file (F15); the fixture supplies it. Until the full tracking run
 derives blocker assignments, the §8 crossed effect cannot be fitted on real data
 — which is precisely why the sample verdict is PENDING, not GO.
+
+---
+
+## D74 — 2026-11-01 — Leverage × ceiling task closed; assets handed to the DL task
+
+**Decision.** The leverage × ceiling (WR/TE) line is **closed**, not paused. The
+supersession itself was D68 (2026-10-30); this records the *closeout*: a written
+record of what was tested, what the FULL run found, what could not be measured,
+and which assets transfer. Written to `notes/lc-closeout.md`. No further
+analysis on this line; reopening requires a new question, not a new model.
+
+**(1) Why it is being closed rather than re-analysed.** The question was causal —
+does in-game max speed fall when leverage is low, and does ceiling headroom
+moderate that fall. The FULL run answers it in the negative on both counts, and
+the answer is *precise* rather than merely null: the within-player, within-exact-
+stratum matched estimate is −0.0003 log-speed (SE 0.0026, 95% CI
+[−0.0053, +0.0049]), which excludes any effect beyond about half a percent of
+max speed. Searching for a further angle is therefore not an analysis problem —
+the estimand is answered, and the remaining variation is in the range where
+composition decides the sign (matched −0.0204 / dose non-monotone on the sample;
+matched −0.0003 / dose monotone on the FULL run).
+
+**(2) The internal contradiction is recorded, not resolved.** On the same 11,914
+matched rows the unadjusted pair mean is ≈0 and the control-adjusted slope
+implies −0.0108 over the observed 2.2161 SD leverage gap. A thirty-fold gap
+produced entirely by the adjustment means the adjusted estimate rests on the
+control set and on linearity in leverage. The diagnostic that would have
+explained it — the distribution of within-pair leverage gaps — is named in the
+closeout as not run, with the reason: it changes the explanation, not the
+conclusion.
+
+**(3) What transfers to the DL task.** (a) the shrunken Combine ceiling curve
+(vmax, tau, a0), which is the P1 exposure; (b) the ceiling-bound exceedance check
+(44,597 efforts, 0.0001 exceedance, max predicted fraction 0.9735) as a methods
+statement that the ceiling never predicts an impossible speed; (c) the CEM
+within-player matched-design machinery as the pattern for any like-for-like
+contrast; (d) the reliability-gated slope screen (0.211 vs 0.50 → withheld) as
+the worked example of why per-player slopes are not reported without a gate.
+
+**(4) What is explicitly NOT claimed anywhere.** That low leverage causes slower
+running; that headroom moderates effort; that any individual player is more or
+less leverage-sensitive; that the dose gradient (−0.0075 high vs low,
+p 0.0131 unadjusted) is physiological. The only surviving statement is
+descriptive and hedged: adjusted comparisons show a 0.4–0.8% per-bin decline that
+the matched design does not reproduce, with no measurable player-level
+heterogeneity.
+
+**(5) Filing.** `notes/lc-closeout.md` (new) is the citable record; the archived
+task spec, prereg and deviations remain under `notes/archive-tasks/`. The Pi's
+`outputs/game/lc/` artefacts stay sample-stamped and are not results; the FULL
+run's own files remain on the operator's machine.
