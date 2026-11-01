@@ -50,6 +50,7 @@ __all__ = [
     "build_load_panel",
     "complete_case_mask",
     "cross_validate",
+    "derivation_gate",
     "design_columns_missing",
     "eb_slopes",
     "field_availability",
@@ -1177,11 +1178,160 @@ def _lmm_scores(fit: SV.Fit, X: np.ndarray, y: np.ndarray) -> np.ndarray:
 # --------------------------------------------------------------------------- #
 # Gate (§13, §15)
 # --------------------------------------------------------------------------- #
+# The four columns §5.4a derives from all-22 tracking.  ``primary_blocker_group``
+# is categorical, so it is only ever checked for coverage, never averaged.
+_DERIVATION_RANGE_CHECKS = (
+    ("derivation_n_rushers_mean", "n_rushers", "n_rushers_mean",
+     "§8 derivations: mean n_rushers inside the declared range — a mean outside "
+     "it means the geometric rusher rule is misclassifying the defence"),
+    ("derivation_n_blockers_mean", "n_blockers", "n_blockers_mean",
+     "§8 derivations: mean n_blockers inside the declared range — five linemen "
+     "plus any eligible who stays in"),
+    ("derivation_blitz_share", "blitz", "blitz_share",
+     "§8 derivations: blitz share inside the declared range — blitz is "
+     "n_rushers above the declared rusher threshold, not a per-player flag"),
+)
+
+_DERIVATION_COLUMNS = ("n_rushers", "blitz", "n_blockers",
+                       "primary_blocker_group")
+
+# §5.4a: the sample tracks a handful of players per play, so the derivation has
+# no play it can classify.  Every sample-mode item carries this reason verbatim.
+_SAMPLE_DERIVATION_REASON = (
+    "sample tracking carries 1-4 players per play, so the derivation is NA by "
+    "construction (see snaps_summary.json)")
+
+
+def _in_closed_range(value: float | None, bounds: Sequence[float]) -> bool | None:
+    """Closed-interval membership; ``None`` when there is no value to place."""
+    if value is None or not np.isfinite(value):
+        return None
+    low, high = (float(b) for b in bounds)
+    return bool(low <= value <= high)
+
+
+def _column_mean(frame: pd.DataFrame, column: str) -> float | None:
+    """Mean of one derived column; ``None`` when it is absent or entirely NA."""
+    if column not in frame.columns or not len(frame):
+        return None
+    values = pd.to_numeric(frame[column], errors="coerce").dropna()
+    return None if values.empty else float(values.mean())
+
+
+def _na_share(frame: pd.DataFrame, column: str) -> tuple[float, int]:
+    """NA share and non-null count of one column (1.0 / 0 when it is absent)."""
+    if column not in frame.columns or not len(frame):
+        return 1.0, 0
+    non_null = int(frame[column].notna().sum())
+    return float(1.0 - non_null / len(frame)), non_null
+
+
+def derivation_gate(cfg: Mapping, frame: pd.DataFrame, mode: str) -> dict:
+    """Distribution checks on the four derived columns (§5.4a, §15 vocabulary).
+
+    ``n_rushers``, ``n_blockers`` and ``blitz`` must average inside the ranges in
+    ``cfg["game"]["derivation_gate"]``; all four columns (including the
+    categorical ``primary_blocker_group``) must carry no more than
+    ``max_na_share`` missing rows.  The ranges are read from the config and only
+    from the config: a missing key is a :class:`KeyError`, never a default.
+
+    In ``sample`` mode every item is ``PENDING_FULL_RUN`` with the §5.4a reason,
+    even when the frame happens to carry values — the sample tracks 1-4 players
+    per play, so the derivation cannot be evaluated and must never read ``PASS``.
+    In ``full`` mode a missing, all-NA or out-of-range column is ``FAIL``; an
+    empty frame fails every item (NA share 1.0 against a bound of 0.0).
+
+    ``n`` is the number of frame rows the check looked at; the per-column NA
+    shares and non-null counts are reported alongside the ``NA`` check.
+    """
+    gate_cfg = cfg["game"]["derivation_gate"]
+    max_na = float(gate_cfg["max_na_share"])
+    n_rows = int(len(frame))
+    checks: dict[str, dict] = {}
+
+    for name, column, key, clause in _DERIVATION_RANGE_CHECKS:
+        bounds = list(gate_cfg[key])
+        if mode == "sample":
+            checks[name] = {"status": "PENDING_FULL_RUN", "value": None,
+                            "threshold": bounds, "clause": clause,
+                            "reason": _SAMPLE_DERIVATION_REASON, "n": n_rows}
+            continue
+        value = _column_mean(frame, column)
+        ok = _in_closed_range(value, bounds)
+        check = {"status": "PASS" if ok else "FAIL", "value": value,
+                 "threshold": bounds, "clause": clause, "n": n_rows}
+        if not ok:
+            if column not in frame.columns:
+                check["reason"] = (f"column {column!r} is absent from the frame, "
+                                   f"so its mean cannot be computed")
+            elif value is None:
+                check["reason"] = (f"column {column!r} carries no non-NA value "
+                                   f"in {n_rows} rows")
+            else:
+                check["reason"] = (f"mean {value:.4f} of {column!r} lies outside "
+                                   f"the closed range [{bounds[0]:g}, {bounds[1]:g}]")
+        checks[name] = check
+
+    shares: dict[str, float] = {}
+    non_null: dict[str, int] = {}
+    for column in _DERIVATION_COLUMNS:
+        shares[column], non_null[column] = _na_share(frame, column)
+    worst = max(shares.values())
+
+    if mode == "sample":
+        checks["derivation_na_share"] = {
+            "status": "PENDING_FULL_RUN", "value": None, "threshold": max_na,
+            "clause": ("§8 derivations: every derived column is classified on "
+                       "every play (NA share within the declared bound)"),
+            "columns": shares, "non_null": non_null,
+            "reason": _SAMPLE_DERIVATION_REASON, "n": n_rows}
+    else:
+        failed = [c for c in _DERIVATION_COLUMNS if shares[c] > max_na]
+        check = {
+            "status": "FAIL" if failed else "PASS", "value": worst,
+            "threshold": max_na,
+            "clause": ("§8 derivations: every derived column is classified on "
+                       "every play (NA share within the declared bound)"),
+            "columns": shares, "non_null": non_null, "n": n_rows}
+        if failed:
+            if not n_rows:
+                check["reason"] = ("the frame carries 0 rows, so no play is "
+                                   "classified and every column is NA")
+            else:
+                check["reason"] = (
+                    f"NA share above the bound {max_na:g} for: "
+                    + ", ".join(f"{c} ({shares[c]:.3f})" for c in failed))
+        checks["derivation_na_share"] = check
+
+    failing = [k for k, v in checks.items() if v["status"] == "FAIL"]
+    pending = [k for k, v in checks.items() if v["status"] == "PENDING_FULL_RUN"]
+    if failing:
+        statement = (f"{len(failing)} of {len(checks)} derivation checks fail: "
+                     + ", ".join(failing) + ".")
+    elif pending:
+        statement = (f"Sample mode: {len(pending)} derivation checks are "
+                     f"PENDING_FULL_RUN — " + _SAMPLE_DERIVATION_REASON + ".")
+    else:
+        statement = (f"All {len(checks)} derivation checks pass over {n_rows} "
+                     f"rows.")
+    return {"checks": checks,
+            "status": "BLOCKED" if failing else ("PENDING" if pending else "OK"),
+            "failing": failing, "pending": pending, "statement": statement}
+
+
 def gate_evaluate(cfg: Mapping, *, mode: str, field_info: Mapping[str, dict],
                   frame: pd.DataFrame, p1: Mapping | None,
                   p2: Mapping | None,
-                  audit_decision: Mapping | None = None) -> dict:
-    """Evaluate every §15 stopping condition and the §13 thresholds."""
+                  audit_decision: Mapping | None = None,
+                  derivation: Mapping | None = None) -> dict:
+    """Evaluate every §15 stopping condition and the §13 thresholds.
+
+    ``derivation`` is the optional output of :func:`derivation_gate`.  When it
+    is ``None`` nothing about the derived columns is evaluated, so a caller with
+    a frame that carries no derived columns gets exactly the previous result;
+    when it is supplied its checks join this dict and its ``FAIL`` /
+    ``PENDING_FULL_RUN`` statuses flow through the existing precedence rules.
+    """
     audit = cfg["audit"]
     models = cfg["models"]
     checks: dict[str, dict] = {}
@@ -1261,6 +1411,9 @@ def gate_evaluate(cfg: Mapping, *, mode: str, field_info: Mapping[str, dict],
                    "P1 continues"),
         "part2_status": (p2 or {}).get("status"),
     }
+
+    if derivation is not None:
+        checks.update(derivation.get("checks", {}))
 
     failing = [k for k, v in checks.items() if v["status"] == "FAIL"]
     pending = [k for k, v in checks.items() if v["status"] == "PENDING_FULL_RUN"]

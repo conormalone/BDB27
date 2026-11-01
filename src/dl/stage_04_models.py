@@ -231,11 +231,60 @@ def _reliability_rows(cfg: Mapping, frame: pd.DataFrame,
     return rows
 
 
+def _derivation_markdown(derivation: Mapping) -> list[str]:
+    """The ``## Derived controls`` block (§5.4a) — one row per check."""
+    lines = ["## Derived controls\n"]
+    lines.append("Source: the all-22 derivation (design §5.4a). These checks "
+                 "test the distribution of the four derived columns against the "
+                 "declared ranges; they are controls on the derivation, not on "
+                 "the model.\n")
+    lines.append(f"* status: **{derivation.get('status')}** — "
+                 f"{derivation.get('statement')}")
+    lines.append("")
+    lines.append("| check | status | value | threshold |")
+    lines.append("|---|---|---|---|")
+    for name, chk in derivation.get("checks", {}).items():
+        value = chk.get("value")
+        if isinstance(value, (int, float)):
+            value_txt = f"{value:g}"
+        elif value is None:
+            value_txt = "—"
+        else:
+            value_txt = str(value)
+        threshold = chk.get("threshold")
+        if isinstance(threshold, (list, tuple)):
+            threshold_txt = f"[{float(threshold[0]):g}, {float(threshold[1]):g}]"
+        elif isinstance(threshold, (int, float)):
+            threshold_txt = f"{threshold:g}"
+        else:
+            threshold_txt = ""
+        lines.append(f"| {name} | {chk.get('status')} | {value_txt} | "
+                     f"{threshold_txt} |")
+    lines.append("")
+    na = derivation.get("checks", {}).get("derivation_na_share") or {}
+    if na.get("columns"):
+        lines.append("* NA share by column: " + ", ".join(
+            f"`{c}` {share:.3f} ({na.get('non_null', {}).get(c, 0)} non-null)"
+            for c, share in na["columns"].items()))
+        lines.append(f"* rows evaluated: {na.get('n')}")
+        lines.append("")
+    reasons: dict[str, list[str]] = {}
+    for name in derivation.get("failing", []) + derivation.get("pending", []):
+        reason = (derivation.get("checks", {}).get(name) or {}).get("reason")
+        if reason:
+            reasons.setdefault(reason, []).append(name)
+    for reason, names in reasons.items():
+        lines.append("* " + ", ".join(f"`{n}`" for n in names) + f": {reason}")
+    lines.append("")
+    return lines
+
+
 def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapping,
                       field_info: Mapping[str, dict], gate: Mapping,
                       p1: Mapping | None, p2: Mapping | None,
                       s1: Mapping | None, e1: Mapping | None,
-                      frame: pd.DataFrame) -> str:
+                      frame: pd.DataFrame,
+                      derivation: Mapping | None = None) -> str:
     lines: list[str] = []
     lines.append("# DL stage 04 — models\n")
     if prov["reportable"]:
@@ -259,10 +308,18 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapp
         value_txt = f"{value:g}" if isinstance(value, (int, float)) else (
             ", ".join(chk.get("absent", [])) if chk.get("absent") else "")
         threshold = chk.get("threshold")
-        threshold_txt = f"{threshold:g}" if isinstance(threshold, (int, float)) else ""
+        if isinstance(threshold, (list, tuple)):
+            threshold_txt = f"[{float(threshold[0]):g}, {float(threshold[1]):g}]"
+        elif isinstance(threshold, (int, float)):
+            threshold_txt = f"{threshold:g}"
+        else:
+            threshold_txt = ""
         lines.append(f"| {name} | {chk['status']} | {value_txt} | {threshold_txt} | "
                      f"{chk.get('clause', '')} |")
     lines.append("")
+
+    if derivation is not None:
+        lines.extend(_derivation_markdown(derivation))
 
     lines.append("## Frame\n")
     lines.append(f"* snaps in the snap table: **{frame_report.get('n_snaps')}**, "
@@ -419,8 +476,10 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
         s1 = M.fit_s1(M.prepare_frame(frame, block), block, load_column=column)
     e1 = M.fit_e1(M.prepare_frame(frame, block), block)
 
+    dgate = M.derivation_gate(block, frame, mode)
     gate = M.gate_evaluate(block, mode=mode, field_info=field_info, frame=frame,
-                           p1=p1, p2=p2, audit_decision=_audit_decision(cfg, mode))
+                           p1=p1, p2=p2, audit_decision=_audit_decision(cfg, mode),
+                           derivation=dgate)
 
     reliability = _reliability_rows(block, frame, frame_report, p2, s1)
     part1_out = {k: v for k, v in p1.items() if k != "secondary"}
@@ -443,6 +502,7 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
                       if not prov["reportable"] else
                       "Full run: numbers are reportable under the prereg."),
         "gate": gate,
+        "derivation": dgate,
         "frame": {k: v for k, v in frame_report.items() if k != "columns"},
         "field_availability": field_info,
         "missing_required_fields": [f for f, i in field_info.items()
@@ -461,7 +521,7 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
     }
 
     summary = _summary_markdown(block, mode, prov, frame_report, field_info, gate,
-                                p1, p2, s1, e1, frame)
+                                p1, p2, s1, e1, frame, derivation=dgate)
     payload = {
         "json": {
             "part1_result.json": part1_out,
@@ -486,8 +546,9 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
     D.mark_done(cfg, STAGE, mode, extra={
         "gate": gate["verdict"], "part1": p1.get("status"),
         "part2": p2.get("status"), "reportable": prov["reportable"]})
-    return {"skipped": False, "path": out_dir, "gate": gate, "p1": p1, "p2": p2,
-            "s1": s1, "e1": e1, "frame_report": frame_report}
+    return {"skipped": False, "path": out_dir, "gate": gate, "derivation": dgate,
+            "p1": p1, "p2": p2, "s1": s1, "e1": e1,
+            "frame_report": frame_report}
 
 
 def _modal_selected(part2: Mapping, definition: str) -> float | None:
