@@ -182,6 +182,22 @@ bdb27_dl:
     blocker_radius_yds: 2.0
     blitz_rusher_threshold: 4             # team rushers > 4 => blitz
     min_snaps_per_player: 100
+    # --- rusher / blocker derivation (D75) --------------------------------
+    rush_advance_min_yd: 1.5
+    protector_max_retreat_yd: 2.0
+    protector_max_lateral_yd: 2.0
+    all22_min_players: 20
+    qb_min_depth_yd: 3.0
+    qb_central_lateral_yd: 2.5
+    primary_blocker_min_share: 0.5
+    te_lateral_min_yd: 6.0
+    te_lateral_max_yd: 10.0
+    interior_lateral_max_yd: 3.5
+    derivation_gate:
+      n_rushers_mean: [3.0, 5.0]
+      n_blockers_mean: [5.0, 7.0]
+      blitz_share: [0.25, 0.35]
+      max_na_share: 0.0
     garbage_time: {q4_margin: 21, any_quarter_margin: 28, q4: 4}
   load:
     absolute_speed_grid_yds: [1.5, 2.0, 2.5, 3.0, 3.5]
@@ -303,6 +319,86 @@ down/distance/quarter/clock/score_margin, opponent_team, primary_blocker_group.
 Exclusions counted and written to `snaps_summary.json`.
 Sample mode: derive what player_play allows; tracking features only where the
 sample has frames; every missing item is `NA` + counted, never zero-filled.
+
+#### 5.4a Rusher / blocker derivation (`src/dl/dl_blockers.py`, D75)
+
+`blitz`, `n_rushers`, `n_blockers` and `primary_blocker_group` are **derived
+from all-22 tracking**, never from `player_play.blitzing` (evidence F9: that
+column is a per-player rush assignment, TRUE on 98.3 % of interior rows).  The
+derivation is a geometric proxy with declared constants; each play either
+produces a complete classification or `NA` with a reason string.  Nothing is
+zero-filled and no play is partially classified.
+
+Geometry.  For each play, `los_x` is the line-of-scrimmage candidate the
+tracked defenders actually stand on (the existing `_depth_from_candidates`
+rule).  `depth = sign * (x - los_x)`, sign `+1` for `play_direction == right`,
+so **positive depth is the defensive side**.  `line_y` is the median snap `y`
+of the players inside `±los_tolerance_yds` of the line — the ball's lateral
+position.  `advance = depth(snap) - depth(end of post_snap_window_s)` is
+positive for a player moving toward the offensive backfield.
+
+Cost: one pass per study play (22 players × 10 window frames), skipped
+entirely for plays with fewer than `all22_min_players` distinct tracked
+players, so sample mode costs nothing and full mode is linear in plays.
+
+1. **Coverage guard.** A play is derivable only if the snap frame carries
+   `≥ all22_min_players` distinct players (default 20) *and* every one of them
+   is classified below.  Otherwise all four columns are `NA` with reason
+   `insufficient_tracking` / `unclassified_players` (the count is recorded).
+2. **Side.** `depth > +los_tolerance_yds` → defence; `< -los_tolerance_yds` →
+   offence.  Inside the band (`|depth| ≤ los_tolerance_yds`, where the two
+   lines meet) the player is classified by motion: `advance ≥
+   rush_advance_min_yd` → defence, else `advance ≤ 0` or lateral travel
+   `≥ protector_max_lateral_yd` → offence, else **unknown** (play undecidable).
+3. **Rusher.** A defensive-side player with `advance ≥ rush_advance_min_yd`
+   (1.5 yd inside the 1.0–2.0 s window).  `n_rushers` = count;
+   `blitz = n_rushers > blitz_rusher_threshold` (4).  `n_rushers == 0` on a
+   dropback means the derivation failed, so it is `NA` with reason
+   `zero_rushers_implausible` — never a real 0 and never filled.
+4. **Protector.** An offensive-side player, not the QB, who (a) did not
+   advance (`advance < rush_advance_min_yd`), (b) stayed in: net retreat
+   `≤ protector_max_retreat_yd` and lateral travel `≤ protector_max_lateral_yd`
+   (a release is a large net downfield move), and (c) was within
+   `blocker_radius_yds` of at least one rusher in at least
+   `primary_blocker_min_share` of the window frames.  That is the five linemen
+   plus any eligible who stays in; `n_blockers` = count.
+   The QB is the deepest central offensive player with `depth ≤
+   -qb_min_depth_yd` and `|y - line_y| ≤ qb_central_lateral_yd`; he is
+   excluded from both the protector count and the engagement candidate set
+   (otherwise an early pressure would count the quarterback as a blocker).
+   An under-centre QB deeper than only ~1.5 yd is not caught by this rule;
+   it is a declared residual, counted in the summary (`qb_rule_misses`).
+5. **Primary blocker.** Per rusher: the nearest offensive-side non-QB player
+   in each window frame; the player who is nearest in the plurality of frames
+   is the primary blocker, provided he is inside `blocker_radius_yds` in
+   `≥ primary_blocker_min_share` of the frames.  A plurality tie, or no
+   sustained engagement, is `NA` with reason `ambiguous_engagement` /
+   `no_sustained_engagement`.  **No nearest-neighbour guess is made.**
+6. **Group label.** `OT` | `interior` | `TE` | `RB`, from roster position
+   (`players.nfl_position`: T→OT, G/C→interior, TE→TE, RB/FB/HB→RB) when the
+   blocker is in the 510-player cohort, otherwise from alignment geometry:
+   behind the line by `≥ qb_min_depth_yd` → RB; `|y - line_y| ∈
+   [te_lateral_min_yd, te_lateral_max_yd]` → TE; `≥ interior_lateral_max_yd`
+   → OT; inside it → interior.  The source is emitted per row as
+   `primary_blocker_group_source` ∈ {`roster`, `geometry`}, so the full run
+   reports what share of labels is measured rather than inferred.  In §8 this
+   column is a **crossed random effect** (a variance component), not a
+   coefficient to report.
+
+`derivation_gate` (checked by `dl_models_core.derivation_gate`, wired into
+`gate_evaluate`, §15 vocabulary): mean `n_rushers` ∈ [3, 5], mean `n_blockers`
+∈ [5, 7], `blitz` share ∈ [0.25, 0.35], and `NA` share `≤ max_na_share` (0.0)
+for all four columns.  `FAIL` in full mode is `NO-GO`; in sample mode every
+item is `PENDING_FULL_RUN` with the reason (never `PASS`), because the sample
+tracks 1–4 players per play.
+
+**Fixture proof (required, not optional).** `dl_blocker_fixture.py` builds
+all-22 worlds where the true rushers, protector count, blitz flag and blocker
+assignment are known by construction: a 4-man rush with 5 protectors, a 6-man
+pressure with a back staying in, a TE-chip/double-team world, an
+ambiguous-engagement world (must be `NA`) and a truncated-tracking world (must
+be `NA`).  Recovery is asserted exactly; a mismatch is a bug, not a tolerance
+to widen.
 
 ### 5.5 `stage_04_models.py` → `outputs/dl/models/`
 `part1_result.json`, `part2_result.json`, `cv_folds.csv`, `load_tuning.csv`,

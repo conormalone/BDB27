@@ -1232,6 +1232,27 @@ bdb27_dl:
     blocker_radius_yds: 2.0
     blitz_rusher_threshold: 4             # team rushers > 4 => blitz
     min_snaps_per_player: 100
+    # --- rusher / blocker derivation (D75, 2026-11-01) -------------------
+    # All of these are *measurement* constants of the geometric derivation
+    # documented in notes/dl-design.md §5.4a.  None is tuned on a result.
+    rush_advance_min_yd: 1.5      # net movement toward the offensive backfield
+                                  # inside post_snap_window_s that counts as a rush
+    protector_max_retreat_yd: 2.0 # max net retreat of a stay-in protector
+    protector_max_lateral_yd: 2.0 # max lateral travel of a stay-in protector
+    all22_min_players: 20         # distinct tracked players at the snap frame
+                                  # before any team-level count is derived
+    qb_min_depth_yd: 3.0          # central player this deep is the QB (excluded
+    qb_central_lateral_yd: 2.5    # from the protector count and from engagement)
+    primary_blocker_min_share: 0.5  # share of window frames the primary blocker
+                                    # must be within blocker_radius_yds
+    te_lateral_min_yd: 6.0        # geometry label: TE band [6.0, 10.0] yd off ball
+    te_lateral_max_yd: 10.0
+    interior_lateral_max_yd: 3.5  # geometry label: interior inside 3.5 yd
+    derivation_gate:              # distribution checks (full run decides; §5.4a)
+      n_rushers_mean: [3.0, 5.0]
+      n_blockers_mean: [5.0, 7.0]
+      blitz_share: [0.25, 0.35]
+      max_na_share: 0.0
     garbage_time: {q4_margin: 21, any_quarter_margin: 28, q4: 4}
   load:
     absolute_speed_grid_yds: [1.5, 2.0, 2.5, 3.0, 3.5]
