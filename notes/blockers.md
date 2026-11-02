@@ -19,6 +19,16 @@ assignments from snap-time proximity at full run and states the provenance
 limitation in the report; see `notes/dl-evidence.md` §3. Neither is a missing
 required field for the sample pipeline.
 
+**Update after D75 (2026-11-02).** The missing assignment *field* is no longer an
+open design question: `src/dl/dl_blockers.py` derives rushers, protectors and
+the primary blocker from all-22 tracking, with planted-truth recovery and a
+distribution gate (`notes/dl-design.md` §5.4a, `notes/decisions.md` D75). The
+derivation is still **data-blocked** by the absent full tracking files, and the
+sample cannot exercise it (at most 4 tracked players per play). If the full run
+finds fewer than 20 tracked players on the snap frame, the gate returns `NO-GO`
+and the §8 controls 3–6 are not implementable from the provided data — that
+would be a Conor decision about §8, not a pre-registration edit.
+
 **No other active blockers.** Every other Phase 1 item is evaluable from the
 files on disk.
 

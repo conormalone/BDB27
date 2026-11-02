@@ -2972,3 +2972,101 @@ heterogeneity.
 task spec, prereg and deviations remain under `notes/archive-tasks/`. The Pi's
 `outputs/game/lc/` artefacts stay sample-stamped and are not results; the FULL
 run's own files remain on the operator's machine.
+
+## D75 — 2026-11-02 — Rusher/blocker derivation lands (§8 controls 3–6)
+
+**(1) What was built.** `src/dl/dl_blockers.py` — a pure, vectorised geometric
+derivation of `n_rushers`, `blitz`, `n_blockers`, `primary_blocker_group` and
+`primary_blocker_group_source`; `_blocker_columns` in `dl_snaps.py` (all-22
+coverage guard applied in SQL, per-game chunks, roster-first labels); the
+`crosscheck` block and `outputs/dl/game/snaps/derivation_crosscheck.csv` written
+by stage 03; `dl_models_core.derivation_gate` plus an optional `derivation=`
+argument on `gate_evaluate`; and the design/config contract in §5.4a. Commits
+`f33e01b` (design), `25d7d90` (module), `8d4ea8f` (per-rusher label + unit
+tests), `ab4589b` (stage-03 wiring), `6c38366` (gate), `54f0c76` (cross-check
+population), `e30a06e` (the two planted stage-level worlds).
+
+**(2) Why it is derived, not read.** Evidence F9 stands unchanged:
+`player_play.blitzing` is a per-player rush assignment (TRUE on 98.3 % of
+interior rows), so team blitz has to be counted from tracking. The derivation
+never consults `blitzing`; that column remains only the primary-snap filter.
+
+**(3) The sample cannot exercise it, and says so.** Of 14,677 plays in the snap
+table, **0** carry ≥ `all22_min_players` (20) distinct tracked players at the
+snap frame (max 4, median 1 — F14). All four columns are therefore 100 % NA with
+the reason `insufficient_tracking` and the statement in
+`snaps_summary.json::blockers.coverage_reason`. `snaps_summary.json` counts
+`n_plays_with_all22 = 0`, `n_snaps_with_n_rushers = 0`, `n_snaps_blockers_na =
+17,159`. The stage-04 gate reports `PENDING_FULL_RUN` with all four derivation
+items pending and nothing failing — never a sample PASS. This is the whole point
+of the cycle: the columns are now wired, and the sample honestly reports that it
+cannot populate them.
+
+**(4) Planted-truth recovery (exact, no tolerance).** The 21 unit tests in
+`tests/test_dl_blockers.py` and the two stage-level worlds in
+`tests/test_dl_snaps_blockers.py` build all-22 plays whose truth is known by
+construction. Recovered exactly: 4-man rush / 5 protectors / no blitz; 6-man
+pressure (blitz, five linemen + the tight end = 6 protectors, the tight end's
+rusher labelled `TE`); a tight-end-stays-in world with a genuine double team
+(the guard is nearer in every window frame, so the interior label wins and the
+other rushers keep their own labels); an ambiguous-engagement world that returns
+`NA` + `ambiguous_engagement` while the play still carries its counts; and a
+12-player truncated world that returns `NA` + `insufficient_tracking`. Zero
+rushers is `zero_rushers_implausible`, never 0.
+
+**(5) Independent cross-check against `player_play` (sample, not a finding).**
+The alignment split is identical on both sides — snap table 6,226 edge / 10,904
+interior / 29 unmapped, `player_play` restricted to the same cohort 6,226 /
+10,904 / 29 — so stage 03 neither loses nor reclassifies rows.
+`unblocked_pressure` is rare where it should be: 1.32 % of edge rows vs **0.16 %**
+of interior rows (DE 1.02 %, DT 0.17 %, NT 0.00 %). The blitz-vs-non-blitz
+pressure contrast is `NOT_RUN` with a reason, because the derived blitz is NA in
+sample mode. **Defect found and fixed during the cycle:** the first version of
+the cross-check compared the table against *every* `EDGE`-labelled defender
+(12,899 / 11,365, n = 24,264) instead of the DL cohort — a manufactured
+"disagreement". `lined_up_position` is a formation label, so linebackers carry
+it too; the check now joins `players.csv` exactly as stage 03 does. The
+disagreement was an artefact of the comparison, not of the derivation, and it is
+recorded here because the mis-specified version would have looked like a
+finding.
+
+**(6) Judgement calls inside the build (all declared, none tuned on a result).**
+* `primary_blocker_group` is **per rusher per snap** (its own primary blocker's
+  label). The first cut collapsed it to one plurality label per play, which
+  would have flattened the §8 crossed effect to a constant within a snap; fixed
+  in `8d4ea8f` and pinned by a test that asserts the four rushers' labels differ.
+* `gate_evaluate` gains an **optional** `derivation=` argument. With it unset the
+  returned dict is byte-identical to D73's, so the existing gate tests still
+  assert the same verdicts. A FAIL reaches `NO-GO` through the existing
+  precedence rules; no second verifier was written.
+* One extra reason code, `missing_play_geometry` (a scored play absent from the
+  geometry table). `line_y` falls back to the median snap `y` of all tracked
+  players when nobody is inside the LOS band, because a NaN there would silently
+  kill the QB rule and every geometry label.
+* The QB is excluded from the protector count and from engagement (a central
+  player ≥ 3 yd behind the line). An under-centre QB ~1.5 yd deep is not caught;
+  `qb_rule_misses` counts the plays where no QB was identified at all.
+* `n_blockers` counts protectors that **engaged** a rusher, so a lineman with
+  nobody within `blocker_radius_yds` in the window is not counted; the gate's
+  5–7 band tolerates the small shortfall, and the full run will report it.
+* A robustness fix rode along (`e30a06e`): the pressure/censor columns are now
+  `TRY_CAST` to DOUBLE in the `base` view. A table where every
+  `time_to_pressure` is null was being sniffed as VARCHAR, so the event
+  comparison could not even bind. A null still stays a null.
+* The planted-world generator was delivered as stage-level test worlds rather
+  than a committed CSV fixture directory: the model lane failed four times on
+  that milestone and the worlds are cheaper and more readable as code. The
+  worlds are still all-22, 12-column, and driven through `build_snaps`.
+
+**(7) Tests.** Suite collected 404 tests at D74 and **455** after this cycle
+(+51: 21 derivation unit tests, 17 stage wiring/cross-check tests, 7 gate tests,
+2 planted worlds and the rest schema/edge cases). No pre-existing assertion was
+removed, loosened or skipped.
+
+**(8) Open for Conor.** (a) If the full run's coverage guard still finds 0 plays
+with all-22 tracking, the gate is a genuine `NO-GO` and the §8 controls 3–6 are
+not implementable from the provided tracking — that is a §8 decision, not a
+licence to amend the prereg. (b) If most blockers on full data are outside the
+510-prospect cohort, their labels come from geometry rather than roster
+position; `label_source_counts` reports the mix on every run, and a
+geometry-majority result weakens (but does not invalidate) the crossed effect.

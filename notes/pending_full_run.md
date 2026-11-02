@@ -104,7 +104,22 @@ these is a **full-run derivation**, not a missing field in the provided files:
 
 | # | Question | Stage / command | Config key that decides it | Unblocks |
 |---|---|---|---|---|
-| **Q1** | Are `blitz` (team blitz: rushers > 4) and `n_blockers` derivable for every DL rush snap from full all-22 tracking? | `python src/dl/stage_03_snaps.py --mode full --force` | `bdb27_dl.game.blitz_rusher_threshold`, `blocker_radius_yds` | P1 and P2 (both carry the §8 controls) |
-| **Q2** | Are blocker assignments available for every rush snap (primary blocker group)? | stage 03 (same command) → `snaps.csv` `primary_blocker_group` | *(no key yet — the field does not exist in any provided file, F15)* | The §8 crossed effect |
+| **Q1** | Are `blitz` (team blitz: rushers > 4), `n_rushers` and `n_blockers` derivable for every DL rush snap from full all-22 tracking? | `python src/dl/stage_03_snaps.py --mode full --force` | `bdb27_dl.game.blitz_rusher_threshold`, `rush_advance_min_yd`, `all22_min_players`, `protector_*` | P1 and P2 (both carry the §8 controls) |
+| **Q2** | Are blocker assignments available for every rush snap (primary blocker group)? | stage 03 (same command) → `snaps.csv` `primary_blocker_group` | `blocker_radius_yds`, `primary_blocker_min_share`, `te_lateral_*`, `interior_lateral_max_yd` | The §8 crossed effect |
 | **Q3** | Is the per-game snap sequence complete enough for the load definitions (snap coverage ≥ `audit.min_snap_coverage_share`)? | `01_audit` (c) then stage 03 | `bdb27_dl.audit.min_snap_coverage_share` (0.90) | Part 2 (dropped, never faked, if it fails; P1 continues) |
 | **Q4** | Does `thresholds.json` carry `FULL` provenance before the model run? | `python src/dl/stage_00_thresholds.py --mode full` | `bdb27_dl.mode.full.provenance` | Every reportable number in stage 04 |
+
+**Status after D75 (2026-11-02).** Q1 and Q2 are **implemented and tested**
+(`src/dl/dl_blockers.py`, wired into stage 03; planted-truth recovery exact on
+five synthetic all-22 worlds) and remain **data-blocked**: the full tracking
+files are absent from this host, and the sample carries at most 4 tracked
+players per play, so the all-22 guard rejects every play and all four columns
+are `NA` with `insufficient_tracking`. Running stage 03 in full mode answers
+Q1/Q2 directly: `snaps_summary.json::blockers` reports `n_plays_with_all22`,
+`n_plays_derivable`, the reason counts, the label-source mix and the NA share of
+each column, and stage 04 turns a 100 %-NA or out-of-range distribution into a
+`NO-GO` (`derivation_gate`). New sub-question for the full run:
+
+| # | Question | Stage / command | Config key that decides it | Unblocks |
+|---|---|---|---|---|
+| **Q5** | Do the distributions land in the frozen bands — mean rushers 3–5, mean protectors 5–7, blitz share 25–35 %, zero NA — and what share of blocker labels comes from roster position rather than alignment geometry? | `python src/dl/stage_04_models.py --mode full` → `model_result.json::derivation` | `bdb27_dl.game.derivation_gate` | Whether the §8 controls 3–6 can be fitted at all, and how much of the crossed effect rests on geometric labels |
