@@ -96,11 +96,23 @@ provenance. Otherwise → `notes/blockers.md`.
 
 ---
 
-## DL task (D70–D73) — what stage 04 needs from the full data
 
-Stage 04 refuses to fit P1 on the sample because the §8 control set is empty there
-(`blitz`, `n_blockers`, `primary_blocker_group`, `pre_snap_depth_yd`). Each of
-these is a **full-run derivation**, not a missing field in the provided files:
+## DL task (D70–D78) — what stage 04 needs from the full data
+
+**Answered 2026-11-02 (D78).** Q1, Q2 and Q5 are **closed as not applicable**:
+the 2027 tracking is a prospect-only product (1.5 players/play full, 1.16
+sample), so no play can carry 20 tracked players and the team-level counts can
+never be derived. Prereg §8 was amended before any full-data result — `blitz`,
+`n_blockers` and `primary_blocker_group` were removed and replaced by team and
+season fixed effects plus play-context controls; `dl_blockers.py` is parked.
+Stage 04 therefore no longer refuses to fit P1 on the sample. With the amended
+list, the full run's open questions are Q3 (snap coverage for the load
+definitions) and Q4 (thresholds provenance). Q6 below is new.
+
+*Historical note (pre-D78):* stage 04 used to refuse P1 on the sample because
+the §8 control set was empty there (`blitz`, `n_blockers`,
+`primary_blocker_group`, `pre_snap_depth_yd`), each of which was a full-run
+derivation rather than a missing field:
 
 | # | Question | Stage / command | Config key that decides it | Unblocks |
 |---|---|---|---|---|
@@ -123,3 +135,15 @@ each column, and stage 04 turns a 100 %-NA or out-of-range distribution into a
 | # | Question | Stage / command | Config key that decides it | Unblocks |
 |---|---|---|---|---|
 | **Q5** | Do the distributions land in the frozen bands — mean rushers 3–5, mean protectors 5–7, blitz share 25–35 %, zero NA — and what share of blocker labels comes from roster position rather than alignment geometry? | `python src/dl/stage_04_models.py --mode full` → `model_result.json::derivation` | `bdb27_dl.game.derivation_gate` | Whether the §8 controls 3–6 can be fitted at all, and how much of the crossed effect rests on geometric labels |
+
+**Q1, Q2, Q5 — CLOSED (D78):** not applicable on a prospect-only product. The
+gate now reports all five derivation items `NOT_APPLICABLE`; the derivation
+runs only if the probe ever finds a 20-player snap frame.
+
+| # | Question | Stage / command | Config key that decides it | Unblocks |
+|---|---|---|---|---|
+| **Q6** | What is the tracking coverage of each rusher's **own** snaps (the share of pass-rush snaps with `pre_snap_depth_yd` present), and does complete-case coverage of `seconds_since_last_snap` leave every rusher above the §9 floor of 100 snaps? | stage 03 → `snaps_summary.json` (per-column NA), stage 04 → `model_result.json::field_availability` | `bdb27_dl.game.*`, `bdb27_dl.models.controls` | Whether `pre_snap_depth_yd` can be promoted from the sensitivity panel, and the final model frame size |
+
+The declared **sensitivity panel** (`team_coverage_man_zone`, `offense_formation`,
+`pre_snap_depth_yd`) is carried in `snaps.csv` and must be reported separately
+from P1/P2; it is never the confirmatory specification (§8.5).
