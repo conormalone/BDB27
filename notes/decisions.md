@@ -3145,3 +3145,37 @@ Summary counts `n_snaps_derivation_expected`, `n_snaps_derivation_non_rusher`,
 `src/dl/stage_04_models.py`, `config.yaml`; `notes/dl-design.md` §5.4a;
 `tests/test_dl_blockers.py`, `tests/test_dl_derivation_gate.py`,
 `tests/test_dl_snaps_blockers.py`.
+
+---
+
+## D77 — 2026-11-02 — DL runnable notebook lands; 05 deferred; item-j type fix
+
+**Decision.** Delivered `notebooks/bdb27_dl_full_run.ipynb` as the only interface for the current DL
+task. It runs `00_thresholds → 01_audit → 02_combine_ceiling → 03_game_snaps → 04_models`, each
+stage through its own `main()` in-process via `stage_runner.run_stage` (bytecode purged and the
+stage plus its helpers reloaded from disk on every call). One config cell, Kaggle-aware data
+auto-detection, a scratch `bdb27_run/dl_config.yaml`, and per-stage wall time / peak RAM read from
+`outputs/run_log.csv`.
+
+**Sample vs full.** Sample artefacts stay `PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT`; the
+headline cell prints **WITHHELD** and no sample number. A full-mode run with the three
+`game_tracking_{2023,24,25}.csv` files absent skips `01_audit`, `03_game_snaps` and `04_models` as
+`PENDING FULL RUN` and names the missing files — it does **not** execute those stages on the
+sample. That guard is deliberate: `03_game_snaps` will otherwise build a `FULL`-stamped table from
+the 17,159 sample-sized `player_play` snaps, which is exactly the failure the notebook must prevent.
+
+**Phase 5 deferred, not stubbed.** `src/dl/stage_05_validate.py` is not built. It is absent from
+`DL_STAGE_ORDER`; the headline prints Phase 5 as `NOT RUN`; `notes/blockers.md` records the exact
+prereg clauses it must implement (§5 censoring, §6 strata/coverage, §7 load definitions and order
+permutation, §8 controls/placebos, §9 minimum snaps, §11 metric/folds, §12 SOI/equivalence, §13
+reliability) and the design §5.6 artefact contract.
+
+**Bug fixed on the way.** `dl_audit_power.item_j` fed `read_csv_auto` columns that are entirely
+`NA` in sample mode; DuckDB inferred `VARCHAR` and `corr()` raised a binder error. The query now
+`TRY_CAST`s both load columns to `DOUBLE`. Regression test:
+`tests/test_dl_audit_item_j.py`.
+
+**Verification.** Clean-kernel, cell-by-cell execution of the notebook in `--mode sample` with
+`CLEAN=True` / `CLEAN_CONFIRM="DELETE"`: all five stages ran, 0 exceptions, headline `WITHHELD`,
+figures skipped. Full-mode execution reported the three missing tracking files as
+`PENDING FULL RUN` and printed `NOT RUN` for every absent result. `pytest tests`: **478 passed**.

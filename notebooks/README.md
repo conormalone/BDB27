@@ -50,6 +50,39 @@ every stage output under `outputs/` (including the Combine envelope) **and the L
 under `../data/interim/checkpoints/`**, so the next run is a genuine rebuild rather than a skip against
 a checkpoint whose outputs no longer exist. It prints the directories and file counts before deleting.
 
+## Current task — `bdb27_dl_full_run.ipynb`
+
+**Use this notebook for the DL acceleration-ceiling task** (`TASK.md`, 2026-10-30). It is the
+runnable interface for the current chain, not a variant of the retired leverage pipeline. Open it,
+set `MODE` (`sample` | `full`) and — only if needed — `DATA_DIR`, then **Run All**. No terminal.
+
+- Runs exactly `00_thresholds → 01_audit → 02_combine_ceiling → 03_game_snaps → 04_models`, each
+  through its own `main()` with `stage_runner.run_stage`, so the stage reloads its code (and
+  helpers) from disk on every call. A `git pull` cannot leave stale code in the kernel.
+- **Sample mode** stamps every artefact `PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT` and the
+  headline cell prints **`WITHHELD`** — no sample number can be mistaken for a finding.
+- **Full mode** requires `game_tracking_{2023,24,25}.csv`. If they are absent, the stages that
+  need them (`01_audit`, `03_game_snaps`, `04_models`) print **`PENDING FULL RUN`** with the missing
+  filenames, and the run continues; they are never executed on the sample just to look green.
+- The **headline cell** reads only `outputs/dl/`, prints the pre-declared audit gate, `a0` ICC,
+  matched-DL count, median primary snaps, Part-1 HR with CI, the Part-2 out-of-sample comparison,
+  S1 load and load×`a0`, event rate, MDE, reliability rows and every gate item. A missing file or
+  column prints `NOT RUN — <field> absent`; nothing is guessed or zero-filled.
+- `05_validate` is **not built yet**, so it is deliberately absent from `DL_STAGE_ORDER`; the
+  headline reports Phase 5 as `NOT RUN` and `notes/blockers.md` carries it as the next build item.
+  The notebook does not claim validation ran.
+- `CLEAN=True` is inert unless `CLEAN_CONFIRM="DELETE"`; when armed it deletes only `outputs/dl/`
+  and `data/interim/dl_checkpoints/`, never the preserved LC/ceiling-v1 outputs.
+- Diagnostics: at most two figures, rendered only from `FULL`-provenance outputs; skipped with a
+  reason in sample mode or when the inputs are absent.
+
+**When to use which**
+
+| notebook | task | use it when |
+|---|---|---|
+| `bdb27_dl_full_run.ipynb` | **current** DL acceleration ceiling → pass-rush pressure | any current DL run; this is the interface Conor should click |
+| `bdb27_full_run.ipynb` | retired leverage × ceiling (WR/TE) + preserved ceiling-v1 chain | reproducing the parked LC/legacy outputs; not the current task |
+
 ## Conventions
 - **Self-contained**: each notebook opens with its imports + data paths and runs top-to-bottom, no hidden state.
 - **Data path** points at `../data/raw` (symlink to the mounted drive) — never commit data.

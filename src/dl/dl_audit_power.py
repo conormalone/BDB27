@@ -789,9 +789,11 @@ def item_j(cfg: dict, mode: str, out_dir: Path, ctx: dict) -> dict:
         src = path.as_posix().replace("'", "''")
         res = con.execute(f"""
             WITH s AS (
-                SELECT absolute_load AS a, relative_load AS r
+                SELECT TRY_CAST(absolute_load AS DOUBLE) AS a,
+                       TRY_CAST(relative_load AS DOUBLE) AS r
                 FROM read_csv_auto('{src}', nullstr=['NA'])
-                WHERE absolute_load IS NOT NULL AND relative_load IS NOT NULL
+                WHERE TRY_CAST(absolute_load AS DOUBLE) IS NOT NULL
+                  AND TRY_CAST(relative_load AS DOUBLE) IS NOT NULL
             ), ranked AS (
                 SELECT a, r,
                        rank() OVER (ORDER BY a) AS ra,

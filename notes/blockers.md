@@ -29,6 +29,36 @@ finds fewer than 20 tracked players on the snap frame, the gate returns `NO-GO`
 and the §8 controls 3–6 are not implementable from the provided data — that
 would be a Conor decision about §8, not a pre-registration edit.
 
+**Next build item — `src/dl/stage_05_validate.py` (Phase 5), not yet written.** The DL
+notebook deliberately omits `05_validate` from its stage order and its headline prints Phase 5 as
+`NOT RUN`. Nothing is stubbed green. When it is built it must implement, at minimum:
+
+* **Ceiling permutation** — shuffle shrunken ceilings across players *within position group*,
+  rebuild relative load and the Part-1 features, refit, and show the `a0` / relative-load effects
+  vanish (TASK.md Phase 5; prereg §3 exposure definition, §7 relative-load definition).
+* **Within-player order permutation** — shuffle snap order within `(nfl_id, game_id)`, rebuild the
+  cumulative loads, and show the load effect vanishes (prereg §7; TASK.md Phase 5).
+* **Placebos** — load must not predict pre-snap `alignment` or `pre_snap_depth_yd`; `height_in` and
+  `weight_lb` must not mimic the acceleration effect after the prereg §8 controls.
+* **Mechanical-coupling check** — repeat with ceiling-fraction outcomes only, labelled as a check;
+  the confirmatory result must rest on the ceiling-free outcomes (prereg §4).
+* **Rotation and survivorship** — restrict to rusher-games with complete snap coverage and to
+  high-snap-share rushers, report snaps by quarter, and run a stay-probability-weighted version
+  (prereg §6 primary snap set/strata; §9 minimum snaps; TASK.md Phase 5).
+* **Context sensitivity** — garbage time using the frozen rule, the final two minutes of each half,
+  obvious passing situations, and blocker-control variation; `unblocked_pressure` remains
+  exploratory (prereg §6, §8; TASK.md Phase 5).
+* **Equivalence / TOST** — the prereg §12 smallest effects and margins (`HR 1.10`/`1.05`;
+  `0.005`/`0.002` nats per snap), with the interval rule for an informative null; §13 reliability
+  is reported, never lowered; §5 censoring and the `< 0.5` event-rate assertion still apply.
+* **Artefacts** — `validation_result.json`, `permutation_null.csv`, `placebo_checks.csv`,
+  `rotation.csv`, `context_sensitivity.csv`, `equivalence.json`, `SUMMARY.md` under
+  `outputs/dl/validation/` (design §5.6), every non-estimable check reported with
+  `status: not estimable` and a reason.
+
+The stage must refuse `provenance != FULL` for reportable output and must be exercised on the
+committed synthetic worlds before a full run. It is a real build, not a placeholder.
+
 **No other active blockers.** Every other Phase 1 item is evaluable from the
 files on disk.
 
