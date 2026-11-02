@@ -824,7 +824,11 @@ def per_snap_scores(fit: SV.Fit, data: pd.DataFrame, X: np.ndarray) -> np.ndarra
 def bootstrap_delta(per_snap: pd.DataFrame, reps: int, seed: int) -> dict:
     """Player-clustered bootstrap of the mean per-snap log-score difference."""
     if per_snap.empty:
-        return {"estimate": None, "lo": None, "hi": None, "reps": 0}
+        # same schema as the estimated case, so a NOT_ESTIMABLE Part 2 still
+        # reports a bootstrap block with n_snaps == 0
+        return {"estimate": None, "lo": None, "hi": None, "reps": 0,
+                "method": "player-clustered bootstrap (players resampled with all snaps)",
+                "n_players": 0, "n_snaps": 0}
     point = float(per_snap["delta"].mean())
     by_player = {pid: grp["delta"].to_numpy(float)
                  for pid, grp in per_snap.groupby("nfl_id")}
@@ -890,12 +894,95 @@ def cross_validate(data: pd.DataFrame, cfg: Mapping, folds: Mapping[Any, int],
         row.update({"n_scored": int(len(ll)), "mean_logscore": float(np.mean(ll)),
                     "rung": fitted["rung_used"]})
         fold_rows.append(row)
-        scores.append(pd.DataFrame({"nfl_id": te["nfl_id"].to_numpy(),
-                                    "fold": int(fold), "logscore": ll}))
+        # One row per *scored snap*, carrying the snap keys: the two definitions
+        # are compared snap by snap in :func:`run_part2`, so the merge there
+        # needs a key finer than (player, fold).  Without it, two snaps of the
+        # same player merge into a cross product and the bootstrap interval is
+        # computed over pairs of different snaps (defect found and fixed in
+        # D78 while exercising Part 2 on the sample).
+        payload: dict[str, Any] = {"nfl_id": te["nfl_id"].to_numpy(),
+                                   "fold": int(fold), "logscore": ll}
+        for key in ("game_id", "play_id"):
+            if key in te.columns:
+                payload[key] = te[key].to_numpy()
+        scores.append(pd.DataFrame(payload))
     combined = (pd.concat(scores, ignore_index=True) if scores
                 else pd.DataFrame(columns=["nfl_id", "fold", "logscore"]))
     return {"folds": fold_rows, "scores": combined,
             "mean_logscore": float(combined["logscore"].mean()) if len(combined) else None}
+
+
+# the finest key a scored snap is identified by — one row per player-snap
+SCORE_JOIN_KEYS = ("nfl_id", "fold", "game_id", "play_id")
+
+
+def _empty_joined_scores() -> pd.DataFrame:
+    """The empty result of :func:`join_definition_scores`, with real columns."""
+    return pd.DataFrame({
+        "nfl_id": pd.Series(dtype="object"),
+        "fold": pd.Series(dtype="int64"),
+        "game_id": pd.Series(dtype="object"),
+        "play_id": pd.Series(dtype="object"),
+        "absolute": pd.Series(dtype="float64"),
+        "relative": pd.Series(dtype="float64"),
+        "delta": pd.Series(dtype="float64"),
+    })
+
+
+def join_definition_scores(absolute: pd.DataFrame,
+                           relative: pd.DataFrame) -> pd.DataFrame:
+    """Pair the two definitions' held-out scores **snap by snap** (prereg §11).
+
+    Each definition scores the snaps it can score; the comparison is only
+    defined on snaps both definitions scored.  The join key is the finest
+    shared identity of a scored snap — ``(nfl_id, fold, game_id, play_id)`` —
+    never ``(nfl_id, fold)``: a player contributes many snaps to a fold, so
+    the coarse key yields a cross product and the bootstrap then compares
+    *different* snaps with each other (the D78 defect).
+
+    Sign convention, unchanged from prereg §11: ``delta = relative - absolute``
+    in nats per snap; positive favours the relative-load definition.
+
+    The join is required to be one-to-one.  Any row inflation raises instead
+    of silently widening the sample, so the defect cannot return through a
+    future key or dtype change.  Degenerate inputs (empty frames, missing key
+    columns, no shared snaps) return an empty frame with the right columns;
+    ``run_part2`` turns that into NOT_ESTIMABLE rather than a crash.
+    """
+    empty = _empty_joined_scores()
+    if absolute is None or relative is None:
+        return empty
+    if len(absolute) == 0 or len(relative) == 0:
+        return empty
+    keys = list(SCORE_JOIN_KEYS)
+    lost = [k for k in keys
+            if k not in absolute.columns or k not in relative.columns]
+    if lost:
+        # no snap-safe key: refuse the merge rather than fall back to a coarse
+        # one and re-create the cross product
+        return empty
+    if ("logscore" not in absolute.columns) or ("logscore" not in relative.columns):
+        return empty
+
+    left = absolute[keys + ["logscore"]].rename(columns={"logscore": "absolute"})
+    right = relative[keys + ["logscore"]].rename(columns={"logscore": "relative"})
+    for name, frame in (("absolute", left), ("relative", right)):
+        repeated = frame.duplicated(subset=keys, keep=False)
+        if repeated.any():
+            raise ValueError(
+                f"{name} scores are not one row per snap: "
+                f"{int(repeated.sum())} rows share a {keys} key")
+    try:
+        merged = left.merge(right, on=keys, how="inner",
+                            validate="one_to_one", sort=False)
+    except pd.errors.MergeError as exc:  # pragma: no cover - guarded above
+        raise ValueError(f"the definition scores do not join one-to-one: {exc}") from exc
+    if len(merged) > min(len(left), len(right)):
+        raise AssertionError(
+            f"join inflated {len(left)} x {len(right)} into {len(merged)} rows")
+    merged = merged.reset_index(drop=True)
+    merged["delta"] = merged["relative"] - merged["absolute"]
+    return merged
 
 
 def run_part2(frame: pd.DataFrame, cfg: Mapping) -> dict:
@@ -945,10 +1032,18 @@ def run_part2(frame: pd.DataFrame, cfg: Mapping) -> dict:
         result["reason"] = "at least one definition produced no held-out scores"
         return result
 
-    merged = (abs_cv["scores"].rename(columns={"logscore": "absolute"})
-              .merge(rel_cv["scores"].rename(columns={"logscore": "relative"}),
-                     on=["nfl_id", "fold"], how="inner"))
-    merged["delta"] = merged["relative"] - merged["absolute"]
+    merged = join_definition_scores(abs_cv["scores"], rel_cv["scores"])
+    if merged.empty:
+        boot = bootstrap_delta(merged, int(models["bootstrap_reps"]),
+                               int(cfg["seeds"]["bootstrap"]))
+        result["status"] = "NOT_ESTIMABLE"
+        result["reason"] = ("the two definitions share no scored snap on "
+                            f"{list(SCORE_JOIN_KEYS)}; the paired bootstrap is "
+                            "undefined")
+        result.update({"n_scored_snaps": 0, "bootstrap": boot,
+                       "difference_nats_per_snap": None,
+                       "difference_interval": [None, None]})
+        return result
     boot = bootstrap_delta(merged, int(models["bootstrap_reps"]),
                            int(cfg["seeds"]["bootstrap"]))
     soi = float(cfg["validate"]["equivalence"]["soi_logscore"])

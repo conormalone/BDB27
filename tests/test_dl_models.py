@@ -555,3 +555,60 @@ def test_load_panel_matches_the_flat_column_arithmetic(tmp_path):
     assert np.allclose(np.nan_to_num(got), np.nan_to_num(np.array(expected)))
     # the first snap of a sequence has zero load, never NA
     assert got[0] == 0.0
+
+
+# --------------------------------------------------------------------------- #
+# Part 2 scores are joined per snap, never per (player, fold) — D78 defect
+# --------------------------------------------------------------------------- #
+def test_part2_scores_join_one_row_per_scored_snap(tmp_path):
+    """Two snaps of one player in one fold must not become a cross product.
+
+    The bug: merging the two definitions' held-out scores on
+    ``(nfl_id, fold)`` produced n_abs x n_rel rows per player-fold, so the
+    bootstrap ran over pairs of *different* snaps.  The fix carries
+    ``game_id``/``play_id`` and merges one-to-one.
+    """
+    # 20 players with 2 folds keeps each fold at the §9 floor of 10 rushers
+    # (8 players would collapse to a single fold and score nothing, which is a
+    # fixture-sizing error, not a property of the join)
+    cfg, block, frame = _frame(tmp_path, n_players=20, n_games=12,
+                               snaps_per_game=12, cv_folds=2)
+    out = M.run_part2(frame, block)
+    assert out["status"] == "OK", out.get("reason")
+
+    scored = sum(f.get("n_scored") or 0 for f in out["absolute"]["folds"])
+    assert scored > 0
+    # the merged comparison has exactly one row per snap that both definitions
+    # scored; it cannot exceed the smaller of the two scored sets
+    rel_scored = sum(f.get("n_scored") or 0 for f in out["relative"]["folds"])
+    assert out["n_scored_snaps"] <= min(scored, rel_scored)
+    assert out["n_scored_snaps"] > 0
+    # and the bootstrap is told the same count
+    assert out["bootstrap"]["n_snaps"] == out["n_scored_snaps"]
+
+
+def test_join_definition_scores_is_one_to_one_or_nothing():
+    """Row inflation is impossible, and a missing snap key is refused."""
+    base = pd.DataFrame({
+        "nfl_id": [1, 1, 2], "fold": [0, 0, 1],
+        "game_id": [10, 10, 11], "play_id": [1, 2, 3],
+        "logscore": [-0.10, -0.20, -0.30]})
+    absolute = base.copy()
+    relative = base.assign(logscore=[-0.05, -0.25, -0.40])
+    merged = M.join_definition_scores(absolute, relative)
+    assert len(merged) == 3  # two snaps of player 1 stay two rows, not four
+    assert list(merged.columns) == ["nfl_id", "fold", "game_id", "play_id",
+                                    "absolute", "relative", "delta"]
+    # sign convention: relative minus absolute
+    assert np.allclose(merged["delta"], merged["relative"] - merged["absolute"])
+    assert np.allclose(merged["delta"], [0.05, -0.05, -0.10])
+
+    # without the snap keys there is no safe join: empty, never a coarse merge
+    assert M.join_definition_scores(absolute.drop(columns=["play_id"]),
+                                    relative).empty
+    assert M.join_definition_scores(absolute.iloc[0:0], relative).empty
+
+    # a repeated snap key on one side is inflation itself: refused outright
+    repeated = pd.concat([absolute, absolute.iloc[[0]]], ignore_index=True)
+    with pytest.raises(ValueError, match="one row per snap"):
+        M.join_definition_scores(repeated, relative)
