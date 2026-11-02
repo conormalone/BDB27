@@ -22,10 +22,22 @@ across the frames, accepted only when that proximity is sustained.  The QB
 from the engagement candidates, otherwise early pressure would count him as his
 own blocker.
 
-NA discipline.  A play is either fully classified or ``NA`` with **one** reason
-code; nothing is zero-filled and no row is partially classified.  Guards run in
-the order of :data:`REASONS`; zero rushers on a dropback means the derivation
-failed, so a real ``0`` is never emitted.  One vectorised pass builds the snap
+Label scope.  ``primary_blocker_group`` / ``primary_blocker_group_source`` are
+**per rusher per snap**, not per play: the output row for ``(play, nfl_id)``
+carries the group of the blocker *that rusher* primarily engaged, derived from
+that rusher's own plurality winner and that winner's own roster/geometry
+source.  Rows that are not rushers carry no label; no rusher ever inherits
+another rusher's label.  This is the crossed random effect of §8 — a per-play
+label would collapse the within-play variation it is meant to measure.
+
+NA discipline.  Structural failures (geometry, tracking, line of scrimmage,
+side of the ball, window, zero rushers) make the whole play ``NA`` with **one**
+reason code and every derived column null.  Engagement failures are per
+rusher: that rusher's row is ``NA`` with its own reason while the play's
+``n_rushers``/``blitz``/``n_blockers`` stay filled for every row, and it never
+falls back to another rusher's label.  Nothing is zero-filled and no row is
+partially classified.  Guards run in the order of :data:`REASONS`; zero rushers
+on a dropback means the derivation failed, so a real ``0`` is never emitted.  One vectorised pass builds the snap
 and window geometry and the per-play loop broadcasts with numpy over players and
 frames — never a per-frame Python loop over players.  Rows are emitted sorted by
 ``(game_id, play_id, nfl_id)``.  Every constant comes from ``bdb27_dl.game``: no
@@ -88,8 +100,12 @@ _GROUP_BY_POSITION: dict[str, str] = {
     "T": "OT", "G": "interior", "C": "interior", "TE": "TE",
     "RB": "RB", "FB": "RB", "HB": "RB",
 }
-#: Deterministic tie-break order for the per-play group plurality.
-_GROUP_ORDER: tuple[str, ...] = ("OT", "interior", "TE", "RB")
+#: Reason code for each non-``ok`` primary-blocker status.
+_PRIMARY_REASON: dict[str, str] = {
+    "untracked": "rusher_not_tracked",
+    "tied": "ambiguous_engagement",
+    "unsustained": "no_sustained_engagement",
+}
 
 _KEYS = ["game_id", "play_id", "nfl_id"]
 _PLAY = ["game_id", "play_id"]
@@ -215,13 +231,17 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
                     players: pd.DataFrame, plays: pd.DataFrame,
                     frame_tol_s: float, roster: pd.DataFrame | None = None
                     ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """Derive rusher / blocker counts and the primary blocker group per play.
+    """Derive rusher / blocker counts and the primary blocker group per rusher.
 
     ``frames`` is all-22 tracking (``game_id, play_id, nfl_id, t_rel, x, y``),
     ``players`` the snaps to score, ``plays`` the line-of-scrimmage geometry and
     ``roster`` an optional ``(nfl_id, nfl_position)`` table.  Returns the
     ``players`` rows plus :data:`BLOCKER_COLUMNS` and ``status``/``reason``,
     with a summary of counts, reasons and the constants used.
+
+    The three count columns are play-level and identical on every row of a
+    play.  The two group columns are per row: they are filled only on the row
+    of the rusher whose own primary blocker produced the label.
     """
     k = _consts(D.dl(cfg) if "bdb27_dl" in cfg else cfg)
     tol = float(frame_tol_s)
@@ -344,15 +364,6 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
             primaries = [{"nfl_id": int(r), "status": "unsustained",
                           "blocker": None} for r in rushers]
 
-        bad = [p["status"] for p in primaries if p["status"] != "ok"]
-        if bad:
-            code = {"untracked": "rusher_not_tracked",
-                    "tied": "ambiguous_engagement",
-                    "unsustained": "no_sustained_engagement"}
-            worst = min(bad, key=lambda s: (-bad.count(s), _RANK[code[s]]))
-            plays_out[pk] = na(code[worst])
-            continue
-
         # --- 9. protectors (stay-in offensive players who engaged) ------- #
         lat = g["lateral"].to_numpy(dtype=float)[cand_mask]
         keep = ((c_adv < rush_min)
@@ -361,28 +372,60 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
                 & (shares >= k["primary_blocker_min_share"]))
         n_blockers = int(keep.sum())
 
-        # --- 11. group label: plurality of the primaries' labels ---------- #
+        # --- 10-11. per-rusher label from that rusher's own primary ------ #
         dlook = {int(i): (float(d), float(y))
                  for i, d, y in zip(ids_all, dep, yrel)}
-        labels = [_label(int(p["blocker"]), *dlook[int(p["blocker"])], pos, k)
-                  for p in primaries]
-        votes = Counter(lab for lab, _src in labels)
-        group = sorted([lab for lab, c in votes.items() if c == votes.most_common(1)[0][1]],
-                       key=_GROUP_ORDER.index)[0]
-        source = next(s for lab, s in labels if lab == group)
-        src_counts[source] += 1
+        row_labels: dict[int, dict[str, Any]] = {}
+        for p in primaries:
+            rid = int(p["nfl_id"])
+            if p["status"] != "ok":
+                row_labels[rid] = {
+                    "status": "NA", "reason": _PRIMARY_REASON[p["status"]],
+                    "primary_blocker_group": None,
+                    "primary_blocker_group_source": None}
+                continue
+            lab, src = _label(int(p["blocker"]), *dlook[int(p["blocker"])],
+                              pos, k)
+            src_counts[src] += 1
+            row_labels[rid] = {
+                "status": "OK", "reason": None,
+                "primary_blocker_group": lab,
+                "primary_blocker_group_source": src}
         n_rushers_all.append(int(rushers.size))
 
         plays_out[pk] = {
             "status": "OK", "reason": None, "n_rushers": int(rushers.size),
             "blitz": float(rushers.size > k["blitz_rusher_threshold"]),
-            "n_blockers": n_blockers, "primary_blocker_group": group,
-            "primary_blocker_group_source": source,
+            "n_blockers": n_blockers, "labels": row_labels,
         }
 
     # --- 12. emit ---------------------------------------------------------- #
-    res = pd.DataFrame([{"_pk": pk, **v} for pk, v in plays_out.items()])
+    res = pd.DataFrame([{"_pk": pk, **{kk: vv for kk, vv in v.items()
+                                       if kk != "labels"}}
+                        for pk, v in plays_out.items()])
     out = out.merge(res, on="_pk", how="left")
+
+    # Per-rusher labels, keyed by the row's own (play, nfl_id).  A rusher
+    # whose primary blocker failed overrides only his own status/reason; the
+    # play-level counts and every other row are untouched.
+    lab_rows = [{"_pk": pk, "nfl_id": rid,
+                 **{f"_l{kk}": vv for kk, vv in v.items()}}
+                for pk, rec in plays_out.items()
+                for rid, v in rec.get("labels", {}).items()]
+    lab_cols = ["_pk", "nfl_id", "_lprimary_blocker_group",
+                "_lprimary_blocker_group_source", "_lstatus", "_lreason"]
+    lab = pd.DataFrame(lab_rows, columns=lab_cols)
+    lab = lab[["_pk", "nfl_id", *lab_cols[2:]]]
+    out = out.merge(lab, on=["_pk", "nfl_id"], how="left")
+
+    failed = out["_lstatus"].eq("NA")
+    out["status"] = out["status"].where(~failed, "NA")
+    out["reason"] = out["reason"].where(~failed, out["_lreason"])
+    out["primary_blocker_group"] = out.pop("_lprimary_blocker_group")
+    out["primary_blocker_group_source"] = out.pop(
+        "_lprimary_blocker_group_source")
+    out = out.drop(columns=["_lstatus", "_lreason"])
+
     missing = [c for c in BLOCKER_COLUMNS if c not in out]
     out = out.reindex(columns=[*out.columns, *missing])
     out["status"] = out["status"].fillna("NA")
@@ -391,12 +434,16 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
     ordered = n_snap.reindex(sorted(scored["_pk"])).fillna(0).astype(int)
     counts = Counter(v["reason"] for v in plays_out.values()
                      if v["status"] == "NA")
+    row_counts = Counter(v["reason"] for rec in plays_out.values()
+                         for v in rec.get("labels", {}).values()
+                         if v["status"] == "NA")
     n_na = sum(counts.values())
     summary: dict[str, Any] = {
         "n_plays_scored": int(len(scored)),
         "n_plays_derivable": int(len(scored) - n_na),
         "n_plays_na": int(n_na),
         "reason_counts": dict(sorted(counts.items())),
+        "row_reason_counts": dict(sorted(row_counts.items())),
         "n_players_at_snap": {"min": int(ordered.min()) if len(ordered) else 0,
                               "median": float(ordered.median()) if len(ordered)
                               else 0.0,
@@ -412,7 +459,8 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
         "rule": ("§5.4a geometric proxy: rusher = defender with advance >= "
                  "rush_advance_min_yd; protector = stay-in offensive non-QB "
                  "engaged with a rusher; primary blocker = plurality nearest "
-                 "offensive non-QB per rusher.  Never zero-filled, never from "
+                 "offensive non-QB per rusher, and the group label is written "
+                 "on that rusher's own row.  Never zero-filled, never from "
                  "player_play.blitzing."),
     }
     cols = [*_KEYS, *[c for c in players.columns if c not in _KEYS],
