@@ -48,6 +48,7 @@ from dl import dl_snaps as snaps  # noqa: E402
 from dl import stage_00_thresholds as stage00  # noqa: E402
 
 STAGE = "03_game_snaps"
+CROSSCHECK_FIELDS = list(snaps._CROSSCHECK_FIELDS)
 
 
 # --------------------------------------------------------------------------- #
@@ -224,6 +225,59 @@ def _markdown(summary: Mapping[str, Any]) -> str:
         f"{drive['n_plays_conflicting_possession']}",
         f"- clock/play_id order inversions: {drive['n_clock_order_inversions']}",
         "",
+        "## Derived controls",
+        "",
+    ]
+    blockers = summary.get("blockers") or {}
+    if blockers:
+        lines += [
+            "All-22 rusher/blocker derivation (§5.4a). Nothing is zero-filled: "
+            "a play is either fully classified or `NA` with one reason.",
+            "",
+            f"- plays in the snap table: {blockers.get('n_plays_in_table', 0)}",
+            f"- plays with >= `all22_min_players` tracked at the snap frame: "
+            f"{blockers.get('n_plays_with_all22', 0)}",
+            f"- plays scored: {blockers.get('n_plays_scored', 0)} "
+            f"(derivable: {blockers.get('n_plays_derivable', 0)}, "
+            f"NA: {blockers.get('n_plays_na', 0)})",
+            f"- snaps with `n_rushers`: "
+            f"{blockers.get('n_snaps_with_n_rushers', 0)}; with "
+            f"`primary_blocker_group`: "
+            f"{blockers.get('n_snaps_with_primary_blocker_group', 0)}; "
+            f"blockers `NA`: {blockers.get('n_snaps_blockers_na', 0)}",
+        ]
+        if blockers.get("sample_cannot_exercise"):
+            lines.append(f"- `sample_cannot_exercise`: "
+                         f"{blockers['sample_cannot_exercise']}")
+        lines += ["", "NA by reason:", ""]
+        reasons = blockers.get("reason_counts") or {}
+        if reasons:
+            lines += ["| reason | plays |", "| --- | --- |"]
+            lines += [f"| {key} | {value} |" for key, value in
+                      sorted(reasons.items())]
+        else:
+            lines.append("- none")
+        lines.append("")
+    else:
+        lines += ["- not run", ""]
+    cross = summary.get("crosscheck") or []
+    lines += ["### Derivation cross-check", ""]
+    if cross:
+        lines += ["| check | stratum | value | n | status | reason | note |",
+                  "| --- | --- | --- | --- | --- | --- | --- |"]
+        for row in cross:
+            value = row.get("value")
+            value_text = ("" if value is None
+                          else f"{float(value):.4f}")
+            lines.append(
+                f"| {row.get('check', '')} | {row.get('stratum', '')} | "
+                f"{value_text} | {row.get('n', 0)} | "
+                f"{row.get('status', '')} | {row.get('reason') or ''} | "
+                f"{row.get('note') or ''} |")
+    else:
+        lines.append("- none")
+    lines += [
+        "",
         "## Columns left NA (and why)",
         "",
     ]
@@ -268,6 +322,8 @@ def build_summary(cfg: Mapping, mode: str, frame: pd.DataFrame,
         "not_derivable": snap_summary["not_derivable"],
         "omitted_columns": snap_summary["omitted_columns"],
         "drive": snap_summary["drive"],
+        "blockers": snap_summary.get("blockers", {}),
+        "crosscheck": list(snap_summary.get("crosscheck", [])),
         "derived_constants": snap_summary["derived_constants"],
         "checks": snap_summary["checks"],
     }
@@ -304,6 +360,10 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
     D.write_csv(out_dir / "snaps.csv", _csv_rows(frame, fields), fields,
                 mode=mode, cfg=cfg)
     summary = build_summary(cfg, mode, frame, snap_summary, prov)
+    crosscheck = pd.DataFrame(summary["crosscheck"], columns=CROSSCHECK_FIELDS)
+    D.write_csv(out_dir / "derivation_crosscheck.csv",
+                _csv_rows(crosscheck, CROSSCHECK_FIELDS), CROSSCHECK_FIELDS,
+                mode=mode, cfg=cfg)
     D.write_json(summary_path, summary, mode=mode, cfg=cfg)
     D.write_markdown(out_dir / "SUMMARY.md", _markdown(summary),
                      mode=mode, cfg=cfg)
@@ -344,6 +404,15 @@ def main(argv=None) -> int:
             print(f"  drives: {summary['drive']['n_drives']}  "
                   f"snaps without drive key: "
                   f"{excl['missing_drive_key']['count']}")
+            blockers = summary.get("blockers") or {}
+            n_snaps = summary["n_snaps"] or 1
+            print(f"  blockers: plays_all22="
+                  f"{blockers.get('n_plays_with_all22', 0)}  "
+                  f"plays_scored={blockers.get('n_plays_scored', 0)}  "
+                  f"snaps_with_n_rushers="
+                  f"{blockers.get('n_snaps_with_n_rushers', 0)}  "
+                  f"blockers_na={blockers.get('n_snaps_blockers_na', 0)} "
+                  f"({blockers.get('n_snaps_blockers_na', 0) / n_snaps:.4f})")
             for name in ("coverage_rows_excluded", "null_censor_time_excluded",
                          "ttp_after_censor_demoted", "unmapped_alignment"):
                 print(f"  {name}: {excl[name]['count']}")

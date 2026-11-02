@@ -59,6 +59,7 @@ import numpy as np
 import pandas as pd
 
 from dl import dl_common as D
+from dl import dl_blockers as B
 
 __all__ = ["build_snaps", "SNAP_COLUMNS", "LOAD_COLUMNS", "DERIVED_CONSTANTS"]
 
@@ -69,7 +70,8 @@ SNAP_COLUMNS: tuple[str, ...] = (
     "opponent_team", "event", "time_to_pressure", "censor_time",
     "quick_pressure", "sack", "unblocked_pressure", "player_get_off",
     "alignment", "pre_snap_depth_yd", "blitz", "n_rushers", "n_blockers",
-    "stunt", "in_game_speed_1_0", "in_game_speed_2_0", "absolute_load",
+    "stunt", "primary_blocker_group", "primary_blocker_group_source",
+    "in_game_speed_1_0", "in_game_speed_2_0", "absolute_load",
     "relative_load", "total_distance_before", "snaps_in_drive",
     "seconds_since_last_snap", "down", "yards_to_go", "quarter",
     "game_clock_s", "score_margin", "garbage_time",
@@ -100,15 +102,30 @@ DERIVED_CONSTANTS: dict[str, Any] = {
     "field_far_goal_line_yd": 110.0,
 }
 
-#: Long-form reasons for the columns the provided data cannot support.
+#: Long-form reasons for the columns the provided data cannot support.  The
+#: first four are now *derived* from all-22 tracking (``notes/dl-design.md``
+#: §5.4a): they stay ``NA`` only where the tracking does not carry enough
+#: players, and the sample cannot exercise them.
 NOT_DERIVABLE: dict[str, str] = {
-    "blitz": ("player_play.blitzing is a per-player rush assignment, not a team "
-              "blitz flag (notes/dl-evidence.md §3); team blitz needs all 11 "
-              "defenders at ball_snap, which player_play does not enumerate"),
-    "n_rushers": ("needs every defender on the play from tracking; the sample "
-                  "tracks only a subset of players per play"),
-    "n_blockers": ("needs rusher-blocker assignment, which no file provides "
-                   "(notes/dl-evidence.md §5)"),
+    "blitz": ("derived from all-22 tracking as n_rushers > "
+              "blitz_rusher_threshold (§5.4a); NA wherever the tracking does "
+              "not carry at least all22_min_players distinct players at the "
+              "snap frame. Never from player_play.blitzing (a per-player rush "
+              "assignment, notes/dl-evidence.md §3). The sample tracks 1-4 "
+              "players per play, so it cannot exercise this column."),
+    "n_rushers": ("derived from all-22 tracking: defensive players advancing "
+                  ">= rush_advance_min_yd inside post_snap_window_s (§5.4a); "
+                  "NA where the tracking does not carry enough players at the "
+                  "snap frame. The sample cannot exercise it."),
+    "n_blockers": ("derived from all-22 tracking: stay-in protectors engaged "
+                   "with a rusher (§5.4a); NA where the tracking does not "
+                   "carry enough players at the snap frame. The sample cannot "
+                   "exercise it."),
+    "primary_blocker_group": (
+        "derived from all-22 tracking: the plurality primary blocker's group "
+        "per play (§5.4a), roster position first and alignment geometry "
+        "otherwise; NA where the tracking does not carry enough players at "
+        "the snap frame. The sample cannot exercise it."),
     "stunt": ("no stunt label exists in the provided data and none is inferable "
               "without full-frame rusher/blocker tracks"),
     "absolute_load": "computed by the load module (dl_load), not by this one",
@@ -513,6 +530,17 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
         track = _tracking_columns(cfg, mode, files, con, summary)
         df = df.merge(track, on=["game_id", "play_id", "nfl_id"], how="left") \
             if len(track) else df
+        # -- all-22 rusher / blocker derivation (§5.4a) ----------------------
+        blockers = _blocker_columns(cfg, mode, files, con, "base", summary)
+        df = df.merge(blockers, on=["game_id", "play_id", "nfl_id"], how="left")
+        blocker_cols = list(B.BLOCKER_COLUMNS)
+        summary["blockers"].update({
+            "n_snaps_with_n_rushers": int(df["n_rushers"].notna().sum()),
+            "n_snaps_with_primary_blocker_group": int(
+                df["primary_blocker_group"].notna().sum()),
+            "n_snaps_blockers_na": int(
+                df[blocker_cols].isna().any(axis=1).sum()),
+        })
         # helper columns used to derive the tracking features, never emitted
         df = df.drop(columns=[c for c in ("yardline_side", "yardline_number",
                                           "play_direction") if c in df.columns])
@@ -528,6 +556,7 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
 
         # -- types, NA columns, ordering ------------------------------------
         df = _finalise(df, summary)
+        summary["crosscheck"] = _crosscheck(df, con)
         summary["rows"] = int(len(df))
         summary["event_rate"] = float(df["event"].mean()) if len(df) else float("nan")
         summary["na_rate"] = {
@@ -662,6 +691,339 @@ def _tracking_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
     return out
 
 
+_BLOCKER_KEYS = ["game_id", "play_id", "nfl_id"]
+
+
+def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
+                     base: str, summary: dict) -> pd.DataFrame:
+    """``n_rushers``, ``blitz``, ``n_blockers`` and the blocker group.
+
+    Delegates the geometry to :func:`dl.dl_blockers.derive_blockers`; this
+    function owns source resolution, the SQL coverage guard (a play is
+    derivable only with ``>= all22_min_players`` distinct players at the snap
+    frame), per-game chunking and the coverage accounting.  Returns an empty
+    frame with the five columns when no tracking input exists or no play
+    qualifies, and records why.
+    """
+    cols = list(B.BLOCKER_COLUMNS)
+    empty = pd.DataFrame(columns=[*_BLOCKER_KEYS, *cols])
+    block = D.dl(cfg)
+    k = block["game"]
+    min_players = int(k["all22_min_players"])
+    tol = float(DERIVED_CONSTANTS["frame_match_tol_s"])
+    chunk = int(DERIVED_CONSTANTS["games_per_chunk"])
+    goal = float(DERIVED_CONSTANTS["field_goal_line_yd"])
+    far = float(DERIVED_CONSTANTS["field_far_goal_line_yd"])
+    null = block["runtime"].get("csv_null_marker", "NA")
+
+    n_table_plays = int(con.execute(
+        "SELECT count(*) FROM (SELECT DISTINCT game_id, play_id FROM "
+        f"{base})").fetchone()[0])
+
+    def _no_tracking(reason: str) -> pd.DataFrame:
+        summary["omitted_columns"]["blockers"] = reason
+        summary["blockers"] = {
+            "n_plays_in_table": n_table_plays,
+            "n_plays_with_all22": 0,
+            "n_plays_scored": 0,
+            "n_plays_derivable": 0,
+            "n_plays_na": 0,
+            "n_snaps_with_n_rushers": 0,
+            "n_snaps_with_primary_blocker_group": 0,
+            "n_snaps_blockers_na": 0,
+            "reason_counts": {},
+            "coverage_reason": reason,
+            "sample_cannot_exercise": (
+                "no tracking input: the derivation cannot be exercised at all"),
+            "n_players_at_snap": {"min": 0, "median": 0.0, "max": 0},
+            "label_source_counts": {"roster": 0, "geometry": 0},
+            "qb_rule_misses": 0,
+            "constants": {"all22_min_players": min_players,
+                          "frame_tol_s": tol},
+            "rule": ("§5.4a geometric proxy; columns stay NA without "
+                     "all-22 tracking"),
+        }
+        return empty
+
+    sources = _tracking(cfg, files, mode)
+    missing = [str(p) for p in sources if not Path(p).exists()]
+    if not sources:
+        return _no_tracking("no tracking input")
+    if missing:
+        return _no_tracking(f"tracking input missing: {missing}")
+
+    con.execute(f"""
+        CREATE OR REPLACE TEMP TABLE bframes AS
+        SELECT game_id, play_id, nfl_id, time, x, y, event
+        FROM {_csv(sources, ("game_id", "play_id", "nfl_id", "time", "x",
+                             "y", "event"), null)}
+        WHERE time IS NOT NULL AND x IS NOT NULL AND y IS NOT NULL
+    """)
+    con.execute("""
+        CREATE OR REPLACE TEMP VIEW bsnaptime AS
+        SELECT game_id, play_id, min(time) AS t_snap
+        FROM bframes WHERE event = 'ball_snap'
+        GROUP BY game_id, play_id
+    """)
+    con.execute("""
+        CREATE OR REPLACE TEMP TABLE bframes_rel AS
+        SELECT f.game_id, f.play_id, f.nfl_id,
+               epoch(f.time) - epoch(s.t_snap) AS t_rel, f.x, f.y
+        FROM bframes f JOIN bsnaptime s USING (game_id, play_id)
+    """)
+    # Coverage guard, in SQL, before any per-player geometry: a team-level
+    # count is only meaningful when the snap frame carries the whole unit.
+    con.execute(f"""
+        CREATE OR REPLACE TEMP TABLE bcover AS
+        SELECT game_id, play_id, count(DISTINCT nfl_id) AS n_at_snap
+        FROM bframes_rel WHERE abs(t_rel) <= {tol}
+        GROUP BY game_id, play_id
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE TEMP VIEW bqual AS
+        SELECT DISTINCT b.game_id, b.play_id
+        FROM {base} b JOIN bcover c USING (game_id, play_id)
+        WHERE c.n_at_snap >= {min_players}
+    """)
+    n_all22 = int(con.execute("SELECT count(*) FROM bqual").fetchone()[0])
+    cover_stats = con.execute(f"""
+        SELECT min(n_at_snap), median(n_at_snap), max(n_at_snap)
+        FROM bcover c JOIN (SELECT DISTINCT game_id, play_id FROM {base}) b
+          USING (game_id, play_id)
+    """).fetchone()
+    at_snap = {"min": int(cover_stats[0] or 0),
+               "median": float(cover_stats[1] or 0.0),
+               "max": int(cover_stats[2] or 0)}
+
+    if n_all22 == 0:
+        reason = (f"no play in the snap table carries >= {min_players} "
+                  f"distinct tracked players at the snap frame "
+                  f"(all22_min_players); the sample tracks 1-4 players per "
+                  f"play, so the derivation cannot be exercised")
+        summary["blockers"] = {
+            "n_plays_in_table": n_table_plays,
+            "n_plays_with_all22": 0,
+            "n_plays_scored": 0,
+            "n_plays_derivable": 0,
+            "n_plays_na": 0,
+            "n_snaps_with_n_rushers": 0,
+            "n_snaps_with_primary_blocker_group": 0,
+            "n_snaps_blockers_na": 0,
+            "reason_counts": {},
+            "coverage_reason": reason,
+            "sample_cannot_exercise": "sample_cannot_exercise: " + reason,
+            "n_players_at_snap": at_snap,
+            "label_source_counts": {"roster": 0, "geometry": 0},
+            "qb_rule_misses": 0,
+            "constants": {"all22_min_players": min_players,
+                          "frame_tol_s": tol},
+            "rule": ("§5.4a geometric proxy; every play is NA because the "
+                     "coverage guard rejected it"),
+        }
+        return empty
+
+    plays = con.execute(f"""
+        SELECT DISTINCT b.game_id, b.play_id,
+               {goal} + b.yardline_number AS los_c1,
+               {far} - b.yardline_number AS los_c2,
+               b.play_direction
+        FROM {base} b JOIN bqual q USING (game_id, play_id)
+    """).fetch_df()
+    players = con.execute(f"""
+        SELECT DISTINCT b.game_id, b.play_id, b.nfl_id
+        FROM {base} b JOIN bqual q USING (game_id, play_id)
+    """).fetch_df()
+    roster = con.execute("SELECT nfl_id, nfl_position FROM pl").fetch_df()
+
+    games = [int(r[0]) for r in con.execute(
+        "SELECT DISTINCT game_id FROM bqual ORDER BY game_id").fetchall()]
+    totals = {"n_plays_scored": 0, "n_plays_derivable": 0, "n_plays_na": 0,
+              "qb_rule_misses": 0}
+    reasons: dict[str, int] = {}
+    sources_count = {"roster": 0, "geometry": 0}
+    weighted_mean = 0.0
+    n_weight = 0
+    r_min: int | None = None
+    r_max: int | None = None
+    rule = ""
+    constants: dict[str, Any] = {}
+    parts: list[pd.DataFrame] = []
+
+    for start in range(0, len(games), chunk):
+        chunk_games = games[start:start + chunk]
+        id_list = ", ".join(str(g) for g in chunk_games)
+        if not id_list:
+            continue
+        chunk_set = set(chunk_games)
+        players_chunk = players.loc[players["game_id"].isin(chunk_set)]
+        if players_chunk.empty:
+            continue
+        frames = con.execute(f"""
+            SELECT f.game_id, f.play_id, f.nfl_id, f.t_rel, f.x, f.y
+            FROM bframes_rel f JOIN bqual q USING (game_id, play_id)
+            WHERE f.game_id IN ({id_list})
+        """).fetch_df()
+        res, dsum = B.derive_blockers(
+            block["game"], frames=frames, players=players_chunk, plays=plays,
+            frame_tol_s=tol, roster=roster)
+        parts.append(res[[*_BLOCKER_KEYS, *cols]])
+        for key in totals:
+            totals[key] += int(dsum.get(key, 0) or 0)
+        for key, value in (dsum.get("reason_counts") or {}).items():
+            reasons[key] = reasons.get(key, 0) + int(value)
+        for key, value in (dsum.get("label_source_counts") or {}).items():
+            sources_count[key] = sources_count.get(key, 0) + int(value)
+        dist = dsum.get("n_rushers_distribution") or {}
+        n_ok = int(dsum.get("n_plays_derivable", 0) or 0)
+        if n_ok and dist.get("mean") is not None:
+            weighted_mean += float(dist["mean"]) * n_ok
+            n_weight += n_ok
+            r_min = (int(dist["min"]) if r_min is None
+                     else min(r_min, int(dist["min"])))
+            r_max = (int(dist["max"]) if r_max is None
+                     else max(r_max, int(dist["max"])))
+        rule = dsum.get("rule", rule)
+        constants = dsum.get("constants", constants)
+
+    out = pd.concat(parts, ignore_index=True) if parts else empty
+    out = out[[*_BLOCKER_KEYS, *cols]]
+    for col in ("n_rushers", "blitz", "n_blockers"):
+        out[col] = pd.to_numeric(out[col], errors="coerce").astype("float64")
+    for col in ("primary_blocker_group", "primary_blocker_group_source"):
+        out[col] = out[col].astype(object)
+
+    summary["blockers"] = {
+        **totals,
+        "n_plays_in_table": n_table_plays,
+        "n_plays_with_all22": n_all22,
+        "reason_counts": dict(sorted(reasons.items())),
+        "n_players_at_snap": at_snap,
+        "n_rushers_distribution": {
+            "mean": (weighted_mean / n_weight) if n_weight else None,
+            "min": r_min,
+            "max": r_max,
+        },
+        "label_source_counts": sources_count,
+        "constants": constants,
+        "rule": rule,
+    }
+    return out
+
+
+_CROSSCHECK_FIELDS = ["check", "stratum", "value", "n", "status", "reason",
+                      "note"]
+
+
+def _crosscheck(df: pd.DataFrame, con=None) -> list[dict[str, Any]]:
+    """Cross-check rows built from the snap table and the ``pp`` view.
+
+    Every entry is ``{"check", "stratum", "value", "n", "status", "reason",
+    "note"}``; ``value`` is a share or mean, ``n`` the denominator, and
+    ``status`` is ``OK`` or ``NOT_RUN`` with a reason.  There is no verdict
+    column: a disagreement is reported, never adjudicated here.
+    """
+    rows: list[dict[str, Any]] = []
+
+    def add(check: str, stratum: str, value, n: int, *,
+            status: str = "OK", reason: str | None = None,
+            note: str = "") -> None:
+        rows.append({"check": check, "stratum": stratum, "value": value,
+                     "n": int(n), "status": status, "reason": reason,
+                     "note": note})
+
+    if "alignment" not in df.columns:
+        return rows
+    mapped = df.loc[df["alignment"].notna()]
+    n_mapped = int(len(mapped))
+    snap_note = ("share of emitted DL pass-rush snaps; the snap table is the "
+                 "player_play-only sample")
+    for align in ("edge", "interior"):
+        n = int((mapped["alignment"] == align).sum())
+        add("alignment_split", f"snap_table:{align}",
+            (n / n_mapped) if n_mapped else None, n,
+            status="OK" if n_mapped else "NOT_RUN",
+            reason=None if n_mapped else "the snap table has no mapped rows",
+            note=snap_note)
+
+    cohort_note = ("player_play covers the 510-prospect cohort only; "
+                   "blitzing is a per-player rush assignment, not a team "
+                   "blitz flag")
+    cohort: dict[str, int] = {}
+    cohort_error = None
+    if con is not None:
+        try:
+            for pos, n in con.execute("""
+                    SELECT p.lined_up_position, count(*)
+                    FROM pp p
+                    WHERE p.blitzing IS TRUE
+                      AND p.lined_up_position IN ('EDGE', 'INTERIOR_LINE')
+                      AND EXISTS (
+                          SELECT 1 FROM pp d
+                          WHERE d.game_id = p.game_id
+                            AND d.play_id = p.play_id
+                            AND d.dropback_duration IS NOT NULL)
+                    GROUP BY 1
+                """).fetchall():
+                cohort[str(pos)] = int(n)
+        except Exception as exc:  # noqa: BLE001 - pp is optional for the helper
+            cohort_error = f"pp view unavailable ({type(exc).__name__})"
+    else:
+        cohort_error = "pp view not supplied to the cross-check helper"
+    n_cohort = sum(cohort.values())
+    for pos in ("EDGE", "INTERIOR_LINE"):
+        n = int(cohort.get(pos, 0))
+        add("alignment_split", f"player_play_rush_rows:{pos}",
+            (n / n_cohort) if n_cohort else None, n,
+            status="OK" if n_cohort else "NOT_RUN",
+            reason=None if n_cohort else (cohort_error or
+                                          "no player_play rush rows carry a "
+                                          "dropback duration"),
+            note=cohort_note)
+
+    for align in ("edge", "interior"):
+        sub = df.loc[df["alignment"] == align]
+        n = int(len(sub))
+        if not n:
+            add("unblocked_pressure_by_alignment", align, None, 0,
+                status="NOT_RUN", reason="no snaps in this alignment",
+                note="share of rows with unblocked_pressure == 1")
+            continue
+        vals = pd.to_numeric(sub["unblocked_pressure"], errors="coerce")
+        if vals.notna().any():
+            add("unblocked_pressure_by_alignment", align,
+                float((vals == 1).mean()), n,
+                note="share of rows with unblocked_pressure == 1 "
+                     "(player_play crowded-pressure flag)")
+        else:
+            add("unblocked_pressure_by_alignment", align, None, n,
+                status="NOT_RUN",
+                reason="unblocked_pressure is NA on every row in this cell",
+                note="share of rows with unblocked_pressure == 1")
+
+    blitz = pd.to_numeric(df.get("blitz"), errors="coerce")
+    if blitz is None or blitz.notna().sum() == 0:
+        reason = ("derived blitz is NA in sample mode (1-4 tracked players "
+                  "per play)")
+        for level in (0, 1):
+            add("pressure_rate_by_blitz", f"blitz={level}", None, 0,
+                status="NOT_RUN", reason=reason,
+                note="mean(event) by derived team blitz")
+    else:
+        event = pd.to_numeric(df.get("event"), errors="coerce")
+        for level in (0, 1):
+            mask = blitz == level
+            n = int(mask.sum())
+            if not n:
+                add("pressure_rate_by_blitz", f"blitz={level}", None, 0,
+                    status="NOT_RUN", reason="no snaps in this stratum",
+                    note="mean(event) by derived team blitz")
+                continue
+            add("pressure_rate_by_blitz", f"blitz={level}",
+                float(event[mask].mean()), n,
+                note="mean(event) by derived team blitz")
+    return rows
+
+
 def _depth_from_candidates(frame: pd.DataFrame, goal: float,
                            far: float) -> pd.Series:
     """Signed distance behind the line of scrimmage, in yards.
@@ -739,6 +1101,9 @@ _NA_COLUMNS = ("blitz", "n_rushers", "n_blockers", "stunt",
                "absolute_load", "relative_load", "pre_snap_depth_yd",
                "in_game_speed_1_0", "in_game_speed_2_0")
 
+#: String columns whose missing value must be ``pd.NA`` (never ``"NA"``/``""``).
+_TEXT_NA_COLUMNS = ("primary_blocker_group", "primary_blocker_group_source")
+
 
 def _numeric(series: pd.Series, dtype: str) -> pd.Series:
     """Coerce to a pandas numeric dtype, treating every NA flavour as missing."""
@@ -759,6 +1124,15 @@ def _finalise(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
             df[col] = np.nan
         else:
             df[col] = _numeric(df[col], "float64")
+    for col in _TEXT_NA_COLUMNS:
+        if col not in df.columns:
+            df[col] = pd.Series(pd.NA, index=df.index, dtype=object)
+            continue
+        obj = df[col].astype(object)
+        obj = obj.where(~obj.isna(), pd.NA)
+        obj = obj.map(lambda v: pd.NA if isinstance(v, str)
+                      and v.strip() in ("", "NA", "nan", "None") else v)
+        df[col] = obj.astype(object)
     for col in ("game_id", "play_id", "nfl_id", "season", "week", "event",
                 "down", "yards_to_go", "quarter"):
         if col in df.columns:
