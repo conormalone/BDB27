@@ -514,3 +514,78 @@ def test_crosscheck_rows_carry_status_and_never_a_verdict(tmp_path, cfg):
         assert row["status"] in {"OK", "NOT_RUN"}
         if row["status"] == "NOT_RUN":
             assert row["reason"]
+
+
+# --------------------------------------------------------------------------- #
+# j. planted all-22 worlds the brief names explicitly
+# --------------------------------------------------------------------------- #
+# Five linemen on the line (x is the distance from the line of scrimmage, so the
+# line is x = 45.0 and a rusher starts 0.6 yd in front of it), a tight end on
+# the line, a back 3 yd deep and three receivers.  Roster positions are supplied,
+# exactly as the stage supplies them from players.csv.
+_LINE_OFFENCE = [
+    (101, 45.0, 17.0, "T"), (102, 45.0, 19.0, "G"), (103, 45.0, 21.0, "C"),
+    (104, 45.0, 23.0, "G"), (105, 45.0, 25.0, "T"), (106, 50.5, 21.0, "QB"),
+    (107, 48.0, 22.0, "RB"), (108, 45.0, 27.5, "TE"), (109, 46.5, 4.0, "WR"),
+    (110, 46.5, 38.0, "WR"), (111, 46.5, 44.0, "WR"),
+]
+
+
+def _line_defence(ids, *, rushers, static):
+    """Rushers advance 2.0 yd through the line; the rest hold their ground."""
+    out = []
+    it = iter(ids)
+    for y in rushers:
+        out.append((next(it), 44.4, 46.4, y, "DE"))
+    for y in static:
+        out.append((next(it), 44.4, 44.4, y, "DT"))
+    return out
+
+
+def _line_play(base_time, *, rushers, static):
+    return {"play_id": 1, "base_time": base_time, "fact_id": 101,
+            "off": list(_LINE_OFFENCE),
+            "deff": _line_defence(range(201, 212), rushers=rushers,
+                                  static=static),
+            "dl": [(201 + i, "EDGE" if i in (0, 3) else "INTERIOR_LINE", "NA")
+                   for i in range(len(rushers))]}
+
+
+def test_six_man_pressure_world_is_a_blitz(tmp_path, cfg):
+    """Planted truth: six rushers, five linemen plus the tight end in."""
+    b = datetime(2023, 9, 10, 13, 0, 0)
+    play = _line_play(b, rushers=(17.0, 19.0, 21.5, 23.0, 25.0, 27.5),
+                      static=(6.0, 10.0, 14.0, 32.0, 36.0))
+    files = _build_world(tmp_path, plays=[play])
+    df, summary = S.build_snaps(cfg, "sample", files=files, with_summary=True)
+
+    assert len(df) == 6
+    assert df["n_rushers"].eq(6.0).all()
+    assert df["blitz"].eq(1.0).all()            # 6 > blitz_rusher_threshold
+    assert df["n_blockers"].eq(6.0).all()       # five linemen + the tight end
+    by_id = df.set_index("nfl_id")["primary_blocker_group"]
+    assert by_id.loc[206] == "TE"               # the tight end's own rusher
+    assert by_id.loc[201] == "OT"
+    assert set(by_id) == {"OT", "interior", "TE"}
+    assert summary["blockers"]["n_plays_derivable"] == 1
+
+
+def test_te_stays_in_and_a_double_team_is_recovered(tmp_path, cfg):
+    """Planted truth: five rushers, six protectors, one double-teamed rusher."""
+    b = datetime(2023, 9, 10, 13, 0, 0)
+    play = _line_play(b, rushers=(17.0, 19.9, 23.0, 25.0, 27.5),
+                      static=(6.0, 10.0, 14.0, 32.0, 36.0, 40.0))
+    files = _build_world(tmp_path, plays=[play])
+    df, summary = S.build_snaps(cfg, "sample", files=files, with_summary=True)
+
+    assert len(df) == 5
+    assert df["n_rushers"].eq(5.0).all()
+    assert df["blitz"].eq(1.0).all()
+    assert df["n_blockers"].eq(6.0).all()       # five linemen + the tight end
+    by_id = df.set_index("nfl_id")["primary_blocker_group"]
+    assert by_id.loc[205] == "TE"               # the tight end stayed in
+    # the second rusher is between the guard and the centre; the guard is nearer
+    # in every window frame, so the double team resolves to the interior guard
+    assert by_id.loc[202] == "interior"
+    assert df["primary_blocker_group_source"].eq("roster").all()
+    assert summary["blockers"]["n_plays_derivable"] == 1

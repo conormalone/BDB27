@@ -478,11 +478,16 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
                 p.position_group,
                 g.season, g.week,
                 p.possession_team AS opponent_team,
-                CASE WHEN p.time_to_pressure IS NOT NULL
-                      AND p.time_to_pressure <= p.censor_time
+                CASE WHEN TRY_CAST(p.time_to_pressure AS DOUBLE) IS NOT NULL
+                      AND TRY_CAST(p.time_to_pressure AS DOUBLE)
+                          <= TRY_CAST(p.censor_time AS DOUBLE)
                      THEN 1 ELSE 0 END AS event,
-                p.time_to_pressure,
-                p.censor_time,
+                -- A column that is null on every row would otherwise be typed
+                -- VARCHAR by the CSV sniffer and the comparison above would not
+                -- even bind; the cast is the numeric contract, not a coercion
+                -- of a value (a null stays a null).
+                TRY_CAST(p.time_to_pressure AS DOUBLE) AS time_to_pressure,
+                TRY_CAST(p.censor_time AS DOUBLE) AS censor_time,
                 p.quick_pressure, p.sack, p.unblocked_pressure,
                 p.player_get_off,
                 CASE p.lined_up_position
