@@ -385,3 +385,132 @@ def test_group_columns_are_empty_csv_cells_when_missing(tmp_path, cfg):
     for col in ("primary_blocker_group", "primary_blocker_group_source"):
         assert set(raw[col]) == {""}
         assert not raw[col].isin(["nan", "NA"]).any()
+
+
+# --------------------------------------------------------------------------- #
+# i. alignment_split compares the DL cohort on both sides
+# --------------------------------------------------------------------------- #
+def _cohort_world(tmp_path, *, add_non_cohort=True):
+    """One play whose DL rows are EDGE / INTERIOR_LINE / unmapped.
+
+    The player_play table also carries an EDGE-labelled defender whom
+    ``players.csv`` does not list (the sample's non-prospect defender case):
+    the formation label alone would count him, the DL cohort must not.
+    """
+    b = datetime(2023, 9, 10, 13, 0, 0)
+    play = {
+        "play_id": 1, "base_time": b, "fact_id": 101,
+        "off": _offense(range(101, 112), ["T", "G", "C", "G", "T"]),
+        "deff": _defense(range(201, 212)),
+        # 203 is labelled outside the EDGE/INTERIOR_LINE pair: unmapped.
+        "dl": [(201, "EDGE", 2.0), (202, "INTERIOR_LINE", "NA"),
+               (203, "BOX", "NA"), (204, "INTERIOR_LINE", "NA")],
+    }
+    files = _build_world(tmp_path, plays=[play], tracking=True)
+    if add_non_cohort:
+        path = files["player_play"]
+        frame = pd.read_csv(path, dtype=str, keep_default_na=False)
+        extra = _pp_row(nfl_id=999, lined_up_position="EDGE",
+                        blitzing="TRUE", player_get_off=0.9, sack=0.0,
+                        unblocked_pressure="FALSE", time_to_pressure="NA")
+        frame = pd.concat([frame, pd.DataFrame([extra], columns=PP_COLUMNS)],
+                          ignore_index=True)
+        frame.to_csv(path, index=False)
+    return files
+
+
+def test_alignment_split_compares_the_dl_cohort_not_formation_labels(
+        tmp_path, cfg):
+    files = _cohort_world(tmp_path)
+    df, summary = S.build_snaps(cfg, "sample", files=files, with_summary=True)
+
+    # The non-cohort defender is absent from players.csv, so stage 03 never
+    # emits him and the cross-check must not count him either.
+    assert 999 not in set(df["nfl_id"])
+    assert len(df) == 4
+
+    rows = {(r["check"], r["stratum"]): r for r in summary["crosscheck"]}
+    snap = {k: rows[("alignment_split", f"snap_table:{k}")]
+            for k in ("edge", "interior", "unmapped")}
+    pp = {k: rows[("alignment_split", f"player_play_rush_rows:{k}")]
+          for k in ("EDGE", "INTERIOR_LINE", "unmapped")}
+
+    # pp side equals the table's alignment value counts, stratum by stratum.
+    assert snap["edge"]["n"] == int((df["alignment"] == "edge").sum()) == 1
+    assert snap["interior"]["n"] == int(
+        (df["alignment"] == "interior").sum()) == 2
+    assert snap["unmapped"]["n"] == int(df["alignment"].isna().sum()) == 1
+    assert pp["EDGE"]["n"] == snap["edge"]["n"]
+    assert pp["INTERIOR_LINE"]["n"] == snap["interior"]["n"]
+    assert pp["unmapped"]["n"] == snap["unmapped"]["n"]
+    # The EDGE-labelled non-cohort row is not in the pp count (would be 2).
+    assert pp["EDGE"]["n"] == 1
+    # Nothing is dropped: the three strata cover the whole population.
+    assert sum(r["n"] for r in pp.values()) == len(df) == 4
+    for side in (snap, pp):
+        for row in side.values():
+            assert row["status"] == "OK"
+            assert row["value"] == pytest.approx(row["n"] / 4)
+
+
+def test_unmapped_lined_up_position_is_a_stratum_never_dropped(tmp_path, cfg):
+    files = _cohort_world(tmp_path)
+    df, summary = S.build_snaps(cfg, "sample", files=files, with_summary=True)
+    rows = {r["stratum"]: r for r in summary["crosscheck"]
+            if r["check"] == "alignment_split"}
+
+    assert int(df["alignment"].isna().sum()) == 1
+    assert rows["player_play_rush_rows:unmapped"]["n"] == 1
+    assert rows["snap_table:unmapped"]["n"] == 1
+    assert rows["player_play_rush_rows:unmapped"]["status"] == "OK"
+
+
+def test_unblocked_pressure_share_by_position_group_is_reported(tmp_path, cfg):
+    files = _cohort_world(tmp_path)
+    df, summary = S.build_snaps(cfg, "sample", files=files, with_summary=True)
+    rows = {r["stratum"]: r for r in summary["crosscheck"]
+            if r["check"] == "unblocked_pressure_share_by_position_group"}
+
+    # Every DL row in this world is a DE; DT/NT are empty and say so.
+    assert set(df["position_group"]) == {"DE"}
+    assert rows["DE"]["n"] == len(df) == 4
+    assert rows["DE"]["status"] == "OK"
+    assert rows["DE"]["value"] == pytest.approx(0.0)
+    for group in ("DT", "NT"):
+        assert rows[group]["n"] == 0
+        assert rows[group]["status"] == "NOT_RUN"
+        assert rows[group]["reason"]
+
+
+def test_unblocked_pressure_share_by_position_group_arithmetic():
+    frame = pd.DataFrame({
+        "alignment": ["edge", "edge", "interior", "interior", "interior"],
+        "position_group": ["DE", "DE", "DT", "DT", "NT"],
+        "event": [1, 0, 0, 0, 0],
+        "blitz": [pd.NA] * 5,
+        "unblocked_pressure": [1.0, 0.0, 0.0, 1.0, pd.NA],
+    })
+    rows = {r["stratum"]: r for r in S._crosscheck(frame)
+            if r["check"] == "unblocked_pressure_share_by_position_group"}
+
+    assert rows["DE"]["n"] == 2
+    assert rows["DE"]["value"] == pytest.approx(0.5)
+    assert rows["DT"]["n"] == 2
+    assert rows["DT"]["value"] == pytest.approx(0.5)
+    assert rows["NT"]["n"] == 1
+    assert rows["NT"]["status"] == "NOT_RUN"
+    assert "NA on every row" in rows["NT"]["reason"]
+    assert "rare" in rows["DE"]["note"]
+
+
+def test_crosscheck_rows_carry_status_and_never_a_verdict(tmp_path, cfg):
+    files = _cohort_world(tmp_path)
+    _, summary = S.build_snaps(cfg, "sample", files=files, with_summary=True)
+
+    assert summary["crosscheck"]
+    for row in summary["crosscheck"]:
+        assert set(row) == set(S._CROSSCHECK_FIELDS)
+        assert "verdict" not in row
+        assert row["status"] in {"OK", "NOT_RUN"}
+        if row["status"] == "NOT_RUN":
+            assert row["reason"]

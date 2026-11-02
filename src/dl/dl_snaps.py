@@ -556,7 +556,7 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
 
         # -- types, NA columns, ordering ------------------------------------
         df = _finalise(df, summary)
-        summary["crosscheck"] = _crosscheck(df, con)
+        summary["crosscheck"] = _crosscheck(df, con, positions=dl_positions)
         summary["rows"] = int(len(df))
         summary["event_rate"] = float(df["event"].mean()) if len(df) else float("nan")
         summary["na_rate"] = {
@@ -914,13 +914,27 @@ _CROSSCHECK_FIELDS = ["check", "stratum", "value", "n", "status", "reason",
                       "note"]
 
 
-def _crosscheck(df: pd.DataFrame, con=None) -> list[dict[str, Any]]:
+def _crosscheck(df: pd.DataFrame, con=None,
+                positions: Sequence[str] | None = None) -> list[dict[str, Any]]:
     """Cross-check rows built from the snap table and the ``pp`` view.
 
     Every entry is ``{"check", "stratum", "value", "n", "status", "reason",
     "note"}``; ``value`` is a share or mean, ``n`` the denominator, and
     ``status`` is ``OK`` or ``NOT_RUN`` with a reason.  There is no verdict
     column: a disagreement is reported, never adjudicated here.
+
+    ``alignment_split`` compares **the same population on both sides**: the
+    emitted DL pass-rush snaps (stage 03: ``players.nfl_position`` in the
+    configured DL positions, ``blitzing`` TRUE, play carries a dropback)
+    against that population rebuilt from ``player_play`` JOIN ``players.csv``
+    on ``nfl_id``.  ``lined_up_position`` alone is a formation label, so
+    filtering by it counts linebackers and other non-prospect defenders
+    labelled EDGE; the ``players.csv`` join is what defines the DL cohort.
+    The player_play side reports EDGE, INTERIOR_LINE and an explicit
+    ``unmapped`` stratum (anything outside that pair), so no row is dropped
+    silently; the check then verifies stage 03 preserved the population rather
+    than comparing two different ones.  Shares on both sides use the total
+    row count as the denominator, which makes the rows directly comparable.
     """
     rows: list[dict[str, Any]] = []
 
@@ -933,46 +947,65 @@ def _crosscheck(df: pd.DataFrame, con=None) -> list[dict[str, Any]]:
 
     if "alignment" not in df.columns:
         return rows
-    mapped = df.loc[df["alignment"].notna()]
-    n_mapped = int(len(mapped))
-    snap_note = ("share of emitted DL pass-rush snaps; the snap table is the "
-                 "player_play-only sample")
-    for align in ("edge", "interior"):
-        n = int((mapped["alignment"] == align).sum())
+    n_total = int(len(df))
+    snap_note = ("share of emitted DL pass-rush snaps by alignment (players."
+                 "nfl_position in the configured DL positions, blitzing TRUE, "
+                 "play carries a dropback); 'unmapped' is a lined_up_position "
+                 "outside EDGE/INTERIOR_LINE and keeps alignment NA")
+    align_masks = (
+        ("edge", df["alignment"] == "edge"),
+        ("interior", df["alignment"] == "interior"),
+        ("unmapped", df["alignment"].isna()),
+    )
+    for align, mask in align_masks:
+        n = int(mask.sum())
         add("alignment_split", f"snap_table:{align}",
-            (n / n_mapped) if n_mapped else None, n,
-            status="OK" if n_mapped else "NOT_RUN",
-            reason=None if n_mapped else "the snap table has no mapped rows",
+            (n / n_total) if n_total else None, n,
+            status="OK" if n_total else "NOT_RUN",
+            reason=None if n_total else "the snap table has no rows",
             note=snap_note)
 
-    cohort_note = ("player_play covers the 510-prospect cohort only; "
-                   "blitzing is a per-player rush assignment, not a team "
-                   "blitz flag")
+    cohort_note = ("same population rebuilt from player_play JOIN players.csv "
+                   "on nfl_id (DL positions only, blitzing TRUE, play carries "
+                   "a dropback); unmapped = lined_up_position outside "
+                   "EDGE/INTERIOR_LINE, never dropped")
     cohort: dict[str, int] = {}
     cohort_error = None
-    if con is not None:
-        try:
-            for pos, n in con.execute("""
-                    SELECT p.lined_up_position, count(*)
-                    FROM pp p
-                    WHERE p.blitzing IS TRUE
-                      AND p.lined_up_position IN ('EDGE', 'INTERIOR_LINE')
-                      AND EXISTS (
-                          SELECT 1 FROM pp d
-                          WHERE d.game_id = p.game_id
-                            AND d.play_id = p.play_id
-                            AND d.dropback_duration IS NOT NULL)
-                    GROUP BY 1
-                """).fetchall():
-                cohort[str(pos)] = int(n)
-        except Exception as exc:  # noqa: BLE001 - pp is optional for the helper
-            cohort_error = f"pp view unavailable ({type(exc).__name__})"
-    else:
+    if con is None:
         cohort_error = "pp view not supplied to the cross-check helper"
+    elif not positions:
+        cohort_error = ("the DL position list was not supplied to the "
+                        "cross-check helper")
+    else:
+        pos = ", ".join(f"'{p}'" for p in positions)
+        try:
+            # ``dplays`` is one row per play that carries a dropback, so the
+            # semi join cannot multiply DL rows (the same play-level fact
+            # stage 03 joins after de-duplicating to one row per play).
+            for stratum, n in con.execute(f"""
+                    WITH dplays AS (
+                        SELECT DISTINCT game_id, play_id FROM pp
+                        WHERE dropback_duration IS NOT NULL
+                    )
+                    SELECT CASE WHEN p.lined_up_position IN
+                                     ('EDGE', 'INTERIOR_LINE')
+                                THEN p.lined_up_position
+                                ELSE 'unmapped' END AS stratum,
+                           count(*)
+                    FROM pp p
+                    JOIN pl u USING (nfl_id)
+                    JOIN dplays d USING (game_id, play_id)
+                    WHERE u.nfl_position IN ({pos})
+                      AND p.blitzing IS TRUE
+                    GROUP BY 1 ORDER BY 1
+                """).fetchall():
+                cohort[str(stratum)] = int(n)
+        except Exception as exc:  # noqa: BLE001 - views are optional here
+            cohort_error = f"pp/pl views unavailable ({type(exc).__name__})"
     n_cohort = sum(cohort.values())
-    for pos in ("EDGE", "INTERIOR_LINE"):
-        n = int(cohort.get(pos, 0))
-        add("alignment_split", f"player_play_rush_rows:{pos}",
+    for pos_name in ("EDGE", "INTERIOR_LINE", "unmapped"):
+        n = int(cohort.get(pos_name, 0))
+        add("alignment_split", f"player_play_rush_rows:{pos_name}",
             (n / n_cohort) if n_cohort else None, n,
             status="OK" if n_cohort else "NOT_RUN",
             reason=None if n_cohort else (cohort_error or
@@ -999,6 +1032,39 @@ def _crosscheck(df: pd.DataFrame, con=None) -> list[dict[str, Any]]:
                 status="NOT_RUN",
                 reason="unblocked_pressure is NA on every row in this cell",
                 note="share of rows with unblocked_pressure == 1")
+
+    # Unblocked pressures are the ones not attributable to the blocker, so
+    # they should be rare in every position group; a group-level rate that is
+    # not rare would point at a different flag being copied into the column.
+    pg_note = ("share of rows with unblocked_pressure == 1; unblocked "
+               "pressures are the ones not attributable to the blocker and "
+               "are expected to be rare in every position group")
+    if "position_group" not in df.columns:
+        for group in (tuple(positions) if positions else ("DE", "DT", "NT")):
+            add("unblocked_pressure_share_by_position_group", group, None, 0,
+                status="NOT_RUN",
+                reason="the snap table has no position_group column",
+                note=pg_note)
+    else:
+        pg = df["position_group"].astype("string")
+        for group in (tuple(positions) if positions else ("DE", "DT", "NT")):
+            mask = (pg == group).fillna(False).to_numpy(dtype=bool)
+            sub = df.loc[mask]
+            n = int(len(sub))
+            if not n:
+                add("unblocked_pressure_share_by_position_group", group, None,
+                    0, status="NOT_RUN",
+                    reason="no snaps in this position group", note=pg_note)
+                continue
+            vals = pd.to_numeric(sub["unblocked_pressure"], errors="coerce")
+            if vals.notna().any():
+                add("unblocked_pressure_share_by_position_group", group,
+                    float((vals == 1).mean()), n, note=pg_note)
+            else:
+                add("unblocked_pressure_share_by_position_group", group, None,
+                    n, status="NOT_RUN",
+                    reason="unblocked_pressure is NA on every row in this "
+                           "cell", note=pg_note)
 
     blitz = pd.to_numeric(df.get("blitz"), errors="coerce")
     if blitz is None or blitz.notna().sum() == 0:
