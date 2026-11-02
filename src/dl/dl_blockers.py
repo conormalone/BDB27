@@ -1,5 +1,14 @@
 """dl_blockers — geometric rusher / blocker derivation from all-22 tracking (D75).
 
+**PARKED (D78, 2026-11-02) — kept, not deleted, not called on this dataset.**
+The 2027 tracking product carries combine prospects only (1.5 players per play
+on full data, 1-4 on the provided sample), so no play reaches
+``all22_min_players`` and stage 03 short-circuits before this module runs
+(``tracking_product: prospect_only`` in ``config.yaml``).  The module and its
+planted-truth tests stay in the tree for a future all-22 product; the §8
+controls that depended on it were removed from ``notes/prereg.md`` §8 on
+2026-11-02.  Nothing here is broken and nothing here is pending: it is parked.
+
 ``n_rushers``, ``blitz``, ``n_blockers`` and ``primary_blocker_group`` are
 derived from tracked positions, **never** from ``player_play.blitzing``
 (evidence F9: that column is a per-player rush assignment, ``TRUE`` on 98.3 % of

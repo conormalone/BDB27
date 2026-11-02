@@ -69,6 +69,19 @@ def _frame(tmp_path, **kw):
     return cfg, block, frame
 
 
+def _raw_frame(tmp_path, **kw):
+    """The frame *before* the §8 complete-case filter (sequence tests need the
+    first snap of every player-game, which the filter legitimately drops)."""
+    cfg, world = _world(tmp_path, **kw)
+    frames = {name: pd.read_csv(world / f"{name}.csv")
+              for name in ("snaps", "player_ceiling", "players", "combine_results")}
+    frame, _ = M.build_frame(frames["snaps"], frames["player_ceiling"],
+                             frames["players"], frames["combine_results"])
+    block = D.dl(cfg)
+    frame = pd.concat([frame, M.build_load_panel(frame, block)], axis=1)
+    return cfg, block, frame
+
+
 # --------------------------------------------------------------------------- #
 # Schema
 # --------------------------------------------------------------------------- #
@@ -251,12 +264,14 @@ def test_fallback_ladder_is_attempted_in_order_and_logged(monkeypatch):
     frame = pd.DataFrame({
         "nfl_id": np.repeat(np.arange(10), 12),
         "a0": rng.normal(7, 1, n), "alignment": "edge",
-        "pre_snap_depth_yd": rng.normal(1.5, 0.3, n), "blitz": rng.integers(0, 2, n),
-        "n_blockers": rng.integers(1, 3, n), "down": rng.integers(1, 5, n),
+        "down": rng.integers(1, 5, n),
         "yards_to_go": rng.integers(1, 15, n), "score_margin": rng.normal(0, 7, n),
         "quarter": rng.integers(1, 5, n), "position_group": "edge",
         "height_in": 75.0, "weight_lb": 285.0, "years_since_combine": 1.0,
-        "opponent_team": "AAA", "primary_blocker_group": "OL_L",
+        # §8 as amended in D78: no blitz / n_blockers / blocker group.
+        "team": "AAA", "season": 2024,
+        "seconds_since_last_snap": rng.uniform(20, 90, n),
+        "snaps_in_drive": rng.integers(0, 6, n),
         "event": rng.integers(0, 2, n), "censor_time": rng.uniform(2, 4, n),
         "time_to_pressure": np.nan, "load_z": rng.normal(0, 1, n),
     })
@@ -338,15 +353,28 @@ def test_gate_no_go_on_each_stopping_condition():
     p2 = {"status": "OK"}
 
     frame, info = _gate_inputs()
-    info_bad = dict(info, n_blockers={"present": False, "non_null": 0, "fraction": 0.0})
+    # D78: no §8 control is full-run-derived any more (only the load columns
+    # are), so a *required* control that is absent is a hard FAIL, not pending.
+    info_bad = dict(info, snaps_in_drive={"present": False, "non_null": 0,
+                                          "fraction": 0.0})
     gate_missing = M.gate_evaluate(cfg, mode="full", field_info=info_bad,
                                    frame=frame, p1=p1, p2=p2,
                                    audit_decision=audit)
-    # a field the full run was supposed to supply is still a NO-GO on full data
     assert gate_missing["verdict"] == "NO-GO"
-    assert "missing_required_field" in gate_missing["pending"]
-    assert gate_missing["checks"]["missing_required_field"]["supplied_by_full_run"] == [
-        "n_blockers"]
+    assert "missing_required_field" in gate_missing["failing"]
+    assert gate_missing["checks"]["missing_required_field"]["absent"] == [
+        "snaps_in_drive"]
+    assert gate_missing["checks"]["missing_required_field"]["status"] == "FAIL"
+
+    # the deferred branch still exists for the columns the full run derives
+    info_deferred = dict(info, absolute_load={"present": False, "non_null": 0,
+                                              "fraction": 0.0})
+    gate_deferred = M.gate_evaluate(cfg, mode="full", field_info=info_deferred,
+                                    frame=frame, p1=p1, p2=p2,
+                                    audit_decision=audit)
+    assert "missing_required_field" in gate_deferred["pending"]
+    assert gate_deferred["checks"]["missing_required_field"][
+        "supplied_by_full_run"] == ["absolute_load"]
 
     frame_small, info_small = _gate_inputs(players=10)
     assert "matched_dl" in M.gate_evaluate(cfg, mode="full", field_info=info_small,
@@ -379,7 +407,10 @@ def test_gate_pending_on_sample_when_only_full_run_fields_are_missing():
     # enough events that the §15 MDE condition passes; this test is about the
     # missing-field branch, not about power
     frame, info = _gate_inputs(players=60, snaps=150, events=2000)
-    info = dict(info, blitz={"present": True, "non_null": 0, "fraction": 0.0})
+    # D78: only the load columns are full-run-derived now.  A missing §8 control
+    # (blitz is no longer one, so use a load column) is pending in sample mode…
+    info = dict(info, absolute_load={"present": True, "non_null": 0,
+                                     "fraction": 0.0})
     gate = M.gate_evaluate(cfg, mode="sample", field_info=info, frame=frame,
                            p1={"status": "NOT_ESTIMABLE"}, p2={"status": "NOT_ESTIMABLE"},
                            audit_decision={"counts": {"null_semantics": {
@@ -392,6 +423,19 @@ def test_gate_pending_on_sample_when_only_full_run_fields_are_missing():
                                 audit_decision={"counts": {"null_semantics": {
                                     "time_to_pressure": "EVENT_ABSENT"}}})
     assert gate_full["verdict"] == "NO-GO"
+
+    # …while a §8 control that is now required is a hard FAIL in every mode,
+    # because no future run will supply it.
+    info_required = dict(info, seconds_since_last_snap={
+        "present": True, "non_null": 0, "fraction": 0.0})
+    for mode in ("sample", "full"):
+        gate_required = M.gate_evaluate(
+            cfg, mode=mode, field_info=info_required, frame=frame,
+            p1={"status": "NOT_ESTIMABLE"}, p2={"status": "NOT_ESTIMABLE"},
+            audit_decision={"counts": {"null_semantics": {
+                "time_to_pressure": "EVENT_ABSENT"}}})
+        assert gate_required["verdict"] == "NO-GO", mode
+        assert "missing_required_field" in gate_required["failing"], mode
 
 
 def test_snap_coverage_failure_alone_drops_part2_not_part1():
@@ -492,7 +536,11 @@ def test_load_panel_matches_the_flat_column_arithmetic(tmp_path):
     """The panel column at a frozen threshold follows dl_load's causal rule."""
     from dl import dl_load
 
-    cfg, block, frame = _frame(tmp_path, n_players=3, n_games=2, snaps_per_game=8)
+    # The raw frame, so the sequence starts at the player-game's first snap:
+    # §8's complete case legitimately drops that row (no prior snap), which
+    # would make the first *retained* load non-zero.
+    cfg, block, frame = _raw_frame(tmp_path, n_players=3, n_games=2,
+                                   snaps_per_game=8)
     pid = frame["nfl_id"].iloc[0]
     game = frame["game_id"].iloc[0]
     seq = frame.loc[(frame["nfl_id"] == pid) & (frame["game_id"] == game)].copy()

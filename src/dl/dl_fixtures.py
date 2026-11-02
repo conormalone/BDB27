@@ -99,6 +99,12 @@ def _frame(cfg: Mapping, world: str) -> tuple[pd.DataFrame, dict]:
         teams = ["AAA", "BBB", "CCC", "DDD"]
         opp = rng.choice(teams)
         for pid in players["nfl_id"]:
+            # §8 (D78) fixed effects: the rusher's own team and the opponent are
+            # distinct labels, so ``team``/``opponent_team`` dummies are
+            # identified on the fixture world.  ``team`` is a rotation of the
+            # existing draw, so the random stream is unchanged.
+            team = teams[(teams.index(opp) + int(pid) % (len(teams) - 1) + 1)
+                         % len(teams)]
             # every player plays every game, so every rusher clears the §9
             # 100-snap floor and the fold rule can be exercised at 3 folds
             n_snaps = int(rng.integers(max(3, snaps_per_game - 1), snaps_per_game + 2))
@@ -116,6 +122,7 @@ def _frame(cfg: Mapping, world: str) -> tuple[pd.DataFrame, dict]:
                     "nfl_id": int(pid), "season": int(players.loc[
                         players["nfl_id"] == pid, "draft_year"].iloc[0]),
                     "week": 1 + (g % 17), "opponent_team": str(opp),
+                    "team": str(team),
                     "position_group": str(players.loc[
                         players["nfl_id"] == pid, "position_group"].iloc[0]),
                     "quarter": quarter, "game_clock_s": clock,

@@ -315,12 +315,32 @@ One row per DL pass-rush snap: keys, `event` (pressure 0/1), `time_to_pressure`,
 alignment, pre_snap_depth_yd, blitz (derived; null in sample), n_blockers,
 stunt (null where unlabeled), in-game `speed_at_1_0`/`speed_at_2_0`,
 absolute_load, relative_load, snaps_in_drive, seconds_since_last_snap,
-down/distance/quarter/clock/score_margin, opponent_team, primary_blocker_group.
+down/distance/quarter/clock/score_margin, `team` (the rusher's own team, the
+§8 fixed effect) and opponent_team, `team_coverage_man_zone` and
+`offense_formation` (the §8 sensitivity panel, projected only when the
+player_play file carries them), primary_blocker_group (all `NA` on this
+product, D78). `season` comes from the `game_id` join to `games.csv`.
 Exclusions counted and written to `snaps_summary.json`.
 Sample mode: derive what player_play allows; tracking features only where the
 sample has frames; every missing item is `NA` + counted, never zero-filled.
 
 #### 5.4a Rusher / blocker derivation (`src/dl/dl_blockers.py`, D75)
+
+**PARKED on this dataset (D78, 2026-11-02).** The 2027 game tracking carries
+**combine prospects only** — 1.5 tracked players per play on full data (1.16 on
+the sample, median 1, max 4) against `player_play`'s 2.7 rows/play. The full
+run measured **0 of 14,677 plays** with `all22_min_players` (20) tracked at the
+snap frame, so nothing in this section can run. Stage 03 therefore short-circuits
+before any all-22 pass when `bdb27_dl.game.tracking_product: prospect_only`: a
+deterministic probe of the lowest `all22_probe_games` games is enough to confirm
+the frame cannot reach the guard, and the stage records one
+`not_applicable_prospect_only` line (`derivation_status = not_applicable` on
+every snap) instead of spending minutes deriving nothing. If the probe ever
+finds a 20-player snap frame the data wins and the derivation runs normally.
+The four derived columns remain in the snap table, all `NA`, labelled; the
+module and its planted-truth tests stay in the tree for a future all-22
+product. Prereg §8 no longer requires the three controls that depended on it
+(`blitz`, `n_blockers`, `primary_blocker_group`); see `notes/prereg.md` §8.
 
 `blitz`, `n_rushers`, `n_blockers` and `primary_blocker_group` are **derived
 from all-22 tracking**, never from `player_play.blitzing` (evidence F9: that
@@ -430,7 +450,13 @@ denominator.  `derivation_side_conflicts` counts rows whose reason is
 `side_inference_ambiguous` and must stay `≤ max_side_inference_rows` (0).
 `FAIL` in full mode is `NO-GO`; in sample mode every item is
 `PENDING_FULL_RUN` with the reason (never `PASS`), because the sample tracks
-1–4 players per play.
+1–4 players per play. **On a declared `prospect_only` product, all five items
+read `NOT_APPLICABLE` with the dataset reason** (D78): the full run cannot
+produce a number either, so `PENDING_FULL_RUN` would be a promise the data
+cannot keep, and `PASS` would be vacuous. `NOT_APPLICABLE` never blocks the
+gate; a *required* §8 control that is absent still `FAIL`s
+`gate_evaluate`'s `missing_required_field` check, and a frame that carries
+derived values is always evaluated on them regardless of the declaration.
 
 **Fixture proof (required, not optional).** `tests/test_dl_blockers.py` and
 `tests/test_dl_snaps_blockers.py` build all-22 worlds where the true rushers,

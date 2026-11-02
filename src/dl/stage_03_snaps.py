@@ -230,10 +230,32 @@ def _markdown(summary: Mapping[str, Any]) -> str:
     ]
     blockers = summary.get("blockers") or {}
     if blockers:
+        not_applicable = (blockers.get("coverage_reason_code")
+                          == snaps.NOT_APPLICABLE_CODE)
         lines += [
             "All-22 rusher/blocker derivation (§5.4a). Nothing is zero-filled: "
             "a play is either fully classified or `NA` with one reason.",
             "",
+        ]
+        if not_applicable:
+            lines += [
+                "**NOT APPLICABLE on this dataset (D78).** The tracking product "
+                "carries combine prospects only, so no play can reach "
+                "`all22_min_players`; the derivation is parked, not pending and "
+                "not failed. The §8 controls that needed it (`blitz`, "
+                "`n_blockers`, `primary_blocker_group`) were removed from the "
+                "prereg (2026-11-02, before any full-data result).",
+                "",
+                f"- tracking product: `{blockers.get('tracking_product', '?')}`",
+                f"- probe: {blockers.get('probe', {}).get('n_games_probed', 0)} "
+                f"game(s), {blockers.get('probe', {}).get('n_plays_probed', 0)} "
+                f"play(s), max "
+                f"{blockers.get('n_players_at_snap', {}).get('max', 0)} tracked "
+                f"at the snap frame",
+                f"- reason: {blockers.get('coverage_reason')}",
+                "",
+            ]
+        lines += [
             f"- plays in the snap table: {blockers.get('n_plays_in_table', 0)}",
             f"- plays with >= `all22_min_players` tracked at the snap frame: "
             f"{blockers.get('n_plays_with_all22', 0)}",

@@ -1201,6 +1201,33 @@ _SAMPLE_DERIVATION_REASON = (
     "sample tracking carries 1-4 players per play, so the derivation is NA by "
     "construction (see snaps_summary.json)")
 
+#: D78 (2026-11-02): the 2027 tracking product carries combine prospects only
+#: (1.5 players/play on full data).  A play can therefore never reach
+#: ``all22_min_players``, so the team-level derivation is not *pending* on a
+#: bigger machine — it is unreachable on this dataset.  Saying
+#: ``PENDING_FULL_RUN`` would promise a number the full run cannot produce.
+_PROSPECT_ONLY_DERIVATION_REASON = (
+    "the dataset tracks combine prospects only (1.5 players per play on full "
+    "data), so no play carries all22_min_players distinct players at the snap "
+    "frame; team-level rush/protection counts are unobservable and this "
+    "derivation is not applicable to this product (prereg §8 amendment, D78)")
+
+#: The status a derivation check takes when the product cannot support it.
+_NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+def _frame_has_derivation_values(frame: pd.DataFrame) -> bool:
+    """True when the frame actually carries a usable derived value.
+
+    The product declaration must never excuse a frame that *does* have values:
+    data beats the declaration, so a declared prospect-only input that turns out
+    to carry all-22 derivations is evaluated on its numbers.
+    """
+    for column in _DERIVATION_COLUMNS:
+        if column in frame.columns and bool(frame[column].notna().any()):
+            return True
+    return False
+
 
 def _in_closed_range(value: float | None, bounds: Sequence[float]) -> bool | None:
     """Closed-interval membership; ``None`` when there is no value to place."""
@@ -1270,6 +1297,16 @@ def derivation_gate(cfg: Mapping, frame: pd.DataFrame, mode: str) -> dict:
     per play, so the derivation cannot be evaluated and must never read ``PASS``.
     In ``full`` mode a missing, all-NA or out-of-range column is ``FAIL``.
 
+    **Prospect-only product (D78).**  When ``cfg["game"]["tracking_product"]``
+    is ``"prospect_only"`` and the frame carries no derived value at all, every
+    item reads ``NOT_APPLICABLE`` with the dataset reason: the tracking carries
+    combine prospects only, no play can reach ``all22_min_players`` and the
+    team-level counts are unobservable.  That is not a waiver of the model's
+    control list — a *required* §8 control that is absent, all-NA or empty
+    still fails ``gate_evaluate``'s ``missing_required_field`` check.  If a
+    frame declared prospect-only nevertheless carries a derived value, the data
+    wins and the normal evaluation runs.
+
     Two vacuity rules, both deliberate: a full-mode frame with no
     ``derivation_expected == True`` row FAILs (an empty expected set can never
     PASS), and a zero-row frame FAILs both the coverage and the side-conflict
@@ -1290,9 +1327,21 @@ def derivation_gate(cfg: Mapping, frame: pd.DataFrame, mode: str) -> dict:
     max_side = int(gate_cfg["max_side_inference_rows"])
     n_rows = int(len(frame))
     checks: dict[str, dict] = {}
+    product = str(cfg["game"]["tracking_product"])
+    # A zero-row frame can establish nothing, including "the product is
+    # prospect-only", so it keeps the vacuity FAIL path below.
+    prospect_only = (product == "prospect_only" and n_rows > 0
+                     and not _frame_has_derivation_values(frame))
 
     for name, column, key, clause in _DERIVATION_RANGE_CHECKS:
         bounds = list(gate_cfg[key])
+        if prospect_only:
+            checks[name] = {"status": _NOT_APPLICABLE, "value": None,
+                            "threshold": bounds, "clause": clause,
+                            "reason": _PROSPECT_ONLY_DERIVATION_REASON,
+                            "tracking_product": product, "n": n_rows,
+                            "denominator": "all_rows"}
+            continue
         if mode == "sample":
             checks[name] = {"status": "PENDING_FULL_RUN", "value": None,
                             "threshold": bounds, "clause": clause,
@@ -1327,7 +1376,18 @@ def derivation_gate(cfg: Mapping, frame: pd.DataFrame, mode: str) -> dict:
                  "classified (NA share within the declared bound over "
                  "derivation_expected rows)")
 
-    if mode == "sample":
+    if prospect_only:
+        checks["derivation_na_share"] = {
+            "status": _NOT_APPLICABLE, "value": None, "threshold": max_na,
+            "clause": na_clause,
+            "columns": {c: _NOT_APPLICABLE for c in _DERIVATION_COLUMNS},
+            "non_null": {c: int(frame[c].notna().sum())
+                         if c in frame.columns else 0
+                         for c in _DERIVATION_COLUMNS},
+            "denominator": "derivation_expected", "coverage": coverage,
+            "reason": _PROSPECT_ONLY_DERIVATION_REASON,
+            "tracking_product": product, "n": n_rows}
+    elif mode == "sample":
         checks["derivation_na_share"] = {
             "status": "PENDING_FULL_RUN", "value": None, "threshold": max_na,
             "clause": na_clause, "columns": {}, "non_null": {},
@@ -1380,7 +1440,15 @@ def derivation_gate(cfg: Mapping, frame: pd.DataFrame, mode: str) -> dict:
 
     side_clause = ("§5.4a: no row may be made a rusher by the motion rule alone "
                    "(side_inference_ambiguous)")
-    if mode == "sample":
+    if prospect_only:
+        # No play is derivable, so the motion residual cannot arise.  Reporting
+        # PASS here would be a vacuous pass; it is not applicable for the same
+        # reason as the counts.
+        checks["derivation_side_conflicts"] = {
+            "status": _NOT_APPLICABLE, "value": None, "threshold": max_side,
+            "clause": side_clause, "reason": _PROSPECT_ONLY_DERIVATION_REASON,
+            "tracking_product": product, "n": n_rows}
+    elif mode == "sample":
         checks["derivation_side_conflicts"] = {
             "status": "PENDING_FULL_RUN", "value": None, "threshold": max_side,
             "clause": side_clause, "reason": _SAMPLE_DERIVATION_REASON,
@@ -1412,18 +1480,34 @@ def derivation_gate(cfg: Mapping, frame: pd.DataFrame, mode: str) -> dict:
 
     failing = [k for k, v in checks.items() if v["status"] == "FAIL"]
     pending = [k for k, v in checks.items() if v["status"] == "PENDING_FULL_RUN"]
+    not_applicable = [k for k, v in checks.items()
+                      if v["status"] == _NOT_APPLICABLE]
     if failing:
         statement = (f"{len(failing)} of {len(checks)} derivation checks fail: "
                      + ", ".join(failing) + ".")
+    elif not_applicable:
+        statement = (f"Not applicable: {len(not_applicable)} of {len(checks)} "
+                     f"derivation checks — " + _PROSPECT_ONLY_DERIVATION_REASON
+                     + ". These checks cannot fail a gate that no longer requires "
+                       "the columns they guard; a required §8 control that is "
+                       "absent still fails the model gate.")
     elif pending:
         statement = (f"Sample mode: {len(pending)} derivation checks are "
                      f"PENDING_FULL_RUN — " + _SAMPLE_DERIVATION_REASON + ".")
     else:
         statement = (f"All {len(checks)} derivation checks pass over {n_rows} "
                      f"rows.")
-    return {"checks": checks,
-            "status": "BLOCKED" if failing else ("PENDING" if pending else "OK"),
-            "failing": failing, "pending": pending, "statement": statement}
+    if failing:
+        status = "BLOCKED"
+    elif pending:
+        status = "PENDING"
+    elif not_applicable:
+        status = _NOT_APPLICABLE
+    else:
+        status = "OK"
+    return {"checks": checks, "status": status, "failing": failing,
+            "pending": pending, "not_applicable": not_applicable,
+            "tracking_product": product, "statement": statement}
 
 
 def gate_evaluate(cfg: Mapping, *, mode: str, field_info: Mapping[str, dict],
@@ -1519,11 +1603,24 @@ def gate_evaluate(cfg: Mapping, *, mode: str, field_info: Mapping[str, dict],
         "part2_status": (p2 or {}).get("status"),
     }
 
+    # §14: a sample artefact may never be quoted as a result, so sample mode can
+    # never reach GO even when every numeric condition happens to pass.  This is
+    # what keeps the amendment's NOT_APPLICABLE derivation items from turning a
+    # sample run green.
+    if mode != "full":
+        checks["reportable_provenance"] = {
+            "status": "PENDING_FULL_RUN", "value": mode,
+            "clause": ("§14: every number in a report comes from a FULL "
+                       "artefact; sample output may not be quoted"),
+        }
+
     if derivation is not None:
         checks.update(derivation.get("checks", {}))
 
     failing = [k for k, v in checks.items() if v["status"] == "FAIL"]
     pending = [k for k, v in checks.items() if v["status"] == "PENDING_FULL_RUN"]
+    not_applicable = [k for k, v in checks.items()
+                      if v["status"] == _NOT_APPLICABLE]
     # A condition that cannot be evaluated at all (no audit evidence, no events)
     # blocks a confirmatory full run: the prereg's stop rules must be checkable.
     unresolved = [k for k, v in checks.items() if v["status"] == "PENDING"]
@@ -1543,6 +1640,7 @@ def gate_evaluate(cfg: Mapping, *, mode: str, field_info: Mapping[str, dict],
     return {"verdict": verdict, "checks": checks,
             "status": "OK" if not failing else "BLOCKED",
             "failing": failing, "pending": pending, "unresolved": unresolved,
+            "not_applicable": not_applicable,
             "part1_estimable": bool(p1 and p1.get("status") == "OK"),
             "part2_estimable": coverage_ok,
             "stopping_conditions_evaluated": True}

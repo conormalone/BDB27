@@ -108,14 +108,26 @@ def test_sample_mode_is_pending_even_when_the_frame_carries_values():
     assert "1-4 players per play" in gate["statement"]
 
 
-def test_sample_mode_on_an_all_na_frame_is_still_pending():
+def test_sample_mode_on_an_all_na_frame_is_not_applicable_not_pending():
+    """D78: an all-NA derivation on a prospect-only product is not *pending*.
+
+    ``PENDING_FULL_RUN`` would promise a number the full run cannot produce:
+    no play on this tracking product can reach ``all22_min_players``.  The
+    honest status is ``NOT_APPLICABLE``, in sample mode as in full mode.
+    """
     frame, _ = _gate_frame()
     for column in COLUMNS:
         frame[column] = np.nan
     gate = M.derivation_gate(_block(), frame, "sample")
     for name in GATE_KEYS:
-        assert gate["checks"][name]["status"] == "PENDING_FULL_RUN", name
-    # an empty frame does not turn a sample-mode item into a FAIL either
+        assert gate["checks"][name]["status"] == "NOT_APPLICABLE", name
+        assert "prospects only" in gate["checks"][name]["reason"]
+    assert gate["status"] == "NOT_APPLICABLE"
+    assert gate["failing"] == [] and gate["pending"] == []
+    assert set(gate["not_applicable"]) == set(GATE_KEYS)
+    # A zero-row frame cannot establish that the product is prospect-only, so it
+    # keeps the vacuity path: pending in sample mode (and FAIL in full mode,
+    # see ``test_zero_row_frame_fails_explicitly``).  No empty frame ever passes.
     empty = frame.iloc[0:0]
     assert all(v["status"] == "PENDING_FULL_RUN"
                for v in M.derivation_gate(_block(), empty, "sample")["checks"].values())
@@ -492,3 +504,125 @@ def test_side_conflict_rows_fail_the_gate():
     sample = M.derivation_gate(cfg, frame, "sample")[
         "checks"]["derivation_side_conflicts"]
     assert sample["status"] == "PENDING_FULL_RUN"
+
+
+# --------------------------------------------------------------------------- #
+# D78 — prospect-only product: NOT_APPLICABLE is not a waiver
+# --------------------------------------------------------------------------- #
+def _full_field_info(cfg: dict, frame: pd.DataFrame) -> dict[str, dict]:
+    """Every §8 control + key present with full coverage (a clean field set)."""
+    return {f: {"present": True, "non_null": len(frame), "fraction": 1.0}
+            for f in M.required_fields(cfg)}
+
+
+def _all_na_frame() -> tuple[pd.DataFrame, dict]:
+    frame, info = _gate_frame()
+    for column in COLUMNS:
+        frame[column] = np.nan
+    frame["derivation_reason"] = "not_applicable_prospect_only"
+    frame["derivation_expected"] = False
+    return frame, info
+
+
+def test_prospect_only_in_full_mode_is_not_applicable_and_does_not_block():
+    """Direction 1: the dataset cannot support it → NOT_APPLICABLE, gate not blocked."""
+    cfg = _block()
+    assert cfg["game"]["tracking_product"] == "prospect_only"
+    frame, _ = _all_na_frame()
+    dgate = M.derivation_gate(cfg, frame, "full")
+
+    assert dgate["status"] == "NOT_APPLICABLE"
+    assert dgate["failing"] == [] and dgate["pending"] == []
+    assert set(dgate["not_applicable"]) == set(GATE_KEYS)
+    for name in GATE_KEYS:
+        assert dgate["checks"][name]["status"] == "NOT_APPLICABLE", name
+        assert dgate["checks"][name]["reason"] == M._PROSPECT_ONLY_DERIVATION_REASON
+
+    gate = M.gate_evaluate(cfg, mode="full",
+                           field_info=_full_field_info(cfg, frame), frame=frame,
+                           p1={"status": "OK", "n_events": 2000},
+                           p2={"status": "OK"}, audit_decision=_audit(),
+                           derivation=dgate)
+    assert gate["verdict"] == "GO", gate["failing"]
+    assert gate["failing"] == [] and gate["pending"] == []
+    assert set(gate["not_applicable"]) == set(GATE_KEYS)
+
+
+def test_all22_product_with_an_all_na_derivation_still_fails():
+    """Direction 2: the same frame on an all-22 product is a hard FAIL."""
+    cfg = _block()
+    cfg["game"]["tracking_product"] = "all22"
+    frame, _ = _all_na_frame()
+    dgate = M.derivation_gate(cfg, frame, "full")
+
+    assert dgate["status"] == "BLOCKED"
+    assert dgate["not_applicable"] == []
+    # the four count/coverage checks fail; the motion residual is countable and
+    # genuinely zero here (no row carries that reason), so it passes
+    assert set(dgate["failing"]) == set(GATE_KEYS) - {"derivation_side_conflicts"}
+    assert dgate["checks"]["derivation_n_rushers_mean"]["status"] == "FAIL"
+    assert dgate["checks"]["derivation_na_share"]["status"] == "FAIL"
+
+    gate = M.gate_evaluate(cfg, mode="full",
+                           field_info=_full_field_info(cfg, frame), frame=frame,
+                           p1={"status": "OK", "n_events": 2000},
+                           p2={"status": "OK"}, audit_decision=_audit(),
+                           derivation=dgate)
+    assert gate["verdict"] == "NO-GO"
+    assert "derivation_n_rushers_mean" in gate["failing"]
+
+
+def test_absent_required_control_still_fails_under_a_not_applicable_derivation():
+    """The amendment removes three controls; it does not excuse the rest.
+
+    A §8 control that is genuinely required and absent must FAIL even while the
+    derivation items read NOT_APPLICABLE — otherwise the amendment would become
+    a way to fit a reduced model silently.
+    """
+    cfg = _block()
+    frame, _ = _all_na_frame()
+    dgate = M.derivation_gate(cfg, frame, "full")
+    assert dgate["status"] == "NOT_APPLICABLE"
+
+    info = _full_field_info(cfg, frame)
+    missing = "snaps_in_drive"
+    assert missing in info                     # it is part of the §8 list
+    info[missing] = {"present": False, "non_null": 0, "fraction": 0.0}
+
+    gate = M.gate_evaluate(cfg, mode="full", field_info=info, frame=frame,
+                           p1={"status": "NOT_ESTIMABLE", "n_events": 2000},
+                           p2={"status": "OK"}, audit_decision=_audit(),
+                           derivation=dgate)
+    assert gate["checks"]["missing_required_field"]["status"] == "FAIL"
+    assert gate["checks"]["missing_required_field"]["absent"] == [missing]
+    assert gate["verdict"] == "NO-GO"
+    # the derivation items did not absorb or mask the failure
+    assert all(gate["checks"][k]["status"] == "NOT_APPLICABLE" for k in GATE_KEYS)
+    assert gate["failing"] == ["missing_required_field"]
+
+
+def test_the_removed_controls_are_not_in_the_required_field_list():
+    """blitz / n_blockers / primary_blocker_group were removed from §8 entirely."""
+    cfg = _block()
+    fields = set(M.required_fields(cfg))
+    for gone in ("blitz", "n_blockers", "primary_blocker_group"):
+        assert gone not in fields
+        assert gone not in cfg["models"]["controls"]
+        assert gone not in cfg["models"]["crossed_fixed_effects"]
+    for kept in ("position_group", "alignment", "down", "yards_to_go", "quarter",
+                 "score_margin", "seconds_since_last_snap", "snaps_in_drive"):
+        assert kept in fields
+    for fe in ("team", "season"):
+        assert fe in fields
+        assert fe in cfg["models"]["crossed_fixed_effects"]
+
+
+def test_a_prospect_only_declaration_never_overrides_values_in_the_frame():
+    """If the frame carries derivations, they are evaluated — data beats the flag."""
+    cfg = _block()
+    assert cfg["game"]["tracking_product"] == "prospect_only"
+    frame, _ = _gate_frame()
+    dgate = M.derivation_gate(cfg, frame, "full")
+    assert dgate["status"] == "OK"
+    assert dgate["not_applicable"] == []
+    assert dgate["checks"]["derivation_n_rushers_mean"]["status"] == "PASS"

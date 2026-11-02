@@ -67,7 +67,7 @@ __all__ = ["build_snaps", "SNAP_COLUMNS", "LOAD_COLUMNS", "DERIVED_CONSTANTS"]
 #: the load module supplies them (see :func:`_apply_load_module`).
 SNAP_COLUMNS: tuple[str, ...] = (
     "game_id", "play_id", "nfl_id", "position_group", "season", "week",
-    "opponent_team", "event", "time_to_pressure", "censor_time",
+    "team", "opponent_team", "event", "time_to_pressure", "censor_time",
     "quick_pressure", "sack", "unblocked_pressure", "player_get_off",
     "alignment", "pre_snap_depth_yd", "blitz", "n_rushers", "n_blockers",
     "stunt", "primary_blocker_group", "primary_blocker_group_source",
@@ -76,6 +76,9 @@ SNAP_COLUMNS: tuple[str, ...] = (
     "relative_load", "total_distance_before", "snaps_in_drive",
     "seconds_since_last_snap", "down", "yards_to_go", "quarter",
     "game_clock_s", "score_margin", "garbage_time",
+    # §8 sensitivity panel (never primary), carried so the declared panel can be
+    # run without re-reading player_play.
+    "team_coverage_man_zone", "offense_formation",
 )
 
 #: Columns the load module owns (never computed here).
@@ -151,6 +154,11 @@ _PP_COLUMNS = (
     "player_get_off", "sack", "time_to_pressure",
 )
 
+#: §8 sensitivity columns, projected only when the player_play file carries
+#: them (a schema-compliant fixture need not).  Never substituted: absent means
+#: an all-NULL column, and the panel is reported as unavailable.
+_PP_OPTIONAL_COLUMNS = ("offense_formation", "team_coverage_man_zone")
+
 
 # --------------------------------------------------------------------------- #
 # Readers
@@ -175,6 +183,22 @@ def _one(cfg: Mapping, key: str, files: Mapping | None, mode: str) -> list[Path]
         value = files[key]
         return [] if value in (None, [], ()) else [Path(value)]
     return list(D.source_paths(cfg, key, mode))
+
+
+def _header(path: Path) -> set[str]:
+    """Column names from a CSV's first line (cheap; no full read, no inference).
+
+    Used only to decide whether an *optional* player_play column exists, so a
+    schema-compliant fixture without it still builds.  A file that cannot be
+    opened yields the empty set: the column is then emitted as NULL rather than
+    failing the run — the stage's own existence checks own real I/O errors.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", newline="") as handle:
+            first = handle.readline()
+    except OSError:
+        return set()
+    return {part.strip().strip('"') for part in first.rstrip("\r\n").split(",")}
 
 
 def _tracking(cfg: Mapping, files: Mapping | None, mode: str) -> list[Path]:
@@ -386,7 +410,11 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
                                "not_derivable": dict(NOT_DERIVABLE),
                                "omitted_columns": {}, "counts": {}}
     try:
-        pp_src = _csv(_one(cfg, "player_play", files, mode), _PP_COLUMNS, null)
+        pp_paths = _one(cfg, "player_play", files, mode)
+        pp_cols = list(_PP_COLUMNS) + [
+            c for c in _PP_OPTIONAL_COLUMNS
+            if pp_paths and c in _header(pp_paths[0])]
+        pp_src = _csv(pp_paths, pp_cols, null)
         pl_src = _csv(_one(cfg, "players", files, mode),
                       ("nfl_id", "nfl_position"), null)
         gm_src = _csv(_one(cfg, "games", files, mode),
@@ -421,6 +449,17 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
                                f"{n_play_keys} play keys")
         summary["counts"]["n_plays_with_dropback"] = int(n_plays)
 
+        # The §8 sensitivity panel lives in player_play, but a schema-compliant
+        # fixture need not carry it.  Absent ⇒ an all-NULL column, never a
+        # binder error (and never a silent substitute).
+        pp_cols = {r[0] for r in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'pp'").fetchall()}
+
+        def _panel_col(name: str) -> str:
+            return (f"p.{name}" if name in pp_cols
+                    else f"CAST(NULL AS VARCHAR) AS {name}")
+
         # -- every DL row, then the primary rush set ------------------------
         con.execute(f"""
             CREATE OR REPLACE TEMP VIEW dl_rows AS
@@ -431,7 +470,9 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
                    p.possession_team, p.team_abbr, p.quarter, p.down,
                    p.yards_to_go, p.game_clock, p.yardline_side,
                    p.yardline_number, p.play_direction,
-                   p.pre_snap_home_score, p.pre_snap_visitor_score
+                   p.pre_snap_home_score, p.pre_snap_visitor_score,
+                   {_panel_col("offense_formation")},
+                   {_panel_col("team_coverage_man_zone")}
             FROM pp p JOIN pl u USING (nfl_id)
             WHERE u.nfl_position IN ({pos})
         """)
@@ -478,7 +519,9 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
                 p.game_id, p.play_id, p.nfl_id,
                 p.position_group,
                 g.season, g.week,
+                p.team_abbr AS team,
                 p.possession_team AS opponent_team,
+                p.offense_formation, p.team_coverage_man_zone,
                 CASE WHEN TRY_CAST(p.time_to_pressure AS DOUBLE) IS NOT NULL
                       AND TRY_CAST(p.time_to_pressure AS DOUBLE)
                           <= TRY_CAST(p.censor_time AS DOUBLE)
@@ -546,7 +589,8 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
         # coverage code, and never leave derivation_expected as NaN.
         never = df["_blocker_merge"].ne("both").to_numpy(dtype=bool)
         code = summary["blockers"].get("coverage_reason_code")
-        df.loc[never, "derivation_status"] = "not_derived"
+        df.loc[never, "derivation_status"] = (
+            "not_applicable" if code == NOT_APPLICABLE_CODE else "not_derived")
         df.loc[never, "derivation_reason"] = code
         df = df.drop(columns=["_blocker_merge"])
         df["derivation_expected"] = (df["derivation_expected"]
@@ -720,6 +764,59 @@ def _tracking_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
 
 _BLOCKER_KEYS = ["game_id", "play_id", "nfl_id"]
 
+#: Reason code written on every snap when the tracking product cannot support the
+#: derivation (D78).  Distinct from ``insufficient_tracking``: that code means
+#: "this play was filtered", this one means "no play on this product can ever
+#: qualify".
+NOT_APPLICABLE_CODE = "not_applicable_prospect_only"
+
+
+def _probe_snap_coverage(con, sources: Sequence[Any], base: str, min_players: int,
+                         tol: float, probe_games: int, null: str) -> dict:
+    """Cheapest exact test of whether the tracking can reach the guard.
+
+    Counts distinct tracked players at the snap frame for the ``probe_games``
+    lowest ``game_id`` values present in the snap table.  Only five columns are
+    read (projection pushdown) and only those games are parsed, so the probe
+    costs a fraction of the full all-22 pass.  A probe result **at or above**
+    the guard is trusted over the declared product (the data wins); a probe
+    below it is the evidence for the prospect-only short-circuit.
+    """
+    games = [int(r[0]) for r in con.execute(
+        f"SELECT DISTINCT game_id FROM {base} ORDER BY game_id "
+        f"LIMIT {int(probe_games)}").fetchall()]
+    if not games:
+        return {"max_at_snap": 0, "n_plays_probed": 0, "n_games_probed": 0}
+    id_list = ", ".join(str(g) for g in games)
+    has_track = bool(con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_name = 'track'").fetchone()[0])
+    if has_track:
+        src = "track"
+        where = (f"WHERE game_id IN ({id_list}) AND time IS NOT NULL "
+                 f"AND x IS NOT NULL AND y IS NOT NULL")
+    else:
+        src = _csv(sources, ("game_id", "play_id", "nfl_id", "time", "x", "y",
+                             "event"), null)
+        where = (f"WHERE game_id IN ({id_list}) AND time IS NOT NULL "
+                 f"AND x IS NOT NULL AND y IS NOT NULL")
+    row = con.execute(f"""
+        WITH fr AS (
+            SELECT game_id, play_id, nfl_id, time, event FROM {src} {where}
+        ), snap AS (
+            SELECT game_id, play_id, min(time) AS t0 FROM fr
+            WHERE event = 'ball_snap' GROUP BY game_id, play_id
+        ), cnt AS (
+            SELECT f.game_id, f.play_id, count(DISTINCT f.nfl_id) AS n
+            FROM fr f JOIN snap s USING (game_id, play_id)
+            WHERE abs(epoch(f.time) - epoch(s.t0)) <= {float(tol)}
+            GROUP BY f.game_id, f.play_id
+        )
+        SELECT max(n), count(*) FROM cnt
+    """).fetchone()
+    return {"max_at_snap": int(row[0] or 0), "n_plays_probed": int(row[1] or 0),
+            "n_games_probed": len(games)}
+
 
 def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
                      base: str, summary: dict) -> pd.DataFrame:
@@ -749,6 +846,8 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
     goal = float(DERIVED_CONSTANTS["field_goal_line_yd"])
     far = float(DERIVED_CONSTANTS["field_far_goal_line_yd"])
     null = block["runtime"].get("csv_null_marker", "NA")
+    product = str(k["tracking_product"])
+    probe_games = int(k["all22_probe_games"])
 
     n_table_plays = int(con.execute(
         "SELECT count(*) FROM (SELECT DISTINCT game_id, play_id FROM "
@@ -793,6 +892,59 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
     if missing:
         return _no_tracking(f"tracking input missing: {missing}",
                             "tracking_input_missing")
+
+    # §8 amendment (D78): the tracking product carries combine prospects only, so
+    # no play can reach ``all22_min_players``.  Confirm the declaration on the
+    # lowest ``all22_probe_games`` game ids before paying for the all-22 pass;
+    # if the data *does* carry a 20-player snap frame the probe wins and the
+    # derivation runs normally.  Either way one line is recorded, not 14k rows.
+    if product == "prospect_only":
+        probe = _probe_snap_coverage(con, sources, base, min_players, tol,
+                                     probe_games, null)
+        if probe["max_at_snap"] < min_players:
+            reason = (
+                f"the tracking product carries combine prospects only, so no "
+                f"play can reach all22_min_players ({min_players}) distinct "
+                f"players at the snap frame (probe: {probe['n_games_probed']} "
+                f"game(s), {probe['n_plays_probed']} play(s), max "
+                f"{probe['max_at_snap']} tracked at the snap).  The all-22 "
+                f"derivation is NOT APPLICABLE to this dataset; dl_blockers.py "
+                f"is parked for a future all-22 product and the §8 controls "
+                f"that depended on it were removed (prereg §8, D78).")
+            summary["omitted_columns"]["blockers"] = reason
+            summary["blockers"] = {
+                "n_plays_in_table": n_table_plays,
+                "n_plays_with_all22": 0,
+                "n_plays_scored": 0,
+                "n_plays_derivable": 0,
+                "n_plays_na": 0,
+                "n_snaps_with_n_rushers": 0,
+                "n_snaps_with_primary_blocker_group": 0,
+                "n_snaps_blockers_na": 0,
+                "reason_counts": {},
+                "coverage_reason": reason,
+                "coverage_reason_code": NOT_APPLICABLE_CODE,
+                "tracking_product": product,
+                "not_applicable": True,
+                "sample_cannot_exercise": None,
+                "n_players_at_snap": {"min": 0,
+                                      "median": 0.0,
+                                      "max": probe["max_at_snap"]},
+                "probe": probe,
+                "label_source_counts": {"roster": 0, "geometry": 0},
+                "qb_rule_misses": 0,
+                "n_rows": 0,
+                "n_expected_rows": 0,
+                "status_counts": {"not_applicable": int(n_table_plays)},
+                "non_rusher_reason_counts": {},
+                "side_method_counts": {"roster": 0, "depth": 0, "motion": 0},
+                "n_side_inference_ambiguous": 0,
+                "constants": {"all22_min_players": min_players,
+                              "frame_tol_s": tol},
+                "rule": ("§5.4a geometric proxy; NOT APPLICABLE on a "
+                         "prospect-only tracking product (D78)"),
+            }
+            return empty
 
     # ``_tracking_columns`` has already materialised the same tracking CSV as
     # the TEMP TABLE ``track`` on this connection; re-reading the file here
@@ -853,10 +1005,19 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
                "max": int(cover_stats[2] or 0)}
 
     if n_all22 == 0:
-        reason = (f"no play in the snap table carries >= {min_players} "
-                  f"distinct tracked players at the snap frame "
-                  f"(all22_min_players); the sample tracks 1-4 players per "
-                  f"play, so the derivation cannot be exercised")
+        if mode == "sample":
+            # Accurate for the provided truncation, and only for it.
+            reason = (f"no play in the snap table carries >= {min_players} "
+                      f"distinct tracked players at the snap frame "
+                      f"(all22_min_players); the provided sample tracks 1-4 "
+                      f"players per play, so the derivation cannot be "
+                      f"exercised here")
+        else:
+            reason = (f"no play in the snap table carries >= {min_players} "
+                      f"distinct tracked players at the snap frame "
+                      f"(all22_min_players); the full tracking input does not "
+                      f"supply an all-22 snap frame, so the geometric "
+                      f"derivation cannot be run on it")
         summary["blockers"] = {
             "n_plays_in_table": n_table_plays,
             "n_plays_with_all22": 0,
@@ -1256,7 +1417,8 @@ _NA_COLUMNS = ("blitz", "n_rushers", "n_blockers", "stunt",
 
 #: String columns whose missing value must be ``pd.NA`` (never ``"NA"``/``""``).
 _TEXT_NA_COLUMNS = ("primary_blocker_group", "primary_blocker_group_source",
-                    "derivation_status", "derivation_reason")
+                    "derivation_status", "derivation_reason", "team",
+                    "team_coverage_man_zone", "offense_formation")
 
 
 def _numeric(series: pd.Series, dtype: str) -> pd.Series:

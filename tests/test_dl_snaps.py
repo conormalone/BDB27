@@ -385,3 +385,25 @@ def test_player_get_off_and_alignment_mapping(tmp_path, cfg):
     # the MLB alignment row is unmapped, not silently coerced
     assert pd.isna(df[(df["play_id"] == 9)].iloc[0]["alignment"])
     assert summary["counts"]["n_alignment_unmapped"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# §8 (D78): team / season keys and the sensitivity panel are carried through
+# --------------------------------------------------------------------------- #
+def test_section8_keys_and_panel_columns_are_carried(tmp_path, cfg):
+    files = _files(tmp_path)
+    df, summary = S.build_snaps(cfg, "sample", files=files, with_summary=True)
+
+    # team and season are the §8 fixed effects: real columns, no fabrication
+    for col in ("team", "season"):
+        assert col in df.columns, col
+        assert df[col].notna().all(), col
+    assert set(df["team"]) == {"AAA"}
+    assert set(int(v) for v in df["season"]) == {2023}
+
+    # the sensitivity panel is projected when player_play carries it, and is an
+    # all-NULL column (not a substitute) when it does not
+    for col in ("team_coverage_man_zone", "offense_formation"):
+        assert col in df.columns, col
+        assert df[col].isna().all(), col
+    assert list(df.columns) == [c for c in S.SNAP_COLUMNS if c in df.columns]

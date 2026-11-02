@@ -292,16 +292,23 @@ def test_sample_like_tracking_is_na_and_counted(tmp_path, cfg):
         assert df[col].isna().all(), col
     assert not df["derivation_expected"].any()
     assert df["derivation_expected"].notna().all()
-    assert df["derivation_status"].eq("not_derived").all()
-    assert df["derivation_reason"].eq("insufficient_tracking").all()
+    # D78: a 4-player tracking product cannot reach all22_min_players, so the
+    # derivation is NOT APPLICABLE (parked), not "not_derived" (filtered) and
+    # not a failure.
+    assert df["derivation_status"].eq("not_applicable").all()
+    assert df["derivation_reason"].eq("not_applicable_prospect_only").all()
     block = summary["blockers"]
     assert block["n_plays_with_all22"] == 0
     assert block["n_plays_scored"] == 0
     assert block["n_snaps_with_n_rushers"] == 0
     assert block["n_snaps_blockers_na"] == len(df)
-    assert "1-4 players per play" in block["coverage_reason"]
-    assert block["coverage_reason_code"] == "insufficient_tracking"
-    assert "sample_cannot_exercise" in block
+    assert block["coverage_reason_code"] == "not_applicable_prospect_only"
+    assert block["tracking_product"] == "prospect_only"
+    assert block["not_applicable"] is True
+    assert block["probe"]["n_plays_probed"] == 1
+    assert block["probe"]["max_at_snap"] == 4
+    assert "prospects only" in block["coverage_reason"]
+    assert "NOT APPLICABLE" in block["coverage_reason"]
 
 
 def test_nineteen_tracked_players_are_below_the_guard(tmp_path, cfg):
@@ -725,3 +732,45 @@ def test_blocker_columns_reuses_the_track_table_and_matches_the_csv_fallback(
         table_summary["blockers"]["n_rows"] > 0
     assert csv_summary["blockers"]["n_expected_rows"] == \
         table_summary["blockers"]["n_expected_rows"]
+
+
+# --------------------------------------------------------------------------- #
+# f. D78 — the reason text is mode-correct
+# --------------------------------------------------------------------------- #
+def test_full_mode_never_reports_the_sample_tracking_reason(tmp_path, cfg):
+    """`the sample tracks 1-4 players per play` is a sample-mode fact only."""
+    full = copy.deepcopy(cfg)
+    # An all-22 product that nevertheless fails the guard: the mode-specific
+    # message, not the sample excuse, must be reported.
+    full["bdb27_dl"]["game"]["tracking_product"] = "all22"
+    files = _single_play_world(tmp_path, tracking=4)
+
+    _, summary = S.build_snaps(full, "full", files=files, with_summary=True)
+    reason = summary["blockers"]["coverage_reason"]
+    assert "1-4 players per play" not in reason
+    assert "sample" not in reason
+    assert "all-22 snap frame" in reason
+    assert summary["blockers"]["coverage_reason_code"] == "insufficient_tracking"
+    assert "1-4 players per play" not in summary["blockers"].get(
+        "sample_cannot_exercise", "")
+
+    # ...and sample mode keeps the accurate sample message
+    _, summary = S.build_snaps(full, "sample", files=files, with_summary=True)
+    assert "1-4 players per play" in summary["blockers"]["coverage_reason"]
+
+
+def test_prospect_only_short_circuits_before_any_derivation(tmp_path, cfg,
+                                                            monkeypatch):
+    """No coverage scan, no derivation, one recorded NOT_APPLICABLE line."""
+    files = _single_play_world(tmp_path, tracking=4)
+
+    def _boom(*a, **k):  # pragma: no cover - must never be called
+        raise AssertionError("derive_blockers ran on a prospect-only product")
+
+    monkeypatch.setattr(B, "derive_blockers", _boom)
+    df, summary = S.build_snaps(cfg, "full", files=files, with_summary=True)
+
+    assert summary["blockers"]["coverage_reason_code"] == "not_applicable_prospect_only"
+    assert df["derivation_status"].eq("not_applicable").all()
+    for col in B.BLOCKER_COLUMNS:
+        assert df[col].isna().all(), col

@@ -2,12 +2,16 @@
 
 ## Current task — DL acceleration ceiling → pressure (D68, 2026-10-30)
 
+**Status 2026-11-02 (D78):** 1 data blocker (full tracking files absent on this
+host); the all-22 derivation blocker is **closed as not applicable** — see the
+D78 update below. Sample-mode Phases 1–4 run end to end.
+
 **1 active blocker (full run only).** `--mode full` needs
 `game_tracking_2023.csv`, `game_tracking_2024.csv`, `game_tracking_2025.csv` in
 `data/raw/`. None of the three exists on this host; only the truncated 2023
 sample (`game_tracking_2023_sample.csv`, 2^20−1 rows) is present. This blocks
-Phases 3–5 population estimates, team-blitz derivation, snap coverage, and
-blocker assignments. It does **not** block `--mode sample`, Phase 1, or Phase 2,
+Phases 3–5 population estimates and snap coverage. It does **not** block
+`--mode sample`, Phase 1, or Phase 2,
 which run on `combine_tracking.csv`, `combine_results.csv`, `players.csv`,
 `player_play.csv`, `games.csv` — all present.
 
@@ -22,12 +26,39 @@ required field for the sample pipeline.
 **Update after D75 (2026-11-02).** The missing assignment *field* is no longer an
 open design question: `src/dl/dl_blockers.py` derives rushers, protectors and
 the primary blocker from all-22 tracking, with planted-truth recovery and a
-distribution gate (`notes/dl-design.md` §5.4a, `notes/decisions.md` D75). The
-derivation is still **data-blocked** by the absent full tracking files, and the
-sample cannot exercise it (at most 4 tracked players per play). If the full run
-finds fewer than 20 tracked players on the snap frame, the gate returns `NO-GO`
-and the §8 controls 3–6 are not implementable from the provided data — that
-would be a Conor decision about §8, not a pre-registration edit.
+distribution gate (`notes/dl-design.md` §5.4a, `notes/decisions.md` D75).
+
+**CLOSED — not applicable to this dataset (D78, 2026-11-02).** The full run of
+the derivation reported **0 of 14,677 plays** with `all22_min_players` (20)
+tracked players at the snap frame (tracking density 1.5 players/play full,
+1.16 sample, median 1, max 4). The 2027 tracking is a **prospect-only**
+product, so team-level rush/protection counts are unobservable, not missing.
+Resolution: prereg §8 was amended **before any full-data result** — `blitz`,
+`n_blockers` and `primary_blocker_group` were removed from the control list and
+replaced by team and season fixed effects plus three play-context/rest
+controls; `team_coverage_man_zone`, `offense_formation` and `pre_snap_depth_yd`
+form a declared sensitivity panel. `dl_blockers.py` is **parked** (kept, tested,
+never called on this product) for a future all-22 dataset. Stage 03 now
+short-circuits with one `NOT_APPLICABLE` line instead of scanning every play;
+the §15 derivation gate reports five `NOT_APPLICABLE` items and never blocks on
+them, while a missing required §8 control is still a hard `FAIL`.
+
+**Still open after D78 (all non-blocking, reported):**
+
+1. **Partial tracking coverage of the rusher's own snaps** — `pre_snap_depth_yd`
+   exists on 2.3 % of sample snaps and on full-data snaps only where the
+   prospect's own tracking row is present. That is why it is a sensitivity
+   control, not a primary one. Not a blocker; it is a coverage statement the
+   full run must quantify.
+2. **`seconds_since_last_snap` is structurally undefined on the first snap of a
+   player-game** — complete cases drop that snap (counted, never imputed).
+3. **Blocker/scheme adjustment is limited to team and season fixed effects plus
+   the sensitivity panel** — the report must state that play-level protection
+   scheme is unobserved.
+4. **`dl_blockers.py` is dormant, not deleted** — if an all-22 product appears,
+   flip `tracking_product` and re-run; the gate then evaluates normally.
+5. The pre-existing items below (absent full tracking files; no rusher–blocker
+   assignment field; unverified label provenance; phase 5 not built).
 
 **Next build item — `src/dl/stage_05_validate.py` (Phase 5), not yet written.** The DL
 notebook deliberately omits `05_validate` from its stage order and its headline prints Phase 5 as

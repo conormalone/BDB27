@@ -144,12 +144,102 @@ weighting and the same number of tuned parameters.
 
 ## 8. Controls
 
-Fixed list, identical in both load definitions and in P1:
-alignment (edge/interior), pre-snap depth, blitz flag, number of blockers, down,
-yards to go, score margin, quarter, position group, height, weight, years since
-Combine. Random intercept by rusher; crossed effects for opponent team and
-primary blocker group. `player_get_off` is **not** a control in P1 (it is on the
-mediation path); it is a control in a sensitivity model only.
+*Amended 2026-11-02 (D78), **before any full-data result was seen** and before
+any full-data file existed on this host. This section is the only part of the
+frozen text the amendment touches: §1–§7 and §9–§16 stand unchanged.*
+
+### 8.1 Why the control list changed — the tracking product
+
+The 2027 game tracking is a **prospect-only product**: it follows the combine
+cohort, not the 22 players on the field. The measured density is 1.5 tracked
+players per play on full data and 1.16 on the provided sample (median 1, maximum
+4); `player_play` itself carries 2.7 rows per play (median 2). The coverage
+guard therefore requires something the data cannot contain: `all22_min_players`
+(20) is structurally unreachable. The full run of the derivation reported
+**0 of 14,677 plays** with 20 or more tracked players at the snap frame, **0**
+derivable plays, all four derived columns `NA`, and both models returned
+`NOT_ESTIMABLE` — not because the models were wrong, but because the control
+list asked for columns the product cannot populate.
+
+### 8.2 Removed from §8: `blitz`, `n_blockers`, `primary_blocker_group`
+
+These three are **team-level rush and protection counts**. §5.4a derived them
+geometrically from all-22 tracking. On a prospect-only product that derivation
+cannot run: you cannot count four rushers or five protectors when only one or
+two of them are tracked. Team fixed effects (§8.4) absorb a team's *average*
+rush and protection tendency, but **not** the play-level variation — a blitz on
+this snap versus a four-man rush on the next. The three controls are therefore
+**unobservable on this dataset, not merely unmeasured**, and they are removed
+from the specification rather than replaced by a proxy.
+
+No proxy is substituted. `player_play.blitzing` is a per-player rush assignment
+(D69: TRUE on 98.3 % of interior rows), not a team blitz; using it as one would
+silently redefine the control while appearing to keep it. `n_blockers` and
+`primary_blocker_group` have no substitute at all. `src/dl/dl_blockers.py` is
+**parked, not deleted**: it and its planted-truth tests remain in the tree for a
+future all-22 product, and stage 03 short-circuits before calling it when
+`tracking_product: prospect_only` (D78).
+
+**Consequence for the claim, stated in the report.** P1 cannot condition on the
+number of rushers, on blitz, or on which blocker the rusher beat. The estimand
+remains a hazard ratio conditional on position, alignment, play context and
+size — not on protection scheme at the play level. This is a limitation of the
+data product, not a choice.
+
+### 8.3 Primary controls (fixed list)
+
+Identical in P1 and in both load definitions; fixed before any full-data result:
+
+| control | source | role |
+|---|---|---|
+| `position_group` | `players.nfl_position` (DE / DT / NT) | position |
+| `alignment` | `player_play.lined_up_position` (edge vs interior) | alignment |
+| `down` | `player_play.down` | play context |
+| `yards_to_go` | `player_play.yards_to_go` | play context |
+| `quarter` | `player_play.quarter` | play context |
+| `score_margin` | pre-snap scores, defender's perspective | game state |
+| `seconds_since_last_snap` | load module, per rusher-game | rest |
+| `snaps_in_drive` | load module, per rusher-drive | within-drive load |
+| `height_in`, `weight_lb` | `combine_results` | size (retained from the frozen text; §1 requires "beyond position, size and play context") |
+| `years_since_combine` | `games.season − players.draft_year` | career timing (retained from the frozen text) |
+
+`seconds_since_last_snap` is structurally undefined on the first snap of each
+player-game (there is no prior snap). That snapshot is **excluded by complete
+case, counted, and never imputed**. Players below the §9 floor after this
+exclusion stay out of the model, as §9 already requires.
+
+### 8.4 Fixed effects
+
+**Team fixed effects** (the rusher's own team, `player_play.team_abbr`) and
+**season fixed effects** (`games.season`, derived from the `game_id` join to
+`games.csv`, never from a filename or a clock). Both enter as fixed effects,
+not random effects; the random intercept is by rusher (§10). `season` replaces
+the old opponent-team crossed effect's role as the schedule/era adjustment and
+keeps the design identified across the three draft classes. Note that
+`years_since_combine = season − draft_year` is thereby identified only off
+cross-cohort variation; it is retained because §1 and `TASK.md` require it, and
+the control set's VIF is reported (§13).
+
+### 8.5 Sensitivity panel (never primary)
+
+Reported as a separate panel, never as the confirmatory fit, and never used to
+select the headline specification:
+
+* `team_coverage_man_zone` — man versus zone, the scheme control most likely to
+  change time to pressure;
+* `offense_formation` — formation family (8 levels), a second scheme proxy;
+* `pre_snap_depth_yd` — the rusher's own depth at the snap. It is observable,
+  but only on snaps where the prospect's own tracking row exists (2.3 % of the
+  provided sample; complete in a full-22 product). As a complete-case primary
+  control it would silently restrict the estimand to tracked plays, so it is
+  exercised here and can be promoted only by a logged deviation.
+
+### 8.6 Unchanged rules
+
+Random intercept by rusher; `player_get_off` is **not** a control in P1 (it is
+on the mediation path) and is a control in a sensitivity model only. The list
+above is fixed: no control may be added, dropped or redefined after seeing
+full-data results.
 
 ## 9. Minimum snaps per player
 
@@ -248,3 +338,9 @@ If only snap coverage fails, Part 2 is dropped and P1 continues.
 ---
 
 **FROZEN 2026-10-31 · D70 · gates `--mode full` only.**
+
+**§8 AMENDED 2026-11-02 · D78 · before any full-data result.** The three
+team-level controls (`blitz`, `n_blockers`, `primary_blocker_group`) were
+removed as unobservable on a prospect-only tracking product; team and season
+fixed effects and the declared sensitivity panel were added in their place.
+No other section changed.

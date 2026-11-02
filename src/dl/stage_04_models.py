@@ -262,10 +262,19 @@ def _derivation_markdown(derivation: Mapping) -> list[str]:
                      f"{threshold_txt} |")
     lines.append("")
     na = derivation.get("checks", {}).get("derivation_na_share") or {}
-    if na.get("columns"):
+    na_columns = na.get("columns") or {}
+    numeric_shares = {c: s for c, s in na_columns.items()
+                      if isinstance(s, (int, float))}
+    if numeric_shares:
         lines.append("* NA share by column (expected denominator): " + ", ".join(
             f"`{c}` {share:.3f} ({na.get('non_null', {}).get(c, 0)} non-null)"
-            for c, share in na["columns"].items()))
+            for c, share in numeric_shares.items()))
+    elif na_columns:
+        # NOT_APPLICABLE (D78): the columns are all-NA by construction, so there
+        # is no share to quote — only a status and the non-null count (0).
+        lines.append("* per-column status: " + ", ".join(
+            f"`{c}` {status} ({na.get('non_null', {}).get(c, 0)} non-null)"
+            for c, status in na_columns.items()))
     if na.get("denominator"):
         lines.append(f"* rows evaluated: {na.get('n')} "
                      f"(denominator: `{na['denominator']}`)")
@@ -278,7 +287,8 @@ def _derivation_markdown(derivation: Mapping) -> list[str]:
             + f" over {coverage.get('n_rows_all')} rows")
     lines.append("")
     reasons: dict[str, list[str]] = {}
-    for name in derivation.get("failing", []) + derivation.get("pending", []):
+    for name in (derivation.get("failing", []) + derivation.get("pending", [])
+                 + derivation.get("not_applicable", [])):
         reason = (derivation.get("checks", {}).get(name) or {}).get("reason")
         if reason:
             reasons.setdefault(reason, []).append(name)
@@ -526,6 +536,21 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
             "p1_primary": block["models"]["primary_estimator"],
             "quadrature_nodes": block["models"]["frailty_quadrature_nodes"],
             "rungs": block["models"]["rungs"],
+        },
+        # §8 as amended in D78: what enters the model, and what the product
+        # cannot supply.  Reported so the control list is auditable from the
+        # artefact, not inferred from the source.
+        "controls": {
+            "primary": list(block["models"]["controls"]),
+            "fixed_effects": list(block["models"].get("crossed_fixed_effects", [])),
+            "sensitivity_panel": list(
+                block["models"].get("sensitivity_controls", [])),
+            "tracking_product": str(block["game"]["tracking_product"]),
+            "removed_unobservable": ["blitz", "n_blockers",
+                                     "primary_blocker_group"],
+            "amendments": "prereg §8 (D78, 2026-11-02): team-level rush and "
+                          "protection counts are unobservable on a prospect-only "
+                          "tracking product",
         },
     }
 

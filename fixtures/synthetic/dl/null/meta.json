@@ -12,8 +12,8 @@
   "beta_a0_per_sd": -0.0,
   "beta_load_per_sd": 0.0,
   "true_load_column": null,
-  "n_snaps": 4308,
+  "n_snaps": 5286,
   "n_players": 40,
-  "event_rate": 0.18152274837511606,
+  "event_rate": 0.17309875141884223,
   "statement": "SYNTHETIC FIXTURE (not a finding)"
 }

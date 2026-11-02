@@ -3179,3 +3179,103 @@ reliability) and the design §5.6 artefact contract.
 `CLEAN=True` / `CLEAN_CONFIRM="DELETE"`: all five stages ran, 0 exceptions, headline `WITHHELD`,
 figures skipped. Full-mode execution reported the three missing tracking files as
 `PENDING FULL RUN` and printed `NOT RUN` for every absent result. `pytest tests`: **478 passed**.
+
+---
+
+## D78 — 2026-11-02 — §8 amended for a prospect-only tracking product (blitz / n_blockers / blocker group removed)
+
+**(1) The deviation.** `notes/prereg.md` §8 listed three controls that were to be
+derived from all-22 tracking: `blitz`, `n_blockers` and `primary_blocker_group`
+(plus the `primary_blocker_group` crossed random effect). They are removed from
+§8 and from the model. Team fixed effects and season fixed effects are added;
+`quarter`, `seconds_since_last_snap` and `snaps_in_drive` are added to the
+primary control list; `team_coverage_man_zone`, `offense_formation` and
+`pre_snap_depth_yd` are declared as a **sensitivity panel**, never primary. This
+is a pre-results amendment: it was made **before any full-data result was seen**
+and before any full-data tracking file existed on this host. No number in §8
+depends on an outcome.
+
+**(2) The evidence.** The 2027 game tracking is a prospect-only product.
+
+* Full run of the derivation (prior cycle, D75/D76): **0 of 14,677 plays** in the
+  snap table carried `all22_min_players` (20) distinct tracked players at the
+  snap frame; 0 derivable plays; all four derived columns `NA`; both Part 1 and
+  Part 2 returned `NOT_ESTIMABLE` naming `blitz` / `n_blockers` as the empty
+  fields.
+* Tracking density: **1.5 players per play on full data**, **1.16 on the
+  provided sample** (median 1, maximum 4 tracked at the snap frame).
+* `player_play` itself carries **2.73 rows per play** (median 2): it is the
+  prospect cohort, not a participation table (D69/F9).
+
+You cannot count four rushers or five protectors when one or two of them are
+tracked. The columns were not "missing on the sample and present on full": they
+are **unobservable on the product**.
+
+**(3) What was removed, and why no proxy.** `blitz`, `n_blockers`,
+`primary_blocker_group`. `player_play.blitzing` cannot stand in for team blitz —
+it is a per-player rush assignment (TRUE on 98.3 % of interior rows, and
+equivalent to `player_get_off IS NOT NULL` on 15,633/15,635 DL rows). Using it
+would silently redefine the control as "this player rushed", which it already is
+in the primary-snap filter. `n_blockers` and `primary_blocker_group` have no
+substitute in the provided files. No proxy was substituted for any of the three.
+
+**(4) What replaced them.** Team fixed effects (`player_play.team_abbr`) and
+season fixed effects (`games.season`, from the `game_id` join to `games.csv`)
+absorb *average* team rush/protection tendency and era; they do **not** absorb
+play-level variation (blitz versus four-man rush on this snap), and §8 says so.
+`quarter`, `seconds_since_last_snap` and `snaps_in_drive` are added as
+play-context and rest controls that §7 already used for the load definitions.
+Height, weight and years since Combine are **retained** from the frozen text
+because §1 fixes the estimand as "beyond position, size and play context" and
+`TASK.md` Phase 4 lists them as fixed effects. `pre_snap_depth_yd` moves to the
+sensitivity panel: it is observable only where the prospect's own tracking row
+exists (2.3 % of the provided sample), so as a complete-case primary control it
+would silently restrict the estimand to tracked plays.
+
+**(5) Code semantics.** `src/dl/dl_snaps.py` short-circuits the derivation when
+`tracking_product: prospect_only` and a deterministic probe of the lowest
+`all22_probe_games` games confirms no snap frame reaches `all22_min_players`;
+it records one `NOT_APPLICABLE` (`not_applicable_prospect_only`) line instead of
+scanning 14,677 plays (the previous full pass spent 261 s to derive nothing). If
+the probe ever finds a 20-player snap frame, the data wins and the derivation
+runs. `src/dl/dl_models_core.derivation_gate` reports the three count checks,
+the coverage check and the motion-residual check as `NOT_APPLICABLE` with the
+dataset reason, and `NOT_APPLICABLE` never blocks a gate. A required §8 control
+that is absent still FAILs `missing_required_field` — pinned by a regression
+test in each direction. `src/dl/dl_blockers.py` is untouched apart from a
+`PARKED` note: kept for a future all-22 product, not deleted, not called.
+
+**(6) Retained measured controls, flagged for Conor.** The amended §8 list names
+the play-context controls; height, weight and years since Combine are retained
+because dropping size would change the estimand that §1 fixes and that
+`TASK.md` Phase 4 specifies. If the intent was to drop them, that is a one-line
+`config.yaml` change plus a §8 edit — but it should not be done silently,
+because `a0` (from the 40-yard dash) is correlated with mass.
+
+**(7) Effect on the models (sample, UNVALIDATED).** With the amended list, P1
+and P2 now estimate on the provided sample instead of returning
+`NOT_ESTIMABLE`. Sample numbers are machinery checks and are not findings; see
+`outputs/dl/models/SUMMARY.md`.
+
+**(8) Evidence files.** `notes/prereg.md` §8; `config.yaml`
+(`bdb27_dl.game.tracking_product`, `models.controls`,
+`models.crossed_fixed_effects`, `models.sensitivity_controls`); `src/dl/dl_snaps.py`;
+`src/dl/dl_models_core.py`; `src/dl/stage_03_snaps.py`; `src/dl/stage_04_models.py`;
+`tests/test_dl_derivation_gate.py`; `tests/test_dl_snaps_blockers.py`;
+`fixtures/synthetic/dl/*` (regenerated with the `team` column and 11 snaps per
+game so every fixture rusher stays above the §9 floor after the
+`seconds_since_last_snap` complete-case exclusion).
+
+**(9) §8 coverage in the sample snap table (17,159 rows; UNVALIDATED sample).**
+Non-null counts, read from `outputs/dl/game/snaps/snaps.csv` after the rebuild:
+`position_group` 17,159 · `alignment` 17,130 (29 unmapped formation labels,
+counted) · `down` 17,159 · `yards_to_go` 17,159 · `quarter` 17,159 ·
+`score_margin` 17,159 · `seconds_since_last_snap` 15,701 (1,458 first-of-game
+snaps, structurally undefined) · `snaps_in_drive` 17,127 · `team` 17,159
+(32 levels) · `season` 17,159 (2023/2024/2025, from the `games.csv` join).
+`height_in`, `weight_lb` and `years_since_combine` are not snap columns: they
+are joined in `build_frame` from `combine_results` / `players` and are present
+on 17,159/17,159 model-frame rows. Sensitivity panel: `team_coverage_man_zone`
+16,732, `offense_formation` 17,155, `pre_snap_depth_yd` 399 (tracking-limited).
+`blitz`, `n_blockers`, `primary_blocker_group`: 0 non-null, `NOT_APPLICABLE`
+(D78 §1–§3), not a coverage gap.

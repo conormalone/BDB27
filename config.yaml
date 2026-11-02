@@ -1241,6 +1241,17 @@ bdb27_dl:
     protector_max_lateral_yd: 2.0 # max lateral travel of a stay-in protector
     all22_min_players: 20         # distinct tracked players at the snap frame
                                   # before any team-level count is derived
+    # The tracking product this dataset ships (D78, 2026-11-02).  The 2027 game
+    # tracking carries combine prospects only (1.5 players/play on full data,
+    # 1-4 on the provided sample), so no play can carry all22_min_players and
+    # the team-level rusher/blocker derivation is not applicable.  Declared
+    # here as a *data fact*, never as a result: the derivation module stays in
+    # the tree, parked, for a future all-22 product.  If the data ever carries a
+    # 20-player snap frame the probe below overrides this declaration.
+    tracking_product: prospect_only
+    all22_probe_games: 25         # games inspected before the prospect-only
+                                  # short-circuit is confirmed (deterministic:
+                                  # lowest game_id first)
     qb_min_depth_yd: 3.0          # central player this deep is the QB (excluded
     qb_central_lateral_yd: 2.5    # from the protector count and from engagement)
     primary_blocker_min_share: 0.5  # share of window frames the primary blocker
@@ -1281,10 +1292,24 @@ bdb27_dl:
     p2_starts: 2
     rungs: [aft_frailty_lognormal, cox_cluster, aft_cluster]
     cluster: player
-    controls: [alignment, pre_snap_depth_yd, blitz, n_blockers, down, yards_to_go,
-               score_margin, position_group, height_in, weight_lb, years_since_combine]
+    # §8 (amended 2026-11-02, D78): the fixed primary control list.  blitz,
+    # n_blockers and primary_blocker_group were removed with the derivation:
+    # team-level rush/protection counts are unobservable on a prospect-only
+    # tracking product.  height/weight/years are retained size/timing controls
+    # (prereg §1: "beyond position, size and play context").  pre_snap_depth_yd
+    # is exercised in the declared sensitivity panel: it exists only where the
+    # prospect's own tracking exists (2.3 % of the provided sample), so as a
+    # complete-case primary control it would silently restrict the estimand to
+    # tracked plays.
+    controls: [position_group, alignment, down, yards_to_go, quarter, score_margin,
+               seconds_since_last_snap, snaps_in_drive, height_in, weight_lb,
+               years_since_combine]
     random_effect: rusher
-    crossed_fixed_effects: [opponent_team, primary_blocker_group]
+    # §8: team and season fixed effects.  ``season`` is derived from games.csv
+    # (game_id join), never from a clock or a filename.
+    crossed_fixed_effects: [team, season]
+    # §8 sensitivity panel (never primary, never in P1/P2's confirmatory fit).
+    sensitivity_controls: [team_coverage_man_zone, offense_formation, pre_snap_depth_yd]
     cv_folds: 5
     bootstrap_reps: 1000
     max_iter: 500
@@ -1297,13 +1322,15 @@ bdb27_dl:
     # §9: a player-grouped CV fold must contain >= 10 rushers with >= 100 snaps.
     min_rushers_per_fold: 10
     # Categorical treatment of the control list; everything else is continuous.
-    categorical_controls: [alignment, down, quarter, position_group]
+    categorical_controls: [alignment, down, quarter, position_group, team, season]
     # Chunk size for the (n x quadrature) matrices; a runtime memory knob only.
     quadrature_chunk_rows: 2000
     # Fields the full run derives from tracking.  A sample-mode absence of one of
     # these is PENDING_FULL_RUN, never a silent GO and never a NO-GO on sample data.
-    full_run_fields: [blitz, n_blockers, pre_snap_depth_yd, primary_blocker_group,
-                      absolute_load, relative_load]
+    # §8 controls are measured on this product, so a missing one is a real
+    # failure (never PENDING_FULL_RUN).  Only the load columns remain
+    # full-run-derived.
+    full_run_fields: [absolute_load, relative_load]
     mde_note: "HR per 1 SD a0; smallest effect fixed in prereg"
   validate:
     out_subdir: validation
@@ -1327,7 +1354,12 @@ bdb27_dl:
     n_games: 12
     drives_per_game: 6
     snaps_per_drive: 6
-    snaps_per_game: 9
+    # 11 (not 9): §8 now requires ``seconds_since_last_snap``, which is
+    # structurally NA on the first snap of every player-game, so each player
+    # loses ``n_games`` rows to complete cases.  12 games x 10-12 snaps keeps
+    # every fixture rusher above the §9 floor of 100 usable snaps.  A fixture
+    # size, not an analysis knob.
+    snaps_per_game: 11
     frames_per_snap: 40
     tracking_hz: 10
     # Informational: the authoritative per-world truths are in
