@@ -3070,3 +3070,78 @@ licence to amend the prereg. (b) If most blockers on full data are outside the
 510-prospect cohort, their labels come from geometry rather than roster
 position; `label_source_counts` reports the mix on every run, and a
 geometry-majority result weakens (but does not invalidate) the crossed effect.
+
+---
+
+## D76 — 2026-11-02 — Derivation follow-up: empty frames, expectedness, non-rushers, motion misfire
+
+**Decision.** Tightened the all-22 rusher/blocker derivation and its gate before
+the full-run review.  Five changes, all mechanical; no constant was tuned and no
+existing assertion was weakened.
+
+**(1) F1 — empty players frame.** `derive_blockers` now returns early when the
+players frame has zero rows.  Previously the emit step merged an empty `res`
+frame that had no `_pk` column and raised `KeyError: '_pk'`.  The early return
+has the declared leading columns (`game_id`, `play_id`, `nfl_id`, other players
+columns, the five `BLOCKER_COLUMNS`, `derivation_expected`, `status`, `reason`),
+`status`/`reason` as object, `derivation_expected` a real `bool`, and a summary
+with the same keys as a scored run plus `coverage_reason` ("no rows: the players
+frame is empty…") and `empty_frame: true`.  A caller can merge without branching.
+
+**(2) F2 — expectedness, non-rushers, gate denominator.**  Every derivable play
+now gives every player a row status.  Rushers are `OK` (or `NA` with their own
+engagement reason); every other player is `non_rusher` with an explicit reason
+from `{not_defensive_player, not_a_pass_rush_snap, wide_stunt, containing,
+held_at_line}` and no label.  `derivation_expected` is `True` exactly on rushers
+of derivable plays (including a rusher whose own derivation failed) and `False`
+elsewhere.  The gate's coverage denominator is those expected rows —
+`value` = worst per-column NA share over them, `n` = expected count — with a
+non-gating `coverage` block reporting the raw all-row share.  Three vacuity
+rules: a missing `derivation_expected` column, zero expected rows, and a
+zero-row frame all FAIL rather than passing silently.
+
+**(3) Motion misfire and its residual.**  The old band rule classified by
+motion, so a bull-rushed tackle (snap depth −0.5, advance +2.3) became a rusher
+and a standing-up end (snap depth +0.9, lateral ≥ 2.0) became offensive.  Side
+is now `roster → pre-snap depth sign → motion`, with motion consulted only at
+exactly `depth == 0`.  Where motion alone would make a player a rusher, the
+play is `NA` with the new reason `side_inference_ambiguous`; its row count is a
+declared gate check (`derivation_side_conflicts ≤ max_side_inference_rows = 0`,
+added to `config.yaml`).
+
+**(4) Stage 03 I/O.**  `_blocker_columns` used to re-read the tracking CSV even
+though `_tracking_columns` had already built the TEMP TABLE `track` on the same
+DuckDB connection.  It now reuses `track` when present (detected via
+`information_schema.tables`) and keeps the CSV read as the direct-call fallback;
+both paths were exercised (the stage tests use the table path, the derivation
+unit tests the direct call).  The snap table gains
+`derivation_expected`/`derivation_status`/`derivation_reason`; plays filtered by
+the SQL coverage guard are labelled `not_derived` with the short coverage code
+(`insufficient_tracking` / `no_tracking_input` / `tracking_input_missing`), and
+`derivation_expected` is filled `False` and cast to real `bool`, never NaN.
+Summary counts `n_snaps_derivation_expected`, `n_snaps_derivation_non_rusher`,
+`n_snaps_expected_na` and `n_snaps_side_inference_ambiguous` were added;
+`n_snaps_blockers_na` keeps its raw five-column meaning.
+
+**(5) No assertion was weakened; replacements where semantics changed.**
+* `status == "OK"` for every row of the standard world → `OK` on rusher rows,
+  `non_rusher` on the rest (a stricter, per-row assertion).
+* `set(status) <= {OK, NA}` → `<= {OK, NA, non_rusher}`, plus new invariants
+  (expectedness, reason sets, non-rushers carry no label).
+* Stage `unclassified_player` world moved from `(44.5 → 45.0)` to
+  `(45.0 → 45.4)` and off the roster: under the new precedence only exactly-on-
+  the-line, no-roster players can be motion-undecidable.
+* Gate `GATE_KEYS` gains `derivation_side_conflicts`; `_gate_frame` gains
+  `derivation_expected=True` (and `derivation_reason`) so the existing numeric
+  assertions keep their values.
+* New tests: empty frame, bull-rushed tackle (with and without roster),
+  standing-up end (`containing`, plus the `held_at_line` boundary at lateral
+  2.5), motion-only residual, mixed expected/non-expected gate worlds (0 NA and
+  1/40), vacuity, missing column, side-conflict rows, and the stage-level mixed
+  world.
+
+**Evidence.** `src/dl/dl_blockers.py`, `src/dl/dl_snaps.py`,
+`src/dl/dl_models_core.py`, `src/dl/stage_03_snaps.py`,
+`src/dl/stage_04_models.py`, `config.yaml`; `notes/dl-design.md` §5.4a;
+`tests/test_dl_blockers.py`, `tests/test_dl_derivation_gate.py`,
+`tests/test_dl_snaps_blockers.py`.

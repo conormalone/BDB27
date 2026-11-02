@@ -30,6 +30,36 @@ source.  Rows that are not rushers carry no label; no rusher ever inherits
 another rusher's label.  This is the crossed random effect of §8 — a per-play
 label would collapse the within-play variation it is meant to measure.
 
+Side of the ball.  A player's team does not change inside a play, so motion
+must never override the pre-snap side.  The precedence is: (1) **roster** —
+``players.nfl_position`` in the offensive vocabulary (``QB RB FB HB WR TE T G C
+OT OG OL LS``) is offence, in the defensive vocabulary (``DE DT NT DL EDGE OLB
+ILB MLB LB CB DB S FS SS``) defence; (2) **pre-snap depth sign** —
+``depth_snap > 0`` is defence (the defensive side of the line) and ``< 0``
+offence; (3) only at exactly ``depth_snap == 0`` the old **motion** rule
+(``advance >= rush_advance_min_yd`` defence; otherwise a stay-in ``offence``;
+anything else ``unknown``).  If the motion rule is the only evidence and it
+calls a player a defender who advanced by ``rush_advance_min_yd``, the row would
+silently become a rusher; instead the whole play is ``NA`` with reason
+``side_inference_ambiguous`` so ``n_rushers`` can never be contaminated.
+
+Row statuses.  Every emitted row carries one of three statuses.  ``OK`` is a
+rusher on a derivable play whose own primary blocker resolved.  ``NA`` is a
+structural play failure (all rows) or an engagement failure on one rusher's own
+row.  ``non_rusher`` is every non-rushing player on a derivable play — they are
+not failures, but they are not rushers either, and they are **not** counted in
+the gate denominator.  A non-rusher's reason is one of
+``not_defensive_player`` (an offensive player, so it cannot be a rusher),
+``not_a_pass_rush_snap`` (only when an optional boolean ``pass_rush`` column is
+present and false for that row/play), ``wide_stunt`` (defensive, travelled
+``>= interior_lateral_max_yd`` laterally and did not gain depth), ``containing``
+(defensive, travelled that far laterally while gaining depth but stayed below
+``rush_advance_min_yd``) or ``held_at_line`` (every other defensive non-rusher).
+``derivation_expected`` is ``True`` exactly on the rows whose primary-blocker
+derivation was required: rushers on a derivable play, including a rusher whose
+own derivation failed.  It is ``False`` on every non-rusher and on every row of
+a structurally ``NA`` play.
+
 NA discipline.  Structural failures (geometry, tracking, line of scrimmage,
 side of the ball, window, zero rushers) make the whole play ``NA`` with **one**
 reason code and every derived column null.  Engagement failures are per
@@ -41,7 +71,9 @@ on a dropback means the derivation failed, so a real ``0`` is never emitted.  On
 and window geometry and the per-play loop broadcasts with numpy over players and
 frames — never a per-frame Python loop over players.  Rows are emitted sorted by
 ``(game_id, play_id, nfl_id)``.  Every constant comes from ``bdb27_dl.game``: no
-defaults, no tuning.  Units: positions yd, times s.
+defaults, no tuning.  Units: positions yd, times s.  The summary is written to
+``snaps_summary.json``; :data:`DERIVATION_COLUMNS` is the five label columns
+plus ``derivation_expected``.
 """
 
 from __future__ import annotations
@@ -54,14 +86,33 @@ import pandas as pd
 
 from dl import dl_common as D
 
-__all__ = ["BLOCKER_COLUMNS", "REASONS", "derive_blockers"]
+__all__ = ["BLOCKER_COLUMNS", "DERIVATION_COLUMNS", "REASONS",
+           "derive_blockers"]
 
 #: Columns this module contributes to the snaps table.
 BLOCKER_COLUMNS: tuple[str, ...] = ("n_rushers", "blitz", "n_blockers",
                                     "primary_blocker_group",
                                     "primary_blocker_group_source")
 
-#: Reason codes, each with the sentence written to ``derivation_summary.json``.
+#: The five label columns plus the gate-denominator flag.  ``BLOCKER_COLUMNS``
+#: stays the original five because callers (and the structural-NA assertion)
+#: treat exactly those as the columns a failed play must null.
+DERIVATION_COLUMNS: tuple[str, ...] = (*BLOCKER_COLUMNS, "derivation_expected")
+
+#: Roster position vocabularies.  Data-dictionary labels, not a tunable.
+ROSTER_OFFENCE: frozenset[str] = frozenset({
+    "QB", "RB", "FB", "HB", "WR", "TE", "T", "G", "C", "OT", "OG",
+    "OL", "LS"})
+ROSTER_DEFENCE: frozenset[str] = frozenset({
+    "DE", "DT", "NT", "DL", "EDGE", "OLB", "ILB", "MLB", "LB", "CB",
+    "DB", "S", "FS", "SS"})
+
+#: Non-rusher reason categories (row ``reason`` when ``status == "non_rusher"``).
+NON_RUSHER_REASONS: tuple[str, ...] = (
+    "not_defensive_player", "not_a_pass_rush_snap", "wide_stunt",
+    "containing", "held_at_line")
+
+#: Reason codes, each with the sentence written to ``snaps_summary.json``.
 REASONS: dict[str, str] = {
     "missing_play_geometry":
         "The play carries no line-of-scrimmage geometry, so depth and side of "
@@ -73,8 +124,12 @@ REASONS: dict[str, str] = {
         "The two line-of-scrimmage candidates are closer together than "
         "los_tolerance_yds, so every depth would be arbitrary.",
     "unclassified_players":
-        "A tracked player stood inside the line band and its motion neither "
+        "A tracked player stood exactly on the line and its motion neither "
         "rushed nor stayed in, so its side of the ball is undecidable.",
+    "side_inference_ambiguous":
+        "A player with no roster position stood exactly on the line and only "
+        "the motion rule would have made him a rusher, so the play's side "
+        "inference is ambiguous and n_rushers would be contaminated.",
     "incomplete_window":
         "A tracked player has no frame inside post_snap_window_s, so its advance "
         "is undefined and the play cannot be fully classified.",
@@ -167,6 +222,88 @@ def _frame_arrays(sub: pd.DataFrame,
     return xs.reshape(uniq.size, ids.size), ys.reshape(uniq.size, ids.size)
 
 
+def _non_rusher_reason(side: str, pass_rush: Any, lateral: float,
+                       depth_end: float, depth_snap: float,
+                       k: Mapping[str, Any]) -> str:
+    """Reason category for a non-rushing player on a derivable play.
+
+    Order matters: an offensive player cannot be a rusher whatever he did, and
+    ``pass_rush`` (when the optional column is supplied) outranks the geometry.
+    """
+    if side == "offence":
+        return "not_defensive_player"
+    if pass_rush is not None and pass_rush is not pd.NA and \
+            bool(pass_rush) is False:
+        return "not_a_pass_rush_snap"
+    if abs(lateral) >= k["interior_lateral_max_yd"]:
+        return "wide_stunt" if depth_end <= depth_snap else "containing"
+    return "held_at_line"
+
+
+def _constants_dict(k: Mapping[str, Any], tol: float) -> dict[str, Any]:
+    """JSON-safe constants block shared by the full and the empty summary."""
+    return {kk: (list(vv) if isinstance(vv, tuple) else vv)
+            for kk, vv in k.items()} | {"frame_tol_s": tol}
+
+
+def _empty_result(players: pd.DataFrame, k: Mapping[str, Any], tol: float
+                  ) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """The shaped empty result for a zero-row players frame.
+
+    ``derive_blockers`` is called with whatever the coverage guard produced; a
+    frame that carries no row must return the declared columns (so the caller's
+    merge cannot fail on a missing ``_pk``) and a summary with the same keys as
+    a scored run, not a partial one.
+    """
+    lead = [*_KEYS, *[c for c in players.columns if c not in _KEYS]]
+    cols = list(dict.fromkeys(
+        [*lead, *DERIVATION_COLUMNS, "status", "reason"]))
+    out = pd.DataFrame({c: pd.Series(dtype=object) for c in cols})
+    for c in ("game_id", "play_id", "nfl_id"):
+        out[c] = pd.Series(dtype="int64")
+    # The three counts are numeric; the two label columns are text and must
+    # keep the object dtype the scored path emits, so a caller that inspects
+    # dtypes before concatenating an empty shard sees the same schema.
+    for c in ("n_rushers", "blitz", "n_blockers"):
+        out[c] = pd.Series(dtype="float64")
+    for c in ("primary_blocker_group", "primary_blocker_group_source"):
+        out[c] = pd.Series(dtype=object)
+    out["derivation_expected"] = pd.Series(dtype=bool)
+    out["status"] = pd.Series(dtype=object)
+    out["reason"] = pd.Series(dtype=object)
+    summary: dict[str, Any] = {
+        "n_plays_scored": 0,
+        "n_plays_derivable": 0,
+        "n_plays_na": 0,
+        "reason_counts": {},
+        "row_reason_counts": {},
+        "n_players_at_snap": {"min": 0, "median": 0.0, "max": 0},
+        "n_rushers_distribution": {"mean": None, "min": None, "max": None},
+        "label_source_counts": {"roster": 0, "geometry": 0},
+        "qb_rule_misses": 0,
+        "constants": _constants_dict(k, tol),
+        "rule": _RULE_TEXT,
+        "n_rows": 0,
+        "n_expected_rows": 0,
+        "status_counts": {},
+        "non_rusher_reason_counts": {},
+        "side_method_counts": {"roster": 0, "depth": 0, "motion": 0},
+        "n_side_inference_ambiguous": 0,
+        "coverage_reason": ("no rows: the players frame is empty, so there is "
+                            "nothing to score"),
+        "empty_frame": True,
+    }
+    return out, summary
+
+
+_RULE_TEXT = ("§5.4a geometric proxy: rusher = defender with advance >= "
+              "rush_advance_min_yd; protector = stay-in offensive non-QB "
+              "engaged with a rusher; primary blocker = plurality nearest "
+              "offensive non-QB per rusher, and the group label is written "
+              "on that rusher's own row.  Never zero-filled, never from "
+              "player_play.blitzing.")
+
+
 def _geometry_group(depth: float, y_rel: float, k: Mapping[str, Any]) -> str:
     """Alignment-derived group label, used when the roster lacks a position."""
     if -depth >= k["qb_min_depth_yd"]:
@@ -245,6 +382,8 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
     """
     k = _consts(D.dl(cfg) if "bdb27_dl" in cfg else cfg)
     tol = float(frame_tol_s)
+    if len(players) == 0:
+        return _empty_result(players, k, tol)
     out = players.copy()
     out["_pk"] = out["game_id"].astype(str) + "|" + out["play_id"].astype(str)
     scored = out[_PLAY + ["_pk"]].drop_duplicates("_pk")
@@ -289,16 +428,45 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
     snap["advance"] = snap["depth_snap"] - snap["depth_end"]
     snap["lateral"] = snap["y_end"] - snap["y"]
 
-    # --- 5. side of the ball (line band decided by motion) ---------------- #
-    rush_min, band_tol = k["rush_advance_min_yd"], k["los_tolerance_yds"]
+    # --- 5. side of the ball: roster, then pre-snap depth sign, then motion - #
+    # A team cannot change mid-play, so motion is only consulted at exactly
+    # depth 0 (where the pre-snap sign carries no information).
+    rush_min = k["rush_advance_min_yd"]
     stays = (snap["advance"] <= 0) | (
         snap["lateral"].abs() >= k["protector_max_lateral_yd"])
     motion = np.where(snap["advance"] >= rush_min, "defence",
                       np.where(stays, "offence", "unknown"))
-    side = np.where(snap["depth_snap"] > band_tol, "defence",
-                    np.where(snap["depth_snap"] < -band_tol, "offence", motion))
+    pos_series = snap["nfl_id"].map(
+        lambda i: str(pos.get(i, "")).strip().upper())
+    rost_off = pos_series.isin(ROSTER_OFFENCE).to_numpy()
+    rost_def = pos_series.isin(ROSTER_DEFENCE).to_numpy()
+    depth = snap["depth_snap"].to_numpy(dtype=float)
+    # A NaN depth carries no sign information, so the side falls through to the
+    # motion rule and the method must say so; testing ``depth != 0`` first would
+    # label NaN as "depth" (NaN != 0 is True in numpy) and misattribute the
+    # classification.
+    method = np.select(
+        [rost_off | rost_def, np.isnan(depth), depth != 0],
+        ["roster", "motion", "depth"], default="motion")
+    side = np.select(
+        [rost_off, rost_def, depth > 0, depth < 0],
+        ["offence", "defence", "defence", "offence"], default=motion)
     snap["side"] = pd.Series(side, index=snap.index, dtype=object).where(
         snap["advance"].notna())
+    snap["side_method"] = pd.Series(
+        method, index=snap.index, dtype=object).where(snap["advance"].notna())
+    # The residual: no roster side and exactly on the line, so only motion
+    # would classify the player and it would silently make him a rusher.
+    snap["side_conflict"] = (
+        snap["side_method"].eq("motion") & snap["side"].eq("defence")
+        & (snap["advance"] >= rush_min))
+    # Optional per-row pass-rush flag: when the caller supplies it, a false row
+    # is a non-rusher by construction; when it is absent every scored play is
+    # treated as a pass-rush snap (the module contract).
+    if "pass_rush" in out.columns:
+        flag = out[_KEYS + ["pass_rush"]].drop_duplicates(_KEYS)
+        snap = snap.merge(flag, on=_KEYS, how="left")
+        snap["_pass_rush"] = snap["pass_rush"].astype("boolean")
 
     snap = snap.sort_values(["_pk", "nfl_id"], kind="mergesort").reset_index(drop=True)
     n_snap = snap.groupby("_pk", sort=True).size().rename("n_snap")
@@ -333,6 +501,9 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
         if n_u or n_m:
             plays_out[pk] = na("unclassified_players" if n_u
                                else "incomplete_window")
+            continue
+        if bool(g["side_conflict"].any()):
+            plays_out[pk] = na("side_inference_ambiguous")
             continue
 
         is_def = g["side"].eq("defence").to_numpy()
@@ -393,38 +564,72 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
                 "primary_blocker_group_source": src}
         n_rushers_all.append(int(rushers.size))
 
+        # Every player on a derivable play gets a row status.  Rushers keep
+        # their own label or their own engagement failure; everyone else is a
+        # non-rusher with an explicit reason and no label.  The play-level
+        # counts stay filled on every row.
+        lat_all = g["lateral"].to_numpy(dtype=float)
+        dep_end_all = g["depth_end"].to_numpy(dtype=float)
+        side_all = g["side"].to_numpy()
+        pr_all = (g["_pass_rush"].to_numpy() if "_pass_rush" in g
+                  else np.array([None] * g.shape[0], dtype=object))
+        row_recs: list[dict[str, Any]] = []
+        for i, nid in enumerate(ids_all):
+            if rush_mask[i]:
+                lab = row_labels[int(nid)]
+                row_recs.append({
+                    "nfl_id": int(nid), "status": lab["status"],
+                    "reason": lab["reason"],
+                    "primary_blocker_group": lab["primary_blocker_group"],
+                    "primary_blocker_group_source":
+                        lab["primary_blocker_group_source"],
+                    "derivation_expected": True})
+                continue
+            row_recs.append({
+                "nfl_id": int(nid), "status": "non_rusher",
+                "reason": _non_rusher_reason(
+                    side_all[i], pr_all[i], float(lat_all[i]),
+                    float(dep_end_all[i]), float(dep[i]), k),
+                "primary_blocker_group": None,
+                "primary_blocker_group_source": None,
+                "derivation_expected": False})
+
         plays_out[pk] = {
             "status": "OK", "reason": None, "n_rushers": int(rushers.size),
             "blitz": float(rushers.size > k["blitz_rusher_threshold"]),
-            "n_blockers": n_blockers, "labels": row_labels,
+            "n_blockers": n_blockers, "rows": row_recs,
         }
 
     # --- 12. emit ---------------------------------------------------------- #
     res = pd.DataFrame([{"_pk": pk, **{kk: vv for kk, vv in v.items()
-                                       if kk != "labels"}}
+                                       if kk not in ("rows", "labels")}}
                         for pk, v in plays_out.items()])
     out = out.merge(res, on="_pk", how="left")
 
-    # Per-rusher labels, keyed by the row's own (play, nfl_id).  A rusher
-    # whose primary blocker failed overrides only his own status/reason; the
-    # play-level counts and every other row are untouched.
-    lab_rows = [{"_pk": pk, "nfl_id": rid,
-                 **{f"_l{kk}": vv for kk, vv in v.items()}}
-                for pk, rec in plays_out.items()
-                for rid, v in rec.get("labels", {}).items()]
-    lab_cols = ["_pk", "nfl_id", "_lprimary_blocker_group",
-                "_lprimary_blocker_group_source", "_lstatus", "_lreason"]
-    lab = pd.DataFrame(lab_rows, columns=lab_cols)
-    lab = lab[["_pk", "nfl_id", *lab_cols[2:]]]
-    out = out.merge(lab, on=["_pk", "nfl_id"], how="left")
+    # Row-level statuses keyed by the row's own (play, nfl_id).  Every row of a
+    # derivable play owns its status; rows of a structurally NA play keep the
+    # play-level NA and reason.  A rusher whose primary blocker failed keeps
+    # the play's counts and is the only row that carries his failure reason.
+    row_recs = [{"_pk": pk, "nfl_id": rec["nfl_id"],
+                 "_rstatus": rec["status"], "_rreason": rec["reason"],
+                 "_rgroup": rec["primary_blocker_group"],
+                 "_rsource": rec["primary_blocker_group_source"],
+                 "_rexp": rec["derivation_expected"]}
+                for pk, play in plays_out.items()
+                for rec in play.get("rows", [])]
+    row_cols = ["_pk", "nfl_id", "_rstatus", "_rreason", "_rgroup",
+                "_rsource", "_rexp"]
+    rows = pd.DataFrame(row_recs, columns=row_cols)
+    out = out.merge(rows, on=["_pk", "nfl_id"], how="left")
 
-    failed = out["_lstatus"].eq("NA")
-    out["status"] = out["status"].where(~failed, "NA")
-    out["reason"] = out["reason"].where(~failed, out["_lreason"])
-    out["primary_blocker_group"] = out.pop("_lprimary_blocker_group")
-    out["primary_blocker_group_source"] = out.pop(
-        "_lprimary_blocker_group_source")
-    out = out.drop(columns=["_lstatus", "_lreason"])
+    has_row = out["_rstatus"].notna()
+    out["status"] = out["status"].where(~has_row, out["_rstatus"])
+    out["reason"] = out["reason"].where(~has_row, out["_rreason"])
+    out["primary_blocker_group"] = out.pop("_rgroup")
+    out["primary_blocker_group_source"] = out.pop("_rsource")
+    out["derivation_expected"] = (out.pop("_rexp").fillna(False)
+                                  .astype(bool))
+    out = out.drop(columns=["_rstatus", "_rreason"])
 
     missing = [c for c in BLOCKER_COLUMNS if c not in out]
     out = out.reindex(columns=[*out.columns, *missing])
@@ -434,9 +639,14 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
     ordered = n_snap.reindex(sorted(scored["_pk"])).fillna(0).astype(int)
     counts = Counter(v["reason"] for v in plays_out.values()
                      if v["status"] == "NA")
-    row_counts = Counter(v["reason"] for rec in plays_out.values()
-                         for v in rec.get("labels", {}).values()
-                         if v["status"] == "NA")
+    row_counts = Counter(rec["reason"] for play in plays_out.values()
+                         for rec in play.get("rows", [])
+                         if rec["status"] == "NA")
+    status_counts = Counter(out["status"].astype(str))
+    non_rusher_counts = Counter(
+        out.loc[out["status"].eq("non_rusher"), "reason"])
+    side_methods = {m: int(snap["side_method"].eq(m).sum())
+                    for m in ("roster", "depth", "motion")}
     n_na = sum(counts.values())
     summary: dict[str, Any] = {
         "n_plays_scored": int(len(scored)),
@@ -454,15 +664,17 @@ def derive_blockers(cfg: Mapping[str, Any], *, frames: pd.DataFrame,
             "max": int(np.max(n_rushers_all)) if n_rushers_all else None},
         "label_source_counts": src_counts,
         "qb_rule_misses": int(qb_misses),
-        "constants": {kk: (list(vv) if isinstance(vv, tuple) else vv)
-                      for kk, vv in k.items()} | {"frame_tol_s": tol},
-        "rule": ("§5.4a geometric proxy: rusher = defender with advance >= "
-                 "rush_advance_min_yd; protector = stay-in offensive non-QB "
-                 "engaged with a rusher; primary blocker = plurality nearest "
-                 "offensive non-QB per rusher, and the group label is written "
-                 "on that rusher's own row.  Never zero-filled, never from "
-                 "player_play.blitzing."),
+        "constants": _constants_dict(k, tol),
+        "rule": _RULE_TEXT,
+        "n_rows": int(len(out)),
+        "n_expected_rows": int(out["derivation_expected"].sum()),
+        "status_counts": dict(sorted(status_counts.items())),
+        "non_rusher_reason_counts": dict(sorted(non_rusher_counts.items())),
+        "side_method_counts": side_methods,
+        "n_side_inference_ambiguous": int(
+            out["reason"].eq("side_inference_ambiguous").sum()),
     }
-    cols = [*_KEYS, *[c for c in players.columns if c not in _KEYS],
-            *BLOCKER_COLUMNS, "status", "reason"]
+    cols = list(dict.fromkeys(
+        [*_KEYS, *[c for c in players.columns if c not in _KEYS],
+         *DERIVATION_COLUMNS, "status", "reason"]))
     return out[[c for c in cols if c in out.columns]], summary

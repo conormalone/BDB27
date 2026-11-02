@@ -210,9 +210,14 @@ def world_truncated(**kw):
 
 
 def world_unclassified(**kw):
-    """A defender drifts 0.5 yd off the line inside the LOS band: undecidable."""
+    """A player starts exactly on the line and neither rushes nor stays in.
+
+    Only ``depth_snap == 0`` consults the motion rule under the roster -> depth
+    -> motion precedence, so the undecidable case must sit exactly on the line
+    (the old 0.5 yd offset is now a defensive non-rusher by depth sign).
+    """
     spec = _standard_spec()
-    spec[S1] = (50.5, 58.0, 50.0, 58.0)
+    spec[S1] = (50.0, 58.0, 49.6, 58.0)
     return _build(spec, positions=POSITIONS, **kw)
 
 
@@ -227,6 +232,33 @@ def world_zero_rushers(**kw):
 def world_ambiguous_los(**kw):
     return _build(_standard_spec(), positions=POSITIONS,
                   los_c2=LOS_X + 0.5, **kw)
+
+
+def world_bull_rushed_ol(positions: dict[int, str] | None = POSITIONS, **kw):
+    """The LT is driven 2.3 yd into the backfield: a beaten protector, not a rusher."""
+    spec = _standard_spec()
+    spec[LT] = (49.5, 45.0, 47.2, 45.0)
+    return _build(spec, positions=positions, **kw)
+
+
+def world_standing_up_dl(lateral: float = 3.8,
+                         positions: dict[int, str] | None = POSITIONS, **kw):
+    """R_LE starts a hair off the line and works laterally without rushing.
+
+    ``depth_end > depth_snap`` (no upfield gain) with lateral travel at or above
+    ``interior_lateral_max_yd`` is the ``containing`` case; below it the same
+    geometry is ``held_at_line``.
+    """
+    spec = _standard_spec()
+    spec[R_LE] = (50.2, 45.0, 50.6, 45.0 + lateral)
+    return _build(spec, positions=positions, **kw)
+
+
+def world_side_ambiguous(**kw):
+    """A player exactly on the line with no roster, rushing by motion only."""
+    spec = _standard_spec()
+    spec[R_LE] = (50.0, 45.0, 48.2, 45.0)
+    return _build(spec, positions=None, **kw)
 
 
 WORLDS = {
@@ -263,7 +295,14 @@ def test_standard_play_counts_and_per_rusher_labels():
     assert (out["n_rushers"] == 4).all()
     assert (out["blitz"] == 0.0).all()
     assert (out["n_blockers"] == 5).all()
-    assert (out["status"] == "OK").all()
+
+    rusher_ids = [R_LE, R_LI, R_RI, R_RE]
+    is_rusher = out["nfl_id"].isin(rusher_ids)
+    assert (out.loc[is_rusher, "status"] == "OK").all()
+    assert (out.loc[is_rusher, "derivation_expected"]).all()
+    assert (out.loc[~is_rusher, "status"] == "non_rusher").all()
+    assert set(out.loc[~is_rusher, "reason"]) <= set(B.NON_RUSHER_REASONS)
+    assert not out.loc[~is_rusher, "derivation_expected"].any()
 
     labels = _labels(out, [R_LE, R_LI, R_RI, R_RE])
     assert labels == {R_LE: "OT", R_LI: "interior",
@@ -403,11 +442,22 @@ def test_roster_and_geometry_agree_where_geometry_is_unambiguous():
 def test_invariants_hold_on_every_world(name):
     out, _ = _derive(WORLDS[name]())
 
-    assert set(out["status"].unique()) <= {"OK", "NA"}
+    assert set(out["status"].unique()) <= {"OK", "NA", "non_rusher"}
+    assert out["derivation_expected"].dtype == bool
     na = out["status"] == "NA"
+    ok = out["status"] == "OK"
+    non = out["status"] == "non_rusher"
     assert out.loc[na, "reason"].notna().all()
-    assert out.loc[~na, "reason"].isna().all()
+    assert set(out.loc[na, "reason"]) <= set(B.REASONS)
     assert (out.loc[na, "reason"].astype(str).str.len() > 0).all()
+    # An OK row is a successfully derived rusher: expected and no reason.
+    assert out.loc[ok, "reason"].isna().all()
+    assert out.loc[ok, "derivation_expected"].all()
+    # A non-rusher is a correct classification, not a failure, and it is never
+    # in the gate denominator.
+    assert out.loc[non, "reason"].isin(B.NON_RUSHER_REASONS).all()
+    assert not out.loc[non, "derivation_expected"].any()
+    assert out.loc[non, list(B.BLOCKER_COLUMNS[3:])].isna().all().all()
 
     blitz = out["blitz"].dropna()
     assert set(blitz.unique()) <= {0.0, 1.0}
@@ -453,3 +503,93 @@ def test_output_is_deterministic_and_row_order_independent(name):
     shuffled_players = players.iloc[rng.permutation(len(players))].reset_index(drop=True)
     shuffled, _ = _derive((shuffled_frames, shuffled_players, plays, roster))
     pd.testing.assert_frame_equal(first, shuffled)
+
+
+# --------------------------------------------------------------------------- #
+# 12. Side of the ball: roster, then pre-snap depth sign, never motion
+# --------------------------------------------------------------------------- #
+def test_bull_rushed_ol_is_not_a_rusher_with_or_without_roster():
+    for positions in (POSITIONS, None):
+        out, summary = _derive(world_bull_rushed_ol(positions=positions))
+
+        assert (out["n_rushers"] == 4).all(), positions
+        row = out.loc[out["nfl_id"] == LT].iloc[0]
+        assert row["status"] == "non_rusher"
+        assert row["reason"] == "not_defensive_player"
+        assert row["derivation_expected"] == False
+        assert pd.isna(row["primary_blocker_group"])
+        assert summary["n_plays_derivable"] == 1
+
+
+def test_standing_up_dl_is_a_containing_non_rusher_not_a_protector():
+    for positions in (POSITIONS, None):
+        out, _ = _derive(world_standing_up_dl(positions=positions))
+        row = out.loc[out["nfl_id"] == R_LE].iloc[0]
+        assert row["status"] == "non_rusher", positions
+        assert row["reason"] == "containing"
+        assert row["derivation_expected"] == False
+        assert pd.isna(row["primary_blocker_group"])
+        assert pd.isna(row["primary_blocker_group_source"])
+        # The play-level counts are unchanged and identical on every row.
+        assert out["n_rushers"].nunique() == 1
+        assert out["n_blockers"].nunique() == 1
+        assert out["blitz"].nunique() == 1
+
+
+def test_standing_up_dl_inside_the_lateral_cap_is_held_at_line():
+    out, _ = _derive(world_standing_up_dl(lateral=2.5))
+    row = out.loc[out["nfl_id"] == R_LE].iloc[0]
+    assert row["status"] == "non_rusher"
+    assert row["reason"] == "held_at_line"
+    assert row["derivation_expected"] == False
+
+
+def test_motion_only_rusher_withholds_the_whole_play():
+    out, summary = _derive(world_side_ambiguous())
+
+    assert len(out) == 22
+    assert (out["status"] == "NA").all()
+    assert (out["reason"] == "side_inference_ambiguous").all()
+    assert not out["derivation_expected"].any()
+    for col in B.BLOCKER_COLUMNS:
+        assert out[col].isna().all(), col
+    assert summary["n_side_inference_ambiguous"] == len(out)
+    assert summary["reason_counts"] == {"side_inference_ambiguous": 1}
+    assert summary["n_plays_derivable"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# 13. A zero-row players frame returns a shaped, deterministic empty result
+# --------------------------------------------------------------------------- #
+def test_empty_players_frame_returns_shaped_empty_frame():
+    frames, players, plays, roster = world_standard(positions=POSITIONS)
+    empty_players = players.iloc[0:0]
+    args = dict(frames=frames.iloc[0:0], players=empty_players,
+                plays=plays.iloc[0:0], frame_tol_s=0.1, roster=roster)
+    out, summary = B.derive_blockers(K, **args)
+
+    assert len(out) == 0
+    for col in (*B.BLOCKER_COLUMNS, "derivation_expected", "status", "reason"):
+        assert col in out.columns, col
+    assert out["derivation_expected"].dtype == bool
+    assert out["status"].dtype == object and out["reason"].dtype == object
+    # The two label columns are text and the three counts are floats, so the
+    # empty shard declares the label dtype object and the count dtype float64;
+    # casting the labels to float64 would make a downstream concat numeric.
+    for col in ("n_rushers", "blitz", "n_blockers"):
+        assert out[col].dtype == np.dtype("float64"), col
+    for col in ("primary_blocker_group", "primary_blocker_group_source"):
+        assert out[col].dtype == object, col
+        assert out[col].isna().all()
+    assert summary["n_plays_scored"] == 0
+    assert summary["n_plays_derivable"] == 0
+    assert summary["n_plays_na"] == 0
+    assert "empty" in summary["coverage_reason"]
+    assert summary["empty_frame"] is True
+    # Same keys as a scored run, so a caller cannot branch on a missing key.
+    _, scored_summary = _derive(world_standard(positions=POSITIONS))
+    assert set(summary) - {"coverage_reason", "empty_frame"} == set(scored_summary)
+
+    again, again_summary = B.derive_blockers(K, **args)
+    pd.testing.assert_frame_equal(out, again)
+    assert summary == again_summary

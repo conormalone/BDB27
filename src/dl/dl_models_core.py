@@ -1226,26 +1226,68 @@ def _na_share(frame: pd.DataFrame, column: str) -> tuple[float, int]:
     return float(1.0 - non_null / len(frame)), non_null
 
 
+#: String forms :func:`_expected_mask` accepts as ``True``; everything else is
+#: ``False``.  Only the spellings a boolean column actually takes survive a
+#: round trip through CSV/parquet are listed, so a stray word cannot silently
+#: inflate the gate denominator.
+_TRUE_STRINGS: frozenset[str] = frozenset({"true", "1"})
+
+
+def _expected_mask(series: pd.Series) -> np.ndarray:
+    """Boolean mask of the ``derivation_expected`` rows, as a numpy array.
+
+    The column is a boolean in principle, but it can arrive as ``object`` after
+    a CSV/parquet round trip.  ``astype(bool)`` is wrong for that case — every
+    non-empty string, ``"False"`` included, is truthy — so the coercion is done
+    explicitly: bools are used as-is, numeric ``0``/``1`` are read as booleans,
+    and the strings ``"true"``/``"false"``/``"1"``/``"0"``
+    (case-insensitive, whitespace-stripped) are parsed by value.  Every other
+    value, and every NA, is ``False``: an unparseable flag cannot be allowed to
+    enlarge the gate denominator.
+    """
+    if series.dtype == bool:
+        return series.to_numpy(dtype=bool, na_value=False)
+    numeric = pd.to_numeric(series, errors="coerce")
+    mask = numeric.to_numpy(dtype=float, na_value=0.0) == 1.0
+    text = series.astype("string").str.strip().str.lower()
+    mask |= text.isin(_TRUE_STRINGS).to_numpy(dtype=bool, na_value=False)
+    return mask
+
+
 def derivation_gate(cfg: Mapping, frame: pd.DataFrame, mode: str) -> dict:
-    """Distribution checks on the four derived columns (§5.4a, §15 vocabulary).
+    """Distribution checks on the derived columns (§5.4a, §15 vocabulary).
 
     ``n_rushers``, ``n_blockers`` and ``blitz`` must average inside the ranges in
-    ``cfg["game"]["derivation_gate"]``; all four columns (including the
-    categorical ``primary_blocker_group``) must carry no more than
-    ``max_na_share`` missing rows.  The ranges are read from the config and only
-    from the config: a missing key is a :class:`KeyError`, never a default.
+    ``cfg["game"]["derivation_gate"]`` over **all rows**; the coverage check is
+    different: its denominator is the rows that actually *needed* a derivation,
+    ``derivation_expected == True``.  A non-rusher is a correct classification,
+    not a missing one, so counting it against the NA share would let a table of
+    pure non-rushers "pass".  The raw all-row share stays visible, ungated, in
+    the ``coverage`` block.
 
     In ``sample`` mode every item is ``PENDING_FULL_RUN`` with the §5.4a reason,
     even when the frame happens to carry values — the sample tracks 1-4 players
     per play, so the derivation cannot be evaluated and must never read ``PASS``.
-    In ``full`` mode a missing, all-NA or out-of-range column is ``FAIL``; an
-    empty frame fails every item (NA share 1.0 against a bound of 0.0).
+    In ``full`` mode a missing, all-NA or out-of-range column is ``FAIL``.
 
-    ``n`` is the number of frame rows the check looked at; the per-column NA
-    shares and non-null counts are reported alongside the ``NA`` check.
+    Two vacuity rules, both deliberate: a full-mode frame with no
+    ``derivation_expected == True`` row FAILs (an empty expected set can never
+    PASS), and a zero-row frame FAILs both the coverage and the side-conflict
+    check (no rows cannot establish that nothing went wrong).
+
+    ``derivation_side_conflicts`` counts rows whose derivation reason is
+    ``side_inference_ambiguous`` — the residual where only the motion rule would
+    have made a player a rusher.  Its ceiling is
+    ``max_side_inference_rows`` (declared 0).
+
+    The denominator flag is read by value, not by truthiness: :func:`_expected_mask`
+    parses bools, numeric ``0``/``1`` and the strings ``"true"``/``"false"``/
+    ``"1"``/``"0"``, so an object-dtype column that arrives from a CSV round
+    trip cannot turn the string ``"False"`` into an expected row.
     """
     gate_cfg = cfg["game"]["derivation_gate"]
     max_na = float(gate_cfg["max_na_share"])
+    max_side = int(gate_cfg["max_side_inference_rows"])
     n_rows = int(len(frame))
     checks: dict[str, dict] = {}
 
@@ -1254,12 +1296,14 @@ def derivation_gate(cfg: Mapping, frame: pd.DataFrame, mode: str) -> dict:
         if mode == "sample":
             checks[name] = {"status": "PENDING_FULL_RUN", "value": None,
                             "threshold": bounds, "clause": clause,
-                            "reason": _SAMPLE_DERIVATION_REASON, "n": n_rows}
+                            "reason": _SAMPLE_DERIVATION_REASON, "n": n_rows,
+                            "denominator": "all_rows"}
             continue
         value = _column_mean(frame, column)
         ok = _in_closed_range(value, bounds)
         check = {"status": "PASS" if ok else "FAIL", "value": value,
-                 "threshold": bounds, "clause": clause, "n": n_rows}
+                 "threshold": bounds, "clause": clause, "n": n_rows,
+                 "denominator": "all_rows"}
         if not ok:
             if column not in frame.columns:
                 check["reason"] = (f"column {column!r} is absent from the frame, "
@@ -1272,36 +1316,99 @@ def derivation_gate(cfg: Mapping, frame: pd.DataFrame, mode: str) -> dict:
                                    f"the closed range [{bounds[0]:g}, {bounds[1]:g}]")
         checks[name] = check
 
-    shares: dict[str, float] = {}
-    non_null: dict[str, int] = {}
+    # Raw all-row coverage, always reported, never the gating denominator.
+    all_shares: dict[str, float] = {}
+    all_non_null: dict[str, int] = {}
     for column in _DERIVATION_COLUMNS:
-        shares[column], non_null[column] = _na_share(frame, column)
-    worst = max(shares.values())
+        all_shares[column], all_non_null[column] = _na_share(frame, column)
+    coverage = {"n_rows_all": n_rows, "na_share_all": all_shares,
+                "non_null_all": all_non_null}
+    na_clause = ("§8 derivations: every row that required a derivation is "
+                 "classified (NA share within the declared bound over "
+                 "derivation_expected rows)")
 
     if mode == "sample":
         checks["derivation_na_share"] = {
             "status": "PENDING_FULL_RUN", "value": None, "threshold": max_na,
-            "clause": ("§8 derivations: every derived column is classified on "
-                       "every play (NA share within the declared bound)"),
-            "columns": shares, "non_null": non_null,
+            "clause": na_clause, "columns": {}, "non_null": {},
+            "denominator": "derivation_expected", "coverage": coverage,
             "reason": _SAMPLE_DERIVATION_REASON, "n": n_rows}
+    elif "derivation_expected" not in frame.columns:
+        checks["derivation_na_share"] = {
+            "status": "FAIL", "value": None, "threshold": max_na,
+            "clause": na_clause, "columns": {}, "non_null": {},
+            "denominator": "derivation_expected", "coverage": coverage,
+            "n": 0,
+            "reason": ("column 'derivation_expected' is absent, so the gate "
+                       "denominator is undefined")}
     else:
+        expected = _expected_mask(frame["derivation_expected"])
+        n_expected = int(expected.sum())
+        shares: dict[str, float] = {}
+        non_null: dict[str, int] = {}
+        for column in _DERIVATION_COLUMNS:
+            if column not in frame.columns:
+                shares[column], non_null[column] = 1.0, 0
+                continue
+            sub = frame.loc[expected, column]
+            non_null[column] = int(sub.notna().sum())
+            shares[column] = (1.0 - non_null[column] / n_expected
+                              if n_expected else 1.0)
+        worst = max(shares.values())
         failed = [c for c in _DERIVATION_COLUMNS if shares[c] > max_na]
         check = {
             "status": "FAIL" if failed else "PASS", "value": worst,
-            "threshold": max_na,
-            "clause": ("§8 derivations: every derived column is classified on "
-                       "every play (NA share within the declared bound)"),
-            "columns": shares, "non_null": non_null, "n": n_rows}
-        if failed:
-            if not n_rows:
-                check["reason"] = ("the frame carries 0 rows, so no play is "
-                                   "classified and every column is NA")
-            else:
-                check["reason"] = (
-                    f"NA share above the bound {max_na:g} for: "
-                    + ", ".join(f"{c} ({shares[c]:.3f})" for c in failed))
+            "threshold": max_na, "clause": na_clause,
+            "columns": shares, "non_null": non_null,
+            "denominator": "derivation_expected", "coverage": coverage,
+            "n": n_expected}
+        if not n_rows:
+            check["status"] = "FAIL"
+            check["reason"] = ("the frame carries 0 rows, so there is no "
+                               "expected row to evaluate; the gate must not "
+                               "pass by vacuity")
+        elif not n_expected:
+            check["status"] = "FAIL"
+            check["reason"] = (
+                f"no row carries derivation_expected=True (0 of {n_rows} "
+                f"rows); the gate must not pass by vacuity")
+        elif failed:
+            check["reason"] = (
+                f"NA share above the bound {max_na:g} for: "
+                + ", ".join(f"{c} ({shares[c]:.3f})" for c in failed))
         checks["derivation_na_share"] = check
+
+    side_clause = ("§5.4a: no row may be made a rusher by the motion rule alone "
+                   "(side_inference_ambiguous)")
+    if mode == "sample":
+        checks["derivation_side_conflicts"] = {
+            "status": "PENDING_FULL_RUN", "value": None, "threshold": max_side,
+            "clause": side_clause, "reason": _SAMPLE_DERIVATION_REASON,
+            "n": n_rows}
+    elif not n_rows:
+        checks["derivation_side_conflicts"] = {
+            "status": "FAIL", "value": 0, "threshold": max_side,
+            "clause": side_clause, "n": 0,
+            "reason": ("the frame carries 0 rows, so the absence of "
+                       "side-inference conflicts cannot be established")}
+    elif "derivation_reason" not in frame.columns:
+        checks["derivation_side_conflicts"] = {
+            "status": "FAIL", "value": None, "threshold": max_side,
+            "clause": side_clause, "n": n_rows,
+            "reason": ("column 'derivation_reason' is absent, so the "
+                       "side-inference conflict count is undefined")}
+    else:
+        count = int(frame["derivation_reason"]
+                    .eq("side_inference_ambiguous").sum())
+        check = {"status": "PASS" if count <= max_side else "FAIL",
+                 "value": count, "threshold": max_side, "clause": side_clause,
+                 "n": n_rows}
+        if count > max_side:
+            check["reason"] = (
+                f"{count} row(s) carry derivation_reason "
+                f"'side_inference_ambiguous', above the declared maximum "
+                f"{max_side}")
+        checks["derivation_side_conflicts"] = check
 
     failing = [k for k, v in checks.items() if v["status"] == "FAIL"]
     pending = [k for k, v in checks.items() if v["status"] == "PENDING_FULL_RUN"]

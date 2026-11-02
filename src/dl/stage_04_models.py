@@ -263,11 +263,20 @@ def _derivation_markdown(derivation: Mapping) -> list[str]:
     lines.append("")
     na = derivation.get("checks", {}).get("derivation_na_share") or {}
     if na.get("columns"):
-        lines.append("* NA share by column: " + ", ".join(
+        lines.append("* NA share by column (expected denominator): " + ", ".join(
             f"`{c}` {share:.3f} ({na.get('non_null', {}).get(c, 0)} non-null)"
             for c, share in na["columns"].items()))
-        lines.append(f"* rows evaluated: {na.get('n')}")
-        lines.append("")
+    if na.get("denominator"):
+        lines.append(f"* rows evaluated: {na.get('n')} "
+                     f"(denominator: `{na['denominator']}`)")
+    coverage = na.get("coverage") or {}
+    if coverage.get("na_share_all"):
+        lines.append(
+            "* raw all-row NA share (coverage, not gated): "
+            + ", ".join(f"`{c}` {share:.3f}" for c, share in
+                        coverage["na_share_all"].items())
+            + f" over {coverage.get('n_rows_all')} rows")
+    lines.append("")
     reasons: dict[str, list[str]] = {}
     for name in derivation.get("failing", []) + derivation.get("pending", []):
         reason = (derivation.get("checks", {}).get(name) or {}).get("reason")

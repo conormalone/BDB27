@@ -71,6 +71,7 @@ SNAP_COLUMNS: tuple[str, ...] = (
     "quick_pressure", "sack", "unblocked_pressure", "player_get_off",
     "alignment", "pre_snap_depth_yd", "blitz", "n_rushers", "n_blockers",
     "stunt", "primary_blocker_group", "primary_blocker_group_source",
+    "derivation_expected", "derivation_status", "derivation_reason",
     "in_game_speed_1_0", "in_game_speed_2_0", "absolute_load",
     "relative_load", "total_distance_before", "snaps_in_drive",
     "seconds_since_last_snap", "down", "yards_to_go", "quarter",
@@ -537,14 +538,35 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
             if len(track) else df
         # -- all-22 rusher / blocker derivation (§5.4a) ----------------------
         blockers = _blocker_columns(cfg, mode, files, con, "base", summary)
-        df = df.merge(blockers, on=["game_id", "play_id", "nfl_id"], how="left")
+        df = df.merge(blockers, on=["game_id", "play_id", "nfl_id"],
+                      how="left", indicator="_blocker_merge")
+        # Plays the coverage guard filtered never reach ``derive_blockers``, so
+        # the left merge leaves them unlabelled.  That is a coverage exclusion,
+        # not a derivation failure: name it ``not_derived`` with the short
+        # coverage code, and never leave derivation_expected as NaN.
+        never = df["_blocker_merge"].ne("both").to_numpy(dtype=bool)
+        code = summary["blockers"].get("coverage_reason_code")
+        df.loc[never, "derivation_status"] = "not_derived"
+        df.loc[never, "derivation_reason"] = code
+        df = df.drop(columns=["_blocker_merge"])
+        df["derivation_expected"] = (df["derivation_expected"]
+                                     .fillna(False).astype(bool))
         blocker_cols = list(B.BLOCKER_COLUMNS)
+        expected = df["derivation_expected"].to_numpy(dtype=bool)
         summary["blockers"].update({
             "n_snaps_with_n_rushers": int(df["n_rushers"].notna().sum()),
             "n_snaps_with_primary_blocker_group": int(
                 df["primary_blocker_group"].notna().sum()),
             "n_snaps_blockers_na": int(
                 df[blocker_cols].isna().any(axis=1).sum()),
+            "n_snaps_derivation_expected": int(expected.sum()),
+            "n_snaps_derivation_non_rusher": int(
+                df["derivation_status"].eq("non_rusher").sum()),
+            "n_snaps_expected_na": int(
+                (expected & df["primary_blocker_group"].isna()
+                 .to_numpy(dtype=bool)).sum()),
+            "n_snaps_side_inference_ambiguous": int(
+                df["derivation_reason"].eq("side_inference_ambiguous").sum()),
         })
         # helper columns used to derive the tracking features, never emitted
         df = df.drop(columns=[c for c in ("yardline_side", "yardline_number",
@@ -707,11 +729,18 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
     function owns source resolution, the SQL coverage guard (a play is
     derivable only with ``>= all22_min_players`` distinct players at the snap
     frame), per-game chunking and the coverage accounting.  Returns an empty
-    frame with the five columns when no tracking input exists or no play
-    qualifies, and records why.
+    frame with the five label columns plus the derivation bookkeeping when no
+    tracking input exists or no play qualifies, and records why.
     """
-    cols = list(B.BLOCKER_COLUMNS)
-    empty = pd.DataFrame(columns=[*_BLOCKER_KEYS, *cols])
+    cols = [*B.BLOCKER_COLUMNS, "derivation_expected", "derivation_status",
+            "derivation_reason"]
+
+    def _empty_frame() -> pd.DataFrame:
+        frame = pd.DataFrame(columns=[*_BLOCKER_KEYS, *cols])
+        frame["derivation_expected"] = pd.Series(dtype=bool)
+        return frame
+
+    empty = _empty_frame()
     block = D.dl(cfg)
     k = block["game"]
     min_players = int(k["all22_min_players"])
@@ -725,7 +754,7 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
         "SELECT count(*) FROM (SELECT DISTINCT game_id, play_id FROM "
         f"{base})").fetchone()[0])
 
-    def _no_tracking(reason: str) -> pd.DataFrame:
+    def _no_tracking(reason: str, code: str) -> pd.DataFrame:
         summary["omitted_columns"]["blockers"] = reason
         summary["blockers"] = {
             "n_plays_in_table": n_table_plays,
@@ -738,11 +767,18 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
             "n_snaps_blockers_na": 0,
             "reason_counts": {},
             "coverage_reason": reason,
+            "coverage_reason_code": code,
             "sample_cannot_exercise": (
                 "no tracking input: the derivation cannot be exercised at all"),
             "n_players_at_snap": {"min": 0, "median": 0.0, "max": 0},
             "label_source_counts": {"roster": 0, "geometry": 0},
             "qb_rule_misses": 0,
+            "n_rows": 0,
+            "n_expected_rows": 0,
+            "status_counts": {},
+            "non_rusher_reason_counts": {},
+            "side_method_counts": {"roster": 0, "depth": 0, "motion": 0},
+            "n_side_inference_ambiguous": 0,
             "constants": {"all22_min_players": min_players,
                           "frame_tol_s": tol},
             "rule": ("§5.4a geometric proxy; columns stay NA without "
@@ -753,17 +789,33 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
     sources = _tracking(cfg, files, mode)
     missing = [str(p) for p in sources if not Path(p).exists()]
     if not sources:
-        return _no_tracking("no tracking input")
+        return _no_tracking("no tracking input", "no_tracking_input")
     if missing:
-        return _no_tracking(f"tracking input missing: {missing}")
+        return _no_tracking(f"tracking input missing: {missing}",
+                            "tracking_input_missing")
 
-    con.execute(f"""
-        CREATE OR REPLACE TEMP TABLE bframes AS
-        SELECT game_id, play_id, nfl_id, time, x, y, event
-        FROM {_csv(sources, ("game_id", "play_id", "nfl_id", "time", "x",
-                             "y", "event"), null)}
-        WHERE time IS NOT NULL AND x IS NOT NULL AND y IS NOT NULL
-    """)
+    # ``_tracking_columns`` has already materialised the same tracking CSV as
+    # the TEMP TABLE ``track`` on this connection; re-reading the file here
+    # would duplicate the I/O for no gain.  Direct callers (tests) have no
+    # ``track`` table, so the CSV path stays as the fallback.
+    has_track = bool(con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_name = 'track'").fetchone()[0])
+    if has_track:
+        con.execute("""
+            CREATE OR REPLACE TEMP TABLE bframes AS
+            SELECT game_id, play_id, nfl_id, time, x, y, event
+            FROM track
+            WHERE x IS NOT NULL AND y IS NOT NULL
+        """)
+    else:
+        con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE bframes AS
+            SELECT game_id, play_id, nfl_id, time, x, y, event
+            FROM {_csv(sources, ("game_id", "play_id", "nfl_id", "time", "x",
+                                 "y", "event"), null)}
+            WHERE time IS NOT NULL AND x IS NOT NULL AND y IS NOT NULL
+        """)
     con.execute("""
         CREATE OR REPLACE TEMP VIEW bsnaptime AS
         SELECT game_id, play_id, min(time) AS t_snap
@@ -816,10 +868,17 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
             "n_snaps_blockers_na": 0,
             "reason_counts": {},
             "coverage_reason": reason,
+            "coverage_reason_code": "insufficient_tracking",
             "sample_cannot_exercise": "sample_cannot_exercise: " + reason,
             "n_players_at_snap": at_snap,
             "label_source_counts": {"roster": 0, "geometry": 0},
             "qb_rule_misses": 0,
+            "n_rows": 0,
+            "n_expected_rows": 0,
+            "status_counts": {},
+            "non_rusher_reason_counts": {},
+            "side_method_counts": {"roster": 0, "depth": 0, "motion": 0},
+            "n_side_inference_ambiguous": 0,
             "constants": {"all22_min_players": min_players,
                           "frame_tol_s": tol},
             "rule": ("§5.4a geometric proxy; every play is NA because the "
@@ -843,8 +902,12 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
     games = [int(r[0]) for r in con.execute(
         "SELECT DISTINCT game_id FROM bqual ORDER BY game_id").fetchall()]
     totals = {"n_plays_scored": 0, "n_plays_derivable": 0, "n_plays_na": 0,
-              "qb_rule_misses": 0}
+              "qb_rule_misses": 0, "n_rows": 0, "n_expected_rows": 0,
+              "n_side_inference_ambiguous": 0}
     reasons: dict[str, int] = {}
+    status_counts: dict[str, int] = {}
+    non_rusher_counts: dict[str, int] = {}
+    side_methods: dict[str, int] = {"roster": 0, "depth": 0, "motion": 0}
     sources_count = {"roster": 0, "geometry": 0}
     weighted_mean = 0.0
     n_weight = 0
@@ -871,11 +934,24 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
         res, dsum = B.derive_blockers(
             block["game"], frames=frames, players=players_chunk, plays=plays,
             frame_tol_s=tol, roster=roster)
-        parts.append(res[[*_BLOCKER_KEYS, *cols]])
+        # The derivation names its own row status/reason; the snap table exposes
+        # them as derivation_status/derivation_reason so they cannot be confused
+        # with any other status column.
+        res = res[[*_BLOCKER_KEYS, *B.BLOCKER_COLUMNS, "derivation_expected",
+                   "status", "reason"]].rename(
+            columns={"status": "derivation_status",
+                     "reason": "derivation_reason"})
+        parts.append(res)
         for key in totals:
             totals[key] += int(dsum.get(key, 0) or 0)
         for key, value in (dsum.get("reason_counts") or {}).items():
             reasons[key] = reasons.get(key, 0) + int(value)
+        for key, value in (dsum.get("status_counts") or {}).items():
+            status_counts[key] = status_counts.get(key, 0) + int(value)
+        for key, value in (dsum.get("non_rusher_reason_counts") or {}).items():
+            non_rusher_counts[key] = non_rusher_counts.get(key, 0) + int(value)
+        for key, value in (dsum.get("side_method_counts") or {}).items():
+            side_methods[key] = side_methods.get(key, 0) + int(value)
         for key, value in (dsum.get("label_source_counts") or {}).items():
             sources_count[key] = sources_count.get(key, 0) + int(value)
         dist = dsum.get("n_rushers_distribution") or {}
@@ -894,14 +970,20 @@ def _blocker_columns(cfg: Mapping, mode: str, files: Mapping | None, con,
     out = out[[*_BLOCKER_KEYS, *cols]]
     for col in ("n_rushers", "blitz", "n_blockers"):
         out[col] = pd.to_numeric(out[col], errors="coerce").astype("float64")
-    for col in ("primary_blocker_group", "primary_blocker_group_source"):
+    for col in ("primary_blocker_group", "primary_blocker_group_source",
+                "derivation_status", "derivation_reason"):
         out[col] = out[col].astype(object)
+    out["derivation_expected"] = out["derivation_expected"].astype(bool)
 
     summary["blockers"] = {
         **totals,
         "n_plays_in_table": n_table_plays,
         "n_plays_with_all22": n_all22,
         "reason_counts": dict(sorted(reasons.items())),
+        "status_counts": dict(sorted(status_counts.items())),
+        "non_rusher_reason_counts": dict(sorted(non_rusher_counts.items())),
+        "side_method_counts": side_methods,
+        "coverage_reason_code": "insufficient_tracking",
         "n_players_at_snap": at_snap,
         "n_rushers_distribution": {
             "mean": (weighted_mean / n_weight) if n_weight else None,
@@ -1173,7 +1255,8 @@ _NA_COLUMNS = ("blitz", "n_rushers", "n_blockers", "stunt",
                "in_game_speed_1_0", "in_game_speed_2_0")
 
 #: String columns whose missing value must be ``pd.NA`` (never ``"NA"``/``""``).
-_TEXT_NA_COLUMNS = ("primary_blocker_group", "primary_blocker_group_source")
+_TEXT_NA_COLUMNS = ("primary_blocker_group", "primary_blocker_group_source",
+                    "derivation_status", "derivation_reason")
 
 
 def _numeric(series: pd.Series, dtype: str) -> pd.Series:
@@ -1214,6 +1297,10 @@ def _finalise(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                 "in_game_speed_2_0"):
         if col in df.columns:
             df[col] = _numeric(df[col], "float64")
+    if "derivation_expected" in df.columns:
+        # A real bool, never a float/object column with a NaN hole.
+        df["derivation_expected"] = (df["derivation_expected"]
+                                     .fillna(False).astype(bool))
     if "garbage_time" in df.columns:
         df["garbage_time"] = df["garbage_time"].astype("boolean")
     order = [c for c in SNAP_COLUMNS if c in df.columns]

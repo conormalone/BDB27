@@ -245,6 +245,12 @@ def _markdown(summary: Mapping[str, Any]) -> str:
             f"`primary_blocker_group`: "
             f"{blockers.get('n_snaps_with_primary_blocker_group', 0)}; "
             f"blockers `NA`: {blockers.get('n_snaps_blockers_na', 0)}",
+            f"- derivation expected: "
+            f"{blockers.get('n_snaps_derivation_expected', 0)} snaps; "
+            f"non-rushers: {blockers.get('n_snaps_derivation_non_rusher', 0)}; "
+            f"expected rows with `NA` group: "
+            f"{blockers.get('n_snaps_expected_na', 0)}; side-inference "
+            f"ambiguous: {blockers.get('n_snaps_side_inference_ambiguous', 0)}",
         ]
         if blockers.get("sample_cannot_exercise"):
             lines.append(f"- `sample_cannot_exercise`: "
@@ -413,6 +419,12 @@ def main(argv=None) -> int:
                   f"{blockers.get('n_snaps_with_n_rushers', 0)}  "
                   f"blockers_na={blockers.get('n_snaps_blockers_na', 0)} "
                   f"({blockers.get('n_snaps_blockers_na', 0) / n_snaps:.4f})")
+            print(f"  derivation expected="
+                  f"{blockers.get('n_snaps_derivation_expected', 0)}  "
+                  f"non_rusher="
+                  f"{blockers.get('n_snaps_derivation_non_rusher', 0)}  "
+                  f"expected_na="
+                  f"{blockers.get('n_snaps_expected_na', 0)}")
             for name in ("coverage_rows_excluded", "null_censor_time_excluded",
                          "ttp_after_censor_demoted", "unmapped_alignment"):
                 print(f"  {name}: {excl[name]['count']}")

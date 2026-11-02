@@ -17,9 +17,10 @@ import pytest
 from dl import dl_common as D
 from dl import dl_models_core as M
 
-#: The four checks §5.4a declares, in the order the gate reports them.
+#: The five checks §5.4a declares, in the order the gate reports them.
 GATE_KEYS = ("derivation_n_rushers_mean", "derivation_n_blockers_mean",
-             "derivation_blitz_share", "derivation_na_share")
+             "derivation_blitz_share", "derivation_na_share",
+             "derivation_side_conflicts")
 
 #: The four columns the derivation writes (design §5.4a).
 COLUMNS = ("n_rushers", "blitz", "n_blockers", "primary_blocker_group")
@@ -47,17 +48,28 @@ def _column_with_mean(n: int, mean: float) -> np.ndarray:
 
 def _derivation_columns(n: int, n_rushers_mean: float = 4.0,
                         n_blockers_mean: float = 5.8, blitz_share: float = 0.31,
-                        group_na_share: float = 0.0) -> dict[str, np.ndarray]:
-    """The four derived columns, hitting the requested means by construction."""
+                        group_na_share: float = 0.0,
+                        expected_true: bool = True,
+                        n_side_conflicts: int = 0) -> dict[str, np.ndarray]:
+    """The four derived columns plus the gate-denominator bookkeeping.
+
+    ``derivation_expected`` is True everywhere by default so the distribution
+    and coverage checks keep their historical numbers; the mixed-world tests
+    set it per row explicitly.
+    """
     group = np.array(["OT", "interior", "TE", "RB"] * (n // 4 + 1))[:n]
     n_group_na = int(round(group_na_share * n))
     group = group.astype(object)
     group[:n_group_na] = np.nan
+    reason = np.full(n, None, dtype=object)
+    reason[:n_side_conflicts] = "side_inference_ambiguous"
     return {
         "n_rushers": _column_with_mean(n, n_rushers_mean),
         "n_blockers": _column_with_mean(n, n_blockers_mean),
         "blitz": _column_with_mean(n, blitz_share),
         "primary_blocker_group": group,
+        "derivation_expected": np.full(n, bool(expected_true)),
+        "derivation_reason": reason,
     }
 
 
@@ -270,3 +282,213 @@ def test_config_keys_are_required_not_defaulted():
                if k != "max_na_share"}
     with pytest.raises(KeyError):
         M.derivation_gate({"game": {"derivation_gate": partial}}, frame, "full")
+
+
+# --------------------------------------------------------------------------- #
+# The gate denominator is derivation_expected, not every row
+# --------------------------------------------------------------------------- #
+def _mixed_frame(n: int = 100, n_expected: int = 40, *,
+                 expected_na: int = 0,
+                 reps: int = 1) -> tuple[pd.DataFrame, dict]:
+    """Rusher rows (expected) plus non-rusher rows (not expected).
+
+    Every row carries in-range count columns; only the expected rows carry a
+    primary-blocker label, which is what a real snap table looks like.  The
+    non-rushers are correct classifications, not missing data.
+    """
+    frame = pd.DataFrame({
+        "nfl_id": np.arange(n),
+        "a0_icc": 0.6,
+        "event": 0,
+        "n_rushers": 4.0,
+        "n_blockers": 5.8,
+        "blitz": 0.31,
+        "primary_blocker_group": np.array(
+            ["OT", "interior"] * (n // 2 + 1))[:n].astype(object),
+        "derivation_expected": np.array([True] * n_expected
+                                        + [False] * (n - n_expected)),
+        "derivation_reason": np.array([None] * n, dtype=object),
+    })
+    # The non-rushers have no label (their counts stay play-level).
+    frame.loc[n_expected:, "primary_blocker_group"] = np.nan
+    # Optionally break a few expected rows: a rusher whose own derivation failed.
+    frame.loc[:expected_na - 1, "primary_blocker_group"] = np.nan
+    if reps > 1:
+        # The §15 gate also has player-count and median-snap conditions that no
+        # 100-row frame can satisfy.  Tiling the same mixed population keeps
+        # the derived-check numbers' proportions while making the frame a
+        # realistic gate input (distinct players in every tile).
+        parts = [frame.copy() for _ in range(reps)]
+        frame = pd.concat(parts, ignore_index=True)
+    info = {"a0": {"present": True, "non_null": len(frame), "fraction": 1.0},
+            "blitz": {"present": True, "non_null": len(frame), "fraction": 1.0}}
+    return frame, info
+
+
+def test_mixed_rusher_non_rusher_world_passes_at_zero_na_share():
+    cfg = _block()
+    frame, info = _mixed_frame()
+    dgate = M.derivation_gate(cfg, frame, "full")
+    na = dgate["checks"]["derivation_na_share"]
+
+    assert na["status"] == "PASS"
+    assert na["value"] == pytest.approx(0.0)
+    assert na["n"] == 40
+    assert na["denominator"] == "derivation_expected"
+    assert na["coverage"]["n_rows_all"] == 100
+    assert na["coverage"]["na_share_all"]["primary_blocker_group"] == \
+        pytest.approx(0.6)
+    assert na["coverage"]["non_null_all"]["primary_blocker_group"] == 40
+    assert na["columns"]["primary_blocker_group"] == pytest.approx(0.0)
+    assert na["non_null"]["primary_blocker_group"] == 40
+
+    # A 100-row frame cannot satisfy the gate's player-count / median-snap
+    # conditions, so the verdict is checked on the same population tiled to a
+    # realistic size (expected share unchanged at 40 %).
+    big, big_info = _mixed_frame(reps=150)
+    big_gate = M.derivation_gate(cfg, big, "full")
+    assert big_gate["checks"]["derivation_na_share"]["value"] == \
+        pytest.approx(0.0)
+    gate = M.gate_evaluate(cfg, mode="full", field_info=big_info, frame=big,
+                           p1={"status": "OK", "n_events": 2000},
+                           p2={"status": "OK"}, audit_decision=_audit(),
+                           derivation=big_gate)
+    assert gate["verdict"] == "GO"
+
+
+def test_failed_rusher_derivation_fails():
+    cfg = _block()
+    frame, info = _mixed_frame(expected_na=1)
+    dgate = M.derivation_gate(cfg, frame, "full")
+    na = dgate["checks"]["derivation_na_share"]
+
+    assert na["status"] == "FAIL"
+    assert na["value"] == pytest.approx(1 / 40)
+    assert na["n"] == 40
+    assert "primary_blocker_group" in na["reason"]
+    # The raw all-row share is still visible and equals (40 + 1) / 100.
+    assert na["coverage"]["na_share_all"]["primary_blocker_group"] == \
+        pytest.approx(61 / 100)
+    assert "derivation_na_share" in dgate["failing"]
+
+    gate = M.gate_evaluate(cfg, mode="full", field_info=info, frame=frame,
+                           p1={"status": "OK", "n_events": 2000},
+                           p2={"status": "OK"}, audit_decision=_audit(),
+                           derivation=dgate)
+    assert gate["verdict"] == "NO-GO"
+
+
+def test_zero_row_frame_fails_explicitly():
+    cfg = _block()
+    frame = pd.DataFrame({
+        "nfl_id": pd.Series(dtype="int64"),
+        "a0_icc": pd.Series(dtype=float),
+        "event": pd.Series(dtype="int64"),
+        "n_rushers": pd.Series(dtype=float),
+        "n_blockers": pd.Series(dtype=float),
+        "blitz": pd.Series(dtype=float),
+        "primary_blocker_group": pd.Series(dtype=object),
+        "derivation_expected": pd.Series(dtype=bool),
+        "derivation_reason": pd.Series(dtype=object),
+    })
+    dgate = M.derivation_gate(cfg, frame, "full")
+    na = dgate["checks"]["derivation_na_share"]
+    assert na["status"] == "FAIL"
+    assert na["n"] == 0
+    assert "0 rows" in na["reason"]
+    assert [v["status"] for v in dgate["checks"].values()] == \
+        ["FAIL"] * len(GATE_KEYS)
+    assert set(dgate["failing"]) == set(GATE_KEYS)
+
+
+def test_empty_expected_set_fails_by_vacuity():
+    cfg = _block()
+    frame, _ = _mixed_frame()
+    frame["derivation_expected"] = False
+    dgate = M.derivation_gate(cfg, frame, "full")
+    na = dgate["checks"]["derivation_na_share"]
+    assert na["status"] == "FAIL"
+    assert na["status"] != "PASS"
+    assert na["n"] == 0
+    assert "vacuity" in na["reason"]
+    assert "derivation_na_share" in dgate["failing"]
+
+
+def test_missing_expected_column_fails():
+    cfg = _block()
+    frame, _ = _mixed_frame()
+    frame = frame.drop(columns=["derivation_expected"])
+    dgate = M.derivation_gate(cfg, frame, "full")
+    na = dgate["checks"]["derivation_na_share"]
+    assert na["status"] == "FAIL"
+    assert "denominator is undefined" in na["reason"]
+
+
+def test_object_dtype_expected_flags_are_parsed_by_value_not_truthiness():
+    """A ``derivation_expected`` that arrives as text must not inflate the
+    denominator: ``astype(bool)`` would count every non-empty string, ``"False"``
+    included, as an expected row (85 of these 100 rows instead of 40)."""
+    cfg = _block()
+    frame, _ = _mixed_frame(expected_na=1)
+    flags = pd.Series(
+        ["True"] * 35 + [" true "] * 3 + ["1"] * 2          # 40 true rows
+        + ["False"] * 30 + ["false"] * 5 + ["0"] * 5         # false by value
+        + [None] * 5 + [np.nan] * 5                          # NA is false
+        + ["yes"] * 5 + [""] * 5,                            # other is false
+        dtype=object)
+    assert len(flags) == len(frame) == 100
+    frame["derivation_expected"] = flags
+    assert frame["derivation_expected"].dtype == object
+
+    mask = M._expected_mask(frame["derivation_expected"])
+    assert mask.dtype == bool
+    assert int(mask.sum()) == 40
+    assert mask[:40].all() and not mask[40:].any()
+    # the same helper on the native forms, unchanged
+    assert M._expected_mask(pd.Series([True, False])).tolist() == [True, False]
+    assert M._expected_mask(pd.Series([1, 0, np.nan])).tolist() == [True, False, False]
+
+    dgate = M.derivation_gate(cfg, frame, "full")
+    na = dgate["checks"]["derivation_na_share"]
+    assert na["n"] == 40                       # the 40 "True" rows, no more
+    assert na["coverage"]["n_rows_all"] == 100
+    assert na["non_null"]["primary_blocker_group"] == 39
+    assert na["columns"]["primary_blocker_group"] == pytest.approx(1 / 40)
+    assert na["value"] == pytest.approx(1 / 40)
+    assert na["coverage"]["na_share_all"]["primary_blocker_group"] == \
+        pytest.approx(61 / 100)
+    assert na["status"] == "FAIL"               # max_na_share is 0.0
+    assert "derivation_na_share" in dgate["failing"]
+
+    # Label every expected row and the same object flag column now passes.
+    frame.loc[:39, "primary_blocker_group"] = "OT"
+    na = M.derivation_gate(cfg, frame, "full")["checks"]["derivation_na_share"]
+    assert na["n"] == 40
+    assert na["value"] == pytest.approx(0.0)
+    assert na["status"] == "PASS"
+
+
+# --------------------------------------------------------------------------- #
+# The motion-only residual is a hard fail
+# --------------------------------------------------------------------------- #
+def test_side_conflict_rows_fail_the_gate():
+    cfg = _block()
+    clean, _ = _mixed_frame()
+    assert M.derivation_gate(cfg, clean, "full")[
+        "checks"]["derivation_side_conflicts"]["status"] == "PASS"
+    assert M.derivation_gate(cfg, clean, "full")[
+        "checks"]["derivation_side_conflicts"]["value"] == 0
+
+    frame, _ = _mixed_frame()
+    frame.loc[0, "derivation_reason"] = "side_inference_ambiguous"
+    check = M.derivation_gate(cfg, frame, "full")[
+        "checks"]["derivation_side_conflicts"]
+    assert check["status"] == "FAIL"
+    assert check["value"] == 1
+    assert "1 row(s)" in check["reason"]
+    assert "derivation_side_conflicts" in M.derivation_gate(
+        cfg, frame, "full")["failing"]
+
+    sample = M.derivation_gate(cfg, frame, "sample")[
+        "checks"]["derivation_side_conflicts"]
+    assert sample["status"] == "PENDING_FULL_RUN"

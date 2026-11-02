@@ -345,11 +345,26 @@ players, so sample mode costs nothing and full mode is linear in plays.
    `≥ all22_min_players` distinct players (default 20) *and* every one of them
    is classified below.  Otherwise all four columns are `NA` with reason
    `insufficient_tracking` / `unclassified_players` (the count is recorded).
-2. **Side.** `depth > +los_tolerance_yds` → defence; `< -los_tolerance_yds` →
-   offence.  Inside the band (`|depth| ≤ los_tolerance_yds`, where the two
-   lines meet) the player is classified by motion: `advance ≥
-   rush_advance_min_yd` → defence, else `advance ≤ 0` or lateral travel
-   `≥ protector_max_lateral_yd` → offence, else **unknown** (play undecidable).
+2. **Side.** A team does not change inside a play, so motion must never
+   override the pre-snap side.  Precedence, exactly:
+   1. **roster** — `players.nfl_position` in the offensive vocabulary
+      `{QB, RB, FB, HB, WR, TE, T, G, C, OT, OG, OL, LS}` → offence; in the
+      defensive vocabulary `{DE, DT, NT, DL, EDGE, OLB, ILB, MLB, LB, CB, DB,
+      S, FS, SS}` → defence.  Method `roster`.
+   2. **pre-snap depth sign** — `depth > 0` → defence, `< 0` → offence.
+      Method `depth`.  This is what keeps a bull-rushed tackle (snap depth
+      −0.5, advance +2.3) on offence and a standing-up end (snap depth +0.9)
+      on defence.
+   3. **motion**, only when `depth == 0` exactly (the sign carries no
+      information): `advance ≥ rush_advance_min_yd` → defence; otherwise
+      `advance ≤ 0` or lateral travel `≥ protector_max_lateral_yd` → offence;
+      anything else → **unknown** (play undecidable).  Method `motion`.
+   Residual: if the motion rule is the only evidence, calls a player a
+   defender and he advanced by `rush_advance_min_yd`, the row would silently
+   become a rusher.  Instead the whole play is `NA` with reason
+   `side_inference_ambiguous`, so `n_rushers` can never be contaminated.  Its
+   count is the `derivation_side_conflicts` gate check (ceiling
+   `max_side_inference_rows`, declared 0).
 3. **Rusher.** A defensive-side player with `advance ≥ rush_advance_min_yd`
    (1.5 yd inside the 1.0–2.0 s window).  `n_rushers` = count;
    `blitz = n_rushers > blitz_rusher_threshold` (4).  `n_rushers == 0` on a
@@ -385,20 +400,47 @@ players, so sample mode costs nothing and full mode is linear in plays.
    column is a **crossed random effect** (a variance component), not a
    coefficient to report.
 
+**Row statuses and expectedness.** Every row carries one of three statuses.
+`OK` is a rusher on a derivable play whose own primary blocker resolved.  `NA`
+is a structural play failure (all rows) or an engagement failure on that
+rusher's own row.  `non_rusher` is a non-rushing player on a derivable play —
+a correct classification, not a failure — with one of the reasons
+`not_defensive_player` (offence: cannot be a rusher), `not_a_pass_rush_snap`
+(only when an optional boolean `pass_rush` column is supplied and false),
+`wide_stunt` (defence, `|lateral| ≥ interior_lateral_max_yd`, no depth gain),
+`containing` (defence, `|lateral| ≥ interior_lateral_max_yd`, gained depth but
+below `rush_advance_min_yd`) or `held_at_line` (every other defensive
+non-rusher).  A non-rusher keeps the play-level `n_rushers`/`blitz`/
+`n_blockers` and never carries a label.  `derivation_expected` is `True`
+exactly on rushers of a derivable play — including a rusher whose own
+derivation failed — and `False` on every non-rusher and every row of a
+structurally `NA` play.  It is the gate denominator.
+
 `derivation_gate` (checked by `dl_models_core.derivation_gate`, wired into
 `gate_evaluate`, §15 vocabulary): mean `n_rushers` ∈ [3, 5], mean `n_blockers`
-∈ [5, 7], `blitz` share ∈ [0.25, 0.35], and `NA` share `≤ max_na_share` (0.0)
-for all four columns.  `FAIL` in full mode is `NO-GO`; in sample mode every
-item is `PENDING_FULL_RUN` with the reason (never `PASS`), because the sample
-tracks 1–4 players per play.
+∈ [5, 7] and `blitz` share ∈ [0.25, 0.35] over **all rows** (each check says
+`denominator: all_rows`).  The coverage check uses
+`derivation_expected == True` as its denominator: `value` is the worst
+per-column `NA` share over that subset, `n` is the expected-row count, and the
+ungated `coverage` block reports the raw all-row `NA` shares and non-null
+counts so the difference stays visible.  Two vacuity rules: a full-mode frame
+with no expected row (or no row at all), or one without a
+`derivation_expected` column, `FAIL`s — the gate never passes on an empty
+denominator.  `derivation_side_conflicts` counts rows whose reason is
+`side_inference_ambiguous` and must stay `≤ max_side_inference_rows` (0).
+`FAIL` in full mode is `NO-GO`; in sample mode every item is
+`PENDING_FULL_RUN` with the reason (never `PASS`), because the sample tracks
+1–4 players per play.
 
-**Fixture proof (required, not optional).** `dl_blocker_fixture.py` builds
-all-22 worlds where the true rushers, protector count, blitz flag and blocker
-assignment are known by construction: a 4-man rush with 5 protectors, a 6-man
-pressure with a back staying in, a TE-chip/double-team world, an
-ambiguous-engagement world (must be `NA`) and a truncated-tracking world (must
-be `NA`).  Recovery is asserted exactly; a mismatch is a bug, not a tolerance
-to widen.
+**Fixture proof (required, not optional).** `tests/test_dl_blockers.py` and
+`tests/test_dl_snaps_blockers.py` build all-22 worlds where the true rushers,
+protector count, blitz flag and blocker assignment are known by construction: a
+4-man rush with 5 protectors, a 6-man pressure with a back staying in, a
+TE-chip/double-team world, an ambiguous-engagement world (must be `NA`), a
+truncated-tracking world (must be `NA`), a bull-rushed tackle (must stay
+offence), a standing-up end (must be a `non_rusher`) and a
+motion-only-rusher world (must be `NA`).  Recovery is asserted exactly; a
+mismatch is a bug, not a tolerance to widen.
 
 ### 5.5 `stage_04_models.py` → `outputs/dl/models/`
 `part1_result.json`, `part2_result.json`, `cv_folds.csv`, `load_tuning.csv`,

@@ -127,11 +127,12 @@ def _write(path, columns, rows):
     return path
 
 
-def _build_world(tmp_path, *, plays, tracking=True):
+def _build_world(tmp_path, *, plays, tracking=True, extra_track=(),
+                 extra_roster=None):
     """Write players/games/player_play/tracking and return the files map."""
     pp: list[dict] = []
-    track: list[dict] = []
-    roster: dict[int, str] = {}
+    track: list[dict] = list(extra_track)
+    roster: dict[int, str] = dict(extra_roster or {})
     for spec in plays:
         _emit_play(spec["play_id"], spec["base_time"], off=spec["off"],
                    deff=spec["deff"], track=track, roster=roster)
@@ -191,10 +192,19 @@ def _single_play_world(tmp_path, *, tracking="standard", drop=(), unknown=False)
     off = _offense(range(101, 112), ["T", "G", "C", "G", "T"], drop=drop)
     deff = _defense(range(201, 212), drop=drop)
     if unknown:
-        # A player inside the LOS band whose motion neither rushes nor stays.
+        # A player exactly on the line whose motion neither rushes nor stays.  He is
+        # deliberately absent from the roster (the real tracking carries players
+        # outside the 510-player cohort), so only the motion rule can classify
+        # him -- and it cannot.
         deff = [row for row in deff if row[0] != 211]
-        deff.append((211, 44.5, 45.0, 42.0, "DT"))
         off = [row for row in off if row[0] != 111]
+        extra = [{
+            "game_id": GAME_ID, "play_id": 1, "nfl_id": 211,
+            "time": _ts(b, dt), "x": 45.0 + 0.4 * dt / TIMES[-1], "y": 42.0,
+            "s": 0.0, "event": "ball_snap" if dt == 0.0 else "NA",
+        } for dt in TIMES]
+    else:
+        extra = ()
     play = {"play_id": 1, "base_time": b, "fact_id": 101,
             "off": off, "deff": deff,
             "dl": [(201, "EDGE", 2.0), (202, "INTERIOR_LINE", "NA"),
@@ -204,7 +214,8 @@ def _single_play_world(tmp_path, *, tracking="standard", drop=(), unknown=False)
         play["deff"] = [row for row in play["deff"] if row[0] <= 204]
     elif tracking is None:
         return _build_world(tmp_path, plays=[play], tracking=False)
-    return _build_world(tmp_path, plays=[play], tracking=True)
+    return _build_world(tmp_path, plays=[play], tracking=True,
+                        extra_track=extra)
 
 
 def _stage_cfg(cfg, tmp_path):
@@ -251,12 +262,23 @@ def test_all22_play_lands_rushers_blockers_and_groups(tmp_path, cfg):
     assert df["primary_blocker_group"].nunique() == 2
     assert set(df["primary_blocker_group"]) == {"OT", "interior"}
 
+    # Every emitted row is a rusher here, so the derivation was expected on
+    # all of them and the status/reason pair also travels on the snap table.
+    assert str(df["derivation_expected"].dtype) == "bool"
+    assert df["derivation_expected"].all()
+    assert df["derivation_status"].eq("OK").all()
+    assert df["derivation_reason"].isna().all()
+
     block = summary["blockers"]
     assert block["n_plays_with_all22"] == 2
     assert block["n_plays_scored"] == 2
     assert block["n_plays_derivable"] == 2
     assert block["n_snaps_with_n_rushers"] == 8
     assert block["n_snaps_blockers_na"] == 0
+    assert block["n_snaps_derivation_expected"] == 8
+    assert block["n_snaps_derivation_non_rusher"] == 0
+    assert block["n_snaps_expected_na"] == 0
+    assert block["n_snaps_side_inference_ambiguous"] == 0
 
 
 # --------------------------------------------------------------------------- #
@@ -268,12 +290,17 @@ def test_sample_like_tracking_is_na_and_counted(tmp_path, cfg):
 
     for col in B.BLOCKER_COLUMNS:
         assert df[col].isna().all(), col
+    assert not df["derivation_expected"].any()
+    assert df["derivation_expected"].notna().all()
+    assert df["derivation_status"].eq("not_derived").all()
+    assert df["derivation_reason"].eq("insufficient_tracking").all()
     block = summary["blockers"]
     assert block["n_plays_with_all22"] == 0
     assert block["n_plays_scored"] == 0
     assert block["n_snaps_with_n_rushers"] == 0
     assert block["n_snaps_blockers_na"] == len(df)
     assert "1-4 players per play" in block["coverage_reason"]
+    assert block["coverage_reason_code"] == "insufficient_tracking"
     assert "sample_cannot_exercise" in block
 
 
@@ -300,6 +327,10 @@ def test_no_tracking_input_records_the_omission(tmp_path, cfg):
     for col in ("n_rushers", "blitz", "n_blockers",
                 "primary_blocker_group", "primary_blocker_group_source"):
         assert df[col].isna().all(), col
+    assert summary["blockers"]["coverage_reason_code"] == "no_tracking_input"
+    assert df["derivation_status"].eq("not_derived").all()
+    assert df["derivation_reason"].eq("no_tracking_input").all()
+    assert not df["derivation_expected"].any()
 
 
 # --------------------------------------------------------------------------- #
@@ -589,3 +620,108 @@ def test_te_stays_in_and_a_double_team_is_recovered(tmp_path, cfg):
     assert by_id.loc[202] == "interior"
     assert df["primary_blocker_group_source"].eq("roster").all()
     assert summary["blockers"]["n_plays_derivable"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# k. mixed play: one DL stands up, the others rush
+# --------------------------------------------------------------------------- #
+def _standing_up_track(base_time, nfl_id, x0, x1, y0, y1):
+    """Tracking rows for one player moving from (x0, y0) to (x1, y1)."""
+    rows = []
+    for dt in TIMES:
+        frac = dt / TIMES[-1]
+        rows.append({
+            "game_id": GAME_ID, "play_id": 1, "nfl_id": nfl_id,
+            "time": _ts(base_time, dt), "x": x0 + (x1 - x0) * frac,
+            "y": y0 + (y1 - y0) * frac, "s": 0.0,
+            "event": "ball_snap" if dt == 0.0 else "NA",
+        })
+    return rows
+
+
+def test_one_dl_standing_up_is_a_non_rusher_row(tmp_path, cfg):
+    """Planted world: 201-203 rush, 204 works laterally and never gains ground."""
+    b = datetime(2023, 9, 10, 13, 0, 0)
+    deff = [row for row in _defense(range(201, 212)) if row[0] != 204]
+    play = {
+        "play_id": 1, "base_time": b, "fact_id": 101,
+        "off": _offense(range(101, 112), ["T", "G", "C", "G", "T"]),
+        "deff": deff,
+        "dl": [(201, "EDGE", "NA"), (202, "INTERIOR_LINE", "NA"),
+               (203, "EDGE", "NA"), (204, "INTERIOR_LINE", "NA")],
+    }
+    # 204 stands up: depth is constant (no advance) and he travels 3.8 yd.
+    extra = _standing_up_track(b, 204, 43.7, 43.7, 34.0, 37.8)
+    files = _build_world(tmp_path, plays=[play], extra_track=extra,
+                         extra_roster={204: "DT"})
+    df, summary = S.build_snaps(cfg, "sample", files=files, with_summary=True)
+
+    assert len(df) == 4
+    assert df["n_rushers"].nunique() == 1
+    row = df.loc[df["nfl_id"] == 204].iloc[0]
+    assert row["derivation_status"] == "non_rusher"
+    assert row["derivation_expected"] == False
+    assert row["derivation_reason"] in ("wide_stunt", "containing",
+                                        "held_at_line")
+    assert pd.isna(row["primary_blocker_group"])
+
+    others = df.loc[df["nfl_id"].isin([201, 202, 203])]
+    assert others["derivation_status"].eq("OK").all()
+    assert others["derivation_expected"].all()
+    assert others["primary_blocker_group"].notna().all()
+
+    block = summary["blockers"]
+    assert block["n_snaps_derivation_expected"] == 3
+    assert block["n_snaps_derivation_non_rusher"] == 1
+    assert block["n_snaps_expected_na"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# l. the tracking CSV is read once: the blocker pass reuses TEMP TABLE track
+# --------------------------------------------------------------------------- #
+def test_blocker_columns_reuses_the_track_table_and_matches_the_csv_fallback(
+        tmp_path, cfg):
+    files = _standard_world(tmp_path)
+    con = D.duckdb_connect(cfg)
+    try:
+        con.execute(
+            "CREATE OR REPLACE TEMP VIEW pl AS "
+            f"SELECT nfl_id, nfl_position FROM read_csv_auto('{files['players']}')")
+        con.execute(
+            "CREATE OR REPLACE TEMP VIEW gm AS SELECT game_id, season, week, "
+            "home_team_abbr, visitor_team_abbr FROM "
+            f"read_csv_auto('{files['games']}')")
+        con.execute(
+            "CREATE OR REPLACE TEMP VIEW base AS SELECT game_id, play_id, "
+            "nfl_id, yardline_side, yardline_number, play_direction FROM "
+            f"read_csv_auto('{files['player_play']}', nullstr=['NA']) "
+            "WHERE blitzing IS TRUE")
+
+        tracking_summary: dict = {"omitted_columns": {}, "blockers": {},
+                                  "counts": {}}
+        S._tracking_columns(cfg, "sample", files, con, tracking_summary)
+        assert con.execute(
+            "SELECT count(*) FROM information_schema.tables "
+            "WHERE table_name = 'track'").fetchone()[0] == 1
+
+        # Direct-call path: no ``track`` table, so the CSV is read.
+        con.execute("DROP TABLE track")
+        csv_summary: dict = {"omitted_columns": {}, "blockers": {},
+                                 "counts": {}}
+        csv_path = S._blocker_columns(cfg, "sample", files, con, "base",
+                                      csv_summary)
+
+        # Stage path: ``_tracking_columns`` has just built ``track``.
+        S._tracking_columns(cfg, "sample", files, con, tracking_summary)
+        table_summary: dict = {"omitted_columns": {}, "blockers": {},
+                                   "counts": {}}
+        table_path = S._blocker_columns(cfg, "sample", files, con, "base",
+                                        table_summary)
+    finally:
+        con.close()
+
+    pd.testing.assert_frame_equal(csv_path, table_path)
+    assert csv_summary["blockers"]["n_rows"] == \
+        table_summary["blockers"]["n_rows"] > 0
+    assert csv_summary["blockers"]["n_expected_rows"] == \
+        table_summary["blockers"]["n_expected_rows"]
