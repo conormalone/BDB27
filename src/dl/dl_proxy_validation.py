@@ -55,6 +55,15 @@ from dl import dl_common as D  # noqa: E402
 STAGE = "dl_proxy_validation"
 OUT_SUBDIR = "validation"
 
+#: Provenance for this artefact.  The repo's ``mode`` stamp is about *game*
+#: tracking (sample vs full); this analysis reads the complete Combine files in
+#: both modes, so stamping it "UNVALIDATED SAMPLE OUTPUT" would be false and
+#: stamping it "FULL" would claim game data that is never opened.  Say exactly
+#: what was read instead.
+COMBINE_ONLY_PROVENANCE = ("COMBINE_ONLY: full combine_tracking.csv (10 Hz) and "
+                           "combine_results.csv; no game tracking; "
+                           "mode-independent")
+
 #: Combine positions counted in the historical-coverage question (#5).  The
 #: nflverse file uses the coarse ``DL``/``EDGE``/``OLB`` vocabulary, so all
 #: front-seven labels that can denote a defensive lineman are included and the
@@ -727,8 +736,16 @@ def main(argv=None) -> int:
 
     report = run(cfg, mode=args.mode, historical_path=historical,
                  reps=args.reps)
-    D.write_json(json_path, report, mode=args.mode, cfg=cfg)
-    D.write_markdown(md_path, render_markdown(report), mode=args.mode, cfg=cfg)
+    payload = {"provenance": COMBINE_ONLY_PROVENANCE}
+    payload.update({k: v for k, v in report.items() if k != "provenance"})
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = json_path.with_suffix(".json.tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2, default=str)
+        fh.write("\n")
+    tmp.replace(json_path)
+    md_path.write_text(f"<!-- provenance: {COMBINE_ONLY_PROVENANCE} -->\n"
+                       + render_markdown(report), encoding="utf-8")
     print(json.dumps({"json": str(json_path), "markdown": str(md_path),
                       "counts": report["counts"]}, indent=2))
     return 0
