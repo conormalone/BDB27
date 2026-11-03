@@ -187,6 +187,146 @@ def _grid_label(value: float) -> str:
     return dl_load.grid_label(value)
 
 
+# --------------------------------------------------------------------------- #
+# Part-2 NA self-documentation
+# --------------------------------------------------------------------------- #
+# A Part-2 result of NA is only useful if it says *which* stage refused and
+# *why*.  Every exit path of :func:`run_part2` therefore carries three reason
+# records -- one per definition and one for the paired comparison.  Each record
+# is a machine-readable ``code`` plus one human sentence.  When the run has
+# FULL provenance the sentence may not defer to "sample mode", a re-run or a
+# larger sample: those are not available to the reader of a full run.
+_FULL_FORBIDDEN = ("sample", "re-run", "rerun", "full data", "larger sample",
+                   "bigger sample", "more data")
+
+
+def _is_full(provenance: Any) -> bool:
+    text = str(provenance or "").strip().upper()
+    return text == "FULL" or text.startswith("FULL:")
+
+
+def _reason(code: str, message: str, *, provenance: Any = None) -> dict[str, str]:
+    """One machine-readable code plus a single-line human sentence."""
+    text = " ".join(str(message).split())
+    if not _is_full(provenance):
+        text = (text + " Sample-mode diagnostic only; no number here is a "
+                "finding.").strip()
+    return {"code": str(code), "message": text}
+
+
+def _assert_reason_is_full_safe(reason: Mapping[str, str], provenance: Any) -> None:
+    """Guard the rule that a FULL run never defers to a bigger/sample run."""
+    if not _is_full(provenance):
+        return
+    text = str(reason.get("message", "")).lower()
+    hit = next((token for token in _FULL_FORBIDDEN if token in text), None)
+    if hit:
+        raise ValueError(
+            f"FULL provenance reason {reason.get('code')!r} defers to {hit!r}: "
+            f"{reason.get('message')!r}")
+
+
+def _usable(frame: pd.DataFrame, column: str) -> int:
+    """Non-null, finite count for one column (0 when the column is absent)."""
+    if column not in frame.columns:
+        return 0
+    values = pd.to_numeric(frame[column], errors="coerce").to_numpy(float)
+    return int(np.isfinite(values).sum())
+
+
+def _load_diagnostics(data: pd.DataFrame, kind: str,
+                      grid: Sequence[float]) -> dict[str, Any]:
+    """Whether one definition's load columns can carry any value at all.
+
+    ``build_load_panel`` leaves a load column NA when the snap has no measured
+    in-game speed, when its game clock cannot sequence the player-game, or --
+    for the relative definition only -- when the rusher has no usable ceiling
+    (``vmax``/``tau``).  Counting the inputs separates "the model failed" from
+    "the exposure was never built", which is the difference a reader needs.
+    """
+    columns = [f"{kind}_load_{_grid_label(g)}" for g in grid]
+    present = [c for c in columns if c in data.columns]
+    non_null = {c: int(pd.to_numeric(data[c], errors="coerce").notna().sum())
+                for c in present}
+    out: dict[str, Any] = {
+        "columns": columns, "present": present, "non_null": non_null,
+        "any_value": int(sum(non_null.values())), "kind": kind,
+    }
+    if kind == "absolute":
+        out["measured_speed_rows"] = int(
+            (np.isfinite(pd.to_numeric(data.get("in_game_speed_1_0"),
+                                       errors="coerce").to_numpy(float))
+             & np.isfinite(pd.to_numeric(data.get("in_game_speed_2_0"),
+                                         errors="coerce").to_numpy(float))).sum())
+        out["clock_rows"] = int(
+            (pd.to_numeric(data.get("quarter"), errors="coerce").notna()
+             & pd.to_numeric(data.get("game_clock_s"), errors="coerce").notna())
+            .sum())
+    else:
+        out["ceiling_rows"] = int(
+            (np.isfinite(pd.to_numeric(data.get("vmax"), errors="coerce")
+                         .to_numpy(float))
+             & np.isfinite(pd.to_numeric(data.get("tau"), errors="coerce")
+                           .to_numpy(float))).sum())
+    return out
+
+
+def _load_reason(diag: Mapping[str, Any], n_rows: int, *,
+                 provenance: Any = None) -> dict[str, str]:
+    """The reason a definition's load column is entirely NA (or present)."""
+    kind = str(diag["kind"])
+    if diag["any_value"] > 0:
+        return _reason(
+            "OK",
+            f"{kind} load carries {diag['any_value']} non-null model rows across "
+            f"{len(diag['present'])} grid values", provenance=provenance)
+    if not diag["present"]:
+        return _reason(
+            "MISSING_LOAD_COLUMN",
+            f"the snap frame has none of the {kind}-load panel columns "
+            f"({', '.join(diag['columns'])}), so the {kind} model has no exposure "
+            "to fit", provenance=provenance)
+    if kind == "absolute":
+        detail = (f"measured in-game speed at 1.0/2.0 s on "
+                  f"{diag['measured_speed_rows']} of {n_rows} rows; a usable game "
+                  f"clock on {diag['clock_rows']} rows")
+    else:
+        detail = (f"a usable vmax/tau ceiling on {diag['ceiling_rows']} of "
+                  f"{n_rows} rows (relative load also needs measured in-game "
+                  f"speed and a usable game clock)")
+    return _reason(
+        "NO_LOAD_VALUES",
+        f"every {kind}-load grid column is NA on all {n_rows} model rows: "
+        f"{detail}; the {kind} model has no exposure and is not estimable",
+        provenance=provenance)
+
+
+def _folds_reason(fold_rows: Sequence[Mapping], n_scored: int, n_folds: int,
+                  mean_score: float | None, *, kind: str,
+                  provenance: Any = None) -> dict[str, str]:
+    """Why one definition's cross-validation did or did not score a snap."""
+    if n_scored > 0 and (mean_score is None or not np.isfinite(mean_score)):
+        return _reason(
+            "NONFINITE_SCORE",
+            f"the {kind} model scored {n_scored} held-out snaps but the mean log "
+            "score is not finite; the paired comparison cannot use it",
+            provenance=provenance)
+    if n_scored > 0:
+        return _reason(
+            "OK",
+            f"{kind} model scored {n_scored} held-out snaps across "
+            f"{n_folds} player-grouped folds", provenance=provenance)
+    statuses: dict[str, int] = {}
+    for row in fold_rows:
+        key = str(row.get("status_code") or row.get("status", "UNKNOWN")).split(":")[0]
+        statuses[key] = statuses.get(key, 0) + 1
+    detail = ", ".join(f"{k} x{v}" for k, v in sorted(statuses.items())) or "no fold"
+    return _reason(
+        "NO_SCORED_FOLDS",
+        f"the {kind} model scored no held-out snap in {n_folds} fold(s); fold "
+        f"outcomes: {detail}", provenance=provenance)
+
+
 def _ceiling_draw_mean(vmax: float, tau: float, vmax_se: float, tau_se: float,
                        t_match: Sequence[float], draws: int, rng) -> float:
     """Draw-mean Combine speed at the matched window (prereg §7).
@@ -809,6 +949,7 @@ def tune_load(train: pd.DataFrame, grid: Sequence[float], kind: str,
     usable = [r for r in rows if r["loglik"] is not None]
     if not usable:
         return {"selected": None, "rows": rows,
+                "reason_code": "NO_CANDIDATE_CONVERGED",
                 "reason": "no candidate converged in this training fold"}
     best = max(usable, key=lambda r: r["loglik"])
     return {"selected": float(best["value"]), "rows": rows,
@@ -846,25 +987,38 @@ def bootstrap_delta(per_snap: pd.DataFrame, reps: int, seed: int) -> dict:
 
 
 def cross_validate(data: pd.DataFrame, cfg: Mapping, folds: Mapping[Any, int],
-                   *, kind: str, grid: Sequence[float]) -> dict:
+                   *, kind: str, grid: Sequence[float],
+                   provenance: Any = None) -> dict:
     """Player-grouped CV for one load definition.
 
     Tuning happens inside each training fold; the selected value is applied
     unchanged to the held-out fold.  The same folds serve both definitions.
+
+    The return value carries a ``reason`` record (code + sentence) so a
+    definition that produces no held-out score says why, rather than leaving
+    ``mean_logscore = None`` to be rendered as a bare ``NA``.
     """
     fold_rows = []
     scores = []
+    fold_ids = sorted(set(folds.values()))
     for fold in sorted(set(folds.values())):
         test_mask = data["nfl_id"].map(lambda p, f=fold: folds.get(str(p)) == f).to_numpy()
         train = data.loc[~test_mask].copy()
         test = data.loc[test_mask].copy()
         if len(test) == 0 or len(train) == 0:
+            fold_rows.append({"fold": int(fold), "n_train": int(len(train)),
+                              "n_test": int(len(test)),
+                              "n_train_players": int(train["nfl_id"].nunique()),
+                              "n_test_players": int(test["nfl_id"].nunique()),
+                              "selected": None, "status": "EMPTY_FOLD",
+                              "status_code": "EMPTY_FOLD", "candidates": []})
             continue
         tuned = tune_load(train, grid, kind, cfg, with_cov=False)
         row = {"fold": int(fold), "n_train": int(len(train)), "n_test": int(len(test)),
                "n_train_players": int(train["nfl_id"].nunique()),
                "n_test_players": int(test["nfl_id"].nunique()),
                "selected": tuned["selected"], "status": tuned.get("reason", "OK"),
+               "status_code": tuned.get("reason_code", "OK"),
                "candidates": tuned["rows"]}
         if tuned["selected"] is None:
             fold_rows.append(row)
@@ -874,6 +1028,7 @@ def cross_validate(data: pd.DataFrame, cfg: Mapping, folds: Mapping[Any, int],
         te = test.loc[test[column].notna()].rename(columns={column: "load_z"})
         if len(tr) == 0 or len(te) == 0:
             row["status"] = "NO_ROWS_AT_SELECTED_VALUE"
+            row["status_code"] = "NO_ROWS_AT_SELECTED_VALUE"
             fold_rows.append(row)
             continue
         fitted = fit_p2(tr, cfg, load_column="load_z", with_cov=False,
@@ -881,6 +1036,7 @@ def cross_validate(data: pd.DataFrame, cfg: Mapping, folds: Mapping[Any, int],
                         max_iter=int(cfg["models"].get("cv_max_iter", 300)))
         if not fitted["converged"]:
             row["status"] = "NOT_CONVERGED"
+            row["status_code"] = "NOT_CONVERGED"
             fold_rows.append(row)
             continue
         Xte = align_test_design(te, fitted["design"].names,
@@ -889,6 +1045,7 @@ def cross_validate(data: pd.DataFrame, cfg: Mapping, folds: Mapping[Any, int],
             ll = per_snap_scores(fitted["fit"], te, Xte)
         except ValueError as exc:
             row["status"] = f"SCORING_FAILED: {exc}"
+            row["status_code"] = "SCORING_FAILED"
             fold_rows.append(row)
             continue
         row.update({"n_scored": int(len(ll)), "mean_logscore": float(np.mean(ll)),
@@ -908,8 +1065,13 @@ def cross_validate(data: pd.DataFrame, cfg: Mapping, folds: Mapping[Any, int],
         scores.append(pd.DataFrame(payload))
     combined = (pd.concat(scores, ignore_index=True) if scores
                 else pd.DataFrame(columns=["nfl_id", "fold", "logscore"]))
+    n_scored = int(len(combined))
+    mean_score = float(combined["logscore"].mean()) if n_scored else None
     return {"folds": fold_rows, "scores": combined,
-            "mean_logscore": float(combined["logscore"].mean()) if len(combined) else None}
+            "mean_logscore": mean_score,
+            "reason": _folds_reason(fold_rows, n_scored, len(fold_ids),
+                                    mean_score, kind=kind,
+                                    provenance=provenance)}
 
 
 # the finest key a scored snap is identified by — one row per player-snap
@@ -985,17 +1147,78 @@ def join_definition_scores(absolute: pd.DataFrame,
     return merged
 
 
-def run_part2(frame: pd.DataFrame, cfg: Mapping) -> dict:
-    """Full Part-2 comparison: same folds, both definitions, one bootstrap."""
+def run_part2(frame: pd.DataFrame, cfg: Mapping, *,
+              provenance: Any = None) -> dict:
+    """Full Part-2 comparison: same folds, both definitions, one bootstrap.
+
+    Every return path carries ``part2_reason_absolute``,
+    ``part2_reason_relative`` and ``part2_reason_comparison``: a short code and
+    one human sentence saying why that piece does or does not have a number.
+    ``provenance`` only controls wording: a FULL-provenance sentence never
+    defers to sample mode, a re-run or a larger sample.
+    """
+    reasons: dict[str, dict[str, str]] = {
+        "absolute": _reason("NOT_RUN", "the absolute model was not reached",
+                            provenance=provenance),
+        "relative": _reason("NOT_RUN", "the relative model was not reached",
+                            provenance=provenance),
+        "comparison": _reason("NOT_RUN", "the comparison was not reached",
+                              provenance=provenance),
+    }
+    # A raise propagates (a config fault is not an NA), but a returned payload
+    # can never lack its three reasons.
+    result = _run_part2(frame, cfg, provenance=provenance, reasons=reasons)
+    for key, code_key in (("absolute", "part2_reason_absolute"),
+                          ("relative", "part2_reason_relative"),
+                          ("comparison", "part2_reason_comparison")):
+        _assert_reason_is_full_safe(reasons[key], provenance)
+        result[code_key] = reasons[key]
+    return result
+
+
+def _not_estimable(reasons: dict[str, dict[str, str]], code: str,
+                   message: str, *, provenance: Any = None) -> None:
+    """Stamp one root cause on all three reason slots."""
+    for key in ("absolute", "relative", "comparison"):
+        reasons[key] = _reason(code, message, provenance=provenance)
+
+
+def _run_part2(frame: pd.DataFrame, cfg: Mapping, *,
+               provenance: Any,
+               reasons: dict[str, dict[str, str]]) -> dict:
+    """The body of :func:`run_part2`; mutates ``reasons`` on every return."""
     models = cfg["models"]
     absent = design_columns_missing(frame, cfg)
     if absent:
+        _not_estimable(
+            reasons, "MISSING_DESIGN_COLUMNS",
+            "the snap frame lacks design column(s) "
+            f"{', '.join(absent)}; the §8 specification does not drop controls, "
+            "so neither load model can be fitted",
+            provenance=provenance)
         return {"status": "NOT_ESTIMABLE",
                 "reason": ("columns absent from the snap table: "
                            + ", ".join(absent) + " — the §8 controls are part of the "
                            "specification and are not dropped")}
     prepared = ensure_a0_z(_prepare(frame, cfg, required_fields(cfg)))
     if len(prepared) == 0:
+        fields = required_fields(cfg)
+        avail = field_availability(frame, fields)
+        empty = [f for f, i in avail.items() if i["non_null"] == 0]
+        n_rows = int(len(frame))
+        n_censor = int((pd.to_numeric(frame.get("censor_time"), errors="coerce")
+                        > 0).sum()) if "censor_time" in frame.columns else 0
+        if empty:
+            why = (f"{', '.join(empty)} ha{'s' if len(empty) == 1 else 've'} no "
+                   f"usable value on any of {n_rows} rows")
+        else:
+            why = (f"every row fails the positive censoring-time requirement "
+                   f"({n_censor} of {n_rows} rows have censor_time > 0)")
+        _not_estimable(
+            reasons, "NO_COMPLETE_CASES",
+            f"no row is a complete case for the §8 control list: {why}; Part 2 "
+            "needs one row carrying every control and is dropped (prereg §15)",
+            provenance=provenance)
         return {"status": "NOT_ESTIMABLE",
                 "reason": ("no complete-case rows for the §8 control list; Part 2 "
                            "is dropped and P1 continues (prereg §15)")}
@@ -1004,6 +1227,13 @@ def run_part2(frame: pd.DataFrame, cfg: Mapping) -> dict:
     eligible = counts[counts >= min_snaps].index
     data = prepared.loc[prepared["nfl_id"].isin(eligible)].copy()
     if len(data) == 0:
+        best = int(counts.max()) if len(counts) else 0
+        _not_estimable(
+            reasons, "BELOW_MIN_SNAPS",
+            f"no rusher reaches the §9 floor of {min_snaps} primary snaps "
+            f"(largest rusher: {best} snaps) among {int(counts.size)} rushers; "
+            "Part 2 has no estimable player sample",
+            provenance=provenance)
         return {"status": "NOT_ESTIMABLE",
                 "reason": f"no rusher has >= {min_snaps} primary snaps",
                 "n_players": 0}
@@ -1017,8 +1247,20 @@ def run_part2(frame: pd.DataFrame, cfg: Mapping) -> dict:
         raise RuntimeError("prereg §7 requires equal tuning budgets: "
                            f"{len(grid_abs)} absolute vs {len(grid_rel)} relative")
 
-    abs_cv = cross_validate(data, cfg, mapping, kind="absolute", grid=grid_abs)
-    rel_cv = cross_validate(data, cfg, mapping, kind="relative", grid=grid_rel)
+    abs_diag = _load_diagnostics(data, "absolute", grid_abs)
+    rel_diag = _load_diagnostics(data, "relative", grid_rel)
+    abs_cv = cross_validate(data, cfg, mapping, kind="absolute", grid=grid_abs,
+                            provenance=provenance)
+    rel_cv = cross_validate(data, cfg, mapping, kind="relative", grid=grid_rel,
+                            provenance=provenance)
+    # A definition whose exposure is entirely NA has a load-build root cause,
+    # not a modelling failure; report that instead of "no scored folds".
+    for diag, cv in ((abs_diag, abs_cv), (rel_diag, rel_cv)):
+        if diag["any_value"] == 0:
+            cv["reason"] = _load_reason(diag, int(len(data)),
+                                        provenance=provenance)
+    reasons["absolute"] = abs_cv["reason"]
+    reasons["relative"] = rel_cv["reason"]
     result: dict[str, Any] = {
         "status": "OK", "fold_info": info,
         "n_players": int(data["nfl_id"].nunique()),
@@ -1027,13 +1269,39 @@ def run_part2(frame: pd.DataFrame, cfg: Mapping) -> dict:
         "equal_tuning_budget": len(grid_abs) == len(grid_rel),
         "absolute": abs_cv, "relative": rel_cv,
     }
-    if (abs_cv["mean_logscore"] is None) or (rel_cv["mean_logscore"] is None):
+    bad = []
+    for name, cv in (("absolute", abs_cv), ("relative", rel_cv)):
+        mean = cv["mean_logscore"]
+        if (mean is None) or (not np.isfinite(float(mean))):
+            bad.append(name)
+    if bad:
+        reasons["comparison"] = _reason(
+            "UPSTREAM_NA",
+            f"the paired comparison was not reached because the "
+            f"{' and '.join(bad)} model produced no usable held-out score",
+            provenance=provenance)
         result["status"] = "NOT_ESTIMABLE"
         result["reason"] = "at least one definition produced no held-out scores"
         return result
 
     merged = join_definition_scores(abs_cv["scores"], rel_cv["scores"])
     if merged.empty:
+        n_abs = int(len(abs_cv["scores"]))
+        n_rel = int(len(rel_cv["scores"]))
+        keys_lost = [k for k in SCORE_JOIN_KEYS
+                     if k not in abs_cv["scores"].columns
+                     or k not in rel_cv["scores"].columns]
+        if keys_lost:
+            code = "JOIN_KEYS_MISSING"
+            why = (f"the scored frames lack the snap key(s) "
+                   f"{', '.join(keys_lost)}")
+        else:
+            code = "NO_SHARED_SCORED_SNAPS"
+            why = (f"the two definitions scored {n_abs} and {n_rel} held-out "
+                   "snaps with no snap key in common")
+        reasons["comparison"] = _reason(
+            code, f"{why}; the paired absolute-vs-relative bootstrap is "
+            "undefined", provenance=provenance)
         boot = bootstrap_delta(merged, int(models["bootstrap_reps"]),
                                int(cfg["seeds"]["bootstrap"]))
         result["status"] = "NOT_ESTIMABLE"
@@ -1049,6 +1317,24 @@ def run_part2(frame: pd.DataFrame, cfg: Mapping) -> dict:
     soi = float(cfg["validate"]["equivalence"]["soi_logscore"])
     margin = float(cfg["validate"]["equivalence"]["margin_logscore"])
     point = boot["estimate"]
+    if point is None or not np.isfinite(float(point)):
+        reasons["comparison"] = _reason(
+            "NONFINITE_DELTA",
+            f"the paired comparison has {int(len(merged))} shared scored snaps "
+            "but its mean log-score difference is not finite",
+            provenance=provenance)
+        result["status"] = "NOT_ESTIMABLE"
+        result["reason"] = ("the paired difference is not finite; the "
+                            "comparison is not estimable")
+        result.update({"n_scored_snaps": int(len(merged)), "bootstrap": boot,
+                       "difference_nats_per_snap": None,
+                       "difference_interval": [None, None]})
+        return result
+    reasons["comparison"] = _reason(
+        "OK",
+        f"paired comparison estimated on {int(len(merged))} snaps that both "
+        f"definitions scored, across {int(len(set(merged['fold'])))} fold(s)",
+        provenance=provenance)
     excludes_zero = bool(boot["lo"] is not None and boot["hi"] is not None
                          and (boot["lo"] > 0 or boot["hi"] < 0))
     result.update({
