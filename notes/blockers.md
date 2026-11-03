@@ -237,3 +237,36 @@ a vendor correction. Until then, any analysis that needs the *provided* accelera
 vendor-comparable deceleration metric) is out of scope.
 
 **Related.** `notes/schema.md` §4; `notes/decisions.md` D55; `notes/limitations.md` §43.
+
+---
+
+## Go/no-go condition triggered: Part 1 power adequate only for implausibly large effects — OPEN · 2026-11-03
+
+**Status: OPEN.** Spec citation: `TASK.md` Phase 1 go/no-go — *"…or power is only adequate for implausibly large effects."*
+
+**Evidence (provenance FULL).** From the full run of 2026-11-03 and the corrected power arithmetic (`D79`, commit `0614454`):
+
+| quantity | value |
+|---|---|
+| Part 1 fit | Weibull AFT, log-normal frailty by rusher |
+| sample | 13,161 snaps · 1,135 events · 70 players |
+| estimate | HR 0.9245 [0.6787, 1.1703] per 1 SD `a0`; log −0.0785, SE 0.136 |
+| realised MDE (80% power) | **1.4638** |
+| power at prereg HR 1.10 | **10.4%** |
+| power at equivalence margin HR 1.05 | **5.5%** |
+| effective information | 1/SE² ≈ **54 units** vs 70 players, 1,135 events |
+| events needed for MDE 1.05 | ≈ **69,000** (≈61× current, ≈4,300 players) |
+
+**Why the shortfall is structural, not a modelling defect.** `a0` is a single number per player, so events do not buy information: the effective sample is the cohort. The cohort cannot be extended either:
+
+- the ceiling needs 10 Hz tracking (510 prospects, classes 2023–25);
+- the outcome needs `time_to_pressure` (NGS `player_play`, seasons 2023–25 only);
+- the free historical combine source carries no 10-yard split — `nflverse` `combine.csv` was checked on 2026-11-03: 8,968 prospects 2000–2026, columns end at `forty`, `bench`, `vertical`, `broad_jump`, `cone`, `shuttle`; `nflcombineresults.com` likewise carries no split. So no acceleration proxy exists for any earlier class.
+
+**Consequence.** The preregistered equivalence claim (HR 1.05) is unreachable in this dataset by roughly an order of magnitude, and the confirmatory hypothesis cannot be rejected or supported. Per the go/no-go rule this is a stop condition for Part 1 as a *confirmatory* claim.
+
+**Not closed because** closing it requires more players with both a fitted ceiling and in-game pressure, which no permitted data source provides.
+
+**Decision needed** (to be recorded in `decisions.md` once taken): whether Part 1 is reported as non-confirmatory/descriptive with the equivalence claim withdrawn, or the paper leads on the measurement contribution and Part 2 instead.
+
+**Related.** `notes/decisions.md` D79; `outputs/audit/k_power.csv`; the open Part-2 `NA` (no reason recorded yet); `notes/pending_full_run.md`.
