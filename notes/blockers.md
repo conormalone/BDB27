@@ -270,3 +270,11 @@ vendor-comparable deceleration metric) is out of scope.
 **Decision needed** (to be recorded in `decisions.md` once taken): whether Part 1 is reported as non-confirmatory/descriptive with the equivalence claim withdrawn, or the paper leads on the measurement contribution and Part 2 instead.
 
 **Related.** `notes/decisions.md` D79; `outputs/audit/k_power.csv`; the open Part-2 `NA` (no reason recorded yet); `notes/pending_full_run.md`.
+
+**Scope of this blocker — Part 1 only (2026-11-03).** The effective-information argument is a
+*player-level* statement and binds only the first primary question, where the exposure (`a0`) is
+constant within a player. It does **not** extend to the second primary question: in-game load varies
+within a player-game, so the decay estimate draws on game-level sequences — 1,001 games,
+14,677 plays and 17,159 rush snaps in the full Phase-3 table — not on 70 player constants. Part 2's
+power must be computed on its own terms (snap/game-level information for the load coefficient,
+player-level bootstrap for the model comparison) and is not settled by this entry.
