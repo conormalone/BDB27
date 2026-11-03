@@ -31,6 +31,7 @@ Standalone::
 from __future__ import annotations
 
 import csv
+import json
 import math
 import sys
 from pathlib import Path
@@ -213,21 +214,109 @@ def mde_log_hr(events: float, alpha: float, power: float,
                design_effect: float) -> float:
     """Minimum detectable log hazard ratio on the log-hazard scale.
 
-    ``(z_{1-alpha/2} + z_power) / (sqrt(E) * sqrt(design_effect))`` with ``E``
-    the observed number of events and ``design_effect`` inflating the variance.
+    ``(z_{1-alpha/2} + z_power) * sqrt(design_effect) / sqrt(E)`` with ``E``
+    the observed number of events.
+
+    ``design_effect`` is a **variance-inflating** factor (``dl-design.md``
+    §"power": clustered events carry no more information than ``E / DE``
+    independent ones), so it multiplies the standard error by
+    ``sqrt(design_effect)`` and therefore *increases* the MDE.  ``DE = 1``
+    reduces to the simple-random-sample form ``(z_a + z_p) / sqrt(E)``.
     """
     if events <= 0:
         return float("inf")
     if design_effect <= 0:
         raise ValueError("design_effect must be positive")
     return float((_z(1.0 - alpha / 2.0) + _z(power))
-                 / (math.sqrt(float(events)) * math.sqrt(float(design_effect))))
+                 * math.sqrt(float(design_effect)) / math.sqrt(float(events)))
 
 
 def mde_hr(events: float, alpha: float, power: float,
            design_effect: float) -> float:
     """Minimum detectable hazard ratio (``exp`` of :func:`mde_log_hr`)."""
     return float(math.exp(mde_log_hr(events, alpha, power, design_effect)))
+
+
+def mde_log_hr_realised(log_se: float, alpha: float, power: float) -> float:
+    """Minimum detectable log-HR from a *fitted* Part-1 model's own log-SE.
+
+    ``(z_{1-alpha/2} + z_power) * log_se``.  ``log_se`` already contains the
+    clustering the model actually observed (frailty / clustered SE), so no
+    design effect is applied on top: applying the configured one as well would
+    double-count it.  This is the honest basis once a fit exists.
+    """
+    try:
+        se = float(log_se)
+    except (TypeError, ValueError):
+        return float("inf")
+    if not math.isfinite(se) or se <= 0:
+        return float("inf")
+    return float((_z(1.0 - alpha / 2.0) + _z(power)) * se)
+
+
+def mde_hr_realised(log_se: float, alpha: float, power: float) -> float:
+    """``exp`` of :func:`mde_log_hr_realised`."""
+    return float(math.exp(mde_log_hr_realised(log_se, alpha, power)))
+
+
+def implied_design_effect(log_se: float, events: float) -> float:
+    """Design effect implied by a fitted log-SE against the SRS benchmark.
+
+    The simple-random-sample log-HR standard error is ``2 / sqrt(E)``; the
+    variance ratio ``(log_se / (2 / sqrt(E)))**2`` is the design effect the
+    data actually show.  Compared with ``power.design_effect`` it says whether
+    the configured value understates clustering.  Non-estimable inputs give
+    NaN rather than a silently plausible number.
+    """
+    try:
+        se, ev = float(log_se), float(events)
+    except (TypeError, ValueError):
+        return float("nan")
+    if not (math.isfinite(se) and math.isfinite(ev)) or se <= 0 or ev <= 0:
+        return float("nan")
+    return float((se / (2.0 / math.sqrt(ev))) ** 2)
+
+
+def read_part1_log_se(models_dir: Path) -> tuple[float | None, str]:
+    """Fitted Part-1 ``estimate.log_se`` from ``part1_result.json``.
+
+    Returns ``(log_se, provenance)`` when a finite, positive fitted log-SE is
+    available, else ``(None, reason)``.  The realised MDE is then reported as
+    NOT RUN with that reason — never a guessed default, because a guessed SE
+    would silently manufacture a power verdict the data did not supply.
+    The top-level ``estimate`` wins; otherwise the rung marked ``used`` (or,
+    failing that, the first converged rung) supplies it.
+    """
+    path = Path(models_dir) / "part1_result.json"
+    if not path.exists():
+        return None, f"{path.name} absent — stage 04 has no Part-1 fit yet"
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except (OSError, ValueError) as exc:
+        return None, f"{path.name} unreadable ({type(exc).__name__})"
+    if not isinstance(payload, dict):
+        return None, f"{path.name} is not a JSON object"
+
+    candidates: list[dict] = []
+    top = payload.get("estimate")
+    if isinstance(top, dict):
+        candidates.append(top)
+    rungs = payload.get("rungs") or []
+    if isinstance(rungs, list):
+        for rung in rungs:
+            est = rung.get("estimate") if isinstance(rung, dict) else None
+            if isinstance(est, dict) and (rung.get("used")
+                                          or rung.get("converged")):
+                candidates.append(est)
+    for est in candidates:
+        try:
+            se = float(est.get("log_se"))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(se) and se > 0:
+            return se, f"estimate.log_se={se:.6g} from {path.name}"
+    return None, f"{path.name} carries no finite estimate.log_se"
 
 
 def attenuation_factor(icc: float | None) -> float:
@@ -941,15 +1030,71 @@ def item_k(cfg: dict, mode: str, out_dir: Path, ctx: dict, icc: dict) -> dict:
                  "unit": "snaps", "finding_status": "NA", "basis": basis,
                  "note": "Part-2 sample size"})
 
+    # Prospective MDE: observed events + the *configured* design effect.  Kept
+    # under the historic row name ``part1_mde_hr`` as well as the explicit
+    # ``part1_mde_hr_prospective`` so older readers keep working.
     log_hr = mde_log_hr(events, alpha, power, de)
     hr = math.exp(log_hr)
-    hr_status = PASS if hr <= smallest_hr and hr <= max_hr else FAIL
-    rows.append({"quantity": "part1_mde_hr", "estimate": _num(hr),
-                 "threshold": smallest_hr, "unit": "hazard ratio per 1 SD a0",
-                 "finding_status": hr_status, "basis": basis,
-                 "note": (f"MDE log-HR {log_hr:.4f}; alpha={alpha:g}, "
-                          f"power={power:g}, design_effect={de:g}; "
-                          f"audit.max_mde_hr={max_hr:g}")})
+    prospective_status = PASS if hr <= smallest_hr and hr <= max_hr else FAIL
+    prospective_note = (f"MDE log-HR {log_hr:.4f}; alpha={alpha:g}, "
+                        f"power={power:g}, design_effect={de:g} (configured); "
+                        f"audit.max_mde_hr={max_hr:g}")
+    for quantity in ("part1_mde_hr_prospective", "part1_mde_hr"):
+        rows.append({"quantity": quantity, "estimate": _num(hr),
+                     "threshold": smallest_hr,
+                     "unit": "hazard ratio per 1 SD a0",
+                     "finding_status": prospective_status, "basis": basis,
+                     "note": (prospective_note if quantity.endswith(
+                         "prospective") else
+                         f"{prospective_note}; alias of "
+                         f"part1_mde_hr_prospective")})
+
+    # Realised MDE: the fitted Part-1 model's own log-SE.  It already carries
+    # the observed clustering, so no configured design effect is applied.
+    models_dir = Path(ctx.get("models_dir") or (out_dir.parent / "models"))
+    log_se_fit, log_se_src = read_part1_log_se(models_dir)
+    if log_se_fit is not None:
+        realised_log_hr = mde_log_hr_realised(log_se_fit, alpha, power)
+        realised_hr: float | None = math.exp(realised_log_hr)
+        realised_status = (PASS if realised_hr <= smallest_hr
+                           and realised_hr <= max_hr else FAIL)
+        realised_basis = f"fitted Part-1 log-SE ({log_se_src})"
+        realised_note = (f"MDE log-HR {realised_log_hr:.4f} = "
+                         f"(z_a + z_p) * log_se; the fitted log-SE already "
+                         f"includes the observed clustering, so the configured "
+                         f"design effect is not applied on top; "
+                         f"audit.max_mde_hr={max_hr:g}")
+    else:
+        realised_log_hr = float("inf")
+        realised_hr = None
+        realised_status = NOT_RUN
+        realised_basis = "no fitted Part-1 model"
+        realised_note = f"NOT RUN: {log_se_src}. Not guessed."
+    rows.append({"quantity": "part1_mde_hr_realised",
+                 "estimate": _num(realised_hr), "threshold": smallest_hr,
+                 "unit": "hazard ratio per 1 SD a0",
+                 "finding_status": realised_status, "basis": realised_basis,
+                 "note": realised_note})
+
+    implied_de = (implied_design_effect(log_se_fit, events)
+                  if log_se_fit is not None else float("nan"))
+    implied_ok = math.isfinite(implied_de)
+    rows.append({"quantity": "part1_design_effect_configured",
+                 "estimate": _num(de), "threshold": "",
+                 "unit": "variance inflation", "finding_status": "NA",
+                 "basis": "power.design_effect / audit.design_effect",
+                 "note": "value used by the prospective MDE"})
+    rows.append({"quantity": "part1_design_effect_implied",
+                 "estimate": _num(implied_de) if implied_ok else "",
+                 "threshold": "", "unit": "variance inflation",
+                 "finding_status": "NA" if implied_ok else NOT_RUN,
+                 "basis": (f"(log_se / (2/sqrt(E)))**2 with {log_se_src}"
+                           if implied_ok else
+                           "needs a fitted Part-1 log-SE"),
+                 "note": ("design effect the fitted log-SE actually implies; "
+                          "an implied value above the configured one means the "
+                          "configured design effect understates clustering"
+                          if implied_ok else f"NOT RUN: {log_se_src}")})
 
     icc_a0 = icc.get("a0")
     log_att = attenuated_log_hr(log_hr, icc_a0)
@@ -977,12 +1122,36 @@ def item_k(cfg: dict, mode: str, out_dir: Path, ctx: dict, icc: dict) -> dict:
                           "explicit assumption, config-overridable via "
                           "power.sd_logscore_per_snap")})
 
-    overall = FAIL if any(r["finding_status"] == FAIL for r in rows) else PASS
+    # Part-1 power is decided by the realised MDE whenever a fitted log-SE
+    # exists; the prospective number is then context, not the verdict.
+    if realised_hr is not None:
+        part1_status = realised_status
+        part1_decider = "part1_mde_hr_realised"
+    else:
+        part1_status = prospective_status
+        part1_decider = "part1_mde_hr_prospective"
+
+    statuses = [part1_status, att_status, ls_status]
+    overall = FAIL if FAIL in statuses else PASS
     if overall == FAIL:
         notes.append("at least one MDE exceeds its prereg smallest effect")
+    if realised_hr is not None and realised_status == FAIL:
+        notes.append(f"Part 1 is underpowered at this sample size: realised "
+                     f"MDE HR {realised_hr:.3f} (log-SE {log_se_fit:.4f}) "
+                     f"exceeds smallest_effect_hr {smallest_hr:g} / "
+                     f"max_mde_hr {max_hr:g}")
+    notes.append(f"Part-1 power status decided on {part1_decider} "
+                 f"(prospective HR {hr:.3f}"
+                 + (f", realised HR {realised_hr:.3f}"
+                    if realised_hr is not None else
+                    f", realised not run: {log_se_src}") + ")")
+    if implied_ok:
+        notes.append(f"design effect: configured {de:g}, implied by the "
+                     f"fitted log-SE {implied_de:.2f}")
     notes.append(f"E={events}, n_snaps={n_snaps} ({basis})")
-    notes.append("MDE formula as specified in Phase 1k: the design effect "
-                 "enters as a divisor (sqrt(E)*sqrt(design_effect))")
+    notes.append("MDE formula: design effect inflates the SE "
+                 "(sqrt(DE)/sqrt(E)); the realised MDE uses the fitted log-SE "
+                 "and applies no design effect")
     out = D.write_csv(out_dir / "k_power.csv", rows, K_FIELDS, mode=mode, cfg=cfg)
     return {"status": overall, "artefacts": [str(out)], "notes": notes}
 

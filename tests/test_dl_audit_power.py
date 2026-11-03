@@ -7,6 +7,7 @@ One integration test runs the real items g and h and skips cleanly when
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 from statistics import NormalDist
@@ -30,12 +31,48 @@ def test_mde_log_hr_matches_closed_form():
     assert A.mde_hr(100, 0.05, 0.80, 1.0) == pytest.approx(math.exp(expected))
 
 
-def test_mde_hr_includes_design_effect():
-    # Literal spec form: (z_a + z_b) / (sqrt(E) * sqrt(design_effect)).
-    expected = math.exp(Z / math.sqrt(100 * 1.3))
-    assert A.mde_hr(100, 0.05, 0.80, 1.3) == pytest.approx(expected)
-    assert A.mde_hr(100, 0.05, 0.80, 2.0) == pytest.approx(
-        math.exp(Z / math.sqrt(200)))
+def test_mde_increases_with_design_effect():
+    # DE inflates the variance, so it multiplies the SE and the MDE.
+    # (The pre-fix blob divided by sqrt(DE) and failed this test.)
+    base = A.mde_log_hr(200, 0.05, 0.80, 1.0)
+    assert A.mde_log_hr(200, 0.05, 0.80, 1.3) == pytest.approx(
+        base * math.sqrt(1.3))
+    values = [A.mde_log_hr(200, 0.05, 0.80, de)
+              for de in (1.0, 1.3, 2.0, 4.0, 9.0)]
+    assert all(b > a for a, b in zip(values, values[1:]))
+
+
+def test_mde_design_effect_four_is_exactly_double():
+    # sqrt(4) = 2: a four-fold variance inflation doubles the MDE.
+    de1 = A.mde_log_hr(150, 0.05, 0.80, 1.0)
+    de4 = A.mde_log_hr(150, 0.05, 0.80, 4.0)
+    assert de4 == pytest.approx(2.0 * de1, rel=1e-12)
+    assert A.mde_hr(150, 0.05, 0.80, 4.0) == pytest.approx(
+        A.mde_hr(150, 0.05, 0.80, 1.0) ** 2, rel=1e-12)
+
+
+def test_realised_mde_uses_the_fitted_log_se():
+    for se in (0.05, 0.10, 0.1361):
+        assert A.mde_log_hr_realised(se, 0.05, 0.80) == pytest.approx(Z * se)
+    # Doubling the log-SE doubles the realised MDE (no design effect applied).
+    one = A.mde_log_hr_realised(0.07, 0.05, 0.80)
+    two = A.mde_log_hr_realised(0.14, 0.05, 0.80)
+    assert two == pytest.approx(2.0 * one)
+    assert A.mde_hr_realised(0.07, 0.05, 0.80) == pytest.approx(math.exp(one))
+    # Degenerate inputs are not silently plausible.
+    assert A.mde_log_hr_realised(0.0, 0.05, 0.80) == float("inf")
+    assert A.mde_log_hr_realised(float("nan"), 0.05, 0.80) == float("inf")
+    assert A.mde_hr_realised(None, 0.05, 0.80) == float("inf")
+
+
+def test_implied_design_effect_hand_calculation():
+    se, events = 0.136, 1135
+    expected = (se / (2 / math.sqrt(events))) ** 2
+    assert A.implied_design_effect(se, events) == pytest.approx(expected)
+    assert A.implied_design_effect(se, events) == pytest.approx(5.24, abs=0.02)
+    assert math.isnan(A.implied_design_effect(0.0, events))
+    assert math.isnan(A.implied_design_effect(se, 0))
+    assert math.isnan(A.implied_design_effect(float("nan"), events))
 
 
 def test_mde_requires_events():
@@ -174,6 +211,58 @@ def test_icc_row_marks_zero_icc_unattenuable():
                     reps=10, seed=3)
     assert float(row["icc"]) >= 0.0
     assert A.attenuated_log_hr(0.05, 0.0) == float("inf")
+
+
+# --------------------------------------------------------------------------- #
+# Item k wiring — realised vs prospective MDE
+# --------------------------------------------------------------------------- #
+def _k_fixture(tmp_path, monkeypatch, events, log_se=None):
+    cfg = D.load_config()
+    out = tmp_path / "audit"
+    out.mkdir()
+    models = tmp_path / "models"
+    models.mkdir()
+    if log_se is not None:
+        (models / "part1_result.json").write_text(
+            json.dumps({"rungs": [{"used": True, "converged": True,
+                                   "estimate": {"log_se": log_se}}]}),
+            encoding="utf-8")
+    monkeypatch.setattr(A, "_snaps_stats",
+                        lambda *a, **k: {"n_snaps": 4000, "events": events})
+    res = A.item_k(cfg, "sample", out,
+                   {"outputs_dir": out, "models_dir": models}, {"a0": 1.0})
+    rows = pd.read_csv(out / "k_power.csv").set_index("quantity")
+    return cfg, res, rows
+
+
+def test_item_k_realised_mde_drives_the_status(tmp_path, monkeypatch):
+    cfg, res, rows = _k_fixture(tmp_path, monkeypatch, events=1135,
+                                log_se=0.136)
+    pblk = D.dl(cfg)["power"]
+    alpha, power = float(D.dl(cfg)["audit"]["alpha"]), 0.80
+    # Both bases are reported; the realised one is the fitted-SE number.
+    assert {"part1_mde_hr_prospective", "part1_mde_hr",
+            "part1_mde_hr_realised"} <= set(rows.index)
+    assert rows.loc["part1_mde_hr_realised", "estimate"] == pytest.approx(
+        A.mde_hr_realised(0.136, alpha, power), rel=1e-4)
+    assert rows.loc["part1_design_effect_configured", "estimate"] == \
+        pytest.approx(float(pblk["design_effect"]))
+    assert rows.loc["part1_design_effect_implied", "estimate"] == \
+        pytest.approx(5.25, abs=0.05)
+    # Realised MDE (HR ~1.46) exceeds audit.max_mde_hr (1.15) → FAIL, said
+    # plainly rather than reworded into a pass.
+    assert rows.loc["part1_mde_hr_realised", "finding_status"] == A.FAIL
+    assert res["status"] == A.FAIL
+    assert any("underpowered at this sample size" in n for n in res["notes"])
+
+
+def test_item_k_without_a_fit_reports_realised_as_not_run(tmp_path,
+                                                          monkeypatch):
+    _cfg, res, rows = _k_fixture(tmp_path, monkeypatch, events=3000,
+                                 log_se=None)
+    assert rows.loc["part1_mde_hr_realised", "finding_status"] == A.NOT_RUN
+    assert pd.isna(rows.loc["part1_mde_hr_realised", "estimate"])  # no guess
+    assert any("realised not run" in str(n) for n in res["notes"])
 
 
 # --------------------------------------------------------------------------- #

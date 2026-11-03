@@ -336,21 +336,40 @@ def build_items(cfg: Mapping, mode: str, ab: dict, ce: dict, f: dict,
     pblk = D.dl(cfg)["power"]
     sh, sl = float(pblk["smallest_effect_hr"]), float(
         pblk["smallest_effect_logscore"])
-    hr = hr_att = ls = None
+    hr_prosp = hr_realised = hr_att = ls = None
+    de_conf = de_impl = None
     for r in _read_csv(out / "k_power.csv"):
         val, q = _float(r["estimate"]), r["quantity"]
-        if q == "part1_mde_hr":
-            hr = val
+        if q == "part1_mde_hr_realised":
+            hr_realised = val
+        elif q == "part1_mde_hr_prospective":
+            hr_prosp = val
+        elif q == "part1_mde_hr" and hr_prosp is None:
+            hr_prosp = val          # legacy row name, same number
         elif q == "part1_mde_hr_after_attenuation":
             hr_att = val
         elif q == "part2_mde_logscore":
             ls = val
+        elif q == "part1_design_effect_configured":
+            de_conf = val
+        elif q == "part1_design_effect_implied":
+            de_impl = val
+
+    # The realised MDE (fitted Part-1 log-SE) is the deciding number whenever
+    # stage 04 has produced a fit; the prospective one is the fallback.
+    hr = hr_realised if hr_realised is not None else hr_prosp
+    hr_basis = ("part1_mde_hr_realised" if hr_realised is not None
+                else "part1_mde_hr_prospective")
     cap = min(sh, max_hr)
     part1 = (PENDING if None in (hr, hr_att) else
              PASS if hr <= cap and hr_att <= cap else FAIL)
     part2 = PENDING if ls is None else (PASS if ls <= sl else FAIL)
-    detail = {"part1": {"status": part1, "mde_hr": hr,
+    detail = {"part1": {"status": part1, "basis": hr_basis, "mde_hr": hr,
+                        "mde_hr_prospective": hr_prosp,
+                        "mde_hr_realised": hr_realised,
                         "mde_hr_attenuated": hr_att,
+                        "design_effect_configured": de_conf,
+                        "design_effect_implied": de_impl,
                         "smallest_effect_hr": sh, "max_mde_hr": max_hr},
               "part2": {"status": part2, "mde_logscore": ls,
                         "smallest_effect_logscore": sl}}
@@ -358,17 +377,19 @@ def build_items(cfg: Mapping, mode: str, ab: dict, ce: dict, f: dict,
         k = _item(PENDING, "power not estimable without pressure events",
                   **detail)
     elif part1 == FAIL:
-        k = _item(FAIL, f"Part 1 MDE HR {hr:.3f} (attenuated {hr_att}) "
-                        f"exceeds smallest_effect_hr {sh:g} / max_mde_hr "
-                        f"{max_hr:g}: power only adequate for implausibly "
-                        "large effects", **detail)
+        k = _item(FAIL, f"Part 1 is underpowered at this sample size: "
+                        f"{hr_basis} MDE HR {hr:.3f} exceeds "
+                        f"smallest_effect_hr {sh:g} / max_mde_hr {max_hr:g} "
+                        f"(prospective HR {hr_prosp}, attenuated "
+                        f"{hr_att})", **detail)
     elif part1 != PASS:
         k = _item(PENDING, "Part 1 attenuation not estimable — ICC pending",
                   **detail)
     elif part2 == FAIL:
         k = _item(PASS_WITH_CAVEAT, K_PART2_CAVEAT, **detail)
     else:
-        k = _item(PASS, f"Part 1 MDE HR {hr:.3f} (attenuated {hr_att:.3f}) "
+        k = _item(PASS, f"Part 1 {hr_basis} MDE HR {hr:.3f} "
+                        f"(attenuated {hr_att:.3f}) "
                         f"and Part 2 MDE log-score {ls:.4f} within smallest "
                         f"effects {sh:g} / {sl:g}", **detail)
 
@@ -390,7 +411,12 @@ def build_items(cfg: Mapping, mode: str, ab: dict, ce: dict, f: dict,
         "median_snap_share": share,
         "tracking_snap_coverage": None,
         "a0_icc": a0, "icc_min": icc_min,
-        "part1_mde_hr": hr, "part1_mde_hr_attenuated": hr_att,
+        "part1_mde_hr": hr, "part1_mde_hr_basis": hr_basis,
+        "part1_mde_hr_prospective": hr_prosp,
+        "part1_mde_hr_realised": hr_realised,
+        "part1_design_effect_configured": de_conf,
+        "part1_design_effect_implied": de_impl,
+        "part1_mde_hr_attenuated": hr_att,
         "part2_mde_logscore": ls, "max_mde_hr": max_hr,
         "min_snap_coverage_share": min_cover,
         "d2": {k2: v for k2, v in d2.items() if k2 != "table"},
@@ -449,7 +475,9 @@ def decide(items: Mapping[str, Mapping], counts: Mapping, cfg: Mapping) -> dict:
 
     hr = counts.get("part1_mde_hr")
     if hr is not None and hr > float(audit["max_mde_hr"]):
-        no_go.append(f"k: Part 1 MDE HR {hr:.3f} > max_mde_hr "
+        basis = counts.get("part1_mde_hr_basis") or "MDE"
+        no_go.append(f"k: Part 1 is underpowered at this sample size — "
+                     f"{basis} HR {hr:.3f} > max_mde_hr "
                      f"{audit['max_mde_hr']} (adequate only for implausible HR)")
 
     cov = counts.get("tracking_snap_coverage")
@@ -614,9 +642,15 @@ def _summary(cfg: Mapping, mode: str, items: Mapping, gate: Mapping,
               f"- Part 2 status: **{gate['part2_status']}**", ""]
 
     lines += ["## Power (item k)", "",
-              f"- Part 1 MDE hazard ratio: "
+              f"- Part 1 MDE hazard ratio (decided on "
+              f"`{counts.get('part1_mde_hr_basis', 'n/a')}`): "
               f"{counts['part1_mde_hr'] if counts['part1_mde_hr'] is not None else 'not estimable'}"
-              f" (max `audit.max_mde_hr = {audit['max_mde_hr']}`)",
+              f" (max `audit.max_mde_hr = {audit['max_mde_hr']}`); "
+              f"prospective {counts.get('part1_mde_hr_prospective')}, "
+              f"realised {counts.get('part1_mde_hr_realised')}",
+              f"- design effect: configured "
+              f"{counts.get('part1_design_effect_configured')}, implied by the "
+              f"fitted log-SE {counts.get('part1_design_effect_implied')}",
               f"- Part 2 MDE log-score: {counts.get('part2_mde_logscore')} "
               f"(k.part2 = {(items['k'].get('part2') or {}).get('status')}); "
               "Part 2 never gates Phase 1.", ""]
