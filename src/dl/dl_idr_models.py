@@ -201,6 +201,27 @@ def build_idr_frame(frame: pd.DataFrame, cfg: Mapping, window: int
     """
     cfg = _cfg(cfg)
     work = frame.copy()
+    # A Phase-3 build always writes these columns.  If one is absent (a snap
+    # table from an older build, or Phase 3 did not run) the honest result is
+    # NOT_ESTIMABLE with a reason — never a bare KeyError from deep inside the
+    # load/rest arithmetic.
+    required = [str(cfg["load_column"]), str(cfg["rest_column"]),
+                "deficit_ratio"]
+    missing = [name for name in required if name not in work.columns]
+    if missing:
+        report = {
+            "window": int(window),
+            "n_rows_in": int(len(work)),
+            "n_complete": 0,
+            "n_players": 0,
+            "n_games": 0,
+            "missing_columns": missing,
+            "status": "NOT_ESTIMABLE",
+            "reason": ("snap table is missing the Phase-3 column(s) "
+                       f"{', '.join(missing)}; the Part-1 model cannot be "
+                       "estimated on this table (Phase 3 did not run)"),
+        }
+        return work.iloc[0:0].copy(), report
     work["_idr_load"] = rolling_load(work, window)
     work["_idr_rest"] = pd.to_numeric(work[str(cfg["rest_column"])],
                                       errors="coerce")

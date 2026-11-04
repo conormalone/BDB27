@@ -92,9 +92,10 @@ def within_player_order_permutation(frame: pd.DataFrame, cfg: Mapping) -> dict:
     (:func:`dl.dl_idr_validate.rest_permutation`), which is implemented.
     """
     raise CheckNotImplemented(
-        "within-player snap-ORDER permutation is NOT IMPLEMENTED in this build "
-        "and is not asked for by TASK.md (2026-11-04): the binding Phase-5 "
-        "item shuffles inter-snap REST within (rusher, game), not snap order")
+        "the within player order permutation (snap ORDER shuffled inside each "
+        "player-game) is NOT IMPLEMENTED in this build and is not asked for "
+        "by TASK.md (2026-11-04): the binding Phase-5 item shuffles inter-snap "
+        "REST within (rusher, game), not snap order")
 
 
 def cv_vs_controls_only_baseline(frame: pd.DataFrame, cfg: Mapping) -> dict:

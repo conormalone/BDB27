@@ -382,11 +382,22 @@ def rest_permutation(frame: pd.DataFrame, block: Mapping, *,
         return {"status": "NOT_ESTIMABLE", "reason": "empty snap table",
                 "design": design}
 
+    idr_defaults = IDR._cfg(idr_cfg)
+    rest_col = str(idr_defaults["rest_column"])
+    required = [str(idr_defaults["load_column"]), rest_col, "deficit_ratio"]
+    missing = [name for name in required if name not in frame.columns]
+    if missing:
+        return {"status": "NOT_ESTIMABLE",
+                "reason": ("snap table is missing the Phase-3 column(s) "
+                           f"{', '.join(missing)}; rest cannot be shuffled "
+                           "or the interaction refitted (Phase 3 did not run)"),
+                "design": design}
+
     blocks = block_indices(frame, columns)
     n_blocks = len(blocks)
     n_singleton_blocks = 0
     n_snaps_singleton = 0
-    rest_values = pd.to_numeric(frame[str(IDR._cfg(idr_cfg)["rest_column"])],
+    rest_values = pd.to_numeric(frame[rest_col],
                                 errors="coerce").to_numpy(dtype=float)
     for idx in blocks.values():
         if int(np.isfinite(rest_values[idx]).sum()) < 2:

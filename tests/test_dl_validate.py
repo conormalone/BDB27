@@ -179,7 +179,7 @@ def test_permutation_is_deterministic_for_a_fixed_seed(tmp_path):
 # --------------------------------------------------------------------------- #
 def test_stage_writes_honest_artefacts(tmp_path):
     cfg = _config("planted", tmp_path)
-    cfg["bdb27_dl"]["validate"]["permutations"]["sample_reps"] = 3
+    cfg["bdb27_dl"]["validate"]["rest_permutation"]["sample_reps"] = 2
     outcome = V.run(cfg, "sample", force=True)
     assert outcome["skipped"] is False
     out = outcome["path"]
@@ -188,7 +188,22 @@ def test_stage_writes_honest_artefacts(tmp_path):
     assert result["provenance"].startswith("PLACEHOLDER_SAMPLE")
     assert result["reportable"] is False
     assert result["verdict"] == "NOT_INTERPRETED_SAMPLE"
-    assert result["ceiling_permutation"]["status"] == "OK"
+    # This committed fixture world predates the Phase-3 columns the binding
+    # stage consumes (`rep_kinematic_load_w_per_kg`, `inter_snap_rest_s`,
+    # `deficit_ratio`).  A real Phase-3 build always writes them; on a table
+    # that lacks them the stage must say NOT_ESTIMABLE with a reason naming
+    # the missing columns — never crash with a bare KeyError, never report a
+    # number.
+    rest = result["rest_permutation"]
+    assert rest["status"] == "NOT_ESTIMABLE"
+    assert "rep_kinematic_load_w_per_kg" in rest["reason"]
+    assert "inter_snap_rest_s" in rest["reason"]
+    assert "deficit_ratio" in rest["reason"]
+    assert result["context_controls"]["status"] == "NOT_ESTIMABLE"
+    # The retired ceiling permutation is provenance only, in no run path.
+    assert result["ceiling_permutation"]["status"] == "SUPERSEDED"
+    assert result["ceiling_permutation"]["superseded"] is True
+    assert result["checks"]["ceiling_permutation"]["status"] == "SUPERSEDED"
     # The stubs are listed, never passed and never absent.
     for name in V.STUBS:
         assert name in result["not_implemented"]
@@ -203,12 +218,27 @@ def test_stage_writes_honest_artefacts(tmp_path):
     assert "UNVALIDATED SAMPLE OUTPUT" in summary
     assert "NOT IMPLEMENTED" in summary
 
+    # The ceiling permutation's legacy artefact now carries one SUPERSEDED row.
     null = pd.read_csv(out / "permutation_null.csv")
-    assert set(null["statistic"]) == {"a0_log_hr", "relative_load_coef"}
+    assert list(null["check"]) == ["ceiling_permutation"]
+    assert null["status"].iloc[0] == "SUPERSEDED"
     assert null["provenance"].str.startswith("PLACEHOLDER_SAMPLE").all()
-    assert len(null) == 2 * 3
 
-    for name in ("placebo_checks.csv", "rotation.csv", "context_sensitivity.csv"):
+    # The rest-permutation null is empty because no replicate could run, but
+    # the file and its schema exist: an absent result is not a silent pass.
+    rest_null = pd.read_csv(out / "rest_permutation_null.csv")
+    assert len(rest_null) == 0
+    assert list(rest_null.columns) == ["provenance", "rep",
+                                       "interaction_coef_std", "status"]
+
+    # All three context exclusions are reported, including the skipped one.
+    controls = pd.read_csv(out / "context_controls.csv")
+    assert set(controls["check"]) == {
+        "baseline_all_snaps", "exclude_garbage_time",
+        "exclude_final_two_minutes", "exclude_obvious_passing"}
+    assert (controls["status"] != "PASS").all()
+
+    for name in ("placebo_checks.csv", "rotation.csv"):
         table = pd.read_csv(out / name)
         assert len(table) == 1
         assert table["status"].iloc[0] == "NOT_IMPLEMENTED"
