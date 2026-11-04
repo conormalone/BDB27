@@ -19,10 +19,12 @@ What this build implements (the two items TASK.md Phase 5 names)
 2. **Context controls** — ``dl.dl_idr_validate.context_controls``.  The
    interaction is re-estimated excluding (a) garbage time, (b) the final two
    minutes of each half, and (c) obvious passing situations.  The garbage-time
-   rule and the two-minute clock are read from ``config.yaml``; **no rule for
-   "obvious passing situations" exists anywhere in this repository**, so that
-   check is reported ``DEFINITION_UNDEFINED`` and the gap is recorded in
-   ``notes/blockers.md`` — a threshold is never invented here.
+   rule and the two-minute clock are read from ``config.yaml``.  **No rule for
+   "obvious passing situations" exists anywhere in this repository**, and
+   Conor skipped that one control by decision on 2026-11-04 (blocker
+   B-DL-IDR-01, D83), so its row reports ``SKIPPED_BY_DECISION``; if it were
+   enabled with ``rule: null`` it would report ``DEFINITION_UNDEFINED``.  A
+   threshold is never invented here, and the row is never dropped.
 
 The retired spec's **ceiling permutation** is kept for provenance only.  Its
 code is intact below, it is **not in the default run path**
@@ -646,7 +648,7 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, result: Mapping) -
 
     # ---- 2. context controls ------------------------------------------------
     ctx = checks.get("context_controls") or {}
-    lines.append("## 2. Context controls (implemented)\n")
+    lines.append("## 2. Context controls\n")
     lines.append("`TASK.md` Phase 5: exclude garbage time, the final two minutes "
                  "of each half, and obvious passing situations. Each row refits "
                  "the same Part-1 ladder on the restricted sample; the windowed "
@@ -706,9 +708,17 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, result: Mapping) -
     lines.append("* It did not run the placebos, rotation/survivorship, "
                  "mechanical-coupling or equivalence checks: they belong to the "
                  "retired 2026-10-30 spec and are not in this Phase 5.")
-    lines.append("* It did not define an \"obvious passing situation\": the repo "
-                 "contains no such rule, so the check is reported "
-                 "DEFINITION_UNDEFINED rather than invented.")
+    gap_status = (result.get("gap") or {}).get("status")
+    if gap_status == "SKIPPED_BY_DECISION":
+        lines.append("* It did not run the \"obvious passing situation\" control: "
+                     "Conor skipped it by decision on 2026-11-04 "
+                     "(notes/decisions.md D83), so the row is reported "
+                     "SKIPPED_BY_DECISION, not DEFINITION_UNDEFINED. The other "
+                     "two context controls ran.")
+    else:
+        lines.append("* It did not define an \"obvious passing situation\": the repo "
+                     "contains no such rule, so the check is reported "
+                     "DEFINITION_UNDEFINED rather than invented.")
     lines.append("* It did not quote a sample number as a finding.\n")
     return "\n".join(lines)
 
@@ -916,10 +926,13 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
         "ceiling_permutation": {k: v for k, v in ceil.items() if k != "rows"},
         "gap": {
             "check": "context_controls.exclude_obvious_passing",
-            "status": "DEFINITION_UNDEFINED",
-            "reason": ("TASK.md Phase 5 asks for an obvious-passing exclusion, "
-                       "but no rule exists in config.yaml, notes/prereg.md or any "
-                       "module. No threshold was chosen; see notes/blockers.md."),
+            "status": next((row.get("status") for row in ctx.get("rows") or []
+                            if row.get("check") == "exclude_obvious_passing"),
+                           "NOT_ESTIMABLE"),
+            "reason": next((row.get("reason") for row in ctx.get("rows") or []
+                            if row.get("check") == "exclude_obvious_passing"),
+                           "the obvious-passing row is missing from the "
+                           "context controls"),
         },
         "design": {
             "reps_requested": reps,

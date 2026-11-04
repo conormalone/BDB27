@@ -268,23 +268,28 @@ within a player-game, so the decay estimate draws on game-level sequences — 1,
 power must be computed on its own terms (snap/game-level information for the load coefficient,
 player-level bootstrap for the model comparison) and is not settled by this entry.
 
-## B-DL-IDR-01 — 2026-11-04 — "Obvious passing situations" has no definition
+## B-DL-IDR-01 — 2026-11-04 — "Obvious passing situations" has no definition — **RESOLVED: skipped by decision**
 
-**Gap (design, not data).** `TASK.md` Phase 5 asks for the interaction to be
-re-estimated excluding *"obvious passing situations"*. No definition exists in
-this repository: `config.yaml` carries no down/distance/score/formation rule for
-it, `notes/prereg.md` never defines it, and no module computes it. The other two
-Phase-5 context controls are fully specified (garbage time: the Phase-3
-`garbage_time` column / `bdb27_dl.game.garbage_time` margins q4 4 / 21 / 28;
-final two minutes: `quarter ∈ {2, 4}` with `game_clock_s ≤ 120`).
+**Status: RESOLVED — skipped by decision (2026-11-04).** Conor's reply to the
+definition request was, verbatim: *"Don't care, skip"*. The obvious-passing
+context control is therefore **not run**. See `notes/decisions.md` D83 for the
+decision entry; the change is reversible (set `enabled: true` plus a rule).
 
-**Handling.** `src/dl/dl_idr_validate.py` reports the check as
-`DEFINITION_UNDEFINED` with this reason, in `validation_result.json`, in
-`context_controls.csv` and in the notebook headline. **No threshold was
-invented** (e.g. "3rd down", "≥ 7 yards to go", "score margin ≤ 8"), because
-any such choice would be a result-moving analysis knob chosen by the builder
-after seeing the task.
+**Original gap (design, not data).** `TASK.md` Phase 5 asks for the interaction
+to be re-estimated excluding *"obvious passing situations"*. No definition
+exists in this repository: `config.yaml` carries no down/distance/score/formation
+rule for it, `notes/prereg.md` never defines it, and no module computes it. The
+other two Phase-5 context controls are fully specified (garbage time: the
+Phase-3 `garbage_time` column / `bdb27_dl.game.garbage_time` margins q4 4 / 21 /
+28; final two minutes: `quarter ∈ {2, 4}` with `game_clock_s ≤ 120`).
 
-**Decision needed (Conor).** Either (a) name the rule (a down/distance/score
-condition and its source), or (b) drop the item and say so in the writeup. Until
-then the notebook prints the gap rather than a fabricated exclusion.
+**Resolution.** `config.yaml` now sets
+`bdb27_dl.validate.context_controls.obvious_passing.enabled: false` with
+`rule: null`. `src/dl/dl_idr_validate.py` reports the row as
+`SKIPPED_BY_DECISION` (reason naming this decision and date) in
+`validation_result.json`, `context_controls.csv`, `check_status.csv` and the
+SUMMARY, so the writeup can state that two of the three context controls ran and
+the third was skipped by decision. The row is never dropped and no threshold is
+invented. The `DEFINITION_UNDEFINED` path remains intact for the reachable state
+`enabled: true` with `rule: null`.
+

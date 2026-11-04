@@ -45,9 +45,11 @@ The interaction is re-estimated on three restricted samples:
   from config;
 * **(c) excluding obvious passing situations** — **the repository defines no
   rule for this** (neither ``config.yaml`` nor ``notes/prereg.md`` says what
-  makes a passing situation "obvious").  The check is therefore reported as
-  ``DEFINITION_UNDEFINED`` with the gap recorded in ``notes/blockers.md``.  A
-  threshold is never chosen here.
+  makes a passing situation "obvious").  Conor skipped this control by
+  decision on 2026-11-04 (``enabled: false``, blocker B-DL-IDR-01), so the row
+  reports ``SKIPPED_BY_DECISION``.  If it were re-enabled with a ``rule`` of
+  ``null`` it would still report ``DEFINITION_UNDEFINED``; a threshold is never
+  chosen here.
 
 The load and rest of a filtered row keep the values Phase 3 measured on the
 **full** sequence: restricting the sample must not silently redefine the
@@ -554,8 +556,16 @@ def _final_two_mask(frame: pd.DataFrame, block: Mapping, cfg: Mapping
 
 
 def _obvious_passing(cfg: Mapping) -> dict:
-    """The repo defines no rule: report the gap, invent nothing."""
+    """Report the configured state; invent no rule."""
     rule = cfg.get("rule")
+    if not bool(cfg.get("enabled", True)):
+        return {
+            "status": "SKIPPED_BY_DECISION",
+            "reason": ("skipped by Conor's decision on 2026-11-04 "
+                       "(notes/blockers.md B-DL-IDR-01, notes/decisions.md "
+                       "D83); this context control was not run."),
+            "rule": None,
+        }
     if rule is None:
         return {
             "status": "DEFINITION_UNDEFINED",

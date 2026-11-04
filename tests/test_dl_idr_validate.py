@@ -56,7 +56,9 @@ def test_the_two_task_items_are_the_default_checks(block):
     assert vcfg["rest_permutation"]["block_columns"] == ["nfl_id", "game_id"]
     assert vcfg["context_controls"]["garbage_time"]["enabled"] is True
     assert vcfg["context_controls"]["final_two_minutes"]["enabled"] is True
-    # no rule is invented for "obvious passing" anywhere in the repo
+    # no rule is invented for "obvious passing" anywhere in the repo; Conor
+    # skipped the control by decision on 2026-11-04 (B-DL-IDR-01, D83)
+    assert vcfg["context_controls"]["obvious_passing"]["enabled"] is False
     assert vcfg["context_controls"]["obvious_passing"]["rule"] is None
 
 
@@ -184,11 +186,19 @@ def test_context_controls_report_all_three_exclusions(block):
         assert checks[name]["n_rows"] > 0
     # the final two minutes of each half exist in the fixture and are removed
     assert checks["exclude_final_two_minutes"]["n_excluded"] > 0
-    # (c) is a reported gap, never an invented threshold
+    # (c) was skipped by Conor's decision — reported, never an invented threshold
     gap = checks["exclude_obvious_passing"]
-    assert gap["status"] == "DEFINITION_UNDEFINED"
-    assert gap["reason"]
+    assert gap["status"] == "SKIPPED_BY_DECISION"
+    assert "2026-11-04" in gap["reason"]
     assert gap["estimate"] is None
+
+
+def test_enabled_obvious_passing_without_a_rule_still_reports_the_gap():
+    """`enabled: true` + `rule: null` stays a real, reachable state."""
+    out = V._obvious_passing({"enabled": True, "rule": None})
+    assert out["status"] == "DEFINITION_UNDEFINED"
+    assert out["reason"]
+    assert out["rule"] is None
 
 
 def test_garbage_time_margins_come_from_config(block):

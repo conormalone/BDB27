@@ -1456,13 +1456,18 @@ bdb27_dl:
     # 2. the three TASK.md context exclusions.  The garbage-time margins live
     #    in bdb27_dl.game.garbage_time (q4 4 / 21 / 28); the final-two-minute
     #    clock threshold is validate.final_two_minutes_s.  `obvious_passing`
-    #    has NO definition anywhere in this repo: it is left null on purpose
-    #    and reported DEFINITION_UNDEFINED (notes/blockers.md B-DL-IDR-01).
+    #    has NO definition anywhere in this repo: it stays rule: null and is
+    #    reported DEFINITION_UNDEFINED when enabled.  Conor skipped this one
+    #    context control by decision on 2026-11-04 ("Don't care, skip",
+    #    notes/blockers.md B-DL-IDR-01 -> RESOLVED; notes/decisions.md D83),
+    #    so enabled: false and the row reports SKIPPED_BY_DECISION.  Garbage
+    #    time and the final two minutes stay enabled.  Reversible: set
+    #    enabled: true and supply a rule.
     context_controls:
       garbage_time: {enabled: true, rule: quarter_and_margin, q4: 4}
       final_two_minutes: {enabled: true, rule: quarter_and_clock, quarters: [2, 4],
                           seconds: 120}
-      obvious_passing: {enabled: true, rule: null}
+      obvious_passing: {enabled: false, rule: null}
     # --- SUPERSEDED ceiling permutation (prereg §3, §7; old spec) ----------
     # 199 refits is the configured design: p resolution 1/200 = 0.005, well
     # inside the 0.05 decision level, and ~40x cheaper than the 1000 the

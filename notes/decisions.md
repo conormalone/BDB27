@@ -3568,3 +3568,34 @@ retired check is re-enabled), `SUMMARY.md`. Sample output stays stamped
 On the provided sample the Part-1 frame carries 7 complete rows at window 3
 (below `idr_part1.min_rows` 100), so both items are `NOT_ESTIMABLE` with that
 reason — the expected sample outcome, not a failure.
+
+## D83 — 2026-11-04 — Obvious-passing context control skipped by decision
+
+**Decision (Conor, 2026-11-04, verbatim):** *"Don't care, skip"* — asked to
+define the "obvious passing situations" exclusion that `TASK.md` Phase 5 names
+(blocker B-DL-IDR-01), he chose **not** to run that one context control.
+
+**What changed.**
+`bdb27_dl.validate.context_controls.obvious_passing` is now
+`{enabled: false, rule: null}`. `src/dl/dl_idr_validate.py::_obvious_passing`
+reports the row as **`SKIPPED_BY_DECISION`** with a one-line reason naming the
+decision date, instead of `DEFINITION_UNDEFINED`. The row still appears in
+`validation_result.json` (its `gap` block now mirrors this status),
+`context_controls.csv`, `check_status.csv` and `SUMMARY.md`, so the writeup can
+say **two of the three context controls ran and the third was skipped by
+decision**. Nothing is silently dropped and no rule or threshold was invented.
+
+**Unchanged.** Garbage time and the final-two-minute exclusions stay `enabled:
+true` exactly as before. No Phase-3 definition, Part 1/Part 2 model spec, rest
+permutation, or threshold was touched.
+
+**Why.** The control has no definition in the repository, and defining one after
+seeing the data would be a result-moving analysis knob. Conor's call is to skip
+it rather than invent one; the writeup reports the skip.
+
+**Reversible.** Setting `enabled: true` plus a concrete `rule` restores the
+control. With `enabled: true` and `rule: null` the row returns to
+`DEFINITION_UNDEFINED` — that state is still tested.
+
+**Blocker.** `notes/blockers.md` B-DL-IDR-01 is closed: **RESOLVED — skipped by
+decision**.
