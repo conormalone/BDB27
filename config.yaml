@@ -1355,6 +1355,26 @@ bdb27_dl:
     variance_component_floor: 1.0e-08   # a slope variance at 0 is a failed rung
     alpha: 0.05
 
+  # ----------------------------------------------------------------------- #
+  # IDR Part 2 (TASK.md, 2026-11-04): time-to-pressure survival comparison.
+  # Two Weibull AFT arms on the SAME rows, folds and controls:
+  #   deficit  = the Phase-3 per-snap dynamic deficit (deficit_ratio)
+  #   absolute = cumulative recency-weighted absolute load at 2.5 yd/s
+  # Tuning freedom is equal by construction: one fixed candidate per arm.
+  # 2.5 yd/s is the midpoint of load.absolute_speed_grid_yds, declared before
+  # any score is seen.  blitz is declared UNAVAILABLE (notes/blockers.md).
+  # ----------------------------------------------------------------------- #
+  idr_part2:
+    out_subdir: idr
+    deficit_column: deficit_ratio
+    absolute_column: absolute_load_2p5
+    absolute_threshold_yds: 2.5
+    deficit_grid_value: 1.0
+    grid_budget: 1
+    min_rows: 100
+    min_players: 8
+    min_events: 20
+
   models:
     out_subdir: models
     primary_estimator: aft_frailty_lognormal

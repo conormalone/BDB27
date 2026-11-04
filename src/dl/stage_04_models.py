@@ -48,6 +48,7 @@ if str(_SRC) not in sys.path:  # pragma: no cover - direct script execution
 
 from dl import dl_common as D  # noqa: E402
 from dl import dl_idr_models as IDR  # noqa: E402
+from dl import dl_idr_part2 as IDR2  # noqa: E402
 from dl import dl_models_core as M  # noqa: E402
 from dl import stage_00_thresholds as stage00  # noqa: E402
 
@@ -162,7 +163,8 @@ def _write_artefacts(out_dir: Path, cfg: Mapping, mode: str, payload: dict) -> N
 
 
 def _write_idr_artefacts(out_dir: Path, cfg: Mapping, mode: str,
-                         block: Mapping, idr: Mapping) -> None:
+                         block: Mapping, idr: Mapping,
+                         p2_idr: Mapping | None = None) -> None:
     """IDR Part-1 artefacts, in their own subdirectory (config: out_subdir)."""
     subdir = str((block.get("idr_part1") or {}).get("out_subdir", "idr"))
     target = out_dir / subdir
@@ -176,6 +178,55 @@ def _write_idr_artefacts(out_dir: Path, cfg: Mapping, mode: str,
         "window_snaps", "term", "coef_std", "se_std", "p_std", "coef_raw",
         "se_raw", "ci_low_raw", "ci_high_raw", "raw_unit", "is_interaction",
         "inference"], mode=mode, cfg=cfg)
+    if p2_idr is not None:
+        D.write_json(target / "part2_idr.json", _clean(p2_idr), mode=mode, cfg=cfg)
+        D.write_csv(target / "part2_idr_folds.csv", _idr_part2_fold_rows(p2_idr), [
+            "arm", "fold", "n_train", "n_test", "n_train_players",
+            "n_test_players", "selected_grid_value", "n_scored",
+            "mean_logscore", "rung_used", "status"], mode=mode, cfg=cfg)
+        D.write_csv(target / "part2_idr_tuning.csv", _idr_part2_tuning_rows(p2_idr), [
+            "arm", "fold", "candidate_value", "training_loglik", "n_train_obs",
+            "status", "selected", "criterion"], mode=mode, cfg=cfg)
+
+
+def _idr_part2_fold_rows(p2_idr: Mapping) -> list[dict]:
+    rows = []
+    for arm in ("deficit", "absolute"):
+        block = (p2_idr or {}).get(arm) or {}
+        for fold in block.get("folds", []):
+            rows.append({
+                "arm": arm,
+                "fold": fold.get("fold"),
+                "n_train": fold.get("n_train"),
+                "n_test": fold.get("n_test"),
+                "n_train_players": fold.get("n_train_players"),
+                "n_test_players": fold.get("n_test_players"),
+                "selected_grid_value": fold.get("selected"),
+                "n_scored": fold.get("n_scored"),
+                "mean_logscore": fold.get("mean_logscore"),
+                "rung_used": fold.get("rung"),
+                "status": fold.get("status"),
+            })
+    return rows
+
+
+def _idr_part2_tuning_rows(p2_idr: Mapping) -> list[dict]:
+    rows = []
+    for arm in ("deficit", "absolute"):
+        block = (p2_idr or {}).get(arm) or {}
+        for fold in block.get("folds", []):
+            for cand in fold.get("candidates", []):
+                rows.append({
+                    "arm": arm,
+                    "fold": fold.get("fold"),
+                    "candidate_value": cand.get("value"),
+                    "training_loglik": cand.get("loglik"),
+                    "n_train_obs": cand.get("n_obs"),
+                    "status": cand.get("status"),
+                    "selected": bool(cand.get("value") == fold.get("selected")),
+                    "criterion": "training-fold log likelihood",
+                })
+    return rows
 
 
 def _fold_rows(part2: Mapping) -> list[dict]:
@@ -510,13 +561,71 @@ def _idr_markdown(idr: Mapping | None, prov: Mapping) -> list[str]:
     return lines
 
 
+def _idr_part2_markdown(p2: Mapping | None) -> list[str]:
+    """The binding IDR Part 2: dynamic deficit vs absolute cumulative load."""
+    lines = ["## P2 (IDR) — dynamic deficit vs absolute cumulative load "
+             "(confirmatory)\n"]
+    if not isinstance(p2, Mapping):
+        lines.append("* **NOT RUN** — no IDR Part 2 payload was produced.")
+        lines.append("")
+        return lines
+    controls = p2.get("controls") or {}
+    blitz = controls.get("blitz") or {}
+    lines.append("* model: Weibull AFT, log-normal frailty by rusher; "
+                 "crossed effects "
+                 + ", ".join(f"`{c}`" for c in controls.get(
+                     "crossed_fixed_effects", []))
+                 + "; identical fixed controls for both arms")
+    lines.append(f"* exposures: deficit `{p2['exposures']['deficit']}` vs "
+                 f"absolute `{p2['exposures']['absolute']}` "
+                 f"(threshold {p2.get('absolute_threshold_yds')} yd/s, the "
+                 "a-priori midpoint of the declared speed grid)")
+    lines.append(f"* tuning freedom: **equal and degenerate** — one fixed "
+                 f"candidate per arm (`grid_budget: {p2.get('grid_budget')}`); "
+                 "neither arm can win through tuning")
+    if p2.get("status") == "OK":
+        lines.append(f"* common estimation sample: **{p2.get('n_snaps')} snaps**, "
+                     f"{p2.get('n_players')} rushers, {p2.get('n_events')} "
+                     f"pressure events; {p2.get('fold_info', {}).get('folds')} "
+                     "player-grouped folds")
+        mean = p2.get("mean_logscore") or {}
+        lines.append(f"* mean held-out log score: deficit "
+                     f"{_fmt_score(mean.get('deficit'))}, absolute "
+                     f"{_fmt_score(mean.get('absolute'))} nats/snap")
+        lo, hi = p2.get("difference_interval") or [None, None]
+        lines.append(f"* difference (deficit − absolute): "
+                     f"**{p2['difference_nats_per_snap']:.5f}** "
+                     f"(95% CI {lo:.5f} to {hi:.5f}); smallest effect of "
+                     f"interest {p2.get('soi')}")
+        lines.append(f"* exceeds the prereg smallest effect: "
+                     f"**{p2.get('exceeds_soi')}**; interval excludes zero: "
+                     f"**{p2.get('excludes_zero')}**")
+        lines.append(f"* verdict: **{p2.get('verdict')}**")
+    else:
+        lines.append(f"* **NOT ESTIMABLE**: {p2.get('reason')}")
+    lines.append(f"* `blitz` control: **{blitz.get('status', 'UNAVAILABLE')}** — "
+                 f"{blitz.get('evidence', 'not available on this product')}")
+    lines.append("")
+    for key, label in (("reason_deficit", "deficit"),
+                       ("reason_absolute", "absolute"),
+                       ("reason_comparison", "comparison")):
+        record = p2.get(key)
+        if isinstance(record, Mapping):
+            lines.append(f"* {label} reason (`{record.get('code')}`): "
+                         f"{record.get('message')}")
+    if any(p2.get(f"reason_{k}") for k in ("deficit", "absolute", "comparison")):
+        lines.append("")
+    return lines
+
+
 def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapping,
                       field_info: Mapping[str, dict], gate: Mapping,
                       p1: Mapping | None, p2: Mapping | None,
                       s1: Mapping | None, e1: Mapping | None,
                       frame: pd.DataFrame,
                       derivation: Mapping | None = None,
-                      idr: Mapping | None = None) -> str:
+                      idr: Mapping | None = None,
+                      p2_idr: Mapping | None = None) -> str:
     lines: list[str] = []
     lines.append("# DL stage 04 — models\n")
     if prov["reportable"]:
@@ -574,6 +683,7 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapp
                      + ", ".join(f"`{f}` ({field_info[f]['fraction']:.1%})"
                                  for f in partial))
     lines.extend(_idr_markdown(idr, prov))
+    lines.extend(_idr_part2_markdown(p2_idr))
 
     lines.append("## P1 — Combine ceiling and time to pressure — "
                  "**SUPERSEDED** by the IDR spec (2026-11-04)\n")
@@ -606,7 +716,14 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapp
                          "sample fit would change the estimand.")
     lines.append("")
 
-    lines.append("## P2 — relative vs absolute load (confirmatory)\n")
+    lines.append("## P2 (legacy) — relative vs absolute load — **SUPERSEDED**\n")
+    lines.append("> **SUPERSEDED — kept for provenance only.** The binding "
+                 "`TASK.md` (2026-11-04) defines Part 2 as the time-to-pressure "
+                 "survival comparison above: dynamic deficit vs absolute "
+                 "cumulative load. The relative-vs-absolute comparison below "
+                 "belongs to the retired spec; its code and "
+                 "`part2_result.json` are kept, its numbers are **not** a result "
+                 "of the current task and must not be quoted.\n")
     if p2 and p2.get("status") == "OK":
         lines.append(f"* mean held-out log score: absolute "
                      f"{_fmt_score(p2['absolute']['mean_logscore'])}, relative "
@@ -664,7 +781,11 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapp
 
     lines.append("## Claim hierarchy\n")
     lines.append("* **Confirmatory:** P1 (IDR) — the load × rest interaction on "
-                 "the per-snap deficit, one test — and P2 (one test).")
+                 "the per-snap deficit, one test — and P2 (IDR) — the dynamic "
+                 "deficit vs absolute cumulative load held-out comparison, one "
+                 "test.")
+    lines.append("* **SUPERSEDED, not a claim:** the legacy relative-vs-absolute "
+                 "P2 numbers (kept in `part2_result.json` for provenance).")
     lines.append("* **SUPERSEDED, not a claim:** the old a0 → pressure P1. Its "
                  "numbers are historical provenance only.")
     lines.append("* **Secondary:** S1 (its own interval).")
@@ -721,6 +842,9 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
     # columns the snap table already carries.
     idr = IDR.run_idr(frame, block.get("idr_part1"),
                       mode=("full" if prov["reportable"] else mode))
+    p2_idr = IDR2.run_idr_part2(
+        frame, block,
+        provenance=("FULL" if prov["reportable"] else prov["config_level"]))
 
     better = None
     if p2.get("status") == "OK":
@@ -785,6 +909,13 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
         },
         "part2_status": p2.get("status"),
         "part2_verdict": p2.get("verdict"),
+        # IDR spec (2026-11-04): the confirmatory Part 2 comparison.
+        "part2_idr_status": p2_idr.get("status"),
+        "part2_idr_verdict": p2_idr.get("verdict"),
+        "part2_idr_difference": p2_idr.get("difference_nats_per_snap"),
+        "part2_idr_interval": p2_idr.get("difference_interval"),
+        "part2_idr_blitz": (p2_idr.get("controls") or {}).get("blitz"),
+        "supersedes_part2": "part2_result.json (relative vs absolute, TASK.md superseded)",
         "s1_status": (s1 or {}).get("status"),
         "e1_status": (e1 or {}).get("status"),
         "estimators": {
@@ -811,7 +942,7 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
 
     summary = _summary_markdown(block, mode, prov, frame_report, field_info, gate,
                                 p1, p2, s1, e1, frame, derivation=dgate,
-                                idr=idr)
+                                idr=idr, p2_idr=p2_idr)
     payload = {
         "json": {
             "part1_result.json": part1_out,
@@ -833,14 +964,17 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
         "summary": summary,
     }
     _write_artefacts(out_dir, cfg, mode, payload)
-    _write_idr_artefacts(out_dir, cfg, mode, block, idr)
+    _write_idr_artefacts(out_dir, cfg, mode, block, idr, p2_idr)
     D.mark_done(cfg, STAGE, mode, extra={
         "gate": gate["verdict"], "part1": p1.get("status"),
         "part2": p2.get("status"),
         "part1_idr": (idr.get("primary") or {}).get("status"),
+        "part2_idr": p2_idr.get("status"),
+        "part2_idr_verdict": p2_idr.get("verdict"),
         "reportable": prov["reportable"]})
     return {"skipped": False, "path": out_dir, "gate": gate, "derivation": dgate,
             "p1": p1, "p2": p2, "s1": s1, "e1": e1, "idr": idr,
+            "p2_idr": p2_idr,
             "frame_report": frame_report}
 
 

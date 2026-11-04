@@ -267,3 +267,28 @@ within a player-game, so the decay estimate draws on game-level sequences — 1,
 14,677 plays and 17,159 rush snaps in the full Phase-3 table — not on 70 player constants. Part 2's
 power must be computed on its own terms (snap/game-level information for the load coefficient,
 player-level bootstrap for the model comparison) and is not settled by this entry.
+
+## IDR Part 2 — `blitz` control unavailable (declared, 2026-11-04)
+
+**Status: OPEN as a declared limitation (not a failure).** `TASK.md` Part 2 asks
+for a fixed `blitz` control. This product cannot supply a team blitz count, so
+the control is **declared absent**, not silently dropped and not replaced by a
+proxy.
+
+Verified against `data/raw/player_play.csv` on 2026-11-04:
+
+| fact | number |
+|---|---|
+| DL rows with non-null `blitzing` | 25,335 |
+| `blitzing == TRUE` among them | 24,878 (**98.2%**; EDGE 92.3%, interior 98.3%) |
+| `blitzing` meaning | per-player rush assignment, **not** a team blitz flag |
+| `pass_rushers_encountered` on DL rows | null on every row (0 values) |
+| `pass_rushers_encountered` play-level maximum | 3 (2 plays); all other plays ≤ 2 |
+
+`pass_rushers_encountered` is a per-blocker count, not a team rush count, so no
+team blitz indicator can be reconstructed. `blitzing` cannot be aggregated to a
+team flag (only 4.3% of plays are all-True; 40.3% are mixed) and is already the
+primary-snap filter. **No proxy is substituted.** The IDR Part 2 comparison
+therefore runs with an identical control set for both arms, and the absence is
+recorded in the artefact (`part2_idr.json::controls.blitz`) and in
+`SUMMARY.md`.
