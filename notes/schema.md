@@ -384,3 +384,38 @@ Rules that bind the columns: rest is never imputed (a missing previous-play
 end leaves it NA); penalty-nullified and no-play rows are excluded from the
 load and counted; a row that fails the envelope fit keeps its snap row with
 `fit_ok = false` and a counted reason.
+
+## 10. Phase 4 Part 1 (IDR) model artefacts — 2026-11-04
+
+Additive outputs of `src/dl/dl_idr_models.py` (wired through stage 04, D81).
+No existing output key is renamed or redefined.
+
+`outputs/dl/models/idr/part1_idr.json` (provenance-stamped):
+
+| key | unit | meaning |
+|---|---|---|
+| `primary_window` | snaps | load window of the primary fit (3) |
+| `sensitivity_windows` | snaps | declared panel (1, 5), same code path |
+| `primary.status` | — | `OK` \| `NOT_ESTIMABLE` |
+| `primary.reason` | text | present whenever `status != OK` |
+| `primary.rung_used` | — | the first usable rung of the declared ladder |
+| `primary.ladder` | — | every rung walked, with its failure reason |
+| `primary.n_snaps` / `n_players` | count | complete-case rows / rushers |
+| `primary.interaction.coef_std` | log-deficit per (SD load × SD rest) | the confirmatory coefficient |
+| `primary.interaction.ci_low_std` / `ci_high_std` | same | player-clustered 95% CI |
+| `primary.interaction.p` | — | player-clustered, t with G−1 dof |
+| `primary.interaction.coef_raw` | log-deficit per (W/kg × s) | `coef_std / (sd_load·sd_rest)` |
+| `primary.scale` | — | load/rest mean and SD used for the standardisation |
+| `primary.cluster.player` | — | primary inference (CR1) |
+| `primary.cluster.game` | — | `OK` or `NOT_ESTIMABLE` with the cluster count |
+| `primary.se_iid` / `design_effect` | — | **diagnostic only**; never the inference |
+| `primary.contrast` | — | load slope at −1 SD vs +1 SD rest |
+
+`idr_windows.csv`: one row per fitted window (`window_snaps`, `is_primary`,
+`status`, `rung_used`, counts, coefficient/CI/p, raw scale, `se_iid`,
+`design_effect`). `idr_terms.csv`: the primary window's fixed effects with both
+`*_std` and `*_raw` columns and `raw_unit`.
+
+`deficit_ratio` keeps its Phase-3 meaning (fraction, below 1 = deficit). The
+model's outcome `log_deficit_ratio` is a derived column and is **not** written
+back into `snaps.csv`.

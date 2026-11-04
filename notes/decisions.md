@@ -3416,3 +3416,91 @@ recovered to within ±0.02 through the production path
 (`src/dl/dl_phase3_fixture.py`), and a null world returns |coef| < 0.02.
 No sample number is a finding; every sample artefact stays
 `UNVALIDATED SAMPLE OUTPUT`.
+
+---
+
+## D81 — 2026-11-04 — Phase 4 Part 1 (IDR): load × rest → per-snap deficit
+
+Binding spec: `TASK.md` (IDR, replaced 2026-10-30). This entry records how the
+confirmatory Part 1 — *"mixed-effects model predicting current snap
+acceleration based on prior load and rest duration"* — is operationalised. The
+new code is `src/dl/dl_idr_models.py`, called from
+`src/dl/stage_04_models.py`; the old a0 → pressure Part 1 is **superseded**
+(kept in `part1_result.json` as provenance, marked SUPERSEDED in SUMMARY.md,
+never quoted as a result).
+
+**(1) The estimand is the interaction, on `log(deficit_ratio)`.**
+Outcome `log(a0_snap / baseline_a0)`, so a *larger* deficit is a *more
+negative* outcome. Fixed effects: standardised rolling kinematic load,
+standardised inter-snap rest, their product, plus the spec's controls. Both
+predictors are z-scored on the estimation sample, so the interaction is "per
+SD of load × per SD of rest"; the raw-scale coefficient is reported alongside
+(`coef_std / (sd_load × sd_rest)`, exact because the transform is linear).
+Because the interaction is a product of z-scores, the sign of a
+deficit-worsening interaction is **positive** when the load main effect is
+negative; every artefact therefore also carries the implied contrast (slope of
+log-deficit on load at −1 SD rest vs +1 SD rest) so the direction is read from
+a quantity with an unambiguous meaning, not from the bare coefficient.
+
+**(2) The load window is the Phase-3 window; 1 and 5 are a declared panel.**
+`rolling_load(frame, w)` reimplements the D80 rule (sum over the prior `w`
+*included* own snaps; an excluded snap in the window or a short window yields
+NA, never a silently shortened sum) with `w` as a parameter. Window 3 is
+primary because it is Phase 3's declared load window; 1 and 5 are fitted by the
+same code path and reported as a sensitivity panel. The window is never chosen
+by looking at a result. A test asserts the window-3 rebuild equals the
+`rolling_kinematic_load_w_per_kg` column exactly where both exist.
+
+**(3) Controls: declared, and reported when unavailable.**
+`alignment`, `down`, `yards_to_go`, `score_margin`, `blitz`. `blitz` is
+structurally absent on the prospect-only tracking product (D78); the model
+records it as UNAVAILABLE/ABSENT with a reason instead of dropping it from the
+specification silently. Any declared control below
+`idr_part1.min_control_coverage` non-null is reported the same way. Continuous
+controls are standardised on the estimation sample; categorical levels with
+fewer than `min_level_n` rows are not given a dummy (reported by omission from
+the term table, which lists what was fitted).
+
+**(4) Convergence ladder, in the declared order.**
+`correlated_random_slopes` (1 + z_load | rusher, lbfgs, with bfgs/powell
+retries **inside** the rung — an optimiser retry is not a change of
+specification) → `uncorrelated_re_alt_optimiser` (random intercept + a separate
+uncorrelated load variance component, powell first) → `random_intercept` →
+`fixed_effects_only` (population OLS, player-clustered). A rung is usable only
+if it converged **and** every variance component is strictly above
+`variance_component_floor`. The interaction is present in every rung; if no
+rung estimates it the result is NOT_ESTIMABLE with the reason, never a reduced
+model.
+
+**(5) Inference respects repeated snaps.**
+The standard error is a CR1 player-clustered sandwich on the fixed effects
+(same correction as `lc_models._cluster_cov`), with t and `G−1` dof. A
+game-clustered SE is added when the number of games reaches
+`min_clusters_game` (10); otherwise it is reported NOT_ESTIMABLE rather than
+quoted. The naive i.i.d. SE is retained as a diagnostic only
+(`se_iid`, `design_effect`).
+
+**(6) Synthetic recovery (deterministic, no network).**
+`src/dl/dl_idr_fixture.py` builds three balanced worlds in the snap-level
+schema; the regressor is generated **from the windowed load**, not the current
+rep. `planted` (`b_int = +0.05`, `b_load = −0.08`): recovered 0.0504,
+95% CI [0.0490, 0.0518], n = 888, 24 rushers, rung
+`correlated_random_slopes`. `null`: coefficient 0.0006, CI [−0.0008, 0.0020],
+covers zero. `random_slopes` (population interaction exactly zero, per-rusher
+slope sd 0.14): clustered estimate 0.0135 with CI [−0.055, 0.082] covering
+zero while the i.i.d. interval (`p = 0.0035`) would have announced a
+non-existent interaction — design effect 7.15. Plus an end-to-end test that
+runs the Phase-3 tracking fixture through `add_phase3_columns` into the model
+and recovers the Phase-3 plant (`b_int = 0.040`) within ±0.02.
+
+**(7) Sample diagnostic, explicitly a non-finding.**
+On the provided sample only 7 snaps have outcome + window-3 load + rest
+(74 at window 1, 0 at window 5), so the primary is NOT_ESTIMABLE at every
+window. That is a coverage artefact of the ~100 MB sample and is labelled
+UNVALIDATED SAMPLE OUTPUT; no sample number is a finding.
+
+**(8) Artefacts (additive; no existing key redefined).**
+`outputs/dl/models/idr/part1_idr.json`, `idr_windows.csv` (one row per window),
+`idr_terms.csv` (fixed effects of the primary window, standardised and raw);
+`model_result.json` gains a `part1_idr` block; SUMMARY.md gains the IDR section
+and marks the old Part 1 SUPERSEDED.

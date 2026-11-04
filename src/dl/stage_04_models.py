@@ -47,6 +47,7 @@ if str(_SRC) not in sys.path:  # pragma: no cover - direct script execution
     sys.path.insert(0, str(_SRC))
 
 from dl import dl_common as D  # noqa: E402
+from dl import dl_idr_models as IDR  # noqa: E402
 from dl import dl_models_core as M  # noqa: E402
 from dl import stage_00_thresholds as stage00  # noqa: E402
 
@@ -158,6 +159,23 @@ def _write_artefacts(out_dir: Path, cfg: Mapping, mode: str, payload: dict) -> N
         rows, fields = table
         D.write_csv(out_dir / name, rows, fields, mode=mode, cfg=cfg)
     D.write_markdown(out_dir / "SUMMARY.md", payload["summary"], mode=mode, cfg=cfg)
+
+
+def _write_idr_artefacts(out_dir: Path, cfg: Mapping, mode: str,
+                         block: Mapping, idr: Mapping) -> None:
+    """IDR Part-1 artefacts, in their own subdirectory (config: out_subdir)."""
+    subdir = str((block.get("idr_part1") or {}).get("out_subdir", "idr"))
+    target = out_dir / subdir
+    D.write_json(target / "part1_idr.json", _clean(idr), mode=mode, cfg=cfg)
+    D.write_csv(target / "idr_windows.csv", _idr_window_rows(idr), [
+        "window_snaps", "is_primary", "status", "reason", "rung_used",
+        "n_snaps", "n_players", "n_games", "coef_std", "se_std",
+        "ci_low_std", "ci_high_std", "p", "coef_raw", "se_raw", "cluster",
+        "se_iid", "design_effect"], mode=mode, cfg=cfg)
+    D.write_csv(target / "idr_terms.csv", _idr_term_rows(idr), [
+        "window_snaps", "term", "coef_std", "se_std", "p_std", "coef_raw",
+        "se_raw", "ci_low_raw", "ci_high_raw", "raw_unit", "is_interaction",
+        "inference"], mode=mode, cfg=cfg)
 
 
 def _fold_rows(part2: Mapping) -> list[dict]:
@@ -335,12 +353,170 @@ def _reason_markdown(p2: Mapping | None) -> list[str]:
     return lines
 
 
+def _idr_window_rows(idr: Mapping) -> list[dict]:
+    """One row per fitted window (primary + sensitivity panel)."""
+    rows = []
+    for entry in (idr or {}).get("panel", []):
+        inter = entry.get("interaction") or {}
+        rows.append({
+            "window_snaps": entry.get("window"),
+            "is_primary": bool(entry.get("window") == (idr or {}).get("primary_window")),
+            "status": entry.get("status"),
+            "reason": entry.get("reason"),
+            "rung_used": entry.get("rung_used"),
+            "n_snaps": entry.get("n_snaps"),
+            "n_players": entry.get("n_players"),
+            "n_games": entry.get("n_games"),
+            "coef_std": inter.get("coef_std"),
+            "se_std": inter.get("se_std"),
+            "ci_low_std": inter.get("ci_low_std"),
+            "ci_high_std": inter.get("ci_high_std"),
+            "p": inter.get("p"),
+            "coef_raw": inter.get("coef_raw"),
+            "se_raw": inter.get("se_raw"),
+            "cluster": inter.get("cluster"),
+            "se_iid": entry.get("se_iid"),
+            "design_effect": entry.get("design_effect"),
+        })
+    return rows
+
+
+def _idr_term_rows(idr: Mapping) -> list[dict]:
+    """Fixed-effect table of the PRIMARY window (standardised and raw scale)."""
+    rows = []
+    primary = (idr or {}).get("primary") or {}
+    for term in primary.get("terms", []):
+        rows.append({
+            "window_snaps": primary.get("window"),
+            "term": term.get("term"),
+            "coef_std": term.get("coef_std"),
+            "se_std": term.get("se_std"),
+            "p_std": term.get("p_std"),
+            "coef_raw": term.get("coef_raw"),
+            "se_raw": term.get("se_raw"),
+            "ci_low_raw": term.get("ci_low_raw"),
+            "ci_high_raw": term.get("ci_high_raw"),
+            "raw_unit": term.get("raw_unit"),
+            "is_interaction": term.get("is_interaction"),
+            "inference": "player-clustered (CR1)",
+        })
+    return rows
+
+
+def _idr_markdown(idr: Mapping | None, prov: Mapping) -> list[str]:
+    """The confirmatory Part 1 (IDR spec) block."""
+    lines = ["## P1 (IDR) — rolling load × inter-snap rest → per-snap deficit "
+             "(confirmatory)\n"]
+    if not idr:
+        lines.append("* **NOT RUN**: no `idr_part1` result was produced by this "
+                     "invocation.\n")
+        return lines
+    lines.append(f"* estimand: **{idr.get('estimand')}**")
+    lines.append(f"* outcome: `{idr.get('outcome')}`"
+                 " (`deficit_ratio = a0_snap / baseline_a0`, below 1 = deficit)")
+    lines.append(f"* primary load window: **{idr.get('primary_window')}** prior "
+                 f"snaps; sensitivity panel "
+                 f"{idr.get('sensitivity_windows')}")
+    lines.append(f"* window choice: {idr.get('window_choice')}")
+    lines.append("")
+    if not prov["reportable"]:
+        lines.append("> **UNVALIDATED SAMPLE OUTPUT — NOT A FINDING.** The "
+                     "estimates below are a machinery check on the provided "
+                     "sample; the Phase-3 deficit only reaches a few hundred "
+                     "rows here, which is a coverage artefact of the ~100 MB "
+                     "sample. Nothing in this section may be quoted.\n")
+    primary = idr.get("primary") or {}
+    if primary.get("status") != "OK":
+        lines.append(f"* **NOT ESTIMABLE**: {primary.get('reason')}")
+        absent = ((primary.get("frame") or {}).get("n_complete"))
+        if absent is not None:
+            lines.append(f"* complete rows for window {primary.get('window')}: "
+                         f"{absent}")
+        lines.append("* the interaction was **not** dropped to force a fit; no "
+                     "reduced specification was substituted.")
+        lines.append("")
+    else:
+        inter = primary.get("interaction") or {}
+        lines.append(f"* model: mixed effects on `log(deficit_ratio)`; random "
+                     f"intercept by rusher and a random slope on load")
+        lines.append(f"* rung used: **`{primary.get('rung_used')}`** "
+                     f"(declared ladder "
+                     f"{' → '.join(primary.get('rungs_intended', []))})")
+        for rung in primary.get("ladder", []):
+            detail = (f", optimiser `{rung.get('optimiser')}`"
+                      if rung.get("optimiser") else "")
+            reason = f" — {rung['reason']}" if rung.get("reason") else ""
+            lines.append(f"  * `{rung['rung']}`: {rung['status']}{detail}{reason}")
+        lines.append("")
+        lines.append(
+            f"* **load × rest interaction**: {inter.get('coef_std'):.5f} per "
+            f"(SD load × SD rest); player-clustered 95% CI "
+            f"{inter.get('ci_low_std'):.5f} to {inter.get('ci_high_std'):.5f}; "
+            f"p = {inter.get('p'):.4g}; n_snaps = {primary.get('n_snaps')}, "
+            f"n_players = {primary.get('n_players')}")
+        lines.append(
+            f"* raw scale: {inter.get('coef_raw'):.3e} "
+            f"(SE {inter.get('se_raw'):.3e}) {inter.get('raw_unit')}")
+        contrast = primary.get("contrast") or {}
+        lines.append(
+            f"* implied contrast: change in log-deficit per +1 SD load is "
+            f"{contrast.get('log_deficit_per_sd_load_at_low_rest'):.5f} at "
+            f"-1 SD rest and "
+            f"{contrast.get('log_deficit_per_sd_load_at_high_rest'):.5f} at "
+            f"+1 SD rest (difference {contrast.get('difference'):.5f}). "
+            f"{contrast.get('interpretation')}")
+        lines.append(
+            f"* clustering: player-clustered SE is "
+            f"{primary.get('cluster', {}).get('player', {}).get('se'):.5f}; "
+            f"naive i.i.d. SE is {primary.get('se_iid'):.5f} "
+            f"(design effect {primary.get('design_effect'):.2f}). The i.i.d. "
+            f"SE is a diagnostic only and is never used for inference.")
+        game_block = primary.get("cluster", {}).get("game", {})
+        if game_block.get("status") == "OK":
+            lines.append(f"* game-clustered SE: {game_block.get('se'):.5f} "
+                         f"over {game_block.get('n_clusters')} games")
+        else:
+            lines.append(f"* game-clustered SE: {game_block.get('status')} — "
+                         f"{game_block.get('reason')}")
+        controls = primary.get("controls") or {}
+        if controls:
+            lines.append("* controls: " + ", ".join(
+                f"`{name}` {info.get('status')}"
+                + (f" ({info.get('coverage'):.1%} non-null)" if info.get("coverage") else "")
+                for name, info in controls.items()))
+        lines.append("")
+    lines.append("### Load-window sensitivity (declared panel, same code path)\n")
+    lines.append("| window | status | rung | n snaps | n players | coef (per SD pair) | 95% CI | p |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    for row in _idr_window_rows(idr):
+        if row["status"] == "OK":
+            lines.append(
+                f"| {row['window_snaps']} | OK | `{row['rung_used']}` | "
+                f"{row['n_snaps']} | {row['n_players']} | "
+                f"{row['coef_std']:.5f} | {row['ci_low_std']:.5f} to "
+                f"{row['ci_high_std']:.5f} | {row['p']:.4g} |")
+        else:
+            lines.append(f"| {row['window_snaps']} | {row['status']} | — | "
+                         f"{row['n_snaps'] or '—'} | "
+                         f"{row['n_players'] or '—'} | — | — | — |")
+    lines.append("")
+    failed = [r for r in (idr.get("panel") or [])
+              if r.get("status") != "OK" and r.get("reason")]
+    for entry in failed:
+        lines.append(f"* window {entry.get('window')} reason: "
+                     f"{entry.get('reason')}")
+    if failed:
+        lines.append("")
+    return lines
+
+
 def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapping,
                       field_info: Mapping[str, dict], gate: Mapping,
                       p1: Mapping | None, p2: Mapping | None,
                       s1: Mapping | None, e1: Mapping | None,
                       frame: pd.DataFrame,
-                      derivation: Mapping | None = None) -> str:
+                      derivation: Mapping | None = None,
+                      idr: Mapping | None = None) -> str:
     lines: list[str] = []
     lines.append("# DL stage 04 — models\n")
     if prov["reportable"]:
@@ -397,7 +573,16 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapp
         lines.append("* partially covered (present on some snaps only): "
                      + ", ".join(f"`{f}` ({field_info[f]['fraction']:.1%})"
                                  for f in partial))
-    lines.append("## P1 — Combine ceiling and time to pressure (confirmatory)\n")
+    lines.extend(_idr_markdown(idr, prov))
+
+    lines.append("## P1 — Combine ceiling and time to pressure — "
+                 "**SUPERSEDED** by the IDR spec (2026-11-04)\n")
+    lines.append("> **SUPERSEDED — kept for provenance only.** The binding "
+                 "`TASK.md` replaced the a0 → pressure hypothesis with the IDR "
+                 "spec (D80): a0 is now a *baseline*, not a predictor. The "
+                 "numbers below are historical, are **not** a result of the "
+                 "current task, and must not be quoted. The confirmatory Part 1 "
+                 "is the IDR section above.\n")
     if p1 and p1.get("status") == "OK":
         est = p1.get("estimate") or {}
         lines.append(f"* model: **{p1.get('rung_used')}** "
@@ -478,8 +663,11 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapp
     lines.append("")
 
     lines.append("## Claim hierarchy\n")
-    lines.append("* **Confirmatory:** P1 (one test) and P2 (one test).")
-    lines.append("* **Secondary:** S1 (its own interval), P1's two secondary outcomes.")
+    lines.append("* **Confirmatory:** P1 (IDR) — the load × rest interaction on "
+                 "the per-snap deficit, one test — and P2 (one test).")
+    lines.append("* **SUPERSEDED, not a claim:** the old a0 → pressure P1. Its "
+                 "numbers are historical provenance only.")
+    lines.append("* **Secondary:** S1 (its own interval).")
     lines.append("* **Exploratory / descriptive:** E1, every robustness rung's "
                  "interpretation, and anything not marked confirmatory above.")
     lines.append("")
@@ -527,6 +715,13 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
         # sample or to a larger run
         provenance=("FULL" if prov["reportable"] else prov["config_level"]))
 
+    # Phase 4 Part 1 under the binding IDR spec (TASK.md, 2026-11-04): the
+    # confirmatory estimand is the rolling-load x rest interaction on the
+    # per-snap deficit.  Independent of P1/P2 above; it reads the Phase-3
+    # columns the snap table already carries.
+    idr = IDR.run_idr(frame, block.get("idr_part1"),
+                      mode=("full" if prov["reportable"] else mode))
+
     better = None
     if p2.get("status") == "OK":
         better = p2.get("better_definition")
@@ -573,6 +768,21 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
                                     if (not i["present"]) or i["non_null"] == 0],
         "part1_status": p1.get("status"),
         "part1_rung_used": p1.get("rung_used"),
+        # IDR spec (2026-11-04): the confirmatory Part 1.  Additive key; the
+        # old `part1_*` keys above are retained for provenance only and are
+        # marked SUPERSEDED in SUMMARY.md.
+        "part1_idr": {
+            "estimand": idr.get("estimand"),
+            "status": (idr.get("primary") or {}).get("status"),
+            "rung_used": (idr.get("primary") or {}).get("rung_used"),
+            "primary_window": idr.get("primary_window"),
+            "sensitivity_windows": idr.get("sensitivity_windows"),
+            "interaction": (idr.get("primary") or {}).get("interaction"),
+            "n_snaps": (idr.get("primary") or {}).get("n_snaps"),
+            "n_players": (idr.get("primary") or {}).get("n_players"),
+            "reason": (idr.get("primary") or {}).get("reason"),
+            "supersedes": "part1_result.json (a0 -> pressure, TASK.md superseded)",
+        },
         "part2_status": p2.get("status"),
         "part2_verdict": p2.get("verdict"),
         "s1_status": (s1 or {}).get("status"),
@@ -600,7 +810,8 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
     }
 
     summary = _summary_markdown(block, mode, prov, frame_report, field_info, gate,
-                                p1, p2, s1, e1, frame, derivation=dgate)
+                                p1, p2, s1, e1, frame, derivation=dgate,
+                                idr=idr)
     payload = {
         "json": {
             "part1_result.json": part1_out,
@@ -622,11 +833,14 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
         "summary": summary,
     }
     _write_artefacts(out_dir, cfg, mode, payload)
+    _write_idr_artefacts(out_dir, cfg, mode, block, idr)
     D.mark_done(cfg, STAGE, mode, extra={
         "gate": gate["verdict"], "part1": p1.get("status"),
-        "part2": p2.get("status"), "reportable": prov["reportable"]})
+        "part2": p2.get("status"),
+        "part1_idr": (idr.get("primary") or {}).get("status"),
+        "reportable": prov["reportable"]})
     return {"skipped": False, "path": out_dir, "gate": gate, "derivation": dgate,
-            "p1": p1, "p2": p2, "s1": s1, "e1": e1,
+            "p1": p1, "p2": p2, "s1": s1, "e1": e1, "idr": idr,
             "frame_report": frame_report}
 
 
@@ -652,12 +866,17 @@ def main(argv=None) -> int:
                 return 0
             gate = outcome["gate"]
             p1, p2 = outcome["p1"], outcome["p2"]
+            idr_primary = (outcome.get("idr") or {}).get("primary") or {}
             st.note(f"gate={gate['verdict']} p1={p1.get('status')} "
+                    f"p1_idr={idr_primary.get('status')} "
                     f"p2={p2.get('status')}")
             print(f"{STAGE}: wrote {outcome['path']}")
             print(f"  gate: {gate['verdict']}  failing={gate['failing']}  "
                   f"pending={gate['pending']}")
             print(f"  P1: {p1.get('status')}  rung={p1.get('rung_used')}")
+            print(f"  P1-IDR: {idr_primary.get('status')}  "
+                  f"rung={idr_primary.get('rung_used')}  "
+                  f"window={(outcome.get('idr') or {}).get('primary_window')}")
             print(f"  P2: {p2.get('status')}  verdict={p2.get('verdict')}")
     except (RuntimeError, FileNotFoundError, KeyError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

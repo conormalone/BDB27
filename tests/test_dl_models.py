@@ -154,12 +154,16 @@ def test_summary_names_confirmatory_secondary_exploratory(tmp_path):
 # --------------------------------------------------------------------------- #
 def test_same_seed_same_bytes(tmp_path):
     cfg, _ = _world(tmp_path / "a")
+    def _snapshot(root):
+        # recursively: the IDR Part-1 artefacts live in their own subdirectory
+        return {p.relative_to(root).as_posix(): p.read_bytes()
+                for p in sorted(root.rglob("*")) if p.is_file()}
+
     stage04.run(cfg, "sample", force=True)
-    first = {p.name: p.read_bytes()
-             for p in stage04._out_dir(cfg, "sample").iterdir()}
+    first = _snapshot(stage04._out_dir(cfg, "sample"))
     stage04.run(cfg, "sample", force=True)
-    second = {p.name: p.read_bytes()
-              for p in stage04._out_dir(cfg, "sample").iterdir()}
+    second = _snapshot(stage04._out_dir(cfg, "sample"))
+    assert first, "no artefacts were written"
     assert first == second
 
 

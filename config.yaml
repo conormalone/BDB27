@@ -1320,6 +1320,41 @@ bdb27_dl:
       feature: a0                 # shrunken Combine a0 (yd/s^2)
       estimate_column: estimate
       se_column: se
+
+  # ----------------------------------------------------------------------- #
+  # Phase 4 — Part 1 (IDR spec): rolling load x inter-snap rest -> deficit.
+  # Binding spec: TASK.md Phase 4 Part 1.  Outcome log(deficit_ratio).
+  # Every value is a measurement/design constant; none is tuned on a result.
+  # The window 3 primary is Phase 3's declared load window (D80); 1 and 5 are
+  # a declared SENSITIVITY panel, never selected by looking at the sample.
+  # ----------------------------------------------------------------------- #
+  idr_part1:
+    out_subdir: idr
+    outcome: log_deficit_ratio
+    load_column: rep_kinematic_load_w_per_kg   # windowed by this module
+    rest_column: inter_snap_rest_s
+    windows:
+      primary: 3
+      sensitivity: [1, 5]
+    # The spec's fixed control list.  `blitz` is declared and expected to be
+    # UNAVAILABLE on the prospect-only tracking product (D78); the model
+    # reports that, it never drops a declared control silently.
+    controls:
+      categorical: [alignment, down]
+      continuous: [yards_to_go, score_margin]
+      absent_ok: [blitz]
+    min_control_coverage: 0.5   # below this a control is reported, not fitted
+    min_level_n: 20             # categorical level floor for a dummy
+    min_rows: 100               # complete snaps needed for a fit
+    min_players: 8              # rushers (the random-effect grouping)
+    min_clusters_game: 10       # game-clustered SE only above this cluster count
+    random_effect: rusher
+    rungs: [correlated_random_slopes, uncorrelated_re_alt_optimiser,
+            random_intercept, fixed_effects_only]
+    mixed_max_iter: 500
+    variance_component_floor: 1.0e-08   # a slope variance at 0 is a failed rung
+    alpha: 0.05
+
   models:
     out_subdir: models
     primary_estimator: aft_frailty_lognormal
