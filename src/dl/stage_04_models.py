@@ -298,6 +298,43 @@ def _derivation_markdown(derivation: Mapping) -> list[str]:
     return lines
 
 
+_PART2_REASON_KEYS = (
+    ("part2_reason_absolute", "absolute"),
+    ("part2_reason_relative", "relative"),
+    ("part2_reason_comparison", "comparison"),
+)
+
+
+def _fmt_score(value: Any) -> str:
+    """Short display string for a log score (``NA`` when absent/non-finite)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "NA"
+    if not math.isfinite(number):
+        return "NA"
+    return f"{number:.3g}"
+
+
+def _reason_markdown(p2: Mapping | None) -> list[str]:
+    """Render the Part-2 reason records (code + sentence) for SUMMARY.md.
+
+    Tolerant of older artefacts: a payload without the three reason keys, or
+    with a malformed record, renders nothing rather than raising.
+    """
+    if not isinstance(p2, Mapping):
+        return []
+    lines: list[str] = []
+    for key, label in _PART2_REASON_KEYS:
+        record = p2.get(key)
+        if not isinstance(record, Mapping):
+            continue
+        code = " ".join(str(record.get("code") or "UNKNOWN").split())
+        message = " ".join(str(record.get("message") or "").split())
+        lines.append(f"* {label} reason (`{code}`): {message}")
+    return lines
+
+
 def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapping,
                       field_info: Mapping[str, dict], gate: Mapping,
                       p1: Mapping | None, p2: Mapping | None,

@@ -30,6 +30,7 @@ Design rules encoded here (each one is a prereg clause, not a preference)
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -196,8 +197,17 @@ def _grid_label(value: float) -> str:
 # is a machine-readable ``code`` plus one human sentence.  When the run has
 # FULL provenance the sentence may not defer to "sample mode", a re-run or a
 # larger sample: those are not available to the reader of a full run.
-_FULL_FORBIDDEN = ("sample", "re-run", "rerun", "full data", "larger sample",
-                   "bigger sample", "more data")
+# Phrase patterns, not bare substrings: "the largest rusher" or "player
+# sample" must not trip the guard -- only wording that defers the reader to a
+# different (bigger) dataset does.
+_FULL_FORBIDDEN = (
+    re.compile(r"\bsample\b", re.IGNORECASE),
+    re.compile(r"\bre-?run\b", re.IGNORECASE),
+    re.compile(r"\bfull[- ]data\b", re.IGNORECASE),
+    re.compile(r"\b(?:larger|bigger)[- ]sample\b", re.IGNORECASE),
+    re.compile(r"\bmore data\b", re.IGNORECASE),
+    re.compile(r"\bonce the full\b", re.IGNORECASE),
+)
 
 
 def _is_full(provenance: Any) -> bool:
@@ -218,20 +228,26 @@ def _assert_reason_is_full_safe(reason: Mapping[str, str], provenance: Any) -> N
     """Guard the rule that a FULL run never defers to a bigger/sample run."""
     if not _is_full(provenance):
         return
-    text = str(reason.get("message", "")).lower()
-    hit = next((token for token in _FULL_FORBIDDEN if token in text), None)
-    if hit:
+    text = str(reason.get("message", ""))
+    hit = next((pattern.pattern for pattern in _FULL_FORBIDDEN
+                if pattern.search(text)), None)
+    if hit is not None:
         raise ValueError(
             f"FULL provenance reason {reason.get('code')!r} defers to {hit!r}: "
             f"{reason.get('message')!r}")
 
 
+def _finite_mask(frame: pd.DataFrame, column: str) -> np.ndarray:
+    """Boolean mask of finite numeric values (all False when absent)."""
+    if column not in frame.columns:
+        return np.zeros(len(frame), dtype=bool)
+    values = pd.to_numeric(frame[column], errors="coerce").to_numpy(float)
+    return np.isfinite(values)
+
+
 def _usable(frame: pd.DataFrame, column: str) -> int:
     """Non-null, finite count for one column (0 when the column is absent)."""
-    if column not in frame.columns:
-        return 0
-    values = pd.to_numeric(frame[column], errors="coerce").to_numpy(float)
-    return int(np.isfinite(values).sum())
+    return int(_finite_mask(frame, column).sum())
 
 
 def _load_diagnostics(data: pd.DataFrame, kind: str,
@@ -254,20 +270,14 @@ def _load_diagnostics(data: pd.DataFrame, kind: str,
     }
     if kind == "absolute":
         out["measured_speed_rows"] = int(
-            (np.isfinite(pd.to_numeric(data.get("in_game_speed_1_0"),
-                                       errors="coerce").to_numpy(float))
-             & np.isfinite(pd.to_numeric(data.get("in_game_speed_2_0"),
-                                         errors="coerce").to_numpy(float))).sum())
+            (_finite_mask(data, "in_game_speed_1_0")
+             & _finite_mask(data, "in_game_speed_2_0")).sum())
         out["clock_rows"] = int(
-            (pd.to_numeric(data.get("quarter"), errors="coerce").notna()
-             & pd.to_numeric(data.get("game_clock_s"), errors="coerce").notna())
-            .sum())
+            (_finite_mask(data, "quarter")
+             & _finite_mask(data, "game_clock_s")).sum())
     else:
         out["ceiling_rows"] = int(
-            (np.isfinite(pd.to_numeric(data.get("vmax"), errors="coerce")
-                         .to_numpy(float))
-             & np.isfinite(pd.to_numeric(data.get("tau"), errors="coerce")
-                           .to_numpy(float))).sum())
+            (_finite_mask(data, "vmax") & _finite_mask(data, "tau")).sum())
     return out
 
 
@@ -1183,6 +1193,17 @@ def _not_estimable(reasons: dict[str, dict[str, str]], code: str,
         reasons[key] = _reason(code, message, provenance=provenance)
 
 
+def _unbuilt_load_cv(reason: Mapping[str, str]) -> dict:
+    """CV payload for a definition whose load panel columns do not exist.
+
+    ``cross_validate`` would raise on the missing column; there is nothing to
+    tune, so the fold list is empty and the reason names the build failure.
+    """
+    return {"folds": [],
+            "scores": pd.DataFrame(columns=[*SCORE_JOIN_KEYS, "logscore"]),
+            "mean_logscore": None, "reason": dict(reason)}
+
+
 def _run_part2(frame: pd.DataFrame, cfg: Mapping, *,
                provenance: Any,
                reasons: dict[str, dict[str, str]]) -> dict:
@@ -1232,7 +1253,7 @@ def _run_part2(frame: pd.DataFrame, cfg: Mapping, *,
             reasons, "BELOW_MIN_SNAPS",
             f"no rusher reaches the §9 floor of {min_snaps} primary snaps "
             f"(largest rusher: {best} snaps) among {int(counts.size)} rushers; "
-            "Part 2 has no estimable player sample",
+            "Part 2 has no estimable players",
             provenance=provenance)
         return {"status": "NOT_ESTIMABLE",
                 "reason": f"no rusher has >= {min_snaps} primary snaps",
@@ -1249,10 +1270,16 @@ def _run_part2(frame: pd.DataFrame, cfg: Mapping, *,
 
     abs_diag = _load_diagnostics(data, "absolute", grid_abs)
     rel_diag = _load_diagnostics(data, "relative", grid_rel)
-    abs_cv = cross_validate(data, cfg, mapping, kind="absolute", grid=grid_abs,
-                            provenance=provenance)
-    rel_cv = cross_validate(data, cfg, mapping, kind="relative", grid=grid_rel,
-                            provenance=provenance)
+    abs_cv = (cross_validate(data, cfg, mapping, kind="absolute", grid=grid_abs,
+                             provenance=provenance)
+              if abs_diag["present"]
+              else _unbuilt_load_cv(_load_reason(abs_diag, int(len(data)),
+                                                 provenance=provenance)))
+    rel_cv = (cross_validate(data, cfg, mapping, kind="relative", grid=grid_rel,
+                             provenance=provenance)
+              if rel_diag["present"]
+              else _unbuilt_load_cv(_load_reason(rel_diag, int(len(data)),
+                                                 provenance=provenance)))
     # A definition whose exposure is entirely NA has a load-build root cause,
     # not a modelling failure; report that instead of "no scored folds".
     for diag, cv in ((abs_diag, abs_cv), (rel_diag, rel_cv)):
@@ -1275,10 +1302,12 @@ def _run_part2(frame: pd.DataFrame, cfg: Mapping, *,
         if (mean is None) or (not np.isfinite(float(mean))):
             bad.append(name)
     if bad:
+        which = " and ".join(bad)
         reasons["comparison"] = _reason(
             "UPSTREAM_NA",
-            f"the paired comparison was not reached because the "
-            f"{' and '.join(bad)} model produced no usable held-out score",
+            f"the paired comparison was not reached because the {which} "
+            f"model{'s' if len(bad) > 1 else ''} produced no usable held-out "
+            "score",
             provenance=provenance)
         result["status"] = "NOT_ESTIMABLE"
         result["reason"] = "at least one definition produced no held-out scores"
