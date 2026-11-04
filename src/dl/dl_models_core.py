@@ -617,8 +617,18 @@ def prepare_frame(frame: pd.DataFrame, cfg: Mapping) -> pd.DataFrame:
     return _prepare(frame, cfg, required_fields(cfg))
 
 
-def fit_p1(frame: pd.DataFrame, cfg: Mapping) -> dict:
-    """P1: Weibull AFT with a log-normal frailty, plus the declared rungs."""
+def fit_p1(frame: pd.DataFrame, cfg: Mapping, *,
+           include_secondary: bool = True,
+           starts: int | None = None) -> dict:
+    """P1: Weibull AFT with a log-normal frailty, plus the declared rungs.
+
+    ``include_secondary`` and ``starts`` are **validation hooks** for
+    ``stage_05_validate``: a permutation refit repeats only the primary
+    estimand thousands of times, so it skips the (unused) secondary model
+    block and uses one optimiser start, exactly as the CV fits do
+    (``models.cv_starts``).  Both default to the stage-04 behaviour, so the
+    confirmatory artefact is unchanged.
+    """
     models = cfg["models"]
     fields = required_fields(cfg)
     absent = design_columns_missing(frame, cfg)
@@ -655,9 +665,12 @@ def fit_p1(frame: pd.DataFrame, cfg: Mapping) -> dict:
     chunk = int(models.get("quadrature_chunk_rows", 4000))
 
     rungs: list[dict] = []
+    fit_kwargs = {"nodes": nodes, "max_iter": max_iter, "seed": seed,
+                  "chunk_rows": chunk}
+    if starts is not None:
+        fit_kwargs["starts"] = int(starts)
     primary = SV.fit_weibull(t, event, X, design.names, frailty="lognormal",
-                             nodes=nodes, max_iter=max_iter, seed=seed,
-                             chunk_rows=chunk)
+                             **fit_kwargs)
     rungs.append({"name": "aft_frailty_lognormal", "used": bool(primary.converged),
                   "converged": bool(primary.converged), "message": primary.message,
                   "loglik": primary.loglik,
@@ -706,7 +719,11 @@ def fit_p1(frame: pd.DataFrame, cfg: Mapping) -> dict:
                else hazard_ratio(main_fit, "a0_z"))
         result["estimate"] = est
         result["time_ratio"] = float(np.exp(main_fit.params[design.a0_index]))
-    result["secondary"] = _p1_secondary(data, design, cfg, moments)
+    result["secondary"] = (_p1_secondary(data, design, cfg, moments)
+                           if include_secondary else
+                           {"status": "NOT_REQUESTED",
+                            "reason": "secondary block skipped by the caller "
+                                      "(validation refit)"})
     return result
 
 
@@ -1397,8 +1414,15 @@ def part2_verdict(point, boot, soi: float, margin: float) -> str:
 # S1 and E1
 # --------------------------------------------------------------------------- #
 def fit_s1(data: pd.DataFrame, cfg: Mapping, *, load_column: str,
-           draws: int | None = None) -> dict:
-    """Population load coefficient + load x a0 interaction, naive and corrected."""
+           draws: int | None = None,
+           include_reliability: bool = True) -> dict:
+    """Population load coefficient + load x a0 interaction, naive and corrected.
+
+    ``include_reliability`` is a **validation hook**: ``stage_05_validate``
+    re-derives the naive relative-load coefficient once per permutation and
+    does not need the (separate) slope-reliability fit.  The default keeps the
+    stage-04 artefact byte-identical.
+    """
     models = cfg["models"]
     n_draws = int(draws if draws is not None else cfg["load"].get("posterior_draws", 200))
     seed = int(cfg["seeds"]["model"])
@@ -1454,19 +1478,20 @@ def fit_s1(data: pd.DataFrame, cfg: Mapping, *, load_column: str,
 
     # Model-based slope reliability: the per-rusher slope distribution from the
     # random-intercept model (the same EB step the P2 ladder uses).
-    ri_fit = SV.fit_weibull(t, event, Xa[:, :-1], design.names, frailty="lognormal",
-                            nodes=int(models["frailty_quadrature_nodes"]),
-                            max_iter=int(models["max_iter"]), seed=seed,
-                            chunk_rows=int(models.get("quadrature_chunk_rows", 4000)),
-                            with_cov=False)
-    eb = eb_slopes(ri_fit, work.assign(_X=list(Xa[:, :-1])), cfg)
     reliability = None
-    if eb.get("status") == "OK" and eb["slopes"]:
-        slopes = np.array([r["slope"] for r in eb["slopes"]])
-        ses = np.array([r["se"] for r in eb["slopes"]])
-        var = float(np.var(slopes, ddof=1))
-        denom = var + float(np.mean(ses ** 2))
-        reliability = float(var / denom) if denom > 0 else None
+    if include_reliability:
+        ri_fit = SV.fit_weibull(t, event, Xa[:, :-1], design.names, frailty="lognormal",
+                                nodes=int(models["frailty_quadrature_nodes"]),
+                                max_iter=int(models["max_iter"]), seed=seed,
+                                chunk_rows=int(models.get("quadrature_chunk_rows", 4000)),
+                                with_cov=False)
+        eb = eb_slopes(ri_fit, work.assign(_X=list(Xa[:, :-1])), cfg)
+        if eb.get("status") == "OK" and eb["slopes"]:
+            slopes = np.array([r["slope"] for r in eb["slopes"]])
+            ses = np.array([r["se"] for r in eb["slopes"]])
+            var = float(np.var(slopes, ddof=1))
+            denom = var + float(np.mean(ses ** 2))
+            reliability = float(var / denom) if denom > 0 else None
     return {
         "status": "OK" if fit.converged else "NOT_CONVERGED",
         "definition": load_column,

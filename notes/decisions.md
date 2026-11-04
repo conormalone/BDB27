@@ -3279,3 +3279,59 @@ on 17,159/17,159 model-frame rows. Sensitivity panel: `team_coverage_man_zone`
 16,732, `offense_formation` 17,155, `pre_snap_depth_yd` 399 (tracking-limited).
 `blitz`, `n_blockers`, `primary_blocker_group`: 0 non-null, `NOT_APPLICABLE`
 (D78 §1–§3), not a coverage gap.
+
+## D79 — 2026-11-04 — Phase 5 lands as the ceiling permutation, with the other checks named as stubs
+
+**(1) What was built.** `src/dl/stage_05_validate.py` implements the Phase-5
+**ceiling permutation** and is wired into `dl.run.STAGES` after `04_models` and
+into the notebook's `DL_STAGE_ORDER`. Per replicate it moves each player's whole
+shrunken ceiling (a0, a0_se, a0_icc, vmax, tau, vmax_se, tau_se) to a donor
+player **within the same position group**, rebuilds the relative-load panel with
+the stage-04 arithmetic, refits the Part-1 model with the same estimator, rung
+ladder and in-fold standardisation, and refits the S1 population model on the
+rebuilt relative load. The observed statistic is computed by the same code
+path, so observed and null are commensurable. Reported per statistic: observed,
+null mean/SD/2.5–97.5 quantiles, two-sided and one-sided permutation p, valid
+replicate count and seed.
+
+**(2) Rep count.** `validate.permutations.reps = 199` (p resolution 0.005),
+`sample_reps = 9`. The design sketch's 1000 was a placeholder; no prereg value
+fixes the rep count, and a refit costs seconds, so 199 is the configured design
+and sample mode stays a machinery check. Permutation refits use one optimiser
+start (the `models.cv_starts` convention) and skip the unused secondary block —
+a new, default-preserving keyword on `fit_p1` (`include_secondary`, `starts`)
+and on `fit_s1` (`include_reliability`). Stage-04 output is unchanged: the
+defaults reproduce it exactly.
+
+**(3) Position group — the one genuinely underspecified detail.** The prereg
+fixes *that* the shuffle is within position group and names interior vs edge,
+but not how the group is derived on a prospect-only product. Chosen reading
+(most conservative, config-driven): a player's group is his **modal
+`alignment`** over his own snaps — the labelled edge/interior field — with ties
+broken alphabetically; players with no alignment fall back to the roster
+`position_group` map (`DE→edge`, `DT/NT→interior`) and each player records the
+source. Players in neither are `unknown` and are never mixed into a real group.
+This is recorded as an open question for Conor, not as a result. On the sample,
+alignment splits players 28 single-alignment / 59 two-alignment, so the modal
+rule decides 59 players by frequency; a full run should report the split.
+
+**(4) Relative-load column.** Taken unchanged from stage 04's plurality of
+held-out fold selections (`part2_result.json`); if absent, the middle grid
+value is used and the source is stamped `grid_midpoint_default`. The validation
+stage never tunes a value.
+
+**(5) Stubs, never passes.** `within_player_order_permutation`,
+`cv_vs_controls_only_baseline` and `measurement_error_correction` raise
+`CheckNotImplemented` with a message naming the check. The stage calls them,
+catches the refusal, and records `NOT_IMPLEMENTED` in `validation_result.json`,
+`check_status.csv` and `SUMMARY.md`. The remaining §5.6 checks (placebos,
+rotation/survivorship, context sensitivity, mechanical coupling, equivalence)
+also get `NOT_IMPLEMENTED` rows in their own artefact files and a reason — so an
+unbuilt check can never read as a pass. No status in the artefact is `PASS`
+except through an estimated statistic.
+
+**(6) Evidence.** `tests/test_dl_validate.py` (shuffle integrity within group,
+singleton groups, planted recovery, null calibration, determinism, artefact
+contract, refusal to overwrite a FULL artefact);
+`notebooks/bdb27_dl_full_run.ipynb` cells 0/5/6/8; `config.yaml` `validate:`;
+`notes/blockers.md` (build item closed).

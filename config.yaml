@@ -1334,8 +1334,32 @@ bdb27_dl:
     mde_note: "HR per 1 SD a0; smallest effect fixed in prereg"
   validate:
     out_subdir: validation
-    permutations: {reps: 1000, ceiling_scheme: within_position_group,
-                   order_scheme: within_player_game}
+    # --- ceiling permutation (prereg §3, §7; TASK.md Phase 5) --------------
+    # 199 refits is the configured design: p resolution 1/200 = 0.005, well
+    # inside the 0.05 decision level, and ~40x cheaper than the 1000 the
+    # design sketch carried as a placeholder (no prereg value fixes the rep
+    # count).  A permutation refit is the primary model only: one optimiser
+    # start (the CV convention, models.cv_starts) and no secondary block.
+    permutations:
+      reps: 199
+      sample_reps: 9          # sample mode is a machinery check, never a test
+      ceiling_scheme: within_position_group
+      order_scheme: within_player_game
+      starts: 1
+      seed_key: permutation   # bdb27_dl.seeds.permutation
+      min_rows: 500           # below this no refit is attempted (NOT_ESTIMABLE)
+    # The group the ceiling is shuffled within: interior vs edge.  The labelled
+    # per-snap field is ``alignment``; a player's group is his modal alignment
+    # over his own snaps.  If alignment is absent the roster position is mapped
+    # (fallback_map) and the source is recorded per player.
+    position_group:
+      source: alignment
+      values: [edge, interior]
+      fallback_column: position_group
+      fallback_map: {edge: [EDGE, DE], interior: [INTERIOR_LINE, DT, NT]}
+    # null => take the relative-load grid value stage 04 selected in the
+    # plurality of CV folds from part2_result.json
+    relative_load_column: null
     placebos: [alignment, pre_snap_depth_yd, height_in, weight_lb]
     equivalence: {margin_hr: 1.05, soi_hr: 1.10, alpha: 0.05,
                   margin_logscore: 0.002, soi_logscore: 0.005}

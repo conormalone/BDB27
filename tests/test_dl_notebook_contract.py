@@ -15,7 +15,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 NB_PATH = ROOT / "notebooks" / "bdb27_dl_full_run.ipynb"
 
-DL_CHAIN = ["00_thresholds", "01_audit", "02_combine_ceiling", "03_game_snaps", "04_models"]
+DL_CHAIN = ["00_thresholds", "01_audit", "02_combine_ceiling", "03_game_snaps",
+            "04_models", "05_validate"]
 
 
 @pytest.fixture(scope="module")
@@ -48,10 +49,15 @@ def test_dl_stage_order_is_the_task_chain(code_text):
     assert re.findall(r'"([^"]+)"', match.group(1)) == DL_CHAIN
 
 
-def test_validate_is_not_in_the_order_and_is_reported_not_run(code_text):
+def test_validate_is_in_the_order_and_its_status_comes_from_the_artefact(code_text):
     match = re.search(r"^DL_STAGE_ORDER\s*=\s*\[(.*?)\]", code_text, re.M | re.S)
-    assert "05_validate" not in re.findall(r'"([^"]+)"', match.group(1))
-    assert "stage_05_validate.py is not built" in code_text
+    assert "05_validate" in re.findall(r'"([^"]+)"', match.group(1))
+    assert '"dl.stage_05_validate"' in code_text
+    # The headline prints Phase 5 from validation_result.json, never from an
+    # assumption: an absent artefact must print NOT RUN.
+    assert "validation_result.json" in code_text
+    assert "NOT RUN — outputs/dl/validation/validation_result.json absent" in code_text
+    assert "NOT IMPLEMENTED in this build" in code_text
 
 
 def test_config_cell_has_every_required_knob_and_assertions(code_text):

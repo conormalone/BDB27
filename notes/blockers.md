@@ -58,40 +58,29 @@ them, while a missing required §8 control is still a hard `FAIL`.
 4. **`dl_blockers.py` is dormant, not deleted** — if an all-22 product appears,
    flip `tracking_product` and re-run; the gate then evaluates normally.
 5. The pre-existing items below (absent full tracking files; no rusher–blocker
-   assignment field; unverified label provenance; phase 5 not built).
+   assignment field; unverified label provenance). Phase 5 is built as of D79.
 
-**Next build item — `src/dl/stage_05_validate.py` (Phase 5), not yet written.** The DL
-notebook deliberately omits `05_validate` from its stage order and its headline prints Phase 5 as
-`NOT RUN`. Nothing is stubbed green. When it is built it must implement, at minimum:
+**BUILT 2026-11-04 (D79) — `src/dl/stage_05_validate.py` (Phase 5).** The stage
+now exists, is in `dl.run.STAGES` after `04_models`, and is in the notebook's
+`DL_STAGE_ORDER`; its headline prints Phase 5 from `validation_result.json` and
+prints `NOT RUN` when the artefact is absent or not `FULL`. **Implemented:** the
+ceiling permutation (within position group, relative load and the Part-1
+exposure rebuilt, Part-1 and S1 refits, permutation p over a config-driven rep
+count and seed). **Not implemented — stubs that raise `NotImplementedError` and
+are listed as `NOT_IMPLEMENTED`, never as a pass:** within-player order
+permutation, the CV-vs-controls-only baseline, the measurement-error correction.
+**Not built either, and written as `NOT_IMPLEMENTED` rows in their own artefact
+files:** placebos, rotation/survivorship, context sensitivity, mechanical
+coupling, equivalence/TOST. The stage refuses `provenance != FULL` for a
+reportable verdict and stamps sample output; it ran clean in `--mode sample`
+(9 permutations, 3m21s, `NOT_INTERPRETED_SAMPLE`).
 
-* **Ceiling permutation** — shuffle shrunken ceilings across players *within position group*,
-  rebuild relative load and the Part-1 features, refit, and show the `a0` / relative-load effects
-  vanish (TASK.md Phase 5; prereg §3 exposure definition, §7 relative-load definition).
-* **Within-player order permutation** — shuffle snap order within `(nfl_id, game_id)`, rebuild the
-  cumulative loads, and show the load effect vanishes (prereg §7; TASK.md Phase 5).
-* **Placebos** — load must not predict pre-snap `alignment` or `pre_snap_depth_yd`; `height_in` and
-  `weight_lb` must not mimic the acceleration effect after the prereg §8 controls.
-* **Mechanical-coupling check** — repeat with ceiling-fraction outcomes only, labelled as a check;
-  the confirmatory result must rest on the ceiling-free outcomes (prereg §4).
-* **Rotation and survivorship** — restrict to rusher-games with complete snap coverage and to
-  high-snap-share rushers, report snaps by quarter, and run a stay-probability-weighted version
-  (prereg §6 primary snap set/strata; §9 minimum snaps; TASK.md Phase 5).
-* **Context sensitivity** — garbage time using the frozen rule, the final two minutes of each half,
-  obvious passing situations, and blocker-control variation; `unblocked_pressure` remains
-  exploratory (prereg §6, §8; TASK.md Phase 5).
-* **Equivalence / TOST** — the prereg §12 smallest effects and margins (`HR 1.10`/`1.05`;
-  `0.005`/`0.002` nats per snap), with the interval rule for an informative null; §13 reliability
-  is reported, never lowered; §5 censoring and the `< 0.5` event-rate assertion still apply.
-* **Artefacts** — `validation_result.json`, `permutation_null.csv`, `placebo_checks.csv`,
-  `rotation.csv`, `context_sensitivity.csv`, `equivalence.json`, `SUMMARY.md` under
-  `outputs/dl/validation/` (design §5.6), every non-estimable check reported with
-  `status: not estimable` and a reason.
-
-The stage must refuse `provenance != FULL` for reportable output and must be exercised on the
-committed synthetic worlds before a full run. It is a real build, not a placeholder.
-
-**No other active blockers.** Every other Phase 1 item is evaluable from the
-files on disk.
+**Open question from that build (not a blocker).** The prereg fixes *that* the
+ceiling shuffle is within position group (interior vs edge) but not how the
+group is derived on a prospect-only tracking product. D79 §3 uses each player's
+modal `alignment`, with a roster-position fallback and an `unknown` bucket that
+is never mixed in. Conor may prefer a different derivation before the full run;
+the choice is one config block (`validate.position_group`).
 
 ## Retired task — leverage × ceiling (D60, 2026-10-27)
 
