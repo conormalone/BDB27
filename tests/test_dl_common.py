@@ -314,8 +314,44 @@ def test_require_prereg_full_mode_gates_on_frozen(tmp_cfg):
     with pytest.raises(RuntimeError, match="FROZEN"):
         D.require_prereg(tmp_cfg, "full", "01_audit")
 
-    path.write_text("# PREREG — FROZEN 2026-11-01\nvalues...\n", encoding="utf-8")
+    path.write_text("# PREREG\n\n**Status: FROZEN.** Frozen 2026-11-01.\nvalues...\n",
+                    encoding="utf-8")
     assert D.require_prereg(tmp_cfg, "full", "01_audit") == path
+
+
+def test_require_prereg_rejects_a_negated_status(tmp_cfg):
+    """(a) 'DRAFT — NOT FROZEN' contains the substring FROZEN but is not frozen."""
+    path = Path(tmp_cfg["bdb27_dl"]["paths"]["prereg"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "# PREREG\n\n**Status: DRAFT — NOT FROZEN.** Values still open.\n"
+        "The word FROZEN appears in this body, and must not satisfy the gate.\n",
+        encoding="utf-8")
+    with pytest.raises(RuntimeError, match="NOT FROZEN"):
+        D.require_prereg(tmp_cfg, "full", "01_audit")
+    assert D.prereg_declared_status(path.read_text(encoding="utf-8")) == "DRAFT — NOT FROZEN."
+    assert D.prereg_is_frozen(path.read_text(encoding="utf-8")) is False
+
+
+def test_require_prereg_rejects_a_missing_status_line(tmp_cfg):
+    """(c) a file with no declared status is rejected, whatever else it says."""
+    path = Path(tmp_cfg["bdb27_dl"]["paths"]["prereg"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("# PREREG — FROZEN 2026-11-01\nvalues...\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="declares no status"):
+        D.require_prereg(tmp_cfg, "full", "01_audit")
+    assert D.prereg_declared_status(path.read_text(encoding="utf-8")) is None
+
+
+def test_current_committed_prereg_passes_the_gate():
+    """(b) notes/prereg.md declares FROZEN and must still satisfy the gate."""
+    prereg = ROOT / "notes" / "prereg.md"
+    assert prereg.exists(), "the committed prereg is missing"
+    text = prereg.read_text(encoding="utf-8")
+    clone = copy.deepcopy(C.load_config())
+    clone["bdb27_dl"]["paths"]["prereg"] = str(prereg)
+    assert D.prereg_is_frozen(text) is True
+    assert D.require_prereg(clone, "full", "01_audit") == prereg
 
 
 # --------------------------------------------------------------------------- #

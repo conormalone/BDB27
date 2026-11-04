@@ -20,7 +20,9 @@ Provenance contract
 Full-run gates
 --------------
 * :func:`require_prereg` refuses ``--mode full`` unless the prereg file exists
-  and contains the token ``FROZEN``.
+  and its declared ``**Status: ...**`` block affirms ``FROZEN`` (a negated
+  status such as ``DRAFT — NOT FROZEN`` is rejected, even though it contains
+  the substring ``FROZEN``).
 * :func:`require_full_tracking` refuses ``--mode full`` unless the tracking
   input parses to more rows than the provided sample row cap.
 * :func:`require_full_provenance` refuses reportable numbers on non-FULL data.
@@ -33,6 +35,7 @@ import contextlib
 import csv
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -341,12 +344,56 @@ def require_full_provenance(cfg: Mapping, mode: str, stage: str) -> str:
     return level
 
 
+#: The prereg's declared status is the first ``**Status: ...**`` block.  Only
+#: that block is a declaration; a ``FROZEN`` token anywhere else in the file is
+#: not one.
+_STATUS_LINE = re.compile(r"^\s*\*\*\s*Status\s*:(?P<status>.*)$", re.I | re.M)
+#: A status that *contains* FROZEN but negates it (``NOT FROZEN``, ``UNFROZEN``).
+_NEGATED_FROZEN = re.compile(r"\b(?:NOT|NEVER|UN)[\s_\-]*FROZEN\b", re.I)
+_FROZEN = re.compile(r"\bFROZEN\b", re.I)
+
+
+def prereg_declared_status(text: str) -> str | None:
+    """Return the prereg's declared status text, or ``None`` if it declares none.
+
+    Reads the first line of the form ``**Status: ...**`` and returns the text
+    between ``Status:`` and the closing ``**`` (or the rest of the line when the
+    bold is unclosed).  Returns ``None`` when there is no such line or it is
+    empty — an undeclared status is not a freeze.
+    """
+    match = _STATUS_LINE.search(text or "")
+    if not match:
+        return None
+    raw = match.group("status")
+    end = raw.find("**")
+    if end != -1:
+        raw = raw[:end]
+    status = raw.strip().strip("*").strip()
+    return status or None
+
+
+def prereg_is_frozen(text: str) -> bool:
+    """True only if the declared status affirms ``FROZEN``.
+
+    A negated status (``DRAFT — NOT FROZEN``, ``UNFROZEN``) is rejected on the
+    negation itself, so its ``FROZEN`` substring cannot satisfy the test.  A file
+    with no status line is rejected: an undeclared prereg is not a frozen one.
+    """
+    status = prereg_declared_status(text)
+    if not status:
+        return False
+    if _NEGATED_FROZEN.search(status) or "draft" in status.lower():
+        return False
+    return bool(_FROZEN.search(status))
+
+
 def require_prereg(cfg: Mapping, mode: str, stage: str) -> Path:
     """Gate full-mode runs on a frozen pre-registration.
 
-    Full mode: the configured prereg file must exist *and* contain the token
-    ``FROZEN``.  Sample mode: returns the path without raising (sample work is
-    explicitly allowed before the prereg is written).
+    Full mode: the configured prereg file must exist *and* its declared status
+    must affirm ``FROZEN`` (see :func:`prereg_is_frozen`).  Sample mode: returns
+    the path without raising (sample work is explicitly allowed before the
+    prereg is written).
     """
     path = _abs(dl(cfg)["paths"]["prereg"])
     if mode != "full":
@@ -357,11 +404,18 @@ def require_prereg(cfg: Mapping, mode: str, stage: str) -> Path:
             f"pre-registration file {path}, which does not exist. Write it "
             f"(see TASK.md) before the first full-data run.")
     text = path.read_text(encoding="utf-8")
-    if "FROZEN" not in text:
+    status = prereg_declared_status(text)
+    if status is None:
         raise RuntimeError(
-            f"STAGE {stage!r}: refusing to run — {path} exists but does not "
-            f"contain the token 'FROZEN'. An unfrozen prereg cannot gate a "
-            f"confirmatory full run.")
+            f"STAGE {stage!r}: refusing to run — {path} declares no status. "
+            f"A prereg must state its status as '**Status: FROZEN.**' to gate a "
+            f"confirmatory full run; a missing or empty status is not FROZEN.")
+    if not prereg_is_frozen(text):
+        raise RuntimeError(
+            f"STAGE {stage!r}: refusing to run — {path} declares status "
+            f"{status!r}, which is not an affirmative FROZEN declaration. "
+            f"A negated status such as 'DRAFT — NOT FROZEN' contains the token "
+            f"'FROZEN' but is not frozen; the declared status is what counts.")
     return path
 
 

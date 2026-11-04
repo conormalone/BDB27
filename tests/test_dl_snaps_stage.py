@@ -144,8 +144,9 @@ def _make_cfg(tmp_path) -> dict:
     raw = tmp_path / "raw"
     raw.mkdir(parents=True, exist_ok=True)
     (tmp_path / "notes").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "notes" / "prereg.md").write_text("# prereg\n\n**FROZEN**\n",
-                                                  encoding="utf-8")
+    (tmp_path / "notes" / "prereg.md").write_text(
+        "# prereg\n\n**Status: FROZEN.** Frozen 2026-11-04 (IDR spec).\n",
+        encoding="utf-8")
     return cfg
 
 
