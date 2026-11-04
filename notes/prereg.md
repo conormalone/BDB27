@@ -1,346 +1,273 @@
-# Pre-registration — DL acceleration ceiling and in-game pass-rush pressure
+# Pre-registration — Intra-drive regeneration, inter-snap rest, and pass-rush kinematic deficits
 
-**Status: FROZEN.** Frozen 2026-10-31 (D70). Gates `--mode full` only.
-Written after the Phase 1 audit and the Phase 2 reliability measurement on the
-provided sample, and **before** any Phase 4 model code was written. No full-data
-result has been seen; no full-data file exists on this host.
+**Status: DRAFT — NOT FROZEN.** One value is missing (§12, P1 smallest effect of
+interest) and has no source anywhere in the repository or in `TASK.md`. Until
+Conor sets it, this document **cannot** gate `--mode full`; the gate reads for
+the token `FROZEN` and will refuse the run, which is the correct behaviour for a
+prereg with a blank in it.
 
-Provenance of the numbers quoted below: `outputs/dl/audit/SUMMARY.md` and
-`outputs/dl/ceiling/summary.json`, sample mode, stamped
-`PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT`. Sample values are stated here
-only to fix **rules**, never as findings. Where a rule depends on a measurement,
-the rule is written so that a different full-data measurement changes the
-**verdict**, not the analysis.
+Written 2026-11-04 for the IDR spec (`TASK.md`, supplied by Conor the same day,
+superseding the 2026-10-30 acceleration-ceiling spec archived at
+`notes/archive-tasks/TASK-dl-acceleration-ceiling-2026-10-30.md`).
 
-Deviations from this document are permitted only as exploratory analyses and
-must be logged in `notes/decisions.md` with the date and the reason. A
-confirmatory claim may not be moved after the fact.
+**This document transcribes decisions that already exist** in `config.yaml`,
+`notes/decisions.md` (D80–D83) and `notes/schema.md`. It introduces no new
+threshold, grid, control or definition. Where `TASK.md` is silent, the choice is
+marked **[declared]** — a decision made in the build and recorded here so it
+cannot drift afterwards.
+
+No full-data result has been seen. No full-data file exists on this host.
 
 ---
 
 ## 1. Questions and claim hierarchy
 
-1. **P1 (confirmatory).** Does the Combine acceleration ceiling predict time to
-   pressure on pass-rush snaps, beyond position, size and play context?
-   Estimand: hazard ratio per **1 SD** of `a0`, with a player-level frailty.
-2. **P2 (confirmatory).** Does cumulative load measured **relative to the
-   player's own ceiling** predict later pass-rush outcomes better than
-   **absolute** cumulative load, out of sample, with equal tuning freedom?
-   Estimand: difference in held-out log score, relative minus absolute.
-3. **S1 (secondary).** Is there a population-level decline in pass-rush
-   outcomes with accumulated load under the better definition, and does `a0`
-   moderate it?
-4. **E1 (exploratory, descriptive only).** How much of the `a0` effect on
-   pressure runs through `player_get_off`?
+1. **P1 (confirmatory).** Does the interaction between rolling kinematic load and
+   inter-snap rest predict a player's acceleration deficit on the current snap?
+   Estimand: the load × rest coefficient on `log(deficit_ratio)`, with load and
+   rest standardised, and a random intercept (plus random slope on load where
+   estimable) by rusher.
+2. **P2 (confirmatory, second).** Do transient, snap-level kinematic deficits
+   predict time to pressure better than absolute cumulative game load, out of
+   sample, with equal tuning freedom? Estimand: difference in held-out log
+   predictive density, deficit arm minus absolute arm.
+3. **E1 (exploratory).** At what rest-to-load ratio does an elite starter's
+   pressure probability fall below that of a fresh rotational player?
+   Descriptive curve, no confirmatory claim.
 
-Only P1 and P2 can be called confirmatory. S1 is secondary and reported with
-its own interval. E1 is descriptive; no causal mediation claim is made.
+Only P1 and P2 are confirmatory. E1 is reported with its own interval and is not
+a test.
 
 ## 2. Data and cohort
 
-* Source: the seven provided files only. No external data.
-* Cohort: `players.nfl_position ∈ {DE, DT, NT}` (88 players), joined to
-  `combine_position == "DL"`. Claims are limited to drafted DL with game
-  tracking, and to the 2023–2025 draft classes.
-* Game side: `player_play` rows flagged `blitzing == TRUE` are interpreted as
-  **rush assignments** (D69 evidence: TRUE ⇔ `player_get_off` present,
-  15,633/17,159 vs 2/322 on dropback rows). This is a semantic decision fixed
-  before modelling; it is not re-litigated per result.
-* `player_play` contains the prospect cohort only (497 distinct `nfl_id`,
-  2.73 rows/play). It is not a full participation table; team-level blitz and
-  blocker assignments are derived from tracking at full run and are `NA` where
-  tracking is absent.
-* Seasons 2023–2025 including postseason; preseason games are excluded from
-  modelling (kept in the audit).
+* The seven provided files only. No external data.
+* Combine side: `combine_tracking.csv`, `combine_results.csv`, `players.csv`.
+* Game side: `player_play.csv`, `game_tracking_{2023,2024,2025}.csv`, `games.csv`.
+* Cohort: matched DL (`players.nfl_position ∈ {DE, DT, NT}` joined to
+  `combine_position == "DL"`), draft classes 2023–2025. Claims are limited to
+  draftee DL with game tracking.
+* The 2027 tracking product is **prospect-only**: team-level rush and protection
+  counts are unobservable, not missing (D78). Anything requiring all-22 counts
+  is out of scope and is not proxied.
 
-## 3. Primary exposure and the feature set
+## 3. Baseline: the Combine acceleration ceiling
 
-* **Primary: `a0 = vmax / tau`** from the per-attempt fit
-  `v(t) = vmax * (1 - exp(-t/tau))` on `FORTY_YARD_DASH`, pooled across
-  attempts by empirical-Bayes shrinkage on the log scale, always using the
-  shrunken estimate and its delta-method SE. Never a best attempt.
-* `a0` is retained unconditionally as the estimand; the ICC/VIF screen ranks
-  only the alternates (D69). A screen that drops `a0` is a bug, not a finding.
-* Alternates, used in a **specification curve** (one per model, never joint):
-  `speed_at_1_0`, `speed_at_2_0`, `vmax`, `tau`, `ten_yd_split` (from
-  `combine_results`; no test-retest ICC is estimable), `peak_accel`
-  (exploratory).
-* Lateral mechanics (shuttle/cone entry speed, peak, exit speed, total time,
-  braking distance) are **exploratory only** and enter no confirmatory model.
-* The exposure enters every model standardised to 1 SD of the shrunken
-  estimate in the estimation sample, so the HR is per 1 SD by construction.
+* Per attempt, fit `v(t) = v_max * (1 - exp(-t / τ))` on straight-line drills;
+  `a_0 = v_max / τ`.
+* Pool attempts per player by empirical-Bayes shrinkage on the log scale; use
+  the shrunken estimate and its delta-method SE everywhere downstream; never a
+  best attempt.
+* `a_0` is the **baseline**, not a predictor. It is the denominator of the
+  deficit and a player-level covariate, and it enters no model as an exposure.
+* Reliability gate: `icc_min = 0.50` on `a_0`. Sample value 0.532 (71 players,
+  136 attempts) — borderline. If the full-run ICC is below 0.50, the run stops
+  and the fallback is proposed to Conor, never adopted automatically. The
+  threshold is never lowered.
 
-## 4. Outcomes
+## 4. Derived per-snap quantities (Phase 3)
+
+All three are computed once, written to the snap table, and never recomputed
+inside a model.
+
+* **`inter_snap_rest_s`** — seconds from the **end of the previous play** to the
+  snap of the current play. A play-level quantity: computed once per
+  (game, team, play) and joined to each rusher, never computed per player.
+  `NA` on a rusher-game's first snap. Never imputed across a gap: if
+  intermediate snaps are missing, the row is flagged and rest is not carried
+  through.
+* **`rep_kinematic_load_w_per_kg`** — **power**, `∫ a·v dt` over a rep, with
+  `a` in m/s² and `v` in m/s, so the unit is W/kg. Not `∫a²dt`.
+* **`rolling_kinematic_load_w_per_kg`** — the sum of the previous **3** snaps'
+  power for that rusher in that game (window fixed at 3 in `config.yaml`;
+  windows 1 and 5 are a declared sensitivity panel and are never used to select
+  the primary).
+* **`a0_snap`** — fitted, not differentiated: the same `v(t)` model is fitted to
+  each in-game rep's post-snap speed trace and `a_0 = v_max / τ` is read off it,
+  with `τ` retained. Raw double-differentiation is kept as a labelled
+  robustness column and is never primary.
+* **`deficit_ratio`** = `a0_snap / baseline a0`. Below 1 is a deficit. The
+  baseline SE is carried so the error can be propagated downstream.
+
+Coverage is counted, never assumed: `rows_rusher_tracked`, `frames_used`,
+`fit_ok`, `fit_at_bound`, `rep_too_short`, `fit_r2`, and
+`rest_sequence_complete`. Rows that fail are counted and reported; nothing is
+dropped silently and nothing is imputed.
+
+## 5. Outcomes
 
 | role | outcome | definition |
 |---|---|---|
-| P1 primary | time to pressure | `event = 1` iff `time_to_pressure` non-null on that DL row; event time = `time_to_pressure` |
-| P1 secondary | `quick_pressure` | binary, non-null rows only; nulls are "no pressure charged", not zero |
-| P1 secondary | `player_get_off` | linear mixed model, seconds |
-| P2 | time to pressure | same as P1, with load added |
-| exploratory | `sack` | rare (8.7% of rush rows are pressures; sacks far rarer); reported, never primary |
+| P1 | `log(deficit_ratio)` | as defined in §4; complete rows only |
+| P2 | time to pressure | event = pressure; time = `time_to_pressure`; censored at `dropback_duration` |
+| exploratory | `quick_pressure` | binary, pressure within 2.50 s; nulls are "no pressure charged" |
+| exploratory | `sack` | rare; reported, never primary |
 
-`pressure_allowed` (OL-side) is **not** an outcome. It is used only as an
-independent cross-check of label attribution, because the two systems disagree
-on roughly half of dropback plays (audit item e) and because
-`peak_pressure_probability_allowed` is probability-valued and therefore
-model-derived.
+**Not outcomes** (recorded so they are not reintroduced): `player_get_off`,
+`time_to_qb_hurry` and `unblocked_pressure` appear in the data but `TASK.md`
+does not name them as outcomes. **Pass-rush win rate** is named in `TASK.md` Q2
+but no such column exists in the provided `player_play.csv` (64 columns; the
+only "win" fields are win probability). Conor's decision 2026-11-04: if nothing
+can be done with the rushing-related rows, drop it. **P2's outcome is therefore
+time to pressure only, and the writeup states that the win-rate label is not
+available in this data release.** No proxy is substituted.
 
-**Null semantics fixed here:** null `time_to_pressure` / `quick_pressure` /
-`time_to_qb_hurry` = no event charged to that rusher (event absent), **not
-zero** and **not missing**. `sack` / `unblocked_pressure` on the **dropback
-analysis frame** are treated as observed (null ≠ 0); that frame has zero nulls
-in both fields, so no rows are excluded. Out-of-frame nulls on live pass plays
-without a recorded dropback are a recorded data-quality residual and never enter
-the table (wording corrected 2026-10-31, D71: the earlier text said "live pass
-play" and "109 rows excluded"; the rule itself is unchanged — the model frame
-was always the censorable dropback snap). No imputation of any label.
+**Null semantics.** Null `time_to_pressure` / `quick_pressure` = no event
+charged to that rusher. Null is not zero and not missing. No imputation.
 
-## 5. Censoring rule
+## 6. Censoring
 
-* Censor time = `dropback_duration`, joined at `(game_id, play_id)` from the OL
-  row (it is constant within play) and used **only** as the censoring time.
-* A snap with no `dropback_duration` is excluded and counted: it cannot be
-  censored.
-* If `time_to_pressure > dropback_duration`, the snap is set to `event = 0` at
-  `dropback_duration` and counted as an inconsistency; it is not silently kept.
-* `dropback_duration` never enters any model as a covariate.
-* Never fit on pressured snaps only; the event rate must be reported alongside
-  every fit, and a check asserts it is below 0.5.
+* Censor time = `dropback_duration`, constant within play, joined at
+  `(game_id, play_id)`. Used **only** as the censoring time, never as a
+  covariate.
+* A snap with no `dropback_duration` cannot be censored and is excluded, counted.
+* `time_to_pressure > dropback_duration` is set to `event = 0` at
+  `dropback_duration` and counted as an inconsistency.
+* The event rate is reported with every fit, and an assertion requires it below
+  0.5. Never fit on pressured snaps only.
 
-## 6. Primary snap set and strata
+## 7. Snap set
 
-* Primary: DL rows with a rush assignment (`blitzing == TRUE`), a valid censor
-  time, and a shrunken `a0`.
-* Exploratory strata: DL rows with `blitzing == FALSE` (dropped into coverage);
-  team blitz (rushers > 4, tracking-derived) — `NA` when underivable.
+* Primary: DL pass-rush snaps — `player_play` rows with a rush assignment
+  (`blitzing == TRUE`, the D69 semantic: TRUE ⇔ `player_get_off` present), a
+  valid censor time, and a shrunken baseline `a_0`.
 * Interior vs edge (`DE` = edge; `DT`/`NT` = interior) reported separately and
-  pooled with an interaction. The interaction is not a primary claim.
-
-## 7. Load definitions and tuning (Part 2)
-
-Both definitions are computed on the same snap sequence, with the same recency
-weighting and the same number of tuned parameters.
-
-* **Absolute load**: cumulative distance (yards) accumulated above a fixed
-  speed threshold `τ_abs`, over earlier snaps in the same game, exponentially
-  recency-weighted with half-life 300 s. Grid:
-  `τ_abs ∈ {1.5, 2.0, 2.5, 3.0, 3.5}` yd/s (5 values).
-* **Relative load**: cumulative distance above `f × v_player(t_match)`, where
-  `v_player` is the shrunken fitted Combine curve and `t_match` is the in-game
-  elapsed time matching the Combine window (1.0 s and 2.0 s). Grid:
-  `f ∈ {0.5, 0.6, 0.7, 0.8, 0.9}` (5 values).
-* Ceiling uncertainty is carried into the load by 200 posterior draws from the
-  shrunken estimate and its SE (seeded); the draw-mean load is used, and the
-  point-estimate load is reported alongside.
-* **Tuning**: both grids are searched **inside each training fold only**, by the
-  same criterion (training-fold log likelihood), over the same number of
-  candidate values (5 each), with the same optimiser settings. The selected
-  value is applied unchanged to the held-out fold. No tuning on held-out data,
-  no tuning on the sample, no per-definition extra parameters.
-* Rest is accounted for by `seconds_since_last_snap` and `snaps_in_drive`,
-  which enter both definitions identically as covariates.
-* Total distance is a reported benchmark, not a competing definition.
+  pooled with an interaction. Not a primary claim.
+* `blitzing` is carried into the snap table and declared as a control (§8), but
+  on this snap set it is constant (TRUE for every row, because these rows *are*
+  the rush assignments). The model reports it as not identified rather than
+  claiming a blitz adjustment it cannot make. A team-level blitz indicator is
+  not derivable from this product.
 
 ## 8. Controls
 
-*Amended 2026-11-02 (D78), **before any full-data result was seen** and before
-any full-data file existed on this host. This section is the only part of the
-frozen text the amendment touches: §1–§7 and §9–§16 stand unchanged.*
+* **P1**: alignment, down, yards to go, score margin, and `blitzing` (declared,
+  not identified — see §7). `TASK.md` does not specify a control list for P1;
+  this list is **[declared]** and is exactly what §4's spec sentence implies.
+  Random intercept by rusher; random slope on load where estimable.
+* **P2**: position group, alignment, down, yards to go, quarter, score margin,
+  seconds since last snap, snaps in drive, height, weight, years since Combine,
+  `blitzing`; crossed fixed effects for team and season; plus baseline `a0`
+  level. Frailty by rusher.
+* The control list is fixed. No control may be added, dropped or redefined after
+  seeing full-data results.
 
-### 8.1 Why the control list changed — the tracking product
+## 9. Minimum sizes
 
-The 2027 game tracking is a **prospect-only product**: it follows the combine
-cohort, not the 22 players on the field. The measured density is 1.5 tracked
-players per play on full data and 1.16 on the provided sample (median 1, maximum
-4); `player_play` itself carries 2.7 rows per play (median 2). The coverage
-guard therefore requires something the data cannot contain: `all22_min_players`
-(20) is structurally unreachable. The full run of the derivation reported
-**0 of 14,677 plays** with 20 or more tracked players at the snap frame, **0**
-derivable plays, all four derived columns `NA`, and both models returned
-`NOT_ESTIMABLE` — not because the models were wrong, but because the control
-list asked for columns the product cannot populate.
-
-### 8.2 Removed from §8: `blitz`, `n_blockers`, `primary_blocker_group`
-
-These three are **team-level rush and protection counts**. §5.4a derived them
-geometrically from all-22 tracking. On a prospect-only product that derivation
-cannot run: you cannot count four rushers or five protectors when only one or
-two of them are tracked. Team fixed effects (§8.4) absorb a team's *average*
-rush and protection tendency, but **not** the play-level variation — a blitz on
-this snap versus a four-man rush on the next. The three controls are therefore
-**unobservable on this dataset, not merely unmeasured**, and they are removed
-from the specification rather than replaced by a proxy.
-
-No proxy is substituted. `player_play.blitzing` is a per-player rush assignment
-(D69: TRUE on 98.3 % of interior rows), not a team blitz; using it as one would
-silently redefine the control while appearing to keep it. `n_blockers` and
-`primary_blocker_group` have no substitute at all. `src/dl/dl_blockers.py` is
-**parked, not deleted**: it and its planted-truth tests remain in the tree for a
-future all-22 product, and stage 03 short-circuits before calling it when
-`tracking_product: prospect_only` (D78).
-
-**Consequence for the claim, stated in the report.** P1 cannot condition on the
-number of rushers, on blitz, or on which blocker the rusher beat. The estimand
-remains a hazard ratio conditional on position, alignment, play context and
-size — not on protection scheme at the play level. This is a limitation of the
-data product, not a choice.
-
-### 8.3 Primary controls (fixed list)
-
-Identical in P1 and in both load definitions; fixed before any full-data result:
-
-| control | source | role |
-|---|---|---|
-| `position_group` | `players.nfl_position` (DE / DT / NT) | position |
-| `alignment` | `player_play.lined_up_position` (edge vs interior) | alignment |
-| `down` | `player_play.down` | play context |
-| `yards_to_go` | `player_play.yards_to_go` | play context |
-| `quarter` | `player_play.quarter` | play context |
-| `score_margin` | pre-snap scores, defender's perspective | game state |
-| `seconds_since_last_snap` | load module, per rusher-game | rest |
-| `snaps_in_drive` | load module, per rusher-drive | within-drive load |
-| `height_in`, `weight_lb` | `combine_results` | size (retained from the frozen text; §1 requires "beyond position, size and play context") |
-| `years_since_combine` | `games.season − players.draft_year` | career timing (retained from the frozen text) |
-
-`seconds_since_last_snap` is structurally undefined on the first snap of each
-player-game (there is no prior snap). That snapshot is **excluded by complete
-case, counted, and never imputed**. Players below the §9 floor after this
-exclusion stay out of the model, as §9 already requires.
-
-### 8.4 Fixed effects
-
-**Team fixed effects** (the rusher's own team, `player_play.team_abbr`) and
-**season fixed effects** (`games.season`, derived from the `game_id` join to
-`games.csv`, never from a filename or a clock). Both enter as fixed effects,
-not random effects; the random intercept is by rusher (§10). `season` replaces
-the old opponent-team crossed effect's role as the schedule/era adjustment and
-keeps the design identified across the three draft classes. Note that
-`years_since_combine = season − draft_year` is thereby identified only off
-cross-cohort variation; it is retained because §1 and `TASK.md` require it, and
-the control set's VIF is reported (§13).
-
-### 8.5 Sensitivity panel (never primary)
-
-Reported as a separate panel, never as the confirmatory fit, and never used to
-select the headline specification:
-
-* `team_coverage_man_zone` — man versus zone, the scheme control most likely to
-  change time to pressure;
-* `offense_formation` — formation family (8 levels), a second scheme proxy;
-* `pre_snap_depth_yd` — the rusher's own depth at the snap. It is observable,
-  but only on snaps where the prospect's own tracking row exists (2.3 % of the
-  provided sample; complete in a full-22 product). As a complete-case primary
-  control it would silently restrict the estimand to tracked plays, so it is
-  exercised here and can be promoted only by a logged deviation.
-
-### 8.6 Unchanged rules
-
-Random intercept by rusher; `player_get_off` is **not** a control in P1 (it is
-on the mediation path) and is a control in a sensitivity model only. The list
-above is fixed: no control may be added, dropped or redefined after seeing
-full-data results.
-
-## 9. Minimum snaps per player
-
-* A rusher enters a model only with **≥ 100** primary pass-rush snaps.
-* A player-grouped CV fold must contain ≥ 10 such rushers; if not, folds are
-  reduced and the reduction is logged (a reduction is not a deviation).
-* Players below the minimum remain in the descriptive tables.
+* P1: ≥ 100 complete snaps and ≥ 8 rushers for a fit. Game-clustered SEs are
+  reported only above 10 game clusters; below that they are `NOT_ESTIMABLE` and
+  the count is printed.
+* P2: ≥ 100 rows, ≥ 8 players, ≥ 20 events.
+* Player-grouped CV folds must contain ≥ 10 players; if not, folds are reduced
+  and the reduction is logged. A reduction is not a deviation.
+* Rows below a minimum stay in descriptive tables and are excluded from the fit
+  with the reason recorded.
 
 ## 10. Models
 
-* **P1 primary**: Weibull AFT with a log-normal frailty by rusher (Gauss–
-  Hermite quadrature, 20 nodes), fixed effects as §8. Reported as a time ratio
-  and converted to a hazard ratio; the frailty is a random intercept, not a
-  random slope.
-* **P1 robustness rungs** (all reported): (1) Cox PH with player-clustered
-  robust SE; (2) AFT without frailty, cluster-robust SE. If the primary fails
-  to converge, the rungs are the fallback, and the fallback used is logged —
-  the point estimate is never chosen by which rung is most favourable.
-* **P1 secondary**: logistic mixed model for `quick_pressure`; linear mixed
-  model for `player_get_off`.
-* **P2**: the same AFT structure with the load covariate added, fitted once
-  with absolute and once with relative load, plus a random slope on load by
-  rusher when estimable. Convergence fallbacks in order: uncorrelated random
-  effects with an alternate optimiser; per-player slopes with empirical-Bayes
-  shrinkage; random intercept only (population-level results only). The
-  fallback used is logged.
-* **S1**: population load coefficient under the better definition, plus a
-  load × `a0` interaction, reported both naive and measurement-error-corrected
-  (posterior draws of `a0`), with model-based slope reliability
-  `var(slope)/(var(slope)+mean(SE²))`.
-* **E1**: product-of-coefficients decomposition of the `a0` effect through
-  `player_get_off`, with bootstrap intervals over players. Descriptive.
+* **P1**: linear mixed model of `log(deficit_ratio)` on standardised load,
+  standardised rest and their product, with the §8 controls. Convergence ladder,
+  walked in order and logged at every rung: correlated random slopes →
+  uncorrelated random effects with an alternate optimiser → random intercept
+  only → fixed effects only. **The interaction appears in every rung.** If it
+  cannot be estimated, that is reported with the reason; it is never dropped to
+  obtain a fit.
+* **P1 inference**: CR1 player-clustered sandwich standard errors, t with G−1
+  degrees of freedom. Game-clustered SEs reported only above 10 clusters. Naive
+  i.i.d. intervals are computed as a diagnostic and **never** reported as the
+  result.
+* **P2**: Weibull AFT on time to pressure, one arm with `deficit_ratio` and one
+  with cumulative absolute load above 2.5 yd/s, on the same rows, folds and
+  controls; frailty by rusher; the same convergence ladder; tuned with **equal
+  freedom by construction** (one fixed candidate per arm, `grid_budget = 1`).
+* **E1**: descriptive predicted-pressure curves across the rest-to-load ratio,
+  for a high-snap-share and a low-snap-share group. No test, no significance
+  claim.
 
 ## 11. Comparison metric and resampling (P2)
 
-* **Metric**: mean held-out log score per snap (higher is better), from
-  player-grouped 5-fold CV with no player in both train and test. Concordance
-  is reported as a secondary metric.
-* **Difference**: relative minus absolute, in nats per snap.
-* **Interval**: bootstrap over players (1,000 reps, seeded), resampling players
-  and all their snaps together. The difference is meaningful only if the
-  interval excludes zero **and** the point estimate exceeds the smallest effect
-  of interest.
-* Fold assignment is seeded and fixed; the same folds are used for both
-  definitions.
+* Metric: mean held-out **log predictive density per snap** (nats/snap), from
+  player-grouped folds with no player in both train and test.
+* Difference: deficit arm minus absolute arm, in nats/snap.
+* Interval: bootstrap over players, resampling players and all their snaps
+  together, seeded and config-driven. Meaningful only if the interval excludes
+  zero **and** the point estimate exceeds the smallest effect of interest.
+* Fold assignment is seeded and shared by both arms.
 
 ## 12. Smallest effects of interest and equivalence
 
-* P1: **HR 1.10** per 1 SD `a0`. Equivalence margin for a null claim: HR 1.05.
-* P2: **0.005 nats/snap**. Equivalence margin: 0.002 nats/snap.
-* A null result is interpreted as informative only if the interval excludes the
-  smallest effect of interest; otherwise it is reported as inconclusive.
-* Attenuation is stated explicitly: the observed log-HR is attenuated by
-  `sqrt(ICC_a0)`. Power is calculated both raw and attenuated. On the sample's
-  event count the attenuated MDE is HR 1.075, so the design can detect the SOI;
-  if the full-run ICC is lower, the MDE worsens and that is reported, not
-  corrected by changing the SOI.
+* **P2: 0.005 nats/snap.** Equivalence margin 0.002. Carried forward unchanged
+  from the 2026-10-31 prereg — same metric, same comparison structure.
+* **P1: PENDING — Conor to set.** No value exists in `TASK.md`, `config.yaml`,
+  the earlier prereg, or any decision entry. The interaction is on
+  standardised predictors against `log(deficit_ratio)`, so the natural
+  expression is in standard-deviation units of the outcome per 1 SD × 1 SD of
+  the two exposures, but the **number** is Conor's call and is not guessed here.
+  Until it is set this document is not frozen and `--mode full` is refused.
+* A null is informative only if the interval excludes the smallest effect of
+  interest; otherwise it is reported as inconclusive.
 
-## 13. Reliability thresholds (fixed, never lowered)
+## 13. Validation (Phase 5)
 
-* `icc_min = 0.50` on `a0`. Measured on the sample: **0.532** (71 players, 136
-  attempts, 6 one-attempt players excluded) — borderline, and the reason the
-  gate is CONDITIONAL.
-* If the full-run `a0` ICC is **below 0.50**, P1 is **NO-GO** as specified. The
-  documented fallback (`speed_at_1_0`, sample ICC 0.640) is proposed to Conor
-  and **not** adopted automatically; the threshold is never lowered.
-* `vif_max = 5.0` applies to the control set, not to the alternate curve
-  features (which are one-per-model by construction).
+* **Within-player rest permutation** — shuffle `inter_snap_rest_s` across snaps
+  **within each (rusher, game)**, leaving load, outcome and controls in place;
+  refit the P1 model and compare the observed interaction with the permutation
+  null. The shuffle preserves each block's rest multiset and never moves a value
+  across players or games; both are asserted per replicate. 199 replicates,
+  seeded; p resolution 1/200 = 0.005 by construction and stated as such. Snaps
+  in singleton blocks are counted and reported, never moved.
+* **Context controls**: garbage time (Q4 margins 4 / 21 / 28) and the final two
+  minutes of each half (quarters 2 and 4, clock ≤ 120 s) are re-estimated.
+* **Obvious passing situations**: **SKIPPED BY DECISION** (Conor, 2026-11-04:
+  "Don't care, skip"). Recorded in D83 and `notes/blockers.md` B-DL-IDR-01, and
+  emitted as `SKIPPED_BY_DECISION` in every artefact. The writeup states that
+  two of three context controls ran and the third was deliberately skipped.
+* No other validation check is run: placebos, rotation/survivorship panels and
+  mechanical-coupling checks belonged to the superseded spec and are not part of
+  this one.
 
 ## 14. Multiplicity and reporting
 
-* One confirmatory test for P1 and one for P2. Everything else is secondary or
-  exploratory and is labelled as such in every table.
-* All estimated models are reported, including non-converged ones and the
-  fallback actually used. No model is dropped for an unfavourable estimate.
-* Every number in a full-run report comes from a stage artefact with `FULL`
-  provenance. Sample artefacts may not be quoted as results.
+* Two confirmatory tests: the P1 interaction and the P2 comparison. Everything
+  else is secondary or exploratory and labelled so in every table.
+* All fitted models are reported, including non-converged ones and the ladder
+  rung actually used. No model is dropped for an unfavourable estimate.
+* Every number in a full-run report comes from an artefact stamped `FULL`.
+  Sample artefacts may never be quoted as results.
+* Sample mode is a machinery check and is stamped
+  `PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT` throughout.
 
 ## 15. Stopping conditions (bind the full run)
 
-Stop and report if any of the following holds, without adjusting the design:
-missing required field; matched DL < 40; median primary snaps < 100; `a0` ICC
-< 0.50; Part 1 null semantics unresolved; Part-1 MDE worse than HR 1.15.
-If only snap coverage fails, Part 2 is dropped and P1 continues.
+Stop and report, without adjusting the design, if any of the following holds:
+
+* matched DL below the configured minimum, or median pass-rush snaps per rusher
+  below 100;
+* baseline `a_0` ICC below 0.50;
+* the rusher's own tracking row is absent on more than half of his primary
+  snaps, so that the deficit is unmeasurable for most of the sample;
+* `rest_sequence_complete` fails on more than half of candidate snaps, so rest
+  cannot be computed;
+* fewer than half of rusher-games are permutable in Phase 5 (everything
+  singleton), which would make the validation test vacuous;
+* null semantics unresolved, or a required field missing.
+
+If only P2's comparison is unestimable, P1 continues and P2 is reported as
+`NOT_ESTIMABLE` with the reason.
 
 ## 16. What this prereg forbids
 
-* Changing the exposure, outcome, censoring rule, control list, grid sizes,
-  CV scheme, metric, SOI or reliability threshold after seeing full data.
+* Changing the exposure, outcome, censoring rule, control list, load definition,
+  window, grid, CV scheme, metric or threshold after seeing full-data results.
+* Selecting the load window, the absolute threshold or the random-effect
+  structure by within-sample fit.
 * Reporting a sample-mode number as a finding.
-* Selecting the load definition by within-sample fit.
-* Presenting `a0` as independent of the pressure label's own inputs: the label
-  is model-derived and likely uses rusher kinematics, so the claim is
-  "predicts the provided pressure label", stated plainly in the report.
+* Substituting a proxy for an unavailable label (win rate, team blitz) instead
+  of reporting it as unavailable.
+* Treating the deficit as a pure physiological measure: `a0_snap` is derived
+  from tracking, and the claim is a kinematic deficit under the stated controls,
+  not proven fatigue.
 
 ---
 
-**FROZEN 2026-10-31 · D70 · gates `--mode full` only.**
-
-**§8 AMENDED 2026-11-02 · D78 · before any full-data result.** The three
-team-level controls (`blitz`, `n_blockers`, `primary_blocker_group`) were
-removed as unobservable on a prospect-only tracking product; team and season
-fixed effects and the declared sensitivity panel were added in their place.
-No other section changed.
+**DRAFT 2026-11-04 · IDR spec · not frozen: §12 P1 smallest effect of interest
+is unset. Gates `--mode full` once frozen.**
