@@ -336,6 +336,21 @@ def test_load_hook_materialises_the_sequence_columns(tmp_path, cfg):
         == [0.0, 1.0, 0.0, 1.0]
 
 
+def test_blitzing_is_carried_from_player_play(tmp_path, cfg):
+    """The per-player blitz flag is emitted by Phase 3 (IDR Part 2 control).
+
+    The primary snap set is the rush-assignment rows, so the flag is TRUE on
+    every emitted row; that distribution is what the model reports.  The
+    column is additive and never replaces the all-22-derived ``blitz`` column.
+    """
+    files = _files(tmp_path)
+    df, summary = S.build_snaps(cfg, "sample", files=files, with_summary=True)
+    assert "blitzing" in df.columns
+    assert str(df["blitzing"].dtype) == "boolean"
+    assert bool(df["blitzing"].fillna(False).all())
+    assert summary["checks"]["columns_in_declared_order"] is True
+
+
 def test_first_snap_seconds_since_last_snap_is_na(tmp_path, cfg, monkeypatch):
     """With a load-module hook present, the game's first snap has no gap."""
     calls = {}

@@ -570,12 +570,13 @@ def _idr_part2_markdown(p2: Mapping | None) -> list[str]:
         lines.append("")
         return lines
     controls = p2.get("controls") or {}
-    blitz = controls.get("blitz") or {}
+    blitz = controls.get("blitzing") or {}
     lines.append("* model: Weibull AFT, log-normal frailty by rusher; "
                  "crossed effects "
                  + ", ".join(f"`{c}`" for c in controls.get(
                      "crossed_fixed_effects", []))
-                 + "; identical fixed controls for both arms")
+                 + "; identical fixed controls for both arms, including the "
+                 "per-player `blitzing` flag")
     lines.append(f"* exposures: deficit `{p2['exposures']['deficit']}` vs "
                  f"absolute `{p2['exposures']['absolute']}` "
                  f"(threshold {p2.get('absolute_threshold_yds')} yd/s, the "
@@ -603,8 +604,20 @@ def _idr_part2_markdown(p2: Mapping | None) -> list[str]:
         lines.append(f"* verdict: **{p2.get('verdict')}**")
     else:
         lines.append(f"* **NOT ESTIMABLE**: {p2.get('reason')}")
-    lines.append(f"* `blitz` control: **{blitz.get('status', 'UNAVAILABLE')}** — "
-                 f"{blitz.get('evidence', 'not available on this product')}")
+    if blitz:
+        counts = blitz.get("counts") or {}
+        detail = (f"True {counts.get('True')}, False {counts.get('False')}, "
+                  f"NA {counts.get('NA')}")
+        if blitz.get("material_na"):
+            detail += f" (NA share {blitz.get('na_share'):.3f})"
+        lines.append(f"* `blitzing` on the modelled snap set: {detail}")
+        if blitz.get("status") == "COLUMN_ABSENT":
+            lines.append("  * **column absent** from the snap table; the "
+                         "control could not enter the design and the artefact "
+                         "records that.")
+        elif not blitz.get("identified"):
+            lines.append("  * only one observed level on this snap set, so the "
+                         "dummy is not identified and adds no design column.")
     lines.append("")
     for key, label in (("reason_deficit", "deficit"),
                        ("reason_absolute", "absolute"),

@@ -71,6 +71,8 @@ def _world(kind: str, *, seed: int = 11, n_players: int = 48,
                 "a0": float(8 + rng.normal(0, 1)),
                 "event": event, "censor_time": censor,
                 "time_to_pressure": (time if event else np.nan),
+                # Per-player blitz flag, independent of the outcome.
+                "blitzing": bool(rng.uniform() < 0.5),
                 "deficit_ratio": 1.0 + 0.15 * deficit_z,
                 "absolute_load_2p5": float(np.exp(0.8 * absolute_z)),
             })
@@ -134,10 +136,18 @@ def test_both_arms_are_scored_on_the_same_snaps(world_result):
     assert len(result["grids"]["deficit"]) == len(result["grids"]["absolute"])
 
 
-def test_blitz_is_declared_not_silently_dropped():
-    assert IDR2.BLITZ_DECLARATION["status"] == "UNAVAILABLE"
-    assert "24,878 TRUE" in IDR2.BLITZ_DECLARATION["evidence"]
-    assert "no proxy" in IDR2.BLITZ_DECLARATION["evidence"]
+def test_blitzing_is_in_the_control_set_and_reported(block):
+    """The per-player blitz flag enters both arms and its counts are reported."""
+    frame = _world("deficit")
+    result = IDR2.run_idr_part2(frame, block, provenance="TEST")
+    assert result["status"] == "OK", result.get("reason")
+    assert "blitzing" in result["controls"]["fixed"]
+    dist = result["controls"]["blitzing"]
+    assert dist["status"] == "OK"
+    counts = dist["counts"]
+    assert counts["True"] + counts["False"] + counts["NA"] == result["n_snaps"]
+    assert dist["identified"] is True
+    assert dist["na_share"] == 0.0
 
 
 def test_missing_deficit_coverage_is_not_estimable(block):

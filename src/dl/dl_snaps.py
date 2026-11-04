@@ -89,6 +89,10 @@ SNAP_COLUMNS: tuple[str, ...] = (
     "rep_too_short", "fit_r2",
     "a0_snap_raw_yds2", "baseline_a0_yds2", "baseline_a0_se",
     "deficit_ratio", "excluded_from_load", "exclusion_reason",
+    # Per-player blitz/rush-assignment flag, carried from player_play for the
+    # IDR Part 2 fixed control list (TASK.md).  Additive: it never redefines
+    # the all-22-derived ``blitz`` column, which stays the team-level indicator.
+    "blitzing",
 )
 
 #: Columns the load module owns (never computed here).
@@ -543,7 +547,7 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
                 TRY_CAST(p.time_to_pressure AS DOUBLE) AS time_to_pressure,
                 TRY_CAST(p.censor_time AS DOUBLE) AS censor_time,
                 p.quick_pressure, p.sack, p.unblocked_pressure,
-                p.player_get_off,
+                p.player_get_off, p.blitzing,
                 CASE p.lined_up_position
                      WHEN 'EDGE' THEN 'edge'
                      WHEN 'INTERIOR_LINE' THEN 'interior'
@@ -1496,6 +1500,8 @@ def _finalise(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                                      .fillna(False).astype(bool))
     if "garbage_time" in df.columns:
         df["garbage_time"] = df["garbage_time"].astype("boolean")
+    if "blitzing" in df.columns:
+        df["blitzing"] = df["blitzing"].astype("boolean")
     order = [c for c in SNAP_COLUMNS if c in df.columns]
     order += [c for c in df.columns if c not in order]
     df = df[order].sort_values(["game_id", "play_id", "nfl_id"],

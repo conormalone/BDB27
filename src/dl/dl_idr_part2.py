@@ -32,12 +32,14 @@ The two arms are fitted on the common estimation sample — rows that carry
 *both* exposures — so every held-out score is paired snap by snap.  Without
 that, the paired bootstrap would compare different snaps.
 
-``blitz`` is **not available** on this product and is declared, not dropped:
-see ``notes/blockers.md`` and ``part2_idr.json::controls.blitz``.
+``blitzing`` is the per-player rush/blitz flag carried from ``player_play``
+through Phase 3.  It is part of the fixed control list; the artefact reports
+its distribution on the modelled snap set (including NA).
 """
 
 from __future__ import annotations
 
+import copy
 import math
 from typing import Any, Mapping, Sequence
 
@@ -47,24 +49,34 @@ import pandas as pd
 from dl import dl_models_core as M
 
 __all__ = ["run_idr_part2", "cross_validate_arm", "idr_part2_verdict",
-           "BLITZ_DECLARATION"]
+           "blitzing_distribution"]
 
-#: Declared limitation: no team blitz count exists on this tracking product.
-#: Numbers verified against ``data/raw/player_play.csv`` on 2026-11-04.
-BLITZ_DECLARATION = {
-    "status": "UNAVAILABLE",
-    "requested_control": "blitz",
-    "evidence": (
-        "player_play.blitzing on DL rows is a per-player rush-assignment flag "
-        "(24,878 TRUE vs 457 FALSE of 25,335 non-null DL rows = 98.2% TRUE; "
-        "EDGE 92.3%, interior 98.3%), not a team blitz indicator. "
-        "pass_rushers_encountered is null on every DL row and is a per-blocker "
-        "count; its play-level maximum over the whole product is 3 (2 plays, "
-        "all other plays <= 2). No team rush count can be reconstructed from "
-        "this product, so no proxy is substituted."),
-    "consequence": ("blitz is declared absent from the fixed control set; the "
-                    "control list is identical for both comparison arms"),
-}
+#: The per-player blitz/rush-assignment control carried from player_play.
+BLITZING_COLUMN = "blitzing"
+
+
+def blitzing_distribution(frame: pd.DataFrame) -> dict:
+    """Counts of ``blitzing`` by value (True/False/NA) on the modelled snaps."""
+    column = BLITZING_COLUMN
+    n = int(len(frame))
+    if column not in frame.columns:
+        return {"column": column, "status": "COLUMN_ABSENT", "n": n,
+                "counts": {"True": 0, "False": 0, "NA": n},
+                "na_share": 1.0 if n else None, "material_na": bool(n),
+                "identified": False}
+    values = frame[column]
+    true_n = int((values == True).sum())  # noqa: E712 - pandas boolean dtype
+    false_n = int((values == False).sum())  # noqa: E712
+    na_n = int(values.isna().sum())
+    na_share = float(na_n / n) if n else None
+    return {
+        "column": column, "status": "OK", "n": n,
+        "counts": {"True": true_n, "False": false_n, "NA": na_n},
+        "na_share": na_share,
+        "material_na": bool(na_share is not None and na_share >= 0.05),
+        # A control with one observed level contributes no design column.
+        "identified": bool(true_n > 0 and false_n > 0),
+    }
 
 
 def _reason(code: str, message: str, *, provenance: Any = None) -> dict[str, str]:
@@ -218,6 +230,7 @@ def run_idr_part2(frame: pd.DataFrame, cfg: Mapping, *,
     }
     spec = _spec(cfg)
     models = cfg["models"]
+    fixed_controls = list(models["controls"])
     base = {
         "stage": "idr_part2", "estimand": "time-to-pressure survival",
         "exposures": {"deficit": str(spec["deficit_column"]),
@@ -225,11 +238,11 @@ def run_idr_part2(frame: pd.DataFrame, cfg: Mapping, *,
         "absolute_threshold_yds": float(spec["absolute_threshold_yds"]),
         "grid_budget": int(spec.get("grid_budget", 1)),
         "equal_tuning_budget": True,
-        "controls": {"fixed": list(models["controls"]),
+        "controls": {"fixed": fixed_controls + [BLITZING_COLUMN],
                      "crossed_fixed_effects": list(
                          models.get("crossed_fixed_effects", [])),
                      "plus": ["a0_z (Combine baseline level)"],
-                     "blitz": dict(BLITZ_DECLARATION)},
+                     "blitzing": None},
         "frailty": "log-normal random effect by rusher (ladder: random slope -> "
                    "uncorrelated RE -> random intercept + EB slopes -> RE only)",
         "metric": "held-out per-snap log predictive density (nats/snap)",
@@ -273,6 +286,8 @@ def run_idr_part2(frame: pd.DataFrame, cfg: Mapping, *,
         return base
 
     data = prepared.loc[deficit_ok & absolute_ok].copy()
+    blitz = blitzing_distribution(data)
+    base["controls"]["blitzing"] = blitz
     n_complete = int(len(prepared))
     coverage = {
         "n_complete_case_rows": n_complete,
@@ -309,11 +324,19 @@ def run_idr_part2(frame: pd.DataFrame, cfg: Mapping, *,
     grid_value_abs = float(spec["absolute_threshold_yds"])
     grid_value_def = float(spec.get("deficit_grid_value", 1.0))
 
-    deficit_cv = cross_validate_arm(data, cfg, mapping, arm="deficit",
+    # Both arms get the identical control list, which includes the per-player
+    # blitzing flag when the snap table carries it (it does after Phase 3).
+    cfg_arm = copy.deepcopy(cfg)
+    if "blitzing" in data.columns:
+        cfg_arm["models"]["controls"] = list(models["controls"]) + [BLITZING_COLUMN]
+        cfg_arm["models"]["categorical_controls"] = list(
+            models.get("categorical_controls", [])) + [BLITZING_COLUMN]
+
+    deficit_cv = cross_validate_arm(data, cfg_arm, mapping, arm="deficit",
                                     column=deficit_column,
                                     grid_value=grid_value_def,
                                     provenance=provenance)
-    absolute_cv = cross_validate_arm(data, cfg, mapping, arm="absolute",
+    absolute_cv = cross_validate_arm(data, cfg_arm, mapping, arm="absolute",
                                      column=absolute_column,
                                      grid_value=grid_value_abs,
                                      provenance=provenance)
