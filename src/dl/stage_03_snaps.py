@@ -306,6 +306,94 @@ def _markdown(summary: Mapping[str, Any]) -> str:
         lines.append("- none")
     lines += [
         "",
+        "## Phase 3 (IDR) derived columns",
+        "",
+        "Additive to this table; no existing column changed meaning. Units and "
+        "rules are frozen in `notes/decisions.md` D80 and `notes/schema.md`.",
+        "",
+    ]
+    p3 = summary.get("phase3") or {}
+    if p3.get("error"):
+        lines += [f"**Derivation failed:** `{p3['error']}` — the declared "
+                  "columns are present and NA.", ""]
+    elif p3.get("not_computed"):
+        lines += [f"**Not computed:** {p3['not_computed']}.", ""]
+    elif p3:
+        rest = p3.get("rest", {})
+        fit = p3.get("fit", {})
+        load = p3.get("load", {})
+        base = p3.get("baseline", {})
+        n = p3.get("n_rows", 0) or 1
+
+        def _pct(value):
+            return "NA" if value is None else f"{100.0 * float(value):.1f}%"
+
+        lines += [
+            "### Inter-snap rest",
+            "",
+            f"- rule: {p3.get('rest_rule', '')}",
+            f"- rows with rest: {rest.get('n_rest_present', 0)} "
+            f"({_pct(rest.get('share_rest_present'))} of {n})",
+            f"- first own snap of a player-game (NA): "
+            f"{rest.get('n_first_snap_na', 0)}",
+            f"- NA because the previous play has no recorded end timestamp: "
+            f"{rest.get('n_prev_play_without_end_timestamp', 0)}",
+            f"- rows in a player-game whose own snap sequence has a gap "
+            f"(rotation or a missing row — rest is measured, the sequence is "
+            f"flagged): {rest.get('n_rows_in_incomplete_sequence', 0)}",
+            f"- rows whose play has no tracking at all: "
+            f"{rest.get('n_rows_without_play_timing', 0)}",
+            f"- player-games with a complete snap sequence: "
+            f"{rest.get('n_player_games_complete', 0)} of "
+            f"{rest.get('n_player_games', 0)} "
+            f"({_pct(rest.get('share_player_games_complete'))})",
+            "",
+            "### Rolling kinematic load (power)",
+            "",
+            f"- units: **W/kg** (m^2/s^3); a in m/s^2, v in m/s, so the "
+            f"yard-space integral is multiplied by 0.9144^2 = "
+            f"{0.9144 ** 2:.8f}",
+            f"- window: prior {load.get('window_snaps', 0)} included snaps",
+            f"- rows with a rolling load: {load.get('n_rolling_present', 0)} "
+            f"({_pct(load.get('n_rolling_present', 0) / n)})",
+            f"- window not yet full: {load.get('n_window_incomplete', 0)}; "
+            f"window refused across a gap: {load.get('n_window_gap', 0)}; "
+            f"window contains an excluded snap: "
+            f"{load.get('n_window_contains_excluded_snap', 0)}",
+            f"- excluded from accumulation — penalty-nullified: "
+            f"{load.get('n_excluded_penalty_nullified', 0)}, no play timing: "
+            f"{load.get('n_excluded_no_play_timing', 0)}, rusher not tracked: "
+            f"{load.get('n_excluded_not_tracked', 0)}, rep too short: "
+            f"{load.get('n_excluded_rep_too_short', 0)}. Excluded rows keep "
+            f"their snap row; they simply add nothing to the sum.",
+            "",
+            "### Per-snap acceleration and deficit",
+            "",
+            f"- rule: {p3.get('fit_rule', '')}",
+            f"- rusher tracked on the play: "
+            f"{fit.get('n_rows_rusher_tracked', 0)} rows "
+            f"({_pct(fit.get('share_rows_rusher_tracked'))})",
+            f"- fit ok: {fit.get('n_fit_ok', 0)} of tracked "
+            f"({_pct(fit.get('share_fit_ok_of_tracked'))}); at a parameter "
+            f"bound: {fit.get('n_fit_at_bound', 0)}; too short: "
+            f"{fit.get('n_rep_too_short', 0)}; failed or low R^2: "
+            f"{fit.get('n_fit_failed_or_low_r2', 0)}",
+            f"- mean fitted R^2: "
+            f"{fit.get('mean_fit_r2'):.4f}"
+            if isinstance(fit.get("mean_fit_r2"), float) else
+            "- mean fitted R^2: NA",
+            f"- baseline `a0` joined: {base.get('n_rows_with_baseline', 0)} "
+            f"rows, {base.get('n_players_with_baseline', 0)} players; "
+            f"deficit computed: {base.get('n_deficit_computed', 0)} rows",
+            "",
+            "The deficit is `a0_snap / baseline_a0`; **below 1 is a deficit**. "
+            "`baseline_a0_se` is carried so downstream can propagate the "
+            "baseline's uncertainty. `a0_snap_raw_yds2` is the raw "
+            "double-difference and is a robustness column only.",
+            "",
+        ]
+    lines += [
+        "",
         "## Columns left NA (and why)",
         "",
     ]
@@ -351,6 +439,7 @@ def build_summary(cfg: Mapping, mode: str, frame: pd.DataFrame,
         "omitted_columns": snap_summary["omitted_columns"],
         "drive": snap_summary["drive"],
         "blockers": snap_summary.get("blockers", {}),
+        "phase3": snap_summary.get("phase3", {}),
         "crosscheck": list(snap_summary.get("crosscheck", [])),
         "derived_constants": snap_summary["derived_constants"],
         "checks": snap_summary["checks"],

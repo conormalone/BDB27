@@ -79,6 +79,16 @@ SNAP_COLUMNS: tuple[str, ...] = (
     # §8 sensitivity panel (never primary), carried so the declared panel can be
     # run without re-reading player_play.
     "team_coverage_man_zone", "offense_formation",
+    # Phase 3 (IDR spec, 2026-11-04): inter-snap rest, rolling kinematic power
+    # load, and the per-snap acceleration deficit.  Appended additively — no
+    # existing column changes meaning (notes/decisions.md D80).
+    "inter_snap_rest_s", "rest_gap_plays", "rest_sequence_complete",
+    "rep_kinematic_load_w_per_kg", "rolling_kinematic_load_w_per_kg",
+    "load_window_n", "rows_rusher_tracked", "frames_used",
+    "a0_snap_yds2", "tau_snap_s", "fit_ok", "fit_at_bound",
+    "rep_too_short", "fit_r2",
+    "a0_snap_raw_yds2", "baseline_a0_yds2", "baseline_a0_se",
+    "deficit_ratio", "excluded_from_load", "exclusion_reason",
 )
 
 #: Columns the load module owns (never computed here).
@@ -624,6 +634,27 @@ def build_snaps(cfg: Mapping, mode: str = "sample", *,
 
         # -- load module (lazy; omitted when it exposes no table hook) -------
         df = _apply_load_module(df, cfg, mode, summary)
+
+        # -- Phase 3 derived columns (IDR spec; additive, never redefining) --
+        try:
+            from dl import dl_phase3
+            df, phase3 = dl_phase3.add_phase3_columns(
+                df, cfg, mode, files=files, con=con)
+            summary["phase3"] = phase3
+        except Exception as exc:  # noqa: BLE001 - a missing column, never a
+            # silent one: the declared columns stay NA and the reason is named.
+            summary["phase3"] = {"error": f"{type(exc).__name__}: {exc}"}
+            for col in ("inter_snap_rest_s", "rolling_kinematic_load_w_per_kg",
+                        "deficit_ratio"):
+                summary["omitted_columns"].setdefault(
+                    col, f"phase3 derivation failed ({type(exc).__name__})")
+            try:
+                from dl import dl_phase3 as _p3
+                for col in _p3.PHASE3_COLUMNS:
+                    if col not in df.columns:
+                        df[col] = pd.NA
+            except Exception:  # pragma: no cover - import already succeeded
+                pass
 
         # -- types, NA columns, ordering ------------------------------------
         df = _finalise(df, summary)

@@ -1276,6 +1276,50 @@ bdb27_dl:
     # ceiling (prereg §7: "1.0 s and 2.0 s"). The per-rusher ceiling speed used
     # is the draw-mean of v(t) over these times and the posterior draws.
     t_match_s: [1.0, 2.0]
+
+  # ----------------------------------------------------------------------- #
+  # Phase 3 derived columns (IDR spec, 2026-11-04).  ADDITIVE to stage 03:
+  # no existing column changes meaning.  Every value here is a measurement
+  # constant or an explicitly declared design choice (notes/decisions.md D80).
+  # ----------------------------------------------------------------------- #
+  phase3:
+    rest:
+      # Rest is a PLAY-TEAM quantity: seconds from the last recorded
+      # timestamp of the team's previous defensive play to this snap.  It is
+      # computed once per (game, defensive team, play) and joined to rushers.
+      unit: s
+      # The current snap must be the team's very next defensive play after
+      # the one carrying the previous own snap; otherwise the interval spans
+      # snaps we cannot see and rest is NA (never imputed).
+      max_gap_plays: 1
+    load:
+      # rolling_kinematic_load = sum over the prior n *included* snaps of
+      # integral(a*v dt) per rep.  a in m/s^2, v in m/s => W/kg.
+      window_snaps: 3
+      clip_negative_power: true   # accumulate positive (accelerative) power only
+      yard_to_metre: 0.9144       # 1 yd = 0.9144 m (a*v in yd^2/s^3 -> x0.83612736)
+      max_dt_s: 0.5               # never integrate across a tracking gap
+      min_frames: 5               # below this a rep contributes no power integral
+    fit:
+      # v(t) = vmax * (1 - exp(-t/tau)); a0_snap = vmax / tau
+      min_frames: 8
+      min_duration_s: 0.5
+      vmax_bounds_yds: [1.0, 15.0]
+      tau_bounds_s: [0.05, 5.0]
+      p0_tau_s: 1.0
+      maxfev: 2000
+      # The exponential is fitted on the acceleration phase only: a pass-rush
+      # rep plateaus/declines once engaged, so a whole-play fit is not the
+      # model's domain.  The window is a declared measurement choice.
+      fit_window_s: 1.5
+      min_r2: 0.80
+      raw_window_s: 0.5           # robustness column: max ds/dt in this window
+    baseline:
+      source_subdir: ceiling          # outputs/dl/ceiling (bdb27_dl.paths.outputs)
+      file: player_ceiling.csv
+      feature: a0                 # shrunken Combine a0 (yd/s^2)
+      estimate_column: estimate
+      se_column: se
   models:
     out_subdir: models
     primary_estimator: aft_frailty_lognormal

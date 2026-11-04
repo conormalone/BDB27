@@ -345,3 +345,42 @@ values; positions; WP/EP availability and ranges; `route_ran`/`target` types;
 (seconds/inches/lb); the exact meaning of `event` beyond its string values; the
 full-season row counts (files absent on this host); whether full-season tracking
 also has a per-play player cap (PENDING FULL RUN).
+
+## 9. Phase 3 (IDR) columns added to `snaps.csv` — 2026-11-04
+
+Additive to the stage-03 snap table (D80). **No existing column changed
+meaning.** `seconds_since_last_snap` is unchanged and still means the clock gap
+between a rusher's own snap instants; `inter_snap_rest_s` is a different
+quantity (previous play **end** → this snap) and is not a rename of it.
+
+| column | dtype | unit | rule |
+|---|---|---|---|
+| `inter_snap_rest_s` | float | s | `t_snap − max(time)` of the team's previous defensive play; play-team level, joined to every rusher; NA on a player-game's first own snap and when the previous play has no end timestamp |
+| `rest_gap_plays` | Int64 | team plays | own snaps between the previous own snap and this one; 1 = adjacent; NA on the first own snap |
+| `rest_sequence_complete` | boolean | — | per-player-game flag: every own snap after the first is adjacent in the team's defensive sequence |
+| `rep_kinematic_load_w_per_kg` | float | **W/kg** (m²/s³) | `∫ max(0, a·v) dt` over the rep; yard-space integral × 0.9144² |
+| `rolling_kinematic_load_w_per_kg` | float | **W/kg** | sum over the prior 3 included snaps |
+| `load_window_n` | Int64 | snaps | reps actually in the sum (always 3 when present) |
+| `rows_rusher_tracked` | boolean | — | the rusher has ≥1 tracked frame at/after the snap |
+| `frames_used` | Int64 | frames | post-snap frames for this rep |
+| `a0_snap_yds2` | float | yd/s² | fitted `vmax/tau` |
+| `tau_snap_s` | float | s | fitted `tau` (by-product) |
+| `fit_ok` | boolean | — | fit succeeded with R² ≥ 0.80 |
+| `fit_at_bound` | boolean | — | `vmax` or `tau` pinned at a configured bound |
+| `rep_too_short` | boolean | — | <8 frames or <0.5 s of post-snap trace |
+| `fit_r2` | float | — | R² of the fitted curve on the fit window |
+| `a0_snap_raw_yds2` | float | yd/s² | **robustness only**: max `ds/dt` over the first 0.5 s |
+| `baseline_a0_yds2` | float | yd/s² | shrunken Combine `a0` (`player_ceiling.csv`, feature `a0`) |
+| `baseline_a0_se` | float | yd/s² | SE of that baseline, carried for error propagation |
+| `deficit_ratio` | float | fraction | `a0_snap / baseline_a0`; **below 1 = deficit** |
+| `excluded_from_load` | boolean | — | this row contributes nothing to the rolling load |
+| `exclusion_reason` | text | — | `penalty_nullified` \| `no_play_timing` \| `not_tracked` \| `rep_too_short` |
+
+Unit conversion, stated explicitly: `a` is m/s² and `v` is m/s, so `a·v` is
+W/kg (m²/s³). Tracking gives yd/s and yd/s²; the yard-space integral is
+multiplied by `0.9144² = 0.83612736`.
+
+Rules that bind the columns: rest is never imputed (a missing previous-play
+end leaves it NA); penalty-nullified and no-play rows are excluded from the
+load and counted; a row that fails the envelope fit keeps its snap row with
+`fit_ok = false` and a counted reason.

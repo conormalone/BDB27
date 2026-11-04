@@ -3335,3 +3335,84 @@ singleton groups, planted recovery, null calibration, determinism, artefact
 contract, refusal to overwrite a FULL artefact);
 `notebooks/bdb27_dl_full_run.ipynb` cells 0/5/6/8; `config.yaml` `validate:`;
 `notes/blockers.md` (build item closed).
+
+## D80 — 2026-11-04 — Phase 3 IDR columns: rest, power load, per-snap deficit
+
+Binding spec: `TASK.md` (IDR, replaced 2026-10-30 ceiling spec). This entry
+records the four decisions Conor fixed on 2026-11-04 and the exact rules the
+code implements (`src/dl/dl_phase3.py`, wired into `src/dl/stage_03_snaps.py`
+as **additive** columns; no existing column changes meaning).
+
+**(1) Rest is a play-team quantity, not a player quantity.**
+`inter_snap_rest_s = t_snap(current play) − max(time) of the team's previous
+defensive play`, computed once per `(game_id, team, play_id)` and joined to
+every rusher on the play. "End of play" is the **last recorded timestamp** of
+that play (all-22 tracking), not the rusher's last frame: using the rusher's
+own frame would make rest depend on how long he personally kept moving. The
+sequence is built from **every** defensive play in `player_play`, not only the
+pass-rush snaps in the table — otherwise a run between two rushes would be
+skipped and rest overstated. First own snap of a player-game is `NA` and
+counted (`n_first_snap_na`). Rest is `NA` when the previous play has no
+recorded end timestamp (`n_prev_play_without_end_timestamp`). It is never
+filled, averaged or carried forward. A gap in the **player's** own sequence
+(rotation, or a row missing from the table) does not change the measured play
+interval; it is recorded in `rest_gap_plays` and the per-player-game flag
+`rest_sequence_complete` (false when any own snap is more than
+`phase3.rest.max_gap_plays` team plays after the previous own snap). Downstream
+may restrict to complete sequences as a declared sensitivity; the primary
+table keeps the rows and the flag.
+
+**(2) Load is mechanical POWER, not ∫a²dt.**
+`rep_kinematic_load_w_per_kg = ∫ max(0, a·v) dt` over the rep's post-snap
+trace. With `a` in m/s² and `v` in m/s the integrand is power per unit mass,
+so the unit is **W/kg (m²/s³)**. Tracking is in yards: the yard-space integral
+is multiplied by `0.9144² = 0.83612736` (`phase3.load.yard_to_metre`).
+`rolling_kinematic_load_w_per_kg` is the sum over the prior `n` included snaps
+(`phase3.load.window_snaps = 3`). Negative power (deceleration) is clipped to
+zero so a braking segment cannot subtract from a rep's load; the flag is
+`phase3.load.clip_negative_power`. Segments longer than
+`phase3.load.max_dt_s = 0.5 s` are tracking gaps and are not integrated across.
+Penalty-nullified plays and plays with no snap/timing are **excluded from the
+accumulation and counted** (`n_excluded_penalty_nullified`,
+`n_excluded_no_play_timing`); the row stays in the table and simply adds
+nothing. A window containing an excluded snap is refused rather than silently
+shortened, and counted (`n_window_contains_excluded_snap`).
+
+**(3) The per-snap acceleration is FITTED, not twice-differentiated.**
+`v(t) = vmax·(1 − exp(−t/tau))` is fitted per in-game rep on the post-snap
+speed trace, restricted to the acceleration phase (`fit_window_s = 1.5 s`): a
+pass-rush rep plateaus or declines once engaged, so the whole play is outside
+the model's domain. `a0_snap_yds2 = vmax / tau`; `tau` is kept as a by-product
+(`tau_snap_s`). Fits are bounded (`vmax` 1–15 yd/s, `tau` 0.05–5 s), require
+≥8 frames and ≥0.5 s, and are refused below `min_r2 = 0.80`. Status is carried
+per row: `fit_ok`, `fit_at_bound` (a parameter pinned at a bound — the short
+window can make `vmax` and `tau` only weakly identified even though `a0` is
+well determined), `rep_too_short`, and the failure count in the summary. The
+raw double-difference `a0_snap_raw_yds2` = max `ds/dt` over the first 0.5 s is
+kept as a **robustness column only**, clearly labelled; it is never the
+primary.
+
+**(4) Deficit = `a0_snap / baseline_a0`.**
+The denominator is the player's **shrunken Combine `a0`** from the Phase-2
+ceiling table (`outputs/dl/ceiling/player_ceiling.csv`, `feature = a0`,
+`estimate`). `deficit_ratio` is a fraction: **below 1 is a deficit**.
+`baseline_a0_se` is carried on every row so a downstream model can propagate
+the baseline's uncertainty (measurement-error attenuation), and
+`baseline_a0_yds2` is carried so the ratio can be rebuilt.
+
+**(5) Coverage is reported, never assumed.** Tracking coverage of the rusher's
+own snaps is PRESENT on full data per Conor but UNVERIFIED on this host (the
+full tracking files are absent). Every row therefore carries
+`rows_rusher_tracked`, `frames_used`, `fit_ok`, `fit_at_bound`,
+`rep_too_short`; the summary block (`snaps_summary.json → phase3`) carries the
+totals and shares, including `share_rows_rusher_tracked`,
+`share_fit_ok_of_tracked` and `n_rows_without_play_timing`. A row that fails
+is counted, never dropped without a count.
+
+**(6) Evidence.** `tests/test_dl_phase3.py`: units (a·v), gap-skipping,
+envelope fit, rest rules, penalty exclusion, and the synthetic recovery —
+a planted rest×load interaction on `log(deficit)` (`b_int = +0.040`) is
+recovered to within ±0.02 through the production path
+(`src/dl/dl_phase3_fixture.py`), and a null world returns |coef| < 0.02.
+No sample number is a finding; every sample artefact stays
+`UNVALIDATED SAMPLE OUTPUT`.
