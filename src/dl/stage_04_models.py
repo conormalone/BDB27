@@ -298,6 +298,43 @@ def _derivation_markdown(derivation: Mapping) -> list[str]:
     return lines
 
 
+_PART2_REASON_KEYS = (
+    ("part2_reason_absolute", "absolute"),
+    ("part2_reason_relative", "relative"),
+    ("part2_reason_comparison", "comparison"),
+)
+
+
+def _fmt_score(value: Any) -> str:
+    """Short display string for a log score (``NA`` when absent/non-finite)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "NA"
+    if not math.isfinite(number):
+        return "NA"
+    return f"{number:.3g}"
+
+
+def _reason_markdown(p2: Mapping | None) -> list[str]:
+    """Render the Part-2 reason records (code + sentence) for SUMMARY.md.
+
+    Tolerant of older artefacts: a payload without the three reason keys, or
+    with a malformed record, renders nothing rather than raising.
+    """
+    if not isinstance(p2, Mapping):
+        return []
+    lines: list[str] = []
+    for key, label in _PART2_REASON_KEYS:
+        record = p2.get(key)
+        if not isinstance(record, Mapping):
+            continue
+        code = " ".join(str(record.get("code") or "UNKNOWN").split())
+        message = " ".join(str(record.get("message") or "").split())
+        lines.append(f"* {label} reason (`{code}`): {message}")
+    return lines
+
+
 def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapping,
                       field_info: Mapping[str, dict], gate: Mapping,
                       p1: Mapping | None, p2: Mapping | None,
@@ -387,8 +424,8 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapp
     lines.append("## P2 — relative vs absolute load (confirmatory)\n")
     if p2 and p2.get("status") == "OK":
         lines.append(f"* mean held-out log score: absolute "
-                     f"{p2['absolute']['mean_logscore']:.5f}, relative "
-                     f"{p2['relative']['mean_logscore']:.5f} nats/snap")
+                     f"{_fmt_score(p2['absolute']['mean_logscore'])}, relative "
+                     f"{_fmt_score(p2['relative']['mean_logscore'])} nats/snap")
         lines.append(f"* difference (relative − absolute): "
                      f"**{p2['difference_nats_per_snap']:.5f}** "
                      f"(95% CI {p2['difference_interval'][0]:.5f} to "
@@ -402,8 +439,12 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, frame_report: Mapp
     else:
         lines.append(f"* **NOT ESTIMABLE**: {(p2 or {}).get('reason')}")
         lines.append("* Part 2 is dropped if snap coverage fails; P1 continues "
-                     "(prereg §15). The load columns are `NA` in the sample snap "
-                     "table because per-game tracking sequences are incomplete.")
+                     "(prereg §15).")
+        if not prov["reportable"]:
+            lines.append("* Sample mode: the load columns are `NA` where the "
+                         "sample's per-game tracking sequences are incomplete. "
+                         "That is a property of this sample, not of the full data.")
+    lines.extend(_reason_markdown(p2))
     lines.append("")
 
     lines.append("## S1 — population load decline (secondary)\n")
@@ -480,7 +521,11 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
     frame = pd.concat([frame, panel], axis=1)
 
     p1 = M.fit_p1(frame, block)
-    p2 = M.run_part2(frame, block)
+    p2 = M.run_part2(
+        frame, block,
+        # wording only: a FULL run's reason sentences may not defer to the
+        # sample or to a larger run
+        provenance=("FULL" if prov["reportable"] else prov["config_level"]))
 
     better = None
     if p2.get("status") == "OK":
