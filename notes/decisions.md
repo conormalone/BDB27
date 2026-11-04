@@ -3504,3 +3504,67 @@ UNVALIDATED SAMPLE OUTPUT; no sample number is a finding.
 `idr_terms.csv` (fixed effects of the primary window, standardised and raw);
 `model_result.json` gains a `part1_idr` block; SUMMARY.md gains the IDR section
 and marks the old Part 1 SUPERSEDED.
+
+## D82 — 2026-11-04 — Phase 5 (IDR): the two TASK.md items only
+
+Binding spec: `TASK.md` (IDR). Phase 5 names **two** checks and this entry
+records how they are built. New module `src/dl/dl_idr_validate.py`, called
+from `src/dl/stage_05_validate.py`.
+
+**(1) The within-player rest permutation is the binding permutation.**
+`inter_snap_rest_s` is shuffled **within each `(nfl_id, game_id)` block**; the
+load, the outcome and every other column stay in place. The per-block rest
+multiset is preserved exactly and no value crosses a player or game boundary —
+both **asserted** on every replicate (`block_multiset_preserved`,
+`missingness_preserved`), so a broken permutation raises rather than producing
+a null. Missing rest values stay on the snaps that had them, which keeps the
+complete-case sample identical across replicates.
+
+**(2) The observed statistic and the null use one code path.**
+Both the observed interaction and every replicate refit go through
+`build_idr_frame` → `fit_idr_ladder`: same ladder, same controls, same
+player-clustered inference, same standardisation rule (recomputed on the
+estimation sample). The statistic is the standardised load × rest interaction;
+the raw-scale coefficient is reported alongside. Inference is the permutation
+p `(1 + #{|null| ≥ |observed|}) / (reps + 1)`, two-sided, with the one-sided
+value, the null mean/SD/quantiles, valid and failed refit counts, the seed and
+the number of snaps in **singleton blocks** (blocks with < 2 finite rest
+values, which cannot be permuted — counted, never dropped).
+
+**(3) Context controls re-fit, they do not re-measure.**
+The windowed load and the rest of a filtered row keep the values Phase 3
+measured on the **full** sequence: an exclusion changes the estimation sample,
+not the measurement. Rebuilding the window on the truncated sample would
+silently redefine the load as "the prior three *remaining* snaps" and is
+rejected. Garbage time uses the Phase-3 `garbage_time` column when present
+(cross-checked against the config rule) and otherwise the config rule
+`quarter_and_margin` with the margins in `bdb27_dl.game.garbage_time`
+(q4 4 / 21 / 28). The two-minute exclusion is `quarter ∈ {2, 4}` and
+`game_clock_s ≤ 120`, both from config.
+
+**(4) No rule exists for "obvious passing situations"; the gap is reported.**
+Neither `config.yaml` nor `notes/prereg.md` defines which situations are
+obvious (no down/distance/score/formation rule anywhere). Per the task's
+instruction the check is reported `DEFINITION_UNDEFINED` with the reason and
+recorded as blocker B-DL-IDR-01; no threshold is chosen. The same applies to
+any other exclusion whose rule is not in the repo.
+
+**(5) The ceiling permutation is SUPERSEDED, not deleted.**
+`validate.ceiling_permutation.enabled: false` removes it from the default run
+path; its code (`ceiling_permutation`, `permute_ceilings`, the position-group
+and relative-load helpers) stays in `stage_05_validate.py` for provenance, and
+every artefact labels it `SUPERSEDED` with the reason that TASK.md replaced it.
+The retired spec's other stubs (snap-order permutation, CV-vs-controls
+baseline, measurement-error correction, placebos, rotation, mechanical
+coupling, equivalence) remain listed as `NOT_IMPLEMENTED` — never as a pass.
+
+**(6) Artefacts.** `validation_result.json` (verdict, checks, design, counts,
+the `gap` block), `rest_permutation_null.csv` (one row per valid replicate),
+`context_controls.csv` (baseline plus the three exclusions),
+`context_sensitivity.csv` (the same rows under the legacy name),
+`check_status.csv`, `permutation_null.csv` (a single SUPERSEDED row unless the
+retired check is re-enabled), `SUMMARY.md`. Sample output stays stamped
+`UNVALIDATED SAMPLE OUTPUT` and the verdict is `NOT_INTERPRETED_SAMPLE`.
+On the provided sample the Part-1 frame carries 7 complete rows at window 3
+(below `idr_part1.min_rows` 100), so both items are `NOT_ESTIMABLE` with that
+reason — the expected sample outcome, not a failure.

@@ -114,6 +114,11 @@ def build_idr_world(regime: str = "planted", *, seed: int = 20270107,
     frame["down"] = (np.arange(len(frame)) % 4 + 1).astype(int)
     frame["yards_to_go"] = (np.arange(len(frame)) % 12 + 1).astype(float)
     frame["score_margin"] = rng.integers(-14, 15, size=len(frame)).astype(float)
+    # Play context the Phase-5 context controls need (TASK.md): the quarter and
+    # the clock remaining in it.  Deterministic and balanced so the
+    # "final two minutes of each half" filter has rows to remove.
+    frame["quarter"] = (np.arange(len(frame)) % 4 + 1).astype(int)
+    frame["game_clock_s"] = rng.integers(0, 900, size=len(frame)).astype(float)
     # `blitz` is present but structurally unobservable (D78) in EVERY world,
     # matching the real product: the model must report it as unavailable.
     frame["blitz"] = np.nan

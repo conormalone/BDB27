@@ -1433,7 +1433,37 @@ bdb27_dl:
     mde_note: "HR per 1 SD a0; smallest effect fixed in prereg"
   validate:
     out_subdir: validation
-    # --- ceiling permutation (prereg §3, §7; TASK.md Phase 5) --------------
+    # --- IDR spec (TASK.md, 2026-11-04): the two Phase-5 items ------------
+    # The binding spec names exactly two checks.  The ceiling permutation
+    # below belongs to the retired 2026-10-30 spec: its code is kept for
+    # provenance, it is NOT in the default run path, and every artefact
+    # labels it SUPERSEDED.  Set enabled=true only to re-run the historical
+    # check deliberately.
+    ceiling_permutation: {enabled: false, superseded: true,
+                          superseded_by: "TASK.md 2026-11-04 (IDR spec)"}
+    # 1. within-(rusher, game) rest permutation.  Block structure, rep count,
+    #    seed and the minimum share of usable refits are data, not code.
+    rest_permutation:
+      enabled: true
+      scheme: within_player_game
+      block_columns: [nfl_id, game_id]
+      reps: 199               # refits; p resolution 1/200 = 0.005
+      sample_reps: 9          # sample mode is a machinery check, never a test
+      seed_key: permutation   # bdb27_dl.seeds.permutation
+      window: null            # null => idr_part1.windows.primary (3)
+      min_permutable_fraction: 0.5   # fewer usable refits => NOT_ESTIMABLE
+      p_value_rule: "(1 + #{|null| >= |observed|}) / (reps + 1), two-sided"
+    # 2. the three TASK.md context exclusions.  The garbage-time margins live
+    #    in bdb27_dl.game.garbage_time (q4 4 / 21 / 28); the final-two-minute
+    #    clock threshold is validate.final_two_minutes_s.  `obvious_passing`
+    #    has NO definition anywhere in this repo: it is left null on purpose
+    #    and reported DEFINITION_UNDEFINED (notes/blockers.md B-DL-IDR-01).
+    context_controls:
+      garbage_time: {enabled: true, rule: quarter_and_margin, q4: 4}
+      final_two_minutes: {enabled: true, rule: quarter_and_clock, quarters: [2, 4],
+                          seconds: 120}
+      obvious_passing: {enabled: true, rule: null}
+    # --- SUPERSEDED ceiling permutation (prereg §3, §7; old spec) ----------
     # 199 refits is the configured design: p resolution 1/200 = 0.005, well
     # inside the 0.05 decision level, and ~40x cheaper than the 1000 the
     # design sketch carried as a placeholder (no prereg value fixes the rep

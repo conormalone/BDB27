@@ -267,3 +267,24 @@ within a player-game, so the decay estimate draws on game-level sequences — 1,
 14,677 plays and 17,159 rush snaps in the full Phase-3 table — not on 70 player constants. Part 2's
 power must be computed on its own terms (snap/game-level information for the load coefficient,
 player-level bootstrap for the model comparison) and is not settled by this entry.
+
+## B-DL-IDR-01 — 2026-11-04 — "Obvious passing situations" has no definition
+
+**Gap (design, not data).** `TASK.md` Phase 5 asks for the interaction to be
+re-estimated excluding *"obvious passing situations"*. No definition exists in
+this repository: `config.yaml` carries no down/distance/score/formation rule for
+it, `notes/prereg.md` never defines it, and no module computes it. The other two
+Phase-5 context controls are fully specified (garbage time: the Phase-3
+`garbage_time` column / `bdb27_dl.game.garbage_time` margins q4 4 / 21 / 28;
+final two minutes: `quarter ∈ {2, 4}` with `game_clock_s ≤ 120`).
+
+**Handling.** `src/dl/dl_idr_validate.py` reports the check as
+`DEFINITION_UNDEFINED` with this reason, in `validation_result.json`, in
+`context_controls.csv` and in the notebook headline. **No threshold was
+invented** (e.g. "3rd down", "≥ 7 yards to go", "score margin ≤ 8"), because
+any such choice would be a result-moving analysis knob chosen by the builder
+after seeing the task.
+
+**Decision needed (Conor).** Either (a) name the rule (a down/distance/score
+condition and its source), or (b) drop the item and say so in the writeup. Until
+then the notebook prints the gap rather than a fabricated exclusion.

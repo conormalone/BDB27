@@ -1,47 +1,37 @@
 #!/usr/bin/env python3
-"""stage_05_validate — Phase 5: validation of the Part-1 / Part-2 effects.
+"""stage_05_validate — Phase 5 under the binding IDR spec (TASK.md, 2026-11-04).
 
 Run order: after ``04_models``; last stage in ``TASK.md``.
 
     cd src && python -m dl.run 05_validate --mode sample
     python src/dl/stage_05_validate.py --mode sample --force
 
-What this build implements
---------------------------
-**The ceiling permutation** (prereg §3 exposure, §7 relative load; TASK.md
-Phase 5).  Per replicate:
+What this build implements (the two items TASK.md Phase 5 names)
+-----------------------------------------------------------------
 
-1. shuffle the shrunken per-player ceilings **across players within the
-   player's position group** (interior vs edge) — the whole ceiling travels
-   together (``a0``, ``a0_se``, ``a0_icc``, ``vmax``, ``tau`` and their SEs),
-   so the donor's ceiling is the one that reaches both the Part-1 exposure and
-   the relative-load denominator;
-2. rebuild the relative-load panel from the shuffled ceiling (same arithmetic,
-   same grids, same recency weighting as stage 04);
-3. refit the Part-1 model with the **same estimator, same rung ladder and same
-   standardisation rule** as the confirmatory fit, and re-derive the ``a0``
-   effect;
-4. refit the S1 population model on the rebuilt relative load and re-derive
-   the relative-load coefficient.
+1. **Within-player rest permutation** — ``dl.dl_idr_validate.rest_permutation``.
+   ``inter_snap_rest_s`` is shuffled within every ``(rusher, game)`` block, the
+   rest multiset of each block is preserved and no value crosses a player or
+   game boundary (both asserted), the Part-1 mixed model is refitted through
+   the identical production ladder, and the observed load x rest interaction
+   is compared with the permutation null (mean, SD, quantiles, two-sided and
+   one-sided p, reps, seed, valid refits, unpermutable snaps).
+2. **Context controls** — ``dl.dl_idr_validate.context_controls``.  The
+   interaction is re-estimated excluding (a) garbage time, (b) the final two
+   minutes of each half, and (c) obvious passing situations.  The garbage-time
+   rule and the two-minute clock are read from ``config.yaml``; **no rule for
+   "obvious passing situations" exists anywhere in this repository**, so that
+   check is reported ``DEFINITION_UNDEFINED`` and the gap is recorded in
+   ``notes/blockers.md`` — a threshold is never invented here.
 
-The observed statistic is recomputed by the identical code path, so the
-observed value and the null distribution are commensurable.  Reported per
-statistic: point estimate, permutation null summary (mean, SD, 2.5/97.5
-quantiles), a two-sided and a one-sided permutation p, the number of valid
-permutations, and the seed.
-
-NOT implemented in this build (stubs that raise ``NotImplementedError`` and are
-listed as ``NOT_IMPLEMENTED`` in ``validation_result.json`` and ``SUMMARY.md``,
-never as a pass and never silently absent):
-
-* within-player snap-order permutation;
-* the cross-validated relative-vs-controls-only baseline;
-* the measurement-error-corrected ceiling/load estimates.
-
-The remaining Phase-5 checks in design §5.6 (placebos, rotation/survivorship,
-context sensitivity, equivalence/TOST) are not built either; their artefact
-files are written with ``status: NOT_IMPLEMENTED`` and a reason naming the
-check, so an absent check can never read as a passed one.
+The retired spec's **ceiling permutation** is kept for provenance only.  Its
+code is intact below, it is **not in the default run path**
+(``validate.ceiling_permutation.enabled: false``), and every artefact labels it
+``SUPERSEDED``.  The remaining checks of the old design (placebos,
+rotation/survivorship, mechanical coupling, equivalence/TOST, the snap-order
+permutation) are still listed as ``NOT_IMPLEMENTED`` — never as a pass and
+never silently absent.  They are **not** part of the IDR spec and are not to be
+built without a task line that asks for them.
 
 Honesty rules
 -------------
@@ -68,6 +58,7 @@ if str(_SRC) not in sys.path:  # pragma: no cover - direct script execution
     sys.path.insert(0, str(_SRC))
 
 from dl import dl_common as D  # noqa: E402
+from dl import dl_idr_validate as IV  # noqa: E402
 from dl import dl_models_core as M  # noqa: E402
 from dl import stage_00_thresholds as stage00  # noqa: E402
 from dl import stage_04_models as stage04  # noqa: E402
@@ -92,30 +83,30 @@ class CheckNotImplemented(NotImplementedError):
 
 
 def within_player_order_permutation(frame: pd.DataFrame, cfg: Mapping) -> dict:
-    """Shuffle snap order within ``(nfl_id, game_id)`` and rebuild the loads."""
+    """Retired spec: shuffle snap ORDER within ``(nfl_id, game_id)``.
+
+    This is **not** the TASK.md (2026-11-04) Phase-5 item and is deliberately
+    not built: the binding item is the within-player **rest** permutation
+    (:func:`dl.dl_idr_validate.rest_permutation`), which is implemented.
+    """
     raise CheckNotImplemented(
-        "within-player order permutation is NOT IMPLEMENTED in this build: it "
-        "must shuffle snap order within (nfl_id, game_id), rebuild both "
-        "cumulative loads and show the load effect vanishes (prereg §7, "
-        "TASK.md Phase 5).")
+        "within-player snap-ORDER permutation is NOT IMPLEMENTED in this build "
+        "and is not asked for by TASK.md (2026-11-04): the binding Phase-5 "
+        "item shuffles inter-snap REST within (rusher, game), not snap order")
 
 
 def cv_vs_controls_only_baseline(frame: pd.DataFrame, cfg: Mapping) -> dict:
-    """Player-grouped CV of each load definition against a controls-only model."""
+    """Retired spec: player-grouped CV of each load definition vs controls."""
     raise CheckNotImplemented(
-        "CV-vs-controls-only baseline is NOT IMPLEMENTED in this build: it must "
-        "score each load definition against a controls-only model on the same "
-        "player-grouped folds, so a definition's gain is measured against the "
-        "controls it shares (prereg §7 tuning rule, TASK.md Phase 5).")
+        "CV-vs-controls-only baseline is NOT IMPLEMENTED in this build and is "
+        "not asked for by TASK.md (2026-11-04) Phase 5")
 
 
 def measurement_error_correction(frame: pd.DataFrame, cfg: Mapping) -> dict:
-    """Ceiling / load measurement-error-corrected estimates alongside naive ones."""
+    """Retired spec: ceiling / load measurement-error-corrected estimates."""
     raise CheckNotImplemented(
-        "measurement-error correction is NOT IMPLEMENTED in this build: it must "
-        "propagate the ceiling SE into the load and the load x ceiling "
-        "interaction and report corrected estimates beside the naive ones "
-        "(TASK.md Phase 4 secondary; prereg §7 posterior-draw rule).")
+        "measurement-error correction is NOT IMPLEMENTED in this build and is "
+        "not asked for by TASK.md (2026-11-04) Phase 5")
 
 
 STUBS = {
@@ -124,27 +115,26 @@ STUBS = {
     "measurement_error_correction": measurement_error_correction,
 }
 
-#: Phase-5 checks from design §5.6 that are neither built nor stubbed with a
-#: function.  They get an artefact row so they cannot read as passed.
+#: Checks from the **retired** 2026-10-30 design §5.6 that are neither built nor
+#: stubbed with a function.  They are not in the binding IDR spec; they get an
+#: artefact row so an absent check cannot read as passed.
 UNBUILT_CHECKS = {
     "placebo_pre_snap_features": (
         "load must not predict pre-snap alignment or depth; height and weight "
-        "must not mimic the a0 effect after the §8 controls (TASK.md Phase 5)"),
+        "must not mimic the a0 effect after the §8 controls (retired spec; "
+        "not in the 2026-11-04 IDR Phase 5)"),
     "rotation_and_survivorship": (
         "restriction to complete-coverage rusher-games and high-snap-share "
         "rushers, snaps by quarter, and the stay-probability-weighted version "
-        "(TASK.md Phase 5; prereg §6, §9)"),
-    "context_sensitivity": (
-        "garbage time, final two minutes of each half, obvious passing "
-        "situations and blocker-control variation, run separately "
-        "(TASK.md Phase 5; prereg §6, §8)"),
+        "(retired spec; not in the 2026-11-04 IDR Phase 5)"),
     "mechanical_coupling": (
         "repeat the comparison with ceiling-fraction outcomes only, as a check "
         "that the confirmatory result rests on the ceiling-free outcomes "
-        "(TASK.md Phase 5; prereg §4)"),
+        "(retired spec; not in the 2026-11-04 IDR Phase 5)"),
     "equivalence_tost": (
         "TOST against the prereg §12 margins (HR 1.05 / 0.005 nats per snap) "
-        "with the informative-null interval rule"),
+        "with the informative-null interval rule (retired spec; not in the "
+        "2026-11-04 IDR Phase 5)"),
 }
 
 
@@ -436,7 +426,14 @@ def _null_summary(observed: float, null: list[float], alpha: float) -> dict:
 def ceiling_permutation(frame: pd.DataFrame, cfg: Mapping, *,
                         reps: int, seed: int,
                         relative_column: str | None) -> dict:
-    """Shuffle ceilings within position group and re-derive both effects."""
+    """**SUPERSEDED** (2026-10-30 spec): shuffle ceilings within position group.
+
+    Kept in the tree for provenance.  It is not called by the default run path
+    (``validate.ceiling_permutation.enabled: false``) because the binding
+    TASK.md replaced the a0 -> pressure hypothesis with the IDR spec: a0 is now
+    a baseline, not a predictor.  Re-enable only to reproduce the historical
+    check deliberately.
+    """
     block = _block(cfg)
     vcfg = block["validate"]
     alpha = float(vcfg["equivalence"]["alpha"])
@@ -559,15 +556,16 @@ def _stat_markdown(name: str, block: Mapping, unit: str) -> list[str]:
     return lines + [""]
 
 
+
 def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, result: Mapping) -> str:
-    lines: list[str] = ["# DL stage 05 — validation\n"]
+    lines: list[str] = ["# DL stage 05 — validation (IDR spec)\n"]
     if prov["reportable"]:
         lines.append("**Provenance: FULL.** These numbers come from the full-data "
                      "run and may be reported under the prereg's rules.\n")
     else:
         lines.append("**PROVENANCE: PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT.**\n")
         lines.append("> **No number in this directory may be quoted as a result.** "
-                     "The permutation machinery is exercised here; the verdict is "
+                     "The validation machinery is exercised here; the verdict is "
                      "suppressed and no sample statistic is a finding. Reportable "
                      "numbers require `provenance == FULL`.\n")
 
@@ -575,55 +573,157 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, result: Mapping) -
     lines.append(f"**{result['verdict']}** — {result['verdict_statement']}\n")
 
     checks = result["checks"]
-    perm = checks.get("ceiling_permutation") or {}
-    lines.append("## Ceiling permutation (implemented)\n")
-    lines.append("Scheme: shuffle each player's shrunken ceiling to a donor player "
-                 "**within the same position group** (interior vs edge), rebuild the "
-                 "relative-load panel and the Part-1 exposure from the shuffled "
-                 "ceiling, refit with the same estimator and rung ladder, and compare "
-                 "the observed statistic with the permutation null.\n")
+
+    # ---- 1. within-player rest permutation ---------------------------------
+    perm = checks.get("rest_permutation") or {}
     design = perm.get("design") or {}
-    groups = design.get("position_groups") or {}
-    lines.append(f"* permutations requested: **{design.get('reps_requested')}**, "
-                 f"seed **{design.get('seed')}**")
-    lines.append(f"* ceiling columns carried with the donor: "
-                 f"`{'`, `'.join(design.get('columns_permuted') or [])}`")
-    lines.append(f"* relative-load column: `{design.get('relative_load_column')}`")
-    lines.append(f"* players by group: {groups.get('group_counts')} "
-                 f"(group source `{groups.get('source')}`, "
-                 f"{groups.get('singleton_groups')} singleton groups keep their own "
-                 f"ceiling)")
-    lines.append("")
-    if perm.get("status") != "OK":
-        lines.append(f"**NOT ESTIMABLE** — {perm.get('reason')}\n")
+    lines.append("## 1. Within-player rest permutation (implemented)\n")
+    lines.append("`TASK.md` Phase 5: *\"Shuffle inter-snap rest times within a "
+                 "player-game; the deficit effect should vanish.\"* Rest is "
+                 "shuffled **within each (rusher, game) block only**, every other "
+                 "column is left in place, and the Part-1 mixed model is refitted "
+                 "through the identical ladder with the same player-clustered "
+                 "inference.\n")
+    lines.append(f"* scheme: **{design.get('scheme')}**, blocks "
+                 f"`{'`, `'.join(design.get('block_columns') or [])}`, "
+                 f"load window **{design.get('window')}** prior snaps")
+    lines.append(f"* permutations: requested **{design.get('reps_requested')}**, "
+                 f"valid **{design.get('reps_valid')}**, "
+                 f"failed **{design.get('reps_failed')}**, seed "
+                 f"**{design.get('seed')}** (`{design.get('seed_key')}`)")
+    lines.append(f"* blocks: {design.get('n_blocks')} · permuted "
+                 f"{design.get('n_blocks_permuted')} · singleton "
+                 f"{design.get('n_blocks_singleton')} "
+                 f"({design.get('n_snaps_in_singleton_blocks')} snaps cannot be "
+                 f"permuted — counted, never dropped) · "
+                 f"{design.get('n_values_permuted_per_rep')} rest values moved "
+                 f"per replicate")
+    if design.get("block_multiset_preserved") is None:
+        lines.append("* integrity assertions: not evaluated — no replicate ran")
     else:
+        lines.append(f"* integrity assertions: block multiset preserved "
+                     f"**{design.get('block_multiset_preserved')}**, missingness "
+                     f"preserved **{design.get('missingness_preserved')}**")
+    if design.get("rung_counts"):
+        lines.append(f"* rungs used across replicates: {design.get('rung_counts')}")
+    lines.append("")
+    obs = perm.get("observed") or {}
+    inf = perm.get("inference") or {}
+    if perm.get("status") != "OK":
+        lines.append(f"**NOT ESTIMABLE** — {perm.get('reason')}")
+        frame_info = obs.get("frame") or {}
+        if frame_info:
+            lines.append("")
+            lines.append(f"* Part-1 frame on this run: {frame_info.get('n_complete')} "
+                         f"complete rows of {frame_info.get('n_rows_in')}, "
+                         f"{frame_info.get('n_players')} rushers, "
+                         f"{frame_info.get('n_games')} games")
+        lines.append("")
+    else:
+        lines.append(f"* observed interaction (standardised): "
+                     f"**{_fmt(obs.get('coef_std'))}** "
+                     f"(player-clustered SE {_fmt(obs.get('se_std'))}, "
+                     f"p {_fmt(obs.get('p'))}, rung `{obs.get('rung_used')}`, "
+                     f"n = {obs.get('n_snaps')} snaps / {obs.get('n_players')} rushers)")
+        lines.append(f"* permutation null: mean {_fmt(inf.get('null_mean'))}, "
+                     f"SD {_fmt(inf.get('null_sd'))}, "
+                     f"95 % [{_fmt(inf.get('null_q025'))}, {_fmt(inf.get('null_q975'))}] "
+                     f"over {inf.get('n_permutations')} refits")
+        lines.append(f"* point estimate vs null: {inf.get('n_extreme')} of "
+                     f"{inf.get('n_permutations')} replicates at least as extreme")
+        lines.append(f"* permutation p (two-sided): **{_fmt(inf.get('p_two_sided'))}**; "
+                     f"one-sided {_fmt(inf.get('p_one_sided'))} at alpha "
+                     f"{_fmt(inf.get('alpha'), 2)}")
+        reading = ("the observed interaction is **outside** the rest-shuffle "
+                   "null, so the effect is carried by the real rest alignment — "
+                   "shuffling rest does drive it to the null centre"
+                   if inf.get("reject_null") else
+                   "the observed interaction sits **inside** the rest-shuffle "
+                   "null, so it is consistent with a chance arrangement of rest "
+                   "within a player-game")
+        lines.append(f"* reading: {reading}")
+        lines.append("")
+
+    # ---- 2. context controls ------------------------------------------------
+    ctx = checks.get("context_controls") or {}
+    lines.append("## 2. Context controls (implemented)\n")
+    lines.append("`TASK.md` Phase 5: exclude garbage time, the final two minutes "
+                 "of each half, and obvious passing situations. Each row refits "
+                 "the same Part-1 ladder on the restricted sample; the windowed "
+                 "load and the rest keep the values Phase 3 measured on the full "
+                 "sequence (an exclusion changes the estimation sample, not the "
+                 "measurement).\n")
+    if ctx.get("status") != "OK" and not ctx.get("rows"):
+        lines.append(f"**NOT ESTIMABLE** — {ctx.get('reason')}\n")
+    else:
+        lines.append("| exclusion | status | n rows | n excluded | interaction "
+                     "(std) | clustered SE | p | rule |")
+        lines.append("|---|---|---|---|---|---|---|---|")
+        for row in ctx.get("rows") or []:
+            est = row.get("estimate") or {}
+            rule = row.get("rule") or {}
+            rule_text = _rule_text(rule)
+            lines.append(
+                f"| `{row.get('check')}` | {row.get('status')} | "
+                f"{row.get('n_rows') if row.get('n_rows') is not None else 'NA'} | "
+                f"{row.get('n_excluded') if row.get('n_excluded') is not None else 'NA'} | "
+                f"{_fmt(est.get('coef_std'))} | {_fmt(est.get('se_std'))} | "
+                f"{_fmt(est.get('p'))} | {rule_text} |")
+        lines.append("")
+        for row in ctx.get("rows") or []:
+            if row.get("status") != "OK" and row.get("reason"):
+                lines.append(f"* `{row.get('check')}` — **{row.get('status')}**: "
+                             f"{row.get('reason')}")
+        lines.append("")
+
+    # ---- 3. superseded ceiling permutation ---------------------------------
+    ceil = checks.get("ceiling_permutation") or {}
+    lines.append("## 3. Ceiling permutation — **SUPERSEDED** (kept for provenance)\n")
+    lines.append(f"* status: **{ceil.get('status')}** — {ceil.get('reason')}")
+    lines.append("")
+    if ceil.get("status") not in ("SUPERSEDED",):
         lines.extend(_stat_markdown("a0 effect on the pressure hazard",
-                                    perm.get("a0") or {}, "log HR per 1 SD"))
+                                    ceil.get("a0") or {}, "log HR per 1 SD"))
         lines.extend(_stat_markdown("relative-load effect",
-                                    perm.get("relative_load") or {},
+                                    ceil.get("relative_load") or {},
                                     "log hazard per 1 SD load"))
 
+    # ---- not implemented ----------------------------------------------------
     lines.append("## NOT IMPLEMENTED (never a pass)\n")
     for name, item in checks.items():
-        if name == "ceiling_permutation":
+        if name in ("rest_permutation", "context_controls", "ceiling_permutation"):
             continue
         lines.append(f"* **{item.get('status')}** — `{name}`: {item.get('reason')}")
     lines.append("")
 
     lines.append("## Claim hierarchy\n")
-    lines.append("* A permutation p is a statement about the observed effect under a "
-                 "shuffled ceiling, not a confirmatory test; P1 and P2 remain the two "
-                 "confirmatory tests.")
-    lines.append("* Nothing here re-tunes the exposure, the load grid, the controls, "
-                 "the metric, the source of interest or any threshold.\n")
+    lines.append("* A permutation p is a statement about the observed interaction "
+                 "under shuffled rest, not a confirmatory test; the Part-1 and "
+                 "Part-2 fits remain the two confirmatory tests.")
+    lines.append("* Nothing here re-tunes the exposure, the load window, the "
+                 "controls, the rung ladder, the metric or any threshold.\n")
     lines.append("## What this stage did not do\n")
-    lines.append("* It did not run the within-player order permutation, the "
-                 "CV-vs-controls-only baseline, or the measurement-error correction "
-                 "(stubs; listed above as NOT IMPLEMENTED).")
-    lines.append("* It did not run the placebos, rotation/survivorship, context "
-                 "sensitivity, mechanical-coupling or equivalence checks.")
+    lines.append("* It did not run the placebos, rotation/survivorship, "
+                 "mechanical-coupling or equivalence checks: they belong to the "
+                 "retired 2026-10-30 spec and are not in this Phase 5.")
+    lines.append("* It did not define an \"obvious passing situation\": the repo "
+                 "contains no such rule, so the check is reported "
+                 "DEFINITION_UNDEFINED rather than invented.")
     lines.append("* It did not quote a sample number as a finding.\n")
     return "\n".join(lines)
+
+
+def _rule_text(rule: Mapping) -> str:
+    if not rule:
+        return ""
+    name = rule.get("rule")
+    if not name:
+        return str(rule.get("status") or "")
+    parts = [f"`{name}`"]
+    for key in ("q4", "q4_margin", "any_quarter_margin", "quarters", "seconds"):
+        if rule.get(key) is not None:
+            parts.append(f"{key}={rule[key]}")
+    return ", ".join(parts)
 
 
 # --------------------------------------------------------------------------- #
@@ -632,23 +732,47 @@ def _summary_markdown(cfg: Mapping, mode: str, prov: Mapping, result: Mapping) -
 def _check_rows(result: Mapping) -> list[dict]:
     """One row per (check, statistic) for the status table."""
     rows: list[dict] = []
+    perm = result["checks"].get("rest_permutation") or {}
+    inf = perm.get("inference") or {}
+    obs = perm.get("observed") or {}
+    rows.append({
+        "check": "rest_permutation", "status": perm.get("status"),
+        "statistic": inf.get("observed", obs.get("coef_std")),
+        "observed": obs.get("coef_std"),
+        "null_mean": inf.get("null_mean"),
+        "p_two_sided": inf.get("p_two_sided"),
+        "reason": perm.get("reason") or inf.get("reason") or "",
+    })
+    ctx = result["checks"].get("context_controls") or {}
+    for row in ctx.get("rows") or []:
+        est = row.get("estimate") or {}
+        rows.append({
+            "check": f"context:{row.get('check')}", "status": row.get("status"),
+            "statistic": est.get("coef_std"), "observed": est.get("coef_std"),
+            "null_mean": "", "p_two_sided": est.get("p"),
+            "reason": row.get("reason") or "",
+        })
+    ceil = result["checks"].get("ceiling_permutation") or {}
+    if ceil.get("status") == "SUPERSEDED":
+        rows.append({"check": "ceiling_permutation", "status": "SUPERSEDED",
+                     "statistic": "", "observed": "", "null_mean": "",
+                     "p_two_sided": "", "reason": ceil.get("reason") or ""})
+    else:
+        for statistic, key in (("a0_log_hr", "a0"),
+                               ("relative_load_coef", "relative_load")):
+            block = ceil.get(key) or {}
+            block_inf = block.get("inference") or {}
+            rows.append({
+                "check": "ceiling_permutation",
+                "status": block.get("status", ceil.get("status")),
+                "statistic": statistic,
+                "observed": block.get("value"),
+                "null_mean": block_inf.get("null_mean"),
+                "p_two_sided": block_inf.get("p_two_sided"),
+                "reason": block.get("reason") or block_inf.get("reason") or "",
+            })
     for name, item in result["checks"].items():
-        if name == "ceiling_permutation":
-            for statistic, key in (("a0_log_hr", "a0"),
-                                   ("relative_load_coef", "relative_load")):
-                block = item.get(key) or {}
-                inf = block.get("inference") or {}
-                rows.append({
-                    "check": name,
-                    "status": block.get("status", item.get("status")),
-                    "statistic": statistic,
-                    "observed": block.get("value"),
-                    "null_mean": inf.get("null_mean"),
-                    "p_two_sided": inf.get("p_two_sided"),
-                    "reason": block.get("reason") or inf.get("reason") or "",
-                })
-    for name, item in result["checks"].items():
-        if name == "ceiling_permutation":
+        if name in ("rest_permutation", "context_controls", "ceiling_permutation"):
             continue
         rows.append({"check": name, "status": item.get("status"),
                      "statistic": "", "observed": "", "null_mean": "",
@@ -656,12 +780,34 @@ def _check_rows(result: Mapping) -> list[dict]:
     return rows
 
 
-#: Which not-implemented checks belong in each design-§5.6 artefact.
+#: Which not-implemented retired checks belong in each artefact.
 _ARTEFACT_CHECKS = {
     "placebo_checks.csv": ("placebo_pre_snap_features",),
     "rotation.csv": ("rotation_and_survivorship",),
-    "context_sensitivity.csv": ("context_sensitivity",),
 }
+
+
+def _context_rows(ctx: Mapping) -> list[dict]:
+    rows: list[dict] = []
+    for row in (ctx or {}).get("rows") or []:
+        est = row.get("estimate") or {}
+        rule = row.get("rule") or {}
+        rows.append({
+            "check": row.get("check"), "status": row.get("status"),
+            "n_rows": row.get("n_rows"), "n_excluded": row.get("n_excluded"),
+            "interaction_coef_std": est.get("coef_std"),
+            "interaction_se_std": est.get("se_std"),
+            "interaction_p": est.get("p"),
+            "rung_used": est.get("rung_used"),
+            "rule": rule.get("rule"), "rule_source": rule.get("config_source"),
+            "reason": row.get("reason") or "",
+        })
+    return rows
+
+
+_CONTEXT_FIELDS = ["check", "status", "n_rows", "n_excluded",
+                   "interaction_coef_std", "interaction_se_std", "interaction_p",
+                   "rung_used", "rule", "rule_source", "reason"]
 
 
 def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
@@ -678,19 +824,44 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
     D.assert_disk_space(cfg, mode)
     block = D.dl(cfg)
     vcfg = block["validate"]
+    restr_cfg = dict(vcfg.get("rest_permutation") or {})
     frame, inputs = load_frame(cfg, mode)
-    seed = int(block["seeds"][str(vcfg["permutations"]["seed_key"])])
-    reps = int(vcfg["permutations"]["sample_reps"] if mode == "sample"
-               else vcfg["permutations"]["reps"])
-    relative_column, column_source = _selected_relative_column(cfg, mode)
+    seed = int(block["seeds"][str(restr_cfg["seed_key"])])
+    reps = int(restr_cfg["sample_reps"] if mode == "sample" else restr_cfg["reps"])
 
-    perm = ceiling_permutation(frame, cfg, reps=reps, seed=seed,
-                               relative_column=relative_column)
-    perm["relative_load_column_source"] = column_source
+    # --- the two TASK.md Phase-5 items --------------------------------------
+    rest = IV.rest_permutation(frame, block, reps=reps, seed=seed, mode=mode)
+    ctx = IV.context_controls(frame, block, baseline=rest.get("observed"))
+    null_values = list(rest.get("null_values") or [])
+    rest_public = {k: v for k, v in rest.items() if k != "null_values"}
+
+    # --- the retired ceiling permutation: NOT in the default run path --------
+    ceil_cfg = dict(vcfg.get("ceiling_permutation") or {})
+    if bool(ceil_cfg.get("enabled", False)):
+        relative_column, column_source = _selected_relative_column(cfg, mode)
+        ceil = ceiling_permutation(
+            frame, cfg,
+            reps=reps,
+            seed=int(block["seeds"][str(vcfg["permutations"]["seed_key"])]),
+            relative_column=relative_column)
+        ceil["relative_load_column_source"] = column_source
+        ceil["superseded"] = True
+    else:
+        ceil = {
+            "status": "SUPERSEDED",
+            "superseded": True,
+            "reason": ("the ceiling permutation belongs to the retired 2026-10-30 "
+                       "spec; TASK.md (2026-11-04) replaced it with the "
+                       "within-player rest permutation. The code is kept, the "
+                       "check is not run, and no result is carried forward."),
+        }
 
     # Stubs: call them, record the refusal, never crash the stage.
-    checks: dict[str, dict] = {"ceiling_permutation": {
-        k: v for k, v in perm.items() if k != "rows"}}
+    checks: dict[str, dict] = {
+        "rest_permutation": rest_public,
+        "context_controls": ctx,
+        "ceiling_permutation": {k: v for k, v in ceil.items() if k != "rows"},
+    }
     for name, fn in STUBS.items():
         try:
             fn(frame, cfg)
@@ -701,31 +872,31 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
     for name, reason in UNBUILT_CHECKS.items():
         checks[name] = {"status": "NOT_IMPLEMENTED", "reason": reason}
 
-    if perm.get("status") == "OK":
-        a0_inf = (perm.get("a0") or {}).get("inference") or {}
-        load_inf = (perm.get("relative_load") or {}).get("inference") or {}
-        if not prov["reportable"]:
-            verdict = "NOT_INTERPRETED_SAMPLE"
-            statement = ("Sample mode: the permutation ran as a machinery check and "
-                         "the verdict is suppressed. Nothing here is a finding.")
-        elif a0_inf.get("status") != "OK" and load_inf.get("status") != "OK":
-            verdict = "NOT_ESTIMABLE"
-            statement = "Neither statistic could be re-derived."
-        elif a0_inf.get("reject_null") or load_inf.get("reject_null"):
-            verdict = "PERMUTATION_REJECTS"
-            statement = ("At least one effect is more extreme than the shuffled-ceiling "
-                         "null: it is carried by the ceiling assignment, not by chance.")
-        else:
-            verdict = "CONSISTENT_WITH_NULL"
-            statement = ("Every re-derived effect sits inside the permutation null: "
-                         "the effects are consistent with a chance arrangement of the "
-                         "ceilings within position group.")
+    if not prov["reportable"]:
+        verdict = "NOT_INTERPRETED_SAMPLE"
+        statement = ("Sample mode: the rest permutation and the context controls "
+                     "ran as machinery checks and the verdict is suppressed. "
+                     "Nothing here is a finding.")
+    elif rest.get("status") != "OK":
+        verdict = "NOT_ESTIMABLE"
+        statement = str(rest.get("reason") or "the rest permutation could not be "
+                                              "computed")
+    elif (rest.get("inference") or {}).get("reject_null"):
+        verdict = "REST_PERMUTATION_REJECTS"
+        statement = ("The observed load x rest interaction lies outside the "
+                     "within-(rusher, game) rest-shuffle null: shuffling rest "
+                     "does move it to the null centre, so the effect depends on "
+                     "the real rest alignment rather than on chance.")
     else:
-        verdict = "NOT_ESTIMABLE" if prov["reportable"] else "NOT_INTERPRETED_SAMPLE"
-        statement = str(perm.get("reason") or "the permutation could not be computed")
+        verdict = "CONSISTENT_WITH_REST_NULL"
+        statement = ("The observed load x rest interaction sits inside the "
+                     "within-(rusher, game) rest-shuffle null: shuffling rest "
+                     "leaves it unchanged, so the data do not show the effect "
+                     "the spec predicts.")
 
     result = {
         "stage": STAGE, "mode": mode,
+        "spec": "TASK.md Phase 5 (IDR spec, 2026-11-04)",
         "reportable": bool(prov["reportable"]),
         "config_provenance": prov["config_level"],
         "thresholds_provenance": prov["thresholds"],
@@ -739,15 +910,25 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
         "checks": checks,
         "not_implemented": [name for name, item in checks.items()
                             if item["status"] == "NOT_IMPLEMENTED"],
-        "ceiling_permutation": {k: v for k, v in perm.items() if k != "rows"},
+        "superseded": ["ceiling_permutation"],
+        "rest_permutation": rest_public,
+        "context_controls": ctx,
+        "ceiling_permutation": {k: v for k, v in ceil.items() if k != "rows"},
+        "gap": {
+            "check": "context_controls.exclude_obvious_passing",
+            "status": "DEFINITION_UNDEFINED",
+            "reason": ("TASK.md Phase 5 asks for an obvious-passing exclusion, "
+                       "but no rule exists in config.yaml, notes/prereg.md or any "
+                       "module. No threshold was chosen; see notes/blockers.md."),
+        },
         "design": {
             "reps_requested": reps,
-            "reps_configured_full": int(vcfg["permutations"]["reps"]),
+            "reps_configured_full": int(restr_cfg["reps"]),
             "seed": seed,
-            "seed_key": str(vcfg["permutations"]["seed_key"]),
-            "relative_load_column": relative_column,
-            "relative_load_column_source": column_source,
-            "starts_per_refit": int(vcfg["permutations"]["starts"]),
+            "seed_key": str(restr_cfg["seed_key"]),
+            "window": (rest.get("design") or {}).get("window"),
+            "block_columns": (rest.get("design") or {}).get("block_columns"),
+            "ceiling_permutation_enabled": bool(ceil_cfg.get("enabled", False)),
         },
         "counts": {
             "n_snaps": int(len(frame)),
@@ -755,33 +936,49 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
         },
     }
 
-    payload_rows = perm.get("rows") or []
-    if payload_rows:
-        payload_rows = [{**row,
-                         "relative_load_column": relative_column}
-                        for row in payload_rows]
+    context_rows = _context_rows(ctx)
     csv_tables: dict[str, tuple[list[dict], list[str]]] = {
-        "permutation_null.csv": ([
-            {k: row.get(k) for k in
-             ("check", "rep", "statistic", "value", "status", "rung",
-              "relative_load_column")} for row in payload_rows],
-            ["check", "rep", "statistic", "value", "status", "rung",
-             "relative_load_column"]),
+        "rest_permutation_null.csv": (
+            [{"rep": rep + 1, "interaction_coef_std": value,
+              "status": "OK"} for rep, value in enumerate(null_values)],
+            ["rep", "interaction_coef_std", "status"]),
+        "context_controls.csv": (context_rows, _CONTEXT_FIELDS),
+        # legacy artefact name kept in step with the same rows (one source)
+        "context_sensitivity.csv": (context_rows, _CONTEXT_FIELDS),
         "check_status.csv": (_check_rows(result),
                              ["check", "status", "statistic", "observed",
                               "null_mean", "p_two_sided", "reason"]),
     }
+    if ceil.get("status") == "SUPERSEDED":
+        csv_tables["permutation_null.csv"] = (
+            [{"check": "ceiling_permutation", "rep": "", "statistic": "",
+              "value": "", "status": "SUPERSEDED",
+              "rung": "", "relative_load_column": ""}],
+            ["check", "rep", "statistic", "value", "status", "rung",
+             "relative_load_column"])
+    else:
+        csv_tables["permutation_null.csv"] = ([
+            {k: row.get(k) for k in
+             ("check", "rep", "statistic", "value", "status", "rung",
+              "relative_load_column")} for row in (ceil.get("rows") or [])],
+            ["check", "rep", "statistic", "value", "status", "rung",
+             "relative_load_column"])
     for filename, names in _ARTEFACT_CHECKS.items():
         csv_tables[filename] = (
             [{"check": name, "status": checks[name]["status"],
               "reason": checks[name]["reason"]} for name in names],
             ["check", "status", "reason"])
+    csv_tables["equivalence.csv"] = (
+        [{"check": "equivalence_tost", "status": checks["equivalence_tost"]["status"],
+          "reason": checks["equivalence_tost"]["reason"]}],
+        ["check", "status", "reason"])
+
     payload = {
         "json": {
             "validation_result.json": result,
             "equivalence.json": {
-                "status": "NOT_IMPLEMENTED",
-                "reason": UNBUILT_CHECKS["equivalence_tost"],
+                "status": checks["equivalence_tost"]["status"],
+                "reason": checks["equivalence_tost"]["reason"],
                 "margins": vcfg["equivalence"],
             },
         },
@@ -796,10 +993,13 @@ def run(cfg: Mapping, mode: str, force: bool = False) -> dict[str, Any]:
 
     D.mark_done(cfg, STAGE, mode, extra={
         "verdict": verdict,
-        "ceiling_permutation": perm.get("status"),
+        "rest_permutation": rest.get("status"),
+        "context_controls": ctx.get("status"),
+        "ceiling_permutation": ceil.get("status"),
         "not_implemented": len(result["not_implemented"]),
         "reportable": prov["reportable"]})
-    return {"skipped": False, "path": out_dir, "result": result, "perm": perm}
+    return {"skipped": False, "path": out_dir, "result": result,
+            "rest": rest, "ctx": ctx, "ceiling": ceil}
 
 
 def main(argv=None) -> int:
@@ -814,16 +1014,19 @@ def main(argv=None) -> int:
                 print(f"{STAGE}: up to date (use --force to rebuild)")
                 return 0
             result = outcome["result"]
-            perm = outcome["perm"]
-            a0 = (perm.get("a0") or {})
-            a0_inf = a0.get("inference") or {}
-            st.note(f"verdict={result['verdict']} perm={perm.get('status')} "
+            rest = outcome["rest"]
+            inf = rest.get("inference") or {}
+            st.note(f"verdict={result['verdict']} rest={rest.get('status')} "
                     f"reps={result['design']['reps_requested']} "
                     f"not_implemented={len(result['not_implemented'])}")
             print(f"{STAGE}: wrote {outcome['path']}")
             print(f"  verdict: {result['verdict']}")
-            print(f"  ceiling permutation: {perm.get('status')} · "
-                  f"a0 {a0.get('status')} · p_two={a0_inf.get('p_two_sided')}")
+            print(f"  rest permutation: {rest.get('status')} · "
+                  f"p_two={inf.get('p_two_sided')} · "
+                  f"valid={((rest.get('design') or {}).get('reps_valid'))}")
+            print(f"  context controls: {outcome['ctx'].get('status')} · "
+                  f"{[r.get('status') for r in (outcome['ctx'].get('rows') or [])]}")
+            print(f"  ceiling permutation: {outcome['ceiling'].get('status')}")
             print(f"  NOT IMPLEMENTED: {', '.join(result['not_implemented'])}")
     except (RuntimeError, FileNotFoundError, KeyError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
