@@ -1,13 +1,24 @@
 # Pre-registration — Intra-drive regeneration, inter-snap rest, and pass-rush kinematic deficits
 
-**Status: FROZEN — with one declared exception.** Frozen 2026-11-04 (IDR spec).
+**Status: FROZEN.** Frozen 2026-11-04 (IDR spec), amended the same day to add a
+**season hold-out** for P1.
 
-The exception is deliberate and is recorded so no reader can be misled: **P1's
-smallest effect of interest was not fixed before the run.** Conor's decision
-(2026-11-04, verbatim: *"Nah I'll just pick after the run"*) is that the
-threshold will be stated once the full-run estimate is known. §12 therefore
-carries no P1 number, and **P1 is not a pre-registered confirmatory test.** P2's
-threshold *is* fixed in §12 and P2 remains confirmatory.
+**Amendment (2026-11-04, D84).** Conor's decision: *"Ok let's do 1 above"* —
+referring to the hold-out route. P1's smallest effect of interest is therefore
+set **after seeing the development seasons and before seeing the confirmatory
+season**. Concretely:
+
+* **Development = 2023 and 2024.** All P1 fitting, specification checks and the
+  choice of the smallest effect of interest happen here.
+* **Confirmatory = 2025**, held back and untouched until the threshold is fixed.
+  The confirmatory estimate is the P1 interaction fitted on 2025 alone, judged
+  against the threshold fixed on development data. It is reported once, and the
+  threshold is not revised afterwards.
+* P2 and all Phase-5 validation run on all three seasons; P2's threshold was
+  already fixed independently (0.005 nats/snap).
+
+This replaces the earlier same-day decision to choose the P1 threshold after the
+full run ("Nah I'll just pick after the run"), which is superseded.
 
 Everything else below — exposures, outcomes, censoring, controls, grids, the
 comparison metric, the validation design — is fixed in advance and gates
@@ -204,15 +215,17 @@ charged to that rusher. Null is not zero and not missing. No imputation.
 
 * **P2: 0.005 nats/snap.** Equivalence margin 0.002. Carried forward unchanged
   from the 2026-10-31 prereg — same metric, same comparison structure.
-* **P1: NOT FIXED IN ADVANCE.** Conor's decision, 2026-11-04: the smallest
-  effect of interest will be stated when the full-run estimate is reported
-  ("Nah I'll just pick after the run"). Consequence, recorded rather than
-  softened: **P1 cannot be reported as a pre-registered confirmatory result.**
-  It is reported as an estimate with its interval, alongside the threshold
-  Conor sets at that point, and the report says plainly that the threshold was
-  chosen after seeing the estimate. P1 may be described as confirmatory only if
-  the threshold is instead set before the run, or if the confirmatory test is
-  moved to held-out data (§13 note).
+* **P1: FIXED ON DEVELOPMENT DATA, BEFORE THE CONFIRMATORY SEASON IS SEEN.**
+  The threshold is chosen from the 2023–2024 development fit and recorded in
+  `config.yaml` before any 2025 P1 result is produced. It is then applied
+  unchanged to the 2025 estimate. **The confirmatory claim rests on 2025
+  alone**; if the threshold is not recorded before the 2025 fit is run, P1 is
+  reported as exploratory and the report says why.
+  *[declared]* The confirmatory statistic is the interaction coefficient
+  estimated on 2025 data, with the same model, controls and ladder as
+  development — not a model trained on 2023–24 and scored on 2025. The
+  development estimate and the 2025 estimate are both reported, side by side;
+  disagreement between them is a finding, not a reason to prefer one.
 * A null is informative only if the interval excludes the smallest effect of
   interest; otherwise it is reported as inconclusive.
 
@@ -279,6 +292,5 @@ If only P2's comparison is unestimable, P1 continues and P2 is reported as
 
 ---
 
-**FROZEN 2026-11-04 · IDR spec · one declared exception: §12 P1 smallest effect
-of interest not fixed in advance (Conor, 2026-11-04); P1 is therefore not a
-pre-registered confirmatory test.**
+**FROZEN 2026-11-04 · IDR spec · amended same day (D84): P1 uses a season
+hold-out — threshold fixed on 2023–2024, confirmed once on 2025.**
