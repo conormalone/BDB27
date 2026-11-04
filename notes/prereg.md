@@ -1,10 +1,17 @@
 # Pre-registration — Intra-drive regeneration, inter-snap rest, and pass-rush kinematic deficits
 
-**Status: DRAFT — NOT FROZEN.** One value is missing (§12, P1 smallest effect of
-interest) and has no source anywhere in the repository or in `TASK.md`. Until
-Conor sets it, this document **cannot** gate `--mode full`; the gate reads for
-the token `FROZEN` and will refuse the run, which is the correct behaviour for a
-prereg with a blank in it.
+**Status: FROZEN — with one declared exception.** Frozen 2026-11-04 (IDR spec).
+
+The exception is deliberate and is recorded so no reader can be misled: **P1's
+smallest effect of interest was not fixed before the run.** Conor's decision
+(2026-11-04, verbatim: *"Nah I'll just pick after the run"*) is that the
+threshold will be stated once the full-run estimate is known. §12 therefore
+carries no P1 number, and **P1 is not a pre-registered confirmatory test.** P2's
+threshold *is* fixed in §12 and P2 remains confirmatory.
+
+Everything else below — exposures, outcomes, censoring, controls, grids, the
+comparison metric, the validation design — is fixed in advance and gates
+`--mode full` as written.
 
 Written 2026-11-04 for the IDR spec (`TASK.md`, supplied by Conor the same day,
 superseding the 2026-10-30 acceleration-ceiling spec archived at
@@ -197,12 +204,15 @@ charged to that rusher. Null is not zero and not missing. No imputation.
 
 * **P2: 0.005 nats/snap.** Equivalence margin 0.002. Carried forward unchanged
   from the 2026-10-31 prereg — same metric, same comparison structure.
-* **P1: PENDING — Conor to set.** No value exists in `TASK.md`, `config.yaml`,
-  the earlier prereg, or any decision entry. The interaction is on
-  standardised predictors against `log(deficit_ratio)`, so the natural
-  expression is in standard-deviation units of the outcome per 1 SD × 1 SD of
-  the two exposures, but the **number** is Conor's call and is not guessed here.
-  Until it is set this document is not frozen and `--mode full` is refused.
+* **P1: NOT FIXED IN ADVANCE.** Conor's decision, 2026-11-04: the smallest
+  effect of interest will be stated when the full-run estimate is reported
+  ("Nah I'll just pick after the run"). Consequence, recorded rather than
+  softened: **P1 cannot be reported as a pre-registered confirmatory result.**
+  It is reported as an estimate with its interval, alongside the threshold
+  Conor sets at that point, and the report says plainly that the threshold was
+  chosen after seeing the estimate. P1 may be described as confirmatory only if
+  the threshold is instead set before the run, or if the confirmatory test is
+  moved to held-out data (§13 note).
 * A null is informative only if the interval excludes the smallest effect of
   interest; otherwise it is reported as inconclusive.
 
@@ -269,5 +279,6 @@ If only P2's comparison is unestimable, P1 continues and P2 is reported as
 
 ---
 
-**DRAFT 2026-11-04 · IDR spec · not frozen: §12 P1 smallest effect of interest
-is unset. Gates `--mode full` once frozen.**
+**FROZEN 2026-11-04 · IDR spec · one declared exception: §12 P1 smallest effect
+of interest not fixed in advance (Conor, 2026-11-04); P1 is therefore not a
+pre-registered confirmatory test.**
