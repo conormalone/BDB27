@@ -1,28 +1,24 @@
 # Pre-registration — Intra-drive regeneration, inter-snap rest, and pass-rush kinematic deficits
 
-**Status: FROZEN.** Frozen 2026-11-04 (IDR spec), amended the same day to add a
-**season hold-out** for P1.
+**Status: FROZEN.** Frozen 2026-11-04 (IDR spec).
 
-**Amendment (2026-11-04, D84).** Conor's decision: *"Ok let's do 1 above"* —
-referring to the hold-out route. P1's smallest effect of interest is therefore
-set **after seeing the development seasons and before seeing the confirmatory
-season**. Concretely:
+**Claim hierarchy (final, D85).** P2 is the **single confirmatory test**; its
+smallest effect of interest was fixed before any result and is not moved. **P1
+is a primary estimand reported as an estimate with its interval — no threshold,
+no significance claim, no confirmatory label.**
 
-* **Development = 2023 and 2024.** All P1 fitting, specification checks and the
-  choice of the smallest effect of interest happen here.
-* **Confirmatory = 2025**, held back and untouched until the threshold is fixed.
-  The confirmatory estimate is the P1 interaction fitted on 2025 alone, judged
-  against the threshold fixed on development data. It is reported once, and the
-  threshold is not revised afterwards.
-* P2 and all Phase-5 validation run on all three seasons; P2's threshold was
-  already fixed independently (0.005 nats/snap).
+Why, recorded so it is not mistaken for an oversight: no defensible smallest
+effect of interest exists for the P1 interaction (a change in log acceleration
+deficit per 1 SD of load × 1 SD of rest). A threshold chosen before seeing data
+would be invented; one chosen after would not be a test. Rather than invent one
+or weaken the design with a season hold-out, P1 is estimated and reported in
+full, and the writeup states plainly that its size is judged against football
+consequences, not against a pre-set number.
 
-This replaces the earlier same-day decision to choose the P1 threshold after the
-full run ("Nah I'll just pick after the run"), which is superseded.
-
-Everything else below — exposures, outcomes, censoring, controls, grids, the
-comparison metric, the validation design — is fixed in advance and gates
-`--mode full` as written.
+This supersedes two same-day decisions: choosing the P1 threshold after the full
+run ("Nah I'll just pick after the run"), and the 2023–24 / 2025 season hold-out
+("Ok let's do 1 above", D84). Conor's instruction to proceed: *"Ok just go ahead
+with it them both"* — both questions stay in the paper, with the hierarchy above.
 
 Written 2026-11-04 for the IDR spec (`TASK.md`, supplied by Conor the same day,
 superseding the 2026-10-30 acceleration-ceiling spec archived at
@@ -53,8 +49,9 @@ No full-data result has been seen. No full-data file exists on this host.
    pressure probability fall below that of a fresh rotational player?
    Descriptive curve, no confirmatory claim.
 
-Only P1 and P2 are confirmatory. E1 is reported with its own interval and is not
-a test.
+**P2 is the only confirmatory test.** P1 is a primary estimand reported as an
+estimate with its interval (see the header). E1 is exploratory and is not a
+test.
 
 ## 2. Data and cohort
 
@@ -215,19 +212,15 @@ charged to that rusher. Null is not zero and not missing. No imputation.
 
 * **P2: 0.005 nats/snap.** Equivalence margin 0.002. Carried forward unchanged
   from the 2026-10-31 prereg — same metric, same comparison structure.
-* **P1: FIXED ON DEVELOPMENT DATA, BEFORE THE CONFIRMATORY SEASON IS SEEN.**
-  The threshold is chosen from the 2023–2024 development fit and recorded in
-  `config.yaml` before any 2025 P1 result is produced. It is then applied
-  unchanged to the 2025 estimate. **The confirmatory claim rests on 2025
-  alone**; if the threshold is not recorded before the 2025 fit is run, P1 is
-  reported as exploratory and the report says why.
-  *[declared]* The confirmatory statistic is the interaction coefficient
-  estimated on 2025 data, with the same model, controls and ladder as
-  development — not a model trained on 2023–24 and scored on 2025. The
-  development estimate and the 2025 estimate are both reported, side by side;
-  disagreement between them is a finding, not a reason to prefer one.
-* A null is informative only if the interval excludes the smallest effect of
-  interest; otherwise it is reported as inconclusive.
+* **P1: NO THRESHOLD.** By decision (D85), the P1 interaction is reported as
+  an estimate with a 95% interval and a standardised effect size, and is not
+  tested against a smallest effect of interest. It is not described as
+  confirmatory anywhere in the report, and no threshold is added after the fact.
+  The writeup gives the estimate, the interval, and a plain-language reading of
+  whether it is large relative to plausible football consequences.
+* Applies to P2 only: a null is informative only if the interval excludes the
+  smallest effect of interest; otherwise it is reported as inconclusive. P1 has
+  no equivalence test and no null claim.
 
 ## 13. Validation (Phase 5)
 
@@ -292,5 +285,6 @@ If only P2's comparison is unestimable, P1 continues and P2 is reported as
 
 ---
 
-**FROZEN 2026-11-04 · IDR spec · amended same day (D84): P1 uses a season
-hold-out — threshold fixed on 2023–2024, confirmed once on 2025.**
+**FROZEN 2026-11-04 · IDR spec · D85: P2 is the single confirmatory test; P1 is
+reported as an estimate with its interval and no threshold. Season hold-out
+withdrawn.**
