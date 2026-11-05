@@ -298,9 +298,9 @@ def test_full_mode_accepts_an_estimated_full_calibration(cfg, tmp_path):
     assert out["status"] == "ESTIMATED"
 
 
-def test_phase2_refuses_full_mode_without_prereg(cfg):
+def test_phase2_passes_a_frozen_prereg_and_refuses_missing_full_tracking(cfg):
     mod = load_stage("02_combine_physical_time")
-    with pytest.raises(C.GateRefused, match="prereg"):
+    with pytest.raises(C.GateRefused, match="tracking input missing"):
         mod.main(["--mode", "full"])
 
 

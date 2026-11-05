@@ -1,13 +1,14 @@
 # Pre-registration — burst vs. jump (BDB27)
 
-**Status: DRAFT — NOT FROZEN.** This document is a draft. `--mode full` refuses
-to run against it (exit 4, `common.require_prereg`), and it must not be frozen
-until Conor resolves the open item in §9 (the minimum-reps rule has no solution
-at the locked SOI). After freezing, no element below may change; any deviation
-is logged in `notes/decisions.md` and reported as exploratory.
+**Status: FROZEN.** Frozen 2026-11-05 by Conor's decision "just report whatever
+it gives you" (22:16 GMT): there is **no confirmatory smallest-effect-of-interest
+threshold**. The primary result is a share with a 95% interval, and the design's
+resolution limit is reported alongside as a resolution statement (§10). After
+this commit no element below may change; any deviation is logged in
+`notes/decisions.md` and reported as exploratory.
 
 **Provenance.** Written 2026-11-05 from the binding `TASK.md` at commit
-`7766e16`, the four locked Conor decisions of 2026-11-05 (D110–D113), the
+`a57bd7c`, the four locked Conor decisions of 2026-11-05 (D110–D113), the
 crossing diagnostic (D109), the Phase 3b reliability evidence, and the design
 power calculation (D114). Numbers are stamped per §13. No full-data result has
 been seen; the sample is never interpreted or tuned against.
@@ -254,16 +255,15 @@ higher than these numbers.
 
 ## 9. Minimum snaps per player
 
-**Provisional minimum: 20 primary-set reps per player.** This admits **115**
+**Frozen minimum: 20 primary-set reps per player.** This admits **115**
 players, of whom **90** are fittable (have a Combine 40 attempt); `P_eff = 89.3`.
 
-**This is a DRAFT choice, not a satisfied rule.** The agreed rule was "the most
-restrictive rep threshold whose fittable P still resolves the 50 ms SOI". **No
-candidate cut resolves 50 ms** (§10), so the rule selects nothing. Rather than
-invent a different rule silently, the draft takes the **least restrictive**
-candidate (20 reps), which maximises fittable P and therefore power. Conor must
-confirm this or set a different minimum before the prereg is frozen. The power
-table in §10 gives every alternative (25/30/40/50/60).
+**Why 20.** The earlier rule — "the most restrictive cut whose fittable P still
+resolves a 50 ms threshold" — depended on a smallest-effect-of-interest gate
+that Conor withdrew on 2026-11-05 22:16 (§10). With no threshold, 20 reps is the
+**least restrictive** candidate (25/30/40/50/60 are the alternatives in the
+resolution table) and maximises fittable players, which is the defensible
+choice when the aim is to report an interval rather than to pass a test.
 
 Players below 20 reps are not admitted even though some are fittable: a
 1–6-rep mean is mostly noise (every player below 0.5 reliability has ≤6 reps),
@@ -272,61 +272,60 @@ headcount choice, not a reliability-threshold choice.
 
 ---
 
-## 10. Smallest effect of interest and the power answer
+## 10. Resolution limit and interval reporting — no confirmatory threshold
 
-**SOI (locked by Conor, 2026-11-05; D111).** A **50 ms standard deviation of the
-residual jump**, expressed as a share of **between-player variance** (denominator
-B). On the FULL Phase 3b evidence the between-player SD is **0.1004 s**, so:
+**Conor's decision (2026-11-05 22:16): "just report whatever it gives you".**
+There is **no smallest-effect-of-interest gate**, no confirmatory jump-share
+threshold, and no pass/fail rule. The primary result is a **share with a 95%
+interval**. The design's resolution limit is reported alongside as a
+**resolution statement only** — it says what jump SD the design can distinguish
+from zero at the design floor, not a threshold the estimate must pass.
 
-- 50 ms = **49.8%** of the between-player SD;
-- 50 ms = **24.8%** of between-player variance (the squared ratio).
-
-The share is the square of the SD ratio. Comparing 0.498 directly to a
-variance-share floor would overstate power by ~4× in players required.
-
-**Estimator.** The design floor `z·sqrt(2/P_eff)` (z = 1.96), the Phase 1(i) /
-Phase 3b estimator, with `P_eff` the Kish count of the fittable players'
-three-level reliabilities. The smallest detectable jump SD is
+**Resolution estimator.** The design floor `z·sqrt(2/P_eff)` (z = 1.96), the
+Phase 1(i) / Phase 3b estimator, with `P_eff` the Kish count of the fittable
+players' three-level reliabilities. The smallest detectable jump SD is
 `between_sd · sqrt(floor)`. Functions: `src/stats.py`
 (`effective_players`, `min_detectable_share_effective`,
 `variance_share_from_sd`, `sd_from_variance_share`,
 `players_required_for_share`). This is a design approximation, not a posterior
 width; the Phase 4 fit is the confirmation.
 
-**Power table** (FULL evidence; produce with `python src/power_calc.py --mode
-sample`; artefact `outputs/prereg/power.json`):
+**Resolution table** (FULL evidence; produce with `python src/power_calc.py
+--mode sample`; artefact `outputs/prereg/power.json`):
 
-| min reps/player | P admitted | fittable P | median reliability, fittable (three-level) | P_eff | smallest detectable jump SD (ms) | 50 ms? |
-|---:|---:|---:|---:|---:|---:|:---:|
-| 20 | 115 | 90 | 0.943 | 89.3 | 54.4 | no |
-| 25 | 112 | 87 | 0.944 | 86.4 | 54.8 | no |
-| 30 | 109 | 85 | 0.945 | 84.5 | 55.1 | no |
-| 40 | 103 | 80 | 0.945 | 79.7 | 55.9 | no |
-| 50 | 99 | 77 | 0.946 | 76.8 | 56.5 | no |
-| 60 | 92 | 71 | 0.949 | 70.9 | 57.6 | no |
-| no cut (all) | 158 | 123 | 0.897 | 108.0 | 51.8 | no |
+| min reps/player | P admitted | fittable P | median reliability, fittable (three-level) | P_eff | smallest detectable jump SD (ms) |
+|---:|---:|---:|---:|---:|---:|
+| 20 | 115 | 90 | 0.943 | 89.3 | 54.4 |
+| 25 | 112 | 87 | 0.944 | 86.4 | 54.8 |
+| 30 | 109 | 85 | 0.945 | 84.5 | 55.1 |
+| 40 | 103 | 80 | 0.945 | 79.7 | 55.9 |
+| 50 | 99 | 77 | 0.946 | 76.8 | 56.5 |
+| 60 | 92 | 71 | 0.949 | 70.9 | 57.6 |
+| no cut (all) | 158 | 123 | 0.897 | 108.0 | 51.8 |
 
-**Answer.** **50 ms is not detectable at any candidate cut**, nor with every
-fittable player. The best case is **51.8 ms** with all 123 fittable players. It
-would become detectable at `P_eff ≥ 125`; the release supplies at most **123**
-fittable players. The design therefore cannot resolve the locked SOI.
+**Resolution statement.** At the frozen 20-rep minimum the design resolves a
+jump SD of about **54 ms**; with every fittable player it resolves about
+**52 ms**. The release supplies at most 123 fittable players, so a 50 ms jump SD
+is at or just below the design floor at every candidate cut. This is what the
+design can resolve, not a null-result rule.
 
 **What this means for inference — fixed now, before results.**
-- The study still estimates the jump SD/share with intervals; it does **not**
-  claim the absence of a 50 ms jump when an interval is wide.
+- There is no "confirmed" or "null" verdict. A small estimated share with a
+  wide interval is reported as a small estimate with a wide interval.
+- The study does **not** claim the absence of a 50 ms jump when an interval is
+  wide; the resolution statement is the honest bound on what the interval can
+  show.
 - The table's attenuation uses the Kish count, which weights players by
   *relative* reliability. A cruder `P × mean reliability` attenuation gives a
-  slightly larger smallest detectable SD at every cut; the verdict — no
-  candidate cut resolves 50 ms — is unchanged.
-- A "small jump share" is informative only if its interval excludes the SOI.
-  Given the power result, a null result is expected to be **inconclusive** at
-  50 ms, and must be reported that way.
-- No redefinition of the SOI after seeing full-data results. No switching the
-  denominator, dropping the square, or substituting a time offset.
-- The power table is optimistic for the locked tracking outcome: it uses
-  reliability measured on the published label, and the tracked crossing adds the
-  ≈0.29 yd sample spot error (`UNVALIDATED SAMPLE OUTPUT`). The true smallest
-  detectable SD is larger.
+  slightly larger smallest detectable SD at every cut; the resolution statement
+  is unchanged.
+- No redefinition, no switching the denominator, and no post-hoc threshold.
+  The resolution limit is recomputed from the final sample and the realised
+  `P_eff`, never copied from the table.
+- The table is optimistic for the locked tracking outcome: it uses reliability
+  measured on the published label, and the tracked crossing adds the ≈0.29 yd
+  sample spot error (`UNVALIDATED SAMPLE OUTPUT`). The realised resolution is
+  therefore expected to be larger than the table.
 
 ---
 
@@ -337,8 +336,9 @@ fittable players. The design therefore cannot resolve the locked SOI.
    with 95% intervals; then edge and interior.
 3. Report split-half and model-based reliability of `u`, and agreement with
    onset latency.
-4. Report the smallest detectable jump SD actually achieved, recomputed from the
-   final sample and the realised `P_eff` — never copied from §10.
+4. Report the design's resolution limit (smallest detectable jump SD) actually
+   achieved, recomputed from the final sample and the realised `P_eff` — never
+   copied from §10 — as a resolution statement, not a pass/fail test.
 5. Sensitivity analyses, pre-specified: onset-threshold grid; clean-onset
    subset; depth and alignment effects removed; equal-snap weighting per player;
    edge/interior separate fits. All are reported, not selected.
@@ -347,8 +347,8 @@ fittable players. The design therefore cannot resolve the locked SOI.
 7. No outcome model, no pressure field, no binary or survival analysis
    (D112).
 8. Multiple quantities are reported with intervals; no thresholded
-   "significance" claim and no p-value screening. The primary claim is the
-   interval for the jump share/SD.
+   "significance" claim and no p-value screening. The primary result is the
+   interval for the jump share/SD. There is no confirmatory threshold (§10).
 
 **Missing data.** No imputation of Combine times. Players without a 40 attempt
 are excluded from the decomposition. Reps without a computable crossing or depth
@@ -380,34 +380,36 @@ section reports the `player_get_off` check (§3), not an outcome model.
 
 | quantity | value | stamp | use |
 |---|---:|---|---|
-| between-player SD | 0.1004 s | **FULL** (`outputs/phase3b/phase3b_summary.json`) | SOI share, power |
+| between-player SD | 0.1004 s | **FULL** (`outputs/phase3b/phase3b_summary.json`) | resolution statement |
 | between-player share (noise-corrected) | 0.139 | **FULL** (same) | context only |
-| three-level reliability at median | 0.898 | **FULL** (same) | power, upper bound |
+| three-level reliability at median | 0.898 | **FULL** (same) | resolution, upper bound |
 | two-level `k` | 6.17 | **FULL** (same) | cross-check only |
-| fittable players (all) | 123 | **FULL** (`reliability_by_player.csv`) | power |
+| fittable players (all) | 123 | **FULL** (`reliability_by_player.csv`) | resolution |
 | fittable players at 20 reps | 90 | **FULL** (same) | min-reps |
-| smallest detectable jump SD, 20 reps | 54.4 ms | **FULL** (`outputs/prereg/power.json`) | power |
-| smallest detectable jump SD, all fittable | 51.8 ms | **FULL** (same) | power |
-| players required for 50 ms | 125 | **FULL** (same) | power |
+| smallest detectable jump SD, 20 reps | 54.4 ms | **FULL** (`outputs/prereg/power.json`) | resolution statement |
+| smallest detectable jump SD, all fittable | 51.8 ms | **FULL** (same) | resolution statement |
+| players at which 50 ms would be resolved | 125 | **FULL** (same) | resolution context |
 | label − tracked crossing, median | +0.379 s | **UNVALIDATED SAMPLE OUTPUT** (`outputs/crossing_diagnostic/`) | label validation only |
 | plane offset, median | 0.86 yd | **UNVALIDATED SAMPLE OUTPUT** (same) | label validation only; never hard-coded |
 | label travel, median | ≈1.50 yd | **UNVALIDATED SAMPLE OUTPUT** (same) | why the label is validation-only |
 | integer-yard spot error | ≈0.29 yd / ≈0.14 s | **UNVALIDATED SAMPLE OUTPUT** (diagnostic); the ±0.5 yd rounding is definitional | limitation |
 
-Onset thresholds, depth bounds, the 20-rep draft minimum, z = 1.96 and the
-50 ms SOI are **design choices** in `config.yaml` or locked by Conor, not
-estimates. No sample number is presented as a finding.
+Onset thresholds, depth bounds, the frozen 20-rep minimum and z = 1.96 are
+**design choices** in `config.yaml` or fixed by Conor, not estimates. No sample
+number is presented as a finding, and no smallest-effect-of-interest threshold
+is used.
 
 ---
 
-## 14. Freeze protocol
+## 14. Freeze record
 
-This prereg becomes **FROZEN** only when:
-1. Conor confirms or changes the provisional 20-rep minimum (§9); and
-2. Conor acknowledges that the locked 50 ms SOI is not detectable at the
-   available fittable P (§10).
+**Frozen 2026-11-05** by Conor's decision "just report whatever it gives you"
+(22:16 GMT). The freeze removes the confirmatory smallest-effect-of-interest
+threshold: the primary result is reported as a share with a 95% interval and the
+design's resolution limit is reported alongside it (§10). The 20-rep minimum
+(§9), onset (§4), distance (§5), stance handling (§6), model form (§7),
+reliability threshold (§8) and outcome (§3) are frozen as written.
 
-Until then, `--mode full` is refused by `common.require_prereg` (exit 4), and no
-full-data result may be inspected. After freezing, the file is not edited;
-deviations are logged in `notes/decisions.md` as exploratory and reported as
-such.
+The commit that sets `**Status: FROZEN.**` is the freeze; Phase 4 code may be
+written only after it. After freezing, this file is not edited. Deviations are
+logged in `notes/decisions.md` as exploratory and reported as such.

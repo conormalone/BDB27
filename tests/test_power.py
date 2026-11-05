@@ -1,8 +1,9 @@
-"""Power calculation: the locked 50 ms jump SD, its floor, and the DRAFT gate.
+"""Power calculation: the 50 ms jump SD, its floor, and the frozen prereg gate.
 
 The statistical tests use synthetic player-level data with a planted jump SD.
 The design tests use the committed Phase 3b evidence (provenance FULL) and lock
-the finding the prereg depends on: no candidate selection cut resolves 50 ms.
+the evidence the prereg reports as a resolution statement: no candidate
+selection cut resolves 50 ms. The prereg uses no confirmatory threshold.
 """
 
 from __future__ import annotations
@@ -139,23 +140,23 @@ def test_power_artefact_locks_the_finding():
         20, 25, 30, 40, 50, 60]
 
 
-def test_prereg_is_draft_and_the_full_mode_gate_refuses(cfg):
+def test_prereg_is_frozen_and_the_full_mode_gate_passes(cfg):
     path = C.abs_path(C.block(cfg)["paths"]["prereg"])
-    assert path.exists(), "notes/prereg.md must exist (DRAFT is enough for sample)"
+    assert path.exists(), "notes/prereg.md must exist"
     text = path.read_text(encoding="utf-8")
-    assert "**Status: DRAFT" in text
-    assert C.prereg_is_frozen(text) is False
-    with pytest.raises(C.GateRefused) as ei:
-        C.require_prereg(cfg, "full", "01_audit")
-    assert "FROZEN" in str(ei.value)
+    assert "**Status: FROZEN.**" in text
+    assert C.prereg_is_frozen(text) is True
+    # The prereg gate returns the path; full mode then fails on the missing
+    # full tracking files, not on the prereg.
+    assert C.require_prereg(cfg, "full", "01_audit") == path
 
 
-def test_full_mode_cli_refuses_a_draft_prereg(capsys):
+def test_full_mode_cli_passes_the_prereg_gate_and_refuses_tracking(capsys):
     code = RUN.main(["01_audit", "--mode", "full"])
     err = capsys.readouterr().err
     assert code == 4
     assert err.startswith("REFUSED:")
-    assert "prereg" in err and "FROZEN" in err
+    assert "tracking input missing" in err
 
 
 def test_task_md_amendments_are_present():

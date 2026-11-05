@@ -4641,3 +4641,47 @@ offset is not used anywhere.
 
 **Determinism.** The script is pure arithmetic on committed artefacts; two runs
 produce byte-identical output. Full suite: see the commit message.
+
+---
+
+## D115 — Prereg frozen with interval reporting; no confirmatory SOI threshold · Conor, 2026-11-05
+
+**Status: DECIDED (Conor, 2026-11-05 22:16 GMT). Supersedes the SOI gate of
+D111/D114 as a decision rule; the resolution numbers remain as evidence.**
+
+**Decision.** Conor's instruction was **"just report whatever it gives you"**.
+The prereg is frozen with **no smallest-effect-of-interest threshold**, no
+confirmatory jump-share gate and no pass/fail rule. The primary result is the
+**share of between-player variance with a 95% interval**. The design's
+**resolution limit** (smallest detectable jump SD, ~52–54 ms depending on the
+candidate cut; `outputs/prereg/power.json`) is reported alongside as a
+**resolution statement**, not as a test the estimate must pass.
+
+**Why.** The D114 evidence showed that 50 ms is at or below the design floor at
+every candidate cut, so a threshold at 50 ms would either never bind or would
+turn an inconclusive interval into a false "null". Reporting the interval and the
+resolution limit is the honest alternative and removes the min-reps deadlock:
+the 20-rep minimum is now frozen as the least restrictive candidate that
+maximises fittable players, not as a cut that "resolves" a threshold.
+
+**What changed in the frozen document.** `notes/prereg.md` status is
+`**Status: FROZEN.**`; §9 freezes 20 reps with the new rationale; §10 is
+retitled "Resolution limit and interval reporting — no confirmatory threshold"
+and the power table loses its pass/fail column; §11 items 4 and 8 and §13/§14
+are reworded accordingly. `TASK.md` Phase 5 item 5 and the Rules bullet carry
+in-line 2026-11-05 22:16 amendments. Everything else — onset (D87), distance =
+pre-snap depth to the LOS, outcome = tracked LOS crossing on both sides with
+`player_get_off` validation-only (D110), no stance label / stance absorbed into
+the residual (B8), model form, reliability threshold, minimum snaps — is
+unchanged.
+
+**Freeze discipline.** The commit that sets the status line is the freeze. No
+Phase 4 model may be fitted before it. The 0.30 `audit.smallest_effect_of_interest`
+value and the earlier Phase 1/3 design diagnostics remain in the historical
+evidence and code; they are **not** used for inference and are not carried into
+Phase 4 as a threshold.
+
+**Verification.** `common.prereg_is_frozen` returns true for the new status line;
+`python src/run.py 01_audit --mode full` now passes the prereg gate and is
+refused only by the missing full tracking files (the expected full-mode gate on
+this Pi).
