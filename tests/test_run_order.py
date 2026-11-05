@@ -65,3 +65,16 @@ def test_audit_stage_exposes_main():
 def test_sample_mode_never_touches_full_tracking(cfg):
     """FULL inputs do not exist here; sample mode must not need them."""
     assert not all(p.exists() for p in C.tracking_sources(cfg, "full"))
+
+
+def test_full_mode_is_refused_cleanly_by_the_cli(capsys):
+    """No traceback: the dispatcher turns a gate refusal into exit 4."""
+    code = RUN.main(["01_audit", "--mode", "full"])
+    err = capsys.readouterr().err
+    assert code == 4
+    assert err.startswith("REFUSED:")
+    assert "Traceback" not in err
+
+
+def test_gate_refusal_is_a_runtime_error_subclass():
+    assert issubclass(C.GateRefused, RuntimeError)

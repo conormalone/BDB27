@@ -47,6 +47,13 @@ RUN_LOG_FIELDS = ["stage", "mode", "provenance", "wall_s", "peak_rss_mb",
                   "when", "notes"]
 
 
+class GateRefused(RuntimeError):
+    """A deliberate refusal to run (bad mode, missing prereg, sample-sized input).
+
+    Distinct from a bug: the CLI prints these without a traceback.
+    """
+
+
 class SchemaError(AssertionError):
     """Raised when an input file's actual schema does not match the registry."""
 
@@ -191,7 +198,7 @@ def assert_disk_space(cfg: Mapping, mode: str = "sample") -> dict[str, float]:
     if interim_free < float(rt["min_free_mb_interim"]):
         problems.append(f"interim {interim_free:.0f} MB < {rt['min_free_mb_interim']} MB")
     if problems:
-        raise RuntimeError("DISK GUARD FAILED: " + "; ".join(problems))
+        raise GateRefused("DISK GUARD FAILED: " + "; ".join(problems))
     return {"root_free_mb": root_free, "interim_free_mb": interim_free}
 
 
@@ -211,7 +218,7 @@ def provenance_stamp(cfg: Mapping, mode: str) -> str:
 def require_full_provenance(cfg: Mapping, mode: str, stage: str) -> str:
     level = provenance(cfg, mode)
     if mode == "full" and level != "FULL":
-        raise RuntimeError(
+        raise GateRefused(
             f"STAGE {stage}: refusing to run — mode=full but provenance is "
             f"{level!r}. Check {TASK_KEY}.mode.full.")
     if level not in ("PLACEHOLDER_SAMPLE", "FULL"):
@@ -246,11 +253,11 @@ def require_prereg(cfg: Mapping, mode: str, stage: str) -> Path:
     if mode != "full":
         return path
     if not path.exists():
-        raise RuntimeError(
+        raise GateRefused(
             f"STAGE {stage}: refusing to run — mode=full requires {path}, which "
             f"does not exist. Write and freeze the prereg first (TASK.md Rules).")
     if not prereg_is_frozen(path.read_text(encoding="utf-8")):
-        raise RuntimeError(
+        raise GateRefused(
             f"STAGE {stage}: refusing to run — {path} does not declare "
             f"'**Status: FROZEN.**'. A missing, draft or negated status is not a "
             f"freeze.")
@@ -450,12 +457,12 @@ def require_full_tracking(cfg: Mapping, mode: str = "full") -> dict[str, Any]:
     files = tracking_sources(cfg, mode)
     missing = [str(f) for f in files if not f.exists()]
     if missing:
-        raise RuntimeError(
+        raise GateRefused(
             "FULL MODE REFUSED: tracking input missing:\n  " + "\n  ".join(missing))
     rows = tracking_row_count(cfg, mode)
     cap = int(block(cfg)["mode"]["sample"]["sample_row_cap"])
     if rows <= cap:
-        raise RuntimeError(
+        raise GateRefused(
             f"FULL MODE REFUSED: parsed tracking rows {rows:,} do not exceed the "
             f"sample row cap {cap:,}; this input is sample-sized, so FULL "
             f"provenance cannot be asserted.")

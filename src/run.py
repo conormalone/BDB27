@@ -75,7 +75,15 @@ def main(argv=None) -> int:
         forwarded.append("--force")
     if args.config:
         forwarded += ["--config", args.config]
-    return int(mod.main(forwarded) or 0)
+    import common as C
+    try:
+        return int(mod.main(forwarded) or 0)
+    except C.GateRefused as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 4
+    except C.SchemaError as exc:
+        print(f"SCHEMA GATE FAILED: {exc}", file=sys.stderr)
+        return 5
 
 
 if __name__ == "__main__":

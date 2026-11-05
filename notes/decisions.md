@@ -3658,7 +3658,7 @@ file.
 
 **Test impact.** No *passing* test was deleted without archiving: the legacy tests
 moved with their modules and are not collected (`pytest.ini testpaths = tests`).
-The new suite is 114 tests and exits 0.
+The new suite is 116 tests and exits 0.
 
 ## D86 — 2026-11-05 — One `bdb27:` config block; every number commented
 
@@ -3796,7 +3796,7 @@ the **Phase 4 decomposition** (planted b, shared baseline error) is not written,
 because Phase 4 does not exist. A Phase-1-level version (planted jump recovered by
 the one-way share, plus a null world) is written and passing.
 
-**Evidence.** `pytest -q` → 114 passed.
+**Evidence.** `pytest -q` → 116 passed.
 
 ## D95 — 2026-11-05 — The gate artefact is committed; bulky outputs are not
 

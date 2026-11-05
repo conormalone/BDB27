@@ -115,7 +115,7 @@ Every file carries a `provenance` column or key. In `--mode sample` it reads
 ## 6. Tests
 
 ```bash
-python -m pytest -q          # ~3 min on the Pi, 114 tests
+python -m pytest -q          # ~3 min on the Pi, 116 tests
 python -m pytest -q -k "not audit_stage_is_byte_identical"
 ```
 
