@@ -1,0 +1,62 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT",
+  "stage": "crossing_diagnostic",
+  "mode": "sample",
+  "sample_limited": true,
+  "settled_definitional_conclusions": [
+    "The crossing time Phase 3 computes is the crossing of the line of scrimmage derived from yardline_side/number/play_direction at the tracked position: LOS formula, sign and onset handling are verified by the checks in los_validation.csv.",
+    "player_get_off is not that quantity: it behaves as the crossing of a plane displaced past the line, by an amount that is a DISTANCE (it scales as 1/speed), not a clock offset (no constant can fit it), and it is a plane (within-play slope of implied distance on depth is 1, not 0).",
+    "The displacement is per play, not per player: two rushers on the same snap agree about the plane to within a few tenths of a yard, while different plays differ by more."
+  ],
+  "counts": {
+    "reps_with_crossing": 1819,
+    "primary_set": 1368,
+    "players": 44,
+    "games": 253,
+    "plays": 1797,
+    "paired_plays": 22,
+    "crossed_before_onset": 154
+  },
+  "headline": {
+    "median_gap_s": -0.3788,
+    "mean_gap_s": -0.4063,
+    "sd_gap_s": 0.2052,
+    "p10_gap_s": -0.6642,
+    "p90_gap_s": -0.1913,
+    "median_plane_offset_yd": 0.8605,
+    "sd_plane_offset_yd": 0.3123,
+    "los_cross_rmse_s": 0.4552,
+    "los_cross_sd_s": 0.2052,
+    "best_plane_offset_yd": 0.75,
+    "best_plane_rmse_s": 0.1674,
+    "best_fixed_displacement_yd": 1.5,
+    "best_fixed_rmse_s": 0.1295,
+    "clock_offset_s": -0.4063,
+    "clock_offset_rmse_s": 0.2051,
+    "within_play_slope": 0.9893,
+    "within_play_slope_se": 0.1135,
+    "within_play_pairs": 44,
+    "within_play_plays": 22,
+    "median_speed_at_crossing_yds": 2.053,
+    "los_time_bound_s": 0.1461,
+    "los_bound_yd": 0.3,
+    "gap_onset_correlation": -0.1328,
+    "between_player_sd_of_mean_gap_s": 0.078,
+    "consistency_max_abs_los_check_yd": 0.0,
+    "consistency_max_abs_depth_check_yd": 0.0,
+    "motion_share": 0.9989
+  },
+  "denominators": {
+    "gap_set": "every rep in snaps.parquet with a tracked crossing and a label (this reproduces the 1,819 in the brief)",
+    "primary_only": "the same restricted to in_primary_set (1,368 in the sample)"
+  },
+  "outputs": {
+    "rep_diagnostic": "rep_diagnostic.csv",
+    "definitions": "definitions.csv",
+    "los_validation": "los_validation.csv",
+    "variance_decomposition": "variance_decomposition.csv",
+    "group_offsets": "group_offsets.csv",
+    "within_play": "within_play.csv",
+    "hypothesis_verdicts": "hypothesis_verdicts.csv"
+  }
+}

@@ -1,0 +1,8 @@
+provenance,quantity,grouping,n,n_groups,total_sd,between_sd,within_sd,note
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,gap_s,nfl_id,1819,44,0.20516062501486812,0.07800739705920921,0.19792944175461513,"gap = tracked crossing - label, in seconds"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,gap_s,game_id,1819,253,0.20516062501486812,0.14393488592927278,0.18130800066738528,"gap = tracked crossing - label, in seconds"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,gap_s,alignment_class,1819,3,0.20516062501486812,0.07733034109698643,0.20267230850749815,"gap = tracked crossing - label, in seconds"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,plane_offset_yd,nfl_id,1813,44,0.3122665377834406,0.12698986544043453,0.30603713937623794,"plane offset = d_star - depth, in yards"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,plane_offset_yd,game_id,1813,253,0.3122665377834406,0.20090541381981816,0.27497385744455,"plane offset = d_star - depth, in yards"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,plane_offset_yd,alignment_class,1813,3,0.3122665377834406,0.03605933120193236,0.31175117703288785,"plane offset = d_star - depth, in yards"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,plane_offset_yd,play_paired,44,22,0.2322,0.2267,0.0602,paired design: within_sd is the two rushers' disagreement about the same play's plane; between_sd is the play-to-play movement of that plane

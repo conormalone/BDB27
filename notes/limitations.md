@@ -317,8 +317,13 @@ directly comparable to `player_get_off` in level — only in spread. Any
 Combine-vs-game comparison must use the model-free Combine curve and the tracked
 crossing, not a difference of levels.
 
-**Residual.** A constant or game-dependent offset. `notes/pending_full_run.md`
-S15 checks whether it is stable across the three seasons.
+**Resolved (2026-11-05, `notes/crossing-diagnostic.md`, D109).** It is neither
+the onset nor the clock: the gap is a **distance**. `player_get_off` behaves as
+the crossing of a plane **0.86 yd (sample median) past** the derived line, per
+play, and a constant time offset fits nothing (residual SD unchanged at 0.205 s).
+The line of scrimmage itself is validated against the offensive line's body
+positions and bounded at ≈0.3 yd. The remaining open item is the **distance
+definition** (limitation 20 and blocker B10), not the crossing formula.
 
 ## 18. Phase 3's tracking columns are sample-only in this cycle
 
@@ -348,3 +353,26 @@ here (that is Phase 4).
 
 **Residual.** The true reliability of `u` is unknown until Phase 4 runs. It can
 only be lower than the numbers above.
+
+## 20. `player_get_off` is not the quantity TASK.md assumes, and Phase 2's distance does not match it
+
+**Threat.** Phase 2 computes Combine physical time for the **pre-snap depth**
+(median 0.65 yd). The published label's clock covers a median **1.50 yd** of
+travel (the line plus ≈0.86 yd), so `phys_i(d_ij)` is computed for less than half
+the distance the outcome times. On the Combine curves the two differ by 0.250 s
+on average; regressing the label on `phys(depth)` instead of `phys(depth+0.86)`
+would return `b ≈ 1.31`, which TASK.md's `b ≈ 1` check would misread as a
+stance/start-type difference. This is a **definitional** defect, not a coding
+error, and it cannot be fixed by a clock offset.
+
+**Mitigation.** The mismatch is quantified in `notes/crossing-diagnostic.md` and
+`outputs/crossing_diagnostic/`; no Phase 4 input has been written. The
+between-player ranking is largely preserved (`corr(phys(0.65), phys(1.50)) =
+0.979`), so the variance **share** is not destroyed, but `b` and the intercept
+are not interpretable until the distance definition is fixed in the prereg.
+Options and the decision owed are in blocker **B10**.
+
+**Residual.** Which distance definition Phase 4 uses. It must be decided by
+Conor, frozen in the prereg, and estimated on full data — never from the sample,
+and never as a time offset. The 0.86 yd value is `UNVALIDATED SAMPLE OUTPUT` and
+must not be hard-coded as a constant.

@@ -222,6 +222,55 @@ bdb27:
     split_half_simulations: 400
 
   # ---------------------------------------------------------------------------
+  # Crossing diagnostic (2026-11-05, Conor-approved investigation).
+  #
+  # Question: on primary snaps where both exist, the tracked LOS crossing
+  # precedes `player_get_off` by ~0.38 s (median). Which quantity is wrong?
+  # This block fixes the candidate DEFINITIONS that are tested and the
+  # REPORTING cuts. None of these numbers is estimated from the data; each is a
+  # design choice recorded in decisions.md D109.
+  # ---------------------------------------------------------------------------
+  diagnostic:
+    # Grid over which each rep's trajectory is inverted: the distance at which
+    # the player's x-displacement equals the label's time ("D*"). Dense cover of
+    # the observed depth range plus the candidate offsets. DESIGN CHOICE.
+    distance_grid_yd: {start: 0.50, stop: 2.60, step: 0.05}
+    # Candidate shifts of the crossing plane, in yards past the derived LOS.
+    # DESIGN CHOICE: covers a body half-depth (0.5) and the fitted values.
+    plane_offset_grid_yd: [0.0, 0.25, 0.50, 0.75, 1.00, 1.25, 1.50]
+    # Candidate fixed x-displacements from the snap position (the "get-off is a
+    # first-step distance, not a line crossing" alternative). DESIGN CHOICE.
+    fixed_displacement_grid_yd: [0.75, 1.00, 1.25, 1.50, 1.75, 2.00]
+    # Half of a lineman's bounding-box depth along the direction of travel, used
+    # only as a BOUND for leading/trailing-edge candidates. No box is published
+    # in the provided files, so this is a design bound, not a measurement.
+    body_half_depth_yd: 0.50
+    # A within-play comparison needs two rushers on the same snap. This is the
+    # number of reps per play the comparison uses (exactly two: the estimator is
+    # then a paired difference and needs no heavier machinery).
+    within_play_reps: 2
+    # Minimum reps for a per-player / per-game row to be reported.
+    min_group_n: 20
+    # A candidate explanation must account for at least this share of the median
+    # gap to be called explanatory rather than incidental. DESIGN CHOICE: the
+    # pre-declared rule behind the verdict column.
+    min_share_of_gap_explained: 0.5
+    # Sources of the LOS validation sample. Defenders and attackers are
+    # identified by `lined_up_position` (the Q3/D97 authority).
+    offence_positions: [C, G, T, TE, WR, SLOT_WR, RB, FB, EXTRA_OL]
+    defence_positions: [EDGE, INTERIOR_LINE, OLB, MLB, CB, SLOT_CB, HIGH_SAFETY, BOX_SAFETY]
+    # Motion-direction test window after the snap, seconds. DESIGN CHOICE: the
+    # first step, before contact, so the sign of travel is readable.
+    motion_window_s: 0.60
+    # Bound on a SYSTEMATIC line-of-scrimmage error, in yards. A snapper's
+    # bounding-box centre sits 0.4-0.8 yd behind the ball; the measured C offset
+    # is -0.62 yd, so the recorded line cannot be more than about 0.3 yd from
+    # the true line without putting the snapper's hands further from the ball
+    # than his own body geometry allows. Used only to convert an LOS bound into
+    # a time bound in the hypothesis table; it is not estimated from the data.
+    los_systematic_bound_yd: 0.30
+
+  # ---------------------------------------------------------------------------
   # Schema / unit sanity bounds. These are VALIDATION bounds, not analysis
   # thresholds: a value outside them means the file or the unit assumption is
   # wrong, and the stage must stop rather than continue. Chosen wide enough that

@@ -322,3 +322,57 @@ said was missing: `onset_to_cross_s` (1,253 usable reps in the sample) and the
 tracked crossing. What is *still* missing is a stance label and a Combine start
 type, so the global offsets remain unestimable and `outputs/calibration.json`
 stays `PLACEHOLDER`. Phase 3 does not read calibration and does not depend on it.
+
+---
+
+## B10 — `player_get_off` is not a line-of-scrimmage crossing, and Phase 2's distance does not match it · **OPEN (needs Conor)**
+
+**Blocks:** `TASK.md` Phase 2's "physical time for each in-game pre-snap depth *d*
+(the distance the rusher must cover to cross the line)" **as a predictor of
+`player_get_off`**, and the prereg item "distance definition". Phase 4's
+`get_off_ij = a + b*phys_i(d_ij) + ...` currently compares two different
+distances.
+
+**Evidence** (full details in `notes/crossing-diagnostic.md`; every number is
+`UNVALIDATED SAMPLE OUTPUT`, n = 1,819 reps / 44 players / 22 paired snaps):
+
+* The line Phase 3 derives is correct: 99.7% of offensive players and 97.7% of
+  defensive players sit on the expected side of it; the C/G/T body-centre
+  offsets are −0.61 / −1.15 / −1.37 yd; a systematic line error is bounded at
+  ≈0.3 yd (0.15 s), 39% of the gap. Direction and sign are right on 99.9% of
+  reps. No code defect was found.
+* `player_get_off` behaves as the crossing of a plane **0.86 yd past** the line
+  (median; SD 0.31), as a **distance** (gap correlates +0.57 with crossing
+  speed; a fitted clock offset leaves the residual SD at 0.205 s), and as a
+  **plane** (paired within-play slope of implied distance on depth 0.99 ± 0.11,
+  where a fixed first-step distance gives 0).
+* The plane is **play-level**: two rushers on the same snap agree to 0.06 yd;
+  between-play SD is 0.23 yd. So a per-player calibration cannot recover it.
+* Phase 2's distance is 0.65 yd median against the label's 1.50 yd. The
+  between-player cost is small (`corr = 0.979`, implied `b ≈ 1.31`) but it makes
+  `b` and the intercept uninterpretable and would be misreported as a
+  stance/start-type difference.
+
+**What the code does (not a proxy).** Nothing is changed and nothing is
+substituted: the label stays the outcome, `cross_minus_get_off_s` stays evidence,
+`phys` is still computed at the pre-snap depth, and no Phase 4 input exists yet.
+The diagnostic is a standalone script (`src/crossing_diagnostic.py`) deliberately
+**not** added to `run.py`'s frozen stage order.
+
+**What would clear it.** A decision from Conor on the **distance definition**,
+one of:
+(a) keep the label as the outcome and evaluate `phys` at `depth + c0`, with `c0`
+    a preregistered definitional constant estimated on full data (never from the
+    sample, never a time offset);
+(b) define the outcome on the tracking (`snap → crossing`, or `onset → crossing`)
+    and compute `phys` at the same distance — consistent, but a change of
+    estimand and it adds the ±0.29 yd integer-yard spot error (±0.14 s) to the
+    outcome;
+(c) keep `phys(depth)` and state in the prereg that `b` and the intercept are
+    not interpretable as the physics (weakest; the decomposition share survives).
+Not acceptable: a time calibration offset, or silently replacing one measure
+with the other.
+
+**Not a TASK.md stop-list item.** The line and the depth *can* be derived; this
+is a definitional gap, so the pipeline is not stopped — but the prereg cannot be
+frozen, because "distance definition" is one of the items it must fix.

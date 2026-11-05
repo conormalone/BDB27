@@ -65,3 +65,10 @@ Thumbs.db
 !outputs/phase3b/
 !outputs/phase3b/*.csv
 !outputs/phase3b/*.json
+
+# Crossing diagnostic (2026-11-05): the tables the note cites. Small,
+# deterministic, and stamped with the mode provenance. The per-rep table is
+# regenerable; the summary and verdicts are the deliverable evidence.
+!outputs/crossing_diagnostic/
+!outputs/crossing_diagnostic/*.csv
+!outputs/crossing_diagnostic/*.json

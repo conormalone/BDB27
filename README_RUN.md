@@ -84,6 +84,7 @@ python src/run.py 01_audit --mode sample       # ~43 s, ~440 MB peak
 python src/run.py 01_audit --mode sample --force
 python src/run.py 02_combine_physical_time --mode sample          # ~10 s, ~300 MB
 python src/run.py 02_combine_physical_time --mode sample --force
+python src/crossing_diagnostic.py --mode sample   # ~34 s; NOT a stage, not in run.py
 ```
 
 `--mode sample|full` and `--force` are defined once, in `src/common.py`; every
@@ -101,6 +102,7 @@ does not exceed the sample cap; `notes/prereg.md` does not exist.
 | `02_combine_physical_time` | **yes** | 10 s, 273–303 MB; Combine is 463 k rows / 84 MB |
 | `03_game_snaps` | sample only; full needs 2–4 GB peak | stream per game; see `notes/scale.md` |
 | `03b_reliability` | **yes** | 25 s, 4,000-replicate bootstrap over 158 players; no tracking read |
+| `crossing_diagnostic` (not a stage) | **yes** | 34 s, 206 MB; why the tracked crossing leads `player_get_off` |
 | `04_models` | **no** | PyMC/Stan belongs on the bigger machine |
 | `05_validate` | sample only | refits the model |
 
@@ -128,6 +130,9 @@ does not exceed the sample cap; `notes/prereg.md` does not exist.
 | `outputs/phase3b/rule_membership.csv` | long format: which rule admits which player id |
 | `outputs/phase3b/split_half_curve.csv` | observed vs model-predicted half-half correlation by minimum half size |
 | `outputs/phase3b/phase3b_summary.json` | components, bootstrap intervals, split-half, Phase 1 reproduction, provenance basis |
+| `outputs/crossing_diagnostic/summary.json` | the gap diagnosis: headline numbers, verdicts, the LOS/line checks |
+| `outputs/crossing_diagnostic/definitions.csv` | candidate crossing definitions scored against the label |
+| `outputs/crossing_diagnostic/rep_diagnostic.csv` | one row per rep: depth, label, crossing, implied distance `d_star`, plane offset |
 | `outputs/calibration.json` | **PLACEHOLDER** in sample mode; no estimates |
 | `outputs/run_log.csv` | one row per stage run: wall time, peak RSS, provenance |
 
@@ -159,12 +164,13 @@ with a reason rather than silently passing.
 | `notes/phase1-audit.md` | items a–i with evidence, and the gate decision |
 | `notes/schema.md` | every file, column, type, unit; sample provenance; mismatch log |
 | `notes/rules.md` | competition limits, with provenance and what is unverified |
-| `notes/blockers.md` | B1–B8: what is blocked and what would clear it |
+| `notes/blockers.md` | B1–B10: what is blocked and what would clear it |
 | `notes/limitations.md` | the threat/mitigation list |
 | `notes/assumptions.md` | unverified beliefs about full data + their runtime assertions |
 | `notes/scale.md` | measured memory/time and the full-data extrapolation |
 | `notes/pending_full_run.md` | questions only full data can answer, with the command for each |
-| `notes/decisions.md` | D84–D100 for this cycle (append-only) |
+| `notes/decisions.md` | D84–D109 for this cycle (append-only) |
+| `notes/crossing-diagnostic.md` | why the tracked crossing leads `player_get_off`, and what Phase 4 must do about it |
 
 ## 8. Repo layout
 

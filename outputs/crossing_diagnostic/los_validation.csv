@@ -1,0 +1,11 @@
+provenance,check,scope,n,statistic,value,note
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,side_of_line,offence,7002,share_on_expected_side,0.9967,offence behind the line / defence in front; a wrong LOS formula puts them on the wrong side
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,side_of_line,defence,5420,share_on_expected_side,0.9769,offence behind the line / defence in front; a wrong LOS formula puts them on the wrong side
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,body_centre_vs_line,C,410,median_signed_offset_yd,-0.61,negative = offensive side of the line; a body centre sits behind the ball
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,body_centre_vs_line,C,410,sd_signed_offset_yd,0.309,spread = per-play spot error + the player's own alignment
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,body_centre_vs_line,G,2253,median_signed_offset_yd,-1.15,negative = offensive side of the line; a body centre sits behind the ball
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,body_centre_vs_line,G,2253,sd_signed_offset_yd,0.3482,spread = per-play spot error + the player's own alignment
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,body_centre_vs_line,T,1785,median_signed_offset_yd,-1.37,negative = offensive side of the line; a body centre sits behind the ball
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,body_centre_vs_line,T,1785,sd_signed_offset_yd,0.3922,spread = per-play spot error + the player's own alignment
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,los_spot_error,OL_within_player,30,pooled_within_sd_yd,0.3532,if the spot were recorded to the exact yard this would be the player's own alignment noise only
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,motion_direction,reps,1819,share_moving_against_offence,0.9989,"first-step x-displacement, sign-corrected; a mirrored or mis-signed axis would invert this"

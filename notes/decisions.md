@@ -4396,3 +4396,71 @@ Phase 4's job), and the floor comparison above does not transfer unchanged.
 (b) the share of **between-player** variance attributed to `u`? If (a), the SOI
 is above anything this design can detect and needs revisiting before the prereg
 is frozen.
+
+---
+
+## D109 — Crossing diagnostic: the label is a plane crossing ~0.86 yd past the line, not the line crossing · 2026-11-05
+
+**Status: EVIDENCE (decided: how to diagnose, what not to change). One question
+is left open for Conor (B10) and is not resolved by inference.**
+
+**Context.** Conor approved the investigation at 13:36: on the 1,819 snaps with
+both quantities the tracked crossing precedes `player_get_off` by median
+−0.379 s, and the gap (SD 0.205) is not a constant. Five hypotheses were to be
+tested in order and a verdict given for each.
+
+**What I decided (method):**
+
+1. The diagnostic is a **standalone script** (`src/crossing_diagnostic.py`), not
+   a stage. `run.py`'s STAGES is frozen by TASK.md and checked by
+   `tests/test_run_order.py`; adding a stage would either break that contract or
+   imply an order TASK.md does not have. The script still uses
+   `C.stage_bootstrap`, so the full-mode gates (prereg, tracking) apply to it too.
+2. The candidate definitions and the reporting cuts are in config
+   (`bdb27.diagnostic`), not in code; the only new threshold is
+   `min_share_of_gap_explained: 0.5` (a candidate must account for half the
+   median gap to be called explanatory) and `los_systematic_bound_yd: 0.30`
+   (a physical bound from the snapper's body geometry, not an estimate).
+3. The crossing time is **not changed**, and no offset is applied anywhere.
+   `player_get_off` is not touched, and no Phase 4 input is written.
+
+**What it establishes (sample, 1,819 reps / 44 players / 253 games):**
+
+* **H1 LOS error — rejected.** The formula and sign are validated; the line
+  error is bounded at ≈0.3 yd = 0.15 s, 39% of the gap. The ball is not tracked.
+  The integer `yardline_number` leaves a per-play spot error of ≈0.29 yd
+  (uniform ±0.5), which explains the *scatter*, not the *bias*.
+* **H2 sign — rejected.** 99.9% of defensive reps move against the offence;
+  a mirrored axis would make the depth non-positive for nearly all of them.
+* **H3 reference point — confirmed.** The label is a crossing of a plane
+  **+0.86 yd** past the line (median, SD 0.31). It is a distance (gap ↔ speed
+  +0.57; a clock offset removes no scatter) and a plane (paired within-play
+  slope 0.99 ± 0.11, where a fixed displacement gives 0). The fixed 1.5 yd
+  alternative wins on raw RMSE only because it discards the noisy depth — an
+  errors-in-variables artefact, which is why the paired test is the decisive one.
+* **H4 onset — rejected.** The crossing is computed from the snap; the onset
+  only gates it. corr(gap, onset) = −0.13.
+* **H5 per-group — not a player constant.** 93% of the plane offset's variance
+  is play-level (paired within-play SD 0.06 yd vs between-play 0.23 yd).
+
+**The reading I am recording, and its limit.** The magnitude and structure fit a
+**body-reference offset**: a lineman's bounding box is ≈1.7 yd from fingertips to
+heels, so its rear edge is ≈0.85 yd behind the tracked centre. That is
+consistent with the slope, the play-level structure, the magnitude and the
+absence of a height correlation, but it **cannot be verified** — no bounding box,
+no ball track and no data dictionary (B4) exist in the release. So the
+*definition* is not adopted; only the structure is.
+
+**What this changes for Phase 2/4.** Phase 2 computes `phys` for the pre-snap
+depth (0.65 yd median); the label times 1.50 yd. `b` would come out ≈1.31 and be
+misread as a stance/start-type difference. No time offset can fix that, because
+the error is a distance. The distance definition must be chosen and frozen
+before the prereg — **B10**, question for Conor:
+*"Should Phase 4's physical time be evaluated at the pre-snap depth (as TASK.md
+says), at the label's effective distance (needs a preregistered definitional
+constant estimated on full data), or should the outcome itself move to the
+tracked crossing so both sides use the same definition?"*
+
+**Determinism.** Two consecutive runs produced byte-identical artefacts (md5).
+Full suite: **206 passed**, including 19 new known-answer tests for the LOS,
+the sign and the crossing interpolation.
