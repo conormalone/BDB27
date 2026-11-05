@@ -24,6 +24,7 @@ STAGES = [
     "01_audit",
     "02_combine_physical_time",
     "03_game_snaps",
+    "03b_reliability",
     "04_models",
     "05_validate",
 ]

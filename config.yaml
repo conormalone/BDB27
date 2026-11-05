@@ -192,6 +192,36 @@ bdb27:
     games_per_part: 25
 
   # ---------------------------------------------------------------------------
+  # Player reliability and the Phase 4 selection rule (Phase 3b)
+  #
+  # Conor (2026-11-05): "I'd be interested to see per player reliability but
+  # I'd say it is very low." This block fixes what is REPORTED, not what is
+  # chosen: no threshold in here is applied to the data, and the active Phase 3
+  # minimum stays audit.min_pass_rush_snaps_per_rusher.
+  # ---------------------------------------------------------------------------
+  selection:
+    # Rule A candidate cuts. The task names 20/30/40/45/50/60; the first five
+    # overlap audit.min_reps_candidates (the Phase 3 table), 20 is added here.
+    rule_a_min_reps: [20, 30, 40, 45, 50, 60]
+    # Rule B candidate reliability floors.
+    rule_b_min_reliability: [0.5, 0.6, 0.7, 0.8]
+    # Presentation strata for the split-half attenuation curve: players with at
+    # least this many reps in EACH half. Presentation only; every stratum is
+    # reported so the trend is visible.
+    split_half_min_reps_per_half: [2, 5, 10, 20, 30, 50]
+    # "Well estimated" = at least this many games in each half. Players with
+    # fewer are reported separately, not silently pooled with the rest.
+    well_estimated_min_games_per_half: 2
+    # Rep counts at which the implied reliability of a player mean is tabulated.
+    rep_count_grid: [20, 30, 40, 45, 50, 60, 75, 100, 150, 200, 300, 500]
+    # Sensitivity grid ONLY: share of between-player variance assumed to be
+    # removed by the Phase 4 physical term, used to state how much lower the
+    # reliability of the residual "jump" would be. A grid, never an estimate.
+    residual_share_removed_grid: [0.0, 0.25, 0.5]
+    # Parametric replications of the split-half curve (diagnostic, seeded).
+    split_half_simulations: 400
+
+  # ---------------------------------------------------------------------------
   # Schema / unit sanity bounds. These are VALIDATION bounds, not analysis
   # thresholds: a value outside them means the file or the unit assumption is
   # wrong, and the stage must stop rather than continue. Chosen wide enough that

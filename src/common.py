@@ -319,10 +319,19 @@ def _ensure_parent(path: Path) -> None:
 
 
 def write_csv(path, rows: Iterable, fieldnames: Sequence[str], *,
-              mode: str, cfg: Mapping) -> Path:
+              mode: str, cfg: Mapping, stamp: str | None = None) -> Path:
+    """Write CSV with a provenance stamp.
+
+    ``stamp`` overrides the mode-derived stamp. It exists for artefacts whose
+    inputs are complete files even though the run mode is ``sample`` (the
+    label-side reliability analysis reads ``player_play.csv`` and
+    ``combine_tracking.csv`` in full). It must never be used to make a
+    sample-limited artefact look complete: a caller that cannot name its
+    complete inputs in ``notes`` must not pass it.
+    """
     path = Path(path)
     _ensure_parent(path)
-    stamp = provenance_stamp(cfg, mode)
+    stamp = provenance_stamp(cfg, mode) if stamp is None else str(stamp)
     header = ["provenance"] + list(fieldnames)
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w", encoding="utf-8", newline="") as fh:
@@ -337,12 +346,14 @@ def write_csv(path, rows: Iterable, fieldnames: Sequence[str], *,
     return path
 
 
-def write_json(path, obj: Mapping, *, mode: str, cfg: Mapping) -> Path:
+def write_json(path, obj: Mapping, *, mode: str, cfg: Mapping,
+               stamp: str | None = None) -> Path:
     if not isinstance(obj, Mapping):
         raise TypeError("write_json expects a mapping")
     path = Path(path)
     _ensure_parent(path)
-    payload = {"provenance": provenance_stamp(cfg, mode)}
+    payload = {"provenance": (provenance_stamp(cfg, mode)
+                              if stamp is None else str(stamp))}
     payload.update({k: v for k, v in obj.items() if k != "provenance"})
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w", encoding="utf-8") as fh:
@@ -352,10 +363,12 @@ def write_json(path, obj: Mapping, *, mode: str, cfg: Mapping) -> Path:
     return path
 
 
-def write_markdown(path, text: str, *, mode: str, cfg: Mapping) -> Path:
+def write_markdown(path, text: str, *, mode: str, cfg: Mapping,
+                   stamp: str | None = None) -> Path:
     path = Path(path)
     _ensure_parent(path)
-    body = f"<!-- provenance: {provenance_stamp(cfg, mode)} -->\n" + text
+    used = provenance_stamp(cfg, mode) if stamp is None else str(stamp)
+    body = f"<!-- provenance: {used} -->\n" + text
     if not body.endswith("\n"):
         body += "\n"
     tmp = path.with_suffix(path.suffix + ".tmp")

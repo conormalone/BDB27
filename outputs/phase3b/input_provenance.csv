@@ -1,0 +1,5 @@
+provenance,file,status,basis,rows,players,player_attempts,drills,draft_years,seasons,games_covered,games_in_games_csv,games_covered_share,distinct_player_play_keys
+FULL,player_play.csv,COMPLETE,"one row per (game, play, player); 1,001/1,002 games; 2023-2025. Not a row sample (A15, A7, B5).",314197,,,,,,1001,1002,0.999002,314197
+FULL,games.csv,COMPLETE,every season of the release,1002,,,,,3,,,,
+FULL,combine_tracking.csv,COMPLETE,"510 attendees, 1-4 forty-yard attempts each, 3 draft classes; a sample would lose attempt structure (A12)",,510,6310,56,3,,,,,
+FULL,players.csv,COMPLETE,same 510 attendees as the Combine file,510,,,,,,,,,

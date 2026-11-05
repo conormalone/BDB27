@@ -332,3 +332,19 @@ snap/game counts, null provenance) come from the complete label file and are
 real; they are labelled `FULL_RAW_LABEL_FILE` in `phase3_summary.json`. Tracking
 blocks are labelled `SAMPLE_TRACKING`. The stage is wired so the same code path
 produces the full numbers with `--mode full` once the files and the prereg exist.
+
+## 19. Reliability is measured on the raw get-off mean, not on the residual "jump"
+
+**Threat.** Phase 3b reports how reliable a player's **mean get-off** is. Phase 4
+estimates the residual `u_i` after removing `b*phys_i(d)`; removing
+between-player variance lowers `sigma_u^2` and therefore lowers reliability.
+Reading 0.90 as the reliability of "jump" would overstate it.
+
+**Mitigation.** `outputs/phase3b/reliability_residual_sensitivity.csv` gives the
+reliability of a median player for assumed removals of 0%, 25% and 50% of
+between-player variance: 0.898, 0.869, 0.815. The figure in the note is stated
+as an **upper bound**, and the physical term's explanatory share is not estimated
+here (that is Phase 4).
+
+**Residual.** The true reliability of `u` is unknown until Phase 4 runs. It can
+only be lower than the numbers above.

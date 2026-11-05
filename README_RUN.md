@@ -14,7 +14,8 @@ whether the residual is a stable trait that matters on the field.
 Run order (fixed, strictly sequential):
 
 ```
-01_audit -> 02_combine_physical_time -> 03_game_snaps -> 04_models -> 05_validate
+01_audit -> 02_combine_physical_time -> 03_game_snaps -> 03b_reliability
+          -> 04_models -> 05_validate
 ```
 
 **Status of each stage on 2026-11-05:**
@@ -23,7 +24,8 @@ Run order (fixed, strictly sequential):
 |---|---|---|
 | `01_audit` | **complete** | Phase 1 items a–i, gate decision |
 | `02_combine_physical_time` | **complete (sample)** | Phase 2: onset, model-free time-at-distance, hierarchical pooling, calibration placeholder |
-| `03_game_snaps` | **stub** — exits 3 | Phase 3; needs full game tracking |
+| `03_game_snaps` | **complete** | Phase 3: one row per DL pass-rush snap (label side complete; tracking columns sample-only) |
+| `03b_reliability` | **complete (full evidence)** | Phase 3b: per-player reliability and the Phase 4 selection rule; reads complete files only, so its outputs are stamped `FULL` |
 | `04_models` | **stub** — exits 3 | Phase 4; needs 02 and 03 |
 | `05_validate` | **stub** — exits 3 | Phase 5; needs 04 |
 
@@ -98,6 +100,7 @@ does not exceed the sample cap; `notes/prereg.md` does not exist.
 | `01_audit` | **yes** | 43 s, 440 MB |
 | `02_combine_physical_time` | **yes** | 10 s, 273–303 MB; Combine is 463 k rows / 84 MB |
 | `03_game_snaps` | sample only; full needs 2–4 GB peak | stream per game; see `notes/scale.md` |
+| `03b_reliability` | **yes** | 25 s, 4,000-replicate bootstrap over 158 players; no tracking read |
 | `04_models` | **no** | PyMC/Stan belongs on the bigger machine |
 | `05_validate` | sample only | refits the model |
 
@@ -118,16 +121,25 @@ does not exceed the sample cap; `notes/prereg.md` does not exist.
 | `outputs/phase2/hierarchical_fit.csv` | variance components per distance and pooling group |
 | `outputs/phase2/position_conflicts.csv` | Q3 excluded/conflicting players with rep counts |
 | `outputs/phase2/phase2_summary.json` | counts, QC flags, cross-check disagreement, design floor |
+| `outputs/phase3/snaps.parquet` | **Phase 3 deliverable**: one row per DL pass-rush snap (65 columns) |
+| `outputs/phase3b/reliability_by_player.csv` | per-player reps, games, mean, within SD, reliability (rep-level and three-level) |
+| `outputs/phase3b/selection_rules.csv` | Rule A and Rule B at every candidate cut: players, fittable, floor, SOI verdict, effective players |
+| `outputs/phase3b/overlap_matrix.csv` | A×B overlap and the disagreement sets, with reps and reliabilities |
+| `outputs/phase3b/rule_membership.csv` | long format: which rule admits which player id |
+| `outputs/phase3b/split_half_curve.csv` | observed vs model-predicted half-half correlation by minimum half size |
+| `outputs/phase3b/phase3b_summary.json` | components, bootstrap intervals, split-half, Phase 1 reproduction, provenance basis |
 | `outputs/calibration.json` | **PLACEHOLDER** in sample mode; no estimates |
 | `outputs/run_log.csv` | one row per stage run: wall time, peak RSS, provenance |
 
 Every file carries a `provenance` column or key. In `--mode sample` it reads
-`PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT`.
+`PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT`, **except** `outputs/phase3b/`:
+every input to that stage is a complete file, so it is stamped `FULL` and its
+provenance basis is written to `outputs/phase3b/input_provenance.csv`.
 
 ## 6. Tests
 
 ```bash
-python -m pytest -q          # ~4 min on the Pi, 142 tests
+python -m pytest -q          # ~5 min on the Pi, 187 tests
 python -m pytest -q -k "not audit_stage_is_byte_identical"
 ```
 

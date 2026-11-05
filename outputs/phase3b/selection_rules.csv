@@ -1,0 +1,15 @@
+provenance,rule,cut,players_admitted,players_fittable,players_admitted_without_forty,median_reliability_admitted_three_level,min_reliability_admitted_three_level,min_reps_admitted,median_reps_admitted,median_games_admitted,implied_detectable_floor,meets_soi_fittable,effective_players_reliability_weighted,floor_at_effective_players,meets_soi_effective,smallest_effect_of_interest,note
+FULL,A_raw_reps,20,115,90,25,0.93834,0.666721,20,182.0,19.0,0.29218,True,89.271,0.293816,True,0.3,reps >= cut
+FULL,A_raw_reps,30,109,85,24,0.942815,0.708279,31,194.0,20.0,0.30065,False,84.517,0.30065,False,0.3,reps >= cut
+FULL,A_raw_reps,40,103,80,23,0.944695,0.733422,41,204.0,20.0,0.309903,False,79.727,0.309903,False,0.3,reps >= cut
+FULL,A_raw_reps,45,100,78,22,0.945024,0.770647,45,210.0,20.5,0.313851,False,77.792,0.313851,False,0.3,reps >= cut
+FULL,A_raw_reps,50,99,77,22,0.945312,0.799475,50,214.0,21.0,0.315883,False,76.823,0.315883,False,0.3,reps >= cut
+FULL,A_raw_reps,60,92,71,21,0.948245,0.812904,61,231.5,22.0,0.328959,False,70.907,0.328959,False,0.3,reps >= cut
+FULL,B_reliability_rep_level,0.5,125,99,26,0.932744,0.511593,7,172.0,18.0,0.278582,True,97.24,0.28144,True,0.3,"reliability_i = n_i/(n_i+k), k from the two-level model"
+FULL,B_reliability_rep_level,0.6,122,96,26,0.93514,0.585087,10,176.0,18.5,0.282902,True,94.73,0.284387,True,0.3,"reliability_i = n_i/(n_i+k), k from the two-level model"
+FULL,B_reliability_rep_level,0.7,118,93,25,0.937581,0.621503,15,181.0,19.0,0.287428,True,92.037,0.288986,True,0.3,"reliability_i = n_i/(n_i+k), k from the two-level model"
+FULL,B_reliability_rep_level,0.8,112,87,25,0.94233,0.690887,26,188.0,19.0,0.297174,True,86.4,0.298897,True,0.3,"reliability_i = n_i/(n_i+k), k from the two-level model"
+FULL,B_three_level_PROPOSED,0.5,125,99,26,0.932744,0.511593,7,172.0,18.0,0.278582,True,97.24,0.28144,True,0.3,"reliability from the three-level model (uses games as well as reps); PROPOSED, not the specified rule"
+FULL,B_three_level_PROPOSED,0.6,120,94,26,0.937048,0.606899,12,179.5,19.0,0.285895,True,92.967,0.287428,True,0.3,"reliability from the three-level model (uses games as well as reps); PROPOSED, not the specified rule"
+FULL,B_three_level_PROPOSED,0.7,112,88,24,0.94233,0.701942,20,188.0,19.0,0.295481,True,87.403,0.297174,True,0.3,"reliability from the three-level model (uses games as well as reps); PROPOSED, not the specified rule"
+FULL,B_three_level_PROPOSED,0.8,99,77,22,0.945312,0.8074,38,214.0,21.0,0.315883,False,76.826,0.315883,False,0.3,"reliability from the three-level model (uses games as well as reps); PROPOSED, not the specified rule"

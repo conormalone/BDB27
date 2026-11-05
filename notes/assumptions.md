@@ -232,3 +232,27 @@ compares it with the manifest, and for a partitioned cache compares the number o
 **Why it matters.** Phase 3 reads one game partition at a time. A missing
 partition would silently produce rows with `tracking_present = false` — a
 data-integrity failure disguised as "no tracking for this game".
+
+## A19 — The label, games, Combine and player files are complete · **LIVE (Phase 3b)**
+
+**Assumption.** `player_play.csv`, `games.csv`, `combine_tracking.csv` and
+`players.csv` are complete files, so an analysis that reads only them is real
+evidence and must **not** be stamped `UNVALIDATED SAMPLE OUTPUT`.
+
+**Assertion.** `03b_reliability.input_evidence` raises `SchemaError` unless
+`count(*) == count(DISTINCT (game_id, play_id, nfl_id))` in `player_play` (A15)
+and unless `player_play` covers ≥99% of the games in `games.csv` (A7). It
+measures and records, per file, the row count, players, attempts, drills, draft
+years and games covered. `03b_reliability.reconcile_label_side` then requires the
+Phase 3 table's label side to match a direct query on the complete
+`player_play.csv` exactly (44,002 get-off rows and 33,061 primary rows) and
+raises `LABEL-SIDE RECONCILIATION FAILED` otherwise.
+
+**Why it matters.** The provenance stamp of `outputs/phase3b/` rests on this.
+Without the reconciliation, a Phase 3 table accidentally rebuilt from a partial
+label file would carry a `FULL` stamp and Conor would make a prereg decision on
+numbers that are not the release.
+
+**Not assumed.** That the release is a random sample of NFL defensive linemen —
+it is pre-filtered to 510 Combine attendees (B5), stated as the study
+population, not a limitation to be corrected.

@@ -1,0 +1,603 @@
+{
+  "provenance": "FULL",
+  "stage": "03b_reliability",
+  "mode": "sample",
+  "question": "which players enter Phase 4, and how reliable is a player-level get-off estimate?",
+  "threshold_chosen": false,
+  "provenance_basis": {
+    "stamp": "FULL",
+    "why_not_sample": "every input is a complete file; the analysis reads no tracking column",
+    "inputs": {
+      "player_play.csv": {
+        "rows": 314197,
+        "distinct_player_play_keys": 314197,
+        "games_covered": 1001,
+        "games_in_games_csv": 1002,
+        "games_covered_share": 0.999002,
+        "status": "COMPLETE",
+        "basis": "one row per (game, play, player); 1,001/1,002 games; 2023-2025. Not a row sample (A15, A7, B5)."
+      },
+      "games.csv": {
+        "rows": 1002,
+        "seasons": 3,
+        "status": "COMPLETE",
+        "basis": "every season of the release"
+      },
+      "combine_tracking.csv": {
+        "players": 510,
+        "player_attempts": 6310,
+        "drills": 56,
+        "draft_years": 3,
+        "status": "COMPLETE",
+        "basis": "510 attendees, 1-4 forty-yard attempts each, 3 draft classes; a sample would lose attempt structure (A12)"
+      },
+      "players.csv": {
+        "rows": 510,
+        "status": "COMPLETE",
+        "basis": "same 510 attendees as the Combine file"
+      }
+    },
+    "label_side_reconciliation": {
+      "direct_get_off_rows": 44002,
+      "table_rows": 44002,
+      "direct_primary_rows": 33061,
+      "table_primary_rows": 33061,
+      "status": "MATCH",
+      "meaning": "the Phase 3 table carries every DL pass-rush get-off row in the release; no row sampling is involved"
+    }
+  },
+  "analysis_set": {
+    "rows": 33061,
+    "players": 158,
+    "games": 907,
+    "median_reps_per_player": 101.0,
+    "players_with_forty_attempt": 123,
+    "seasons": [
+      2023,
+      2024,
+      2025
+    ],
+    "scope": "in_primary_set (DL, non-run pass-rush, published player_get_off) from the complete label file"
+  },
+  "distribution": {
+    "player_mean_get_off": {
+      "n": 158,
+      "mean": 0.9806903522807737,
+      "sd": 0.13738831271835156,
+      "min": 0.665000021457672,
+      "p05": 0.7860797704827499,
+      "median": 0.9619739466701895,
+      "p95": 1.161213806489566,
+      "max": 1.55599999427795,
+      "sum": 154.94907566036224
+    },
+    "sd_between_player_anova": 0.100387,
+    "sd_within_player_pooled": 0.249381,
+    "sd_of_player_means_unweighted": 0.137388,
+    "between_share_noise_corrected": 0.139447,
+    "between_share_uncorrected_phase1_method": 0.232841,
+    "icc_oneway_check": 0.139458,
+    "check_variance_of_player_means": {
+      "predicted": 0.019908,
+      "observed": 0.018876,
+      "meaning": "s2u + s2v*E[1/G] + s2e*E[1/n] against the observed variance of player means: an out-of-sample check the three-level components reproduce the observed spread"
+    }
+  },
+  "two_level_model": {
+    "estimator": "one-way random effects, method of moments (same moments as stats.hierarchical_normal)",
+    "sigma2_within": 0.06219084,
+    "tau2_between": 0.0100776,
+    "k_sigma2_over_tau2": 6.171195,
+    "n0": 206.7746,
+    "bootstrap": {
+      "median": 6.371987,
+      "p_lo": 4.798544,
+      "p_hi": 8.762238,
+      "n_resamples": 2000
+    },
+    "reliability_at_median_reps": 0.942417,
+    "reliability_at_median_reps_bootstrap": {
+      "reliability_at_n": 0.940655,
+      "p_lo_from_k_p_hi": 0.920171,
+      "p_hi_from_k_p_lo": 0.954645
+    }
+  },
+  "three_level_model": {
+    "estimator": "nested unbalanced ANOVA, method of moments (reps in games in players)",
+    "sigma2_rep": 0.0558708,
+    "sigma2_game_within_player": 0.0066431,
+    "sigma2_player": 0.00975215,
+    "share_player": 0.134948,
+    "share_game": 0.091926,
+    "share_rep": 0.773126,
+    "components_truncated": 0,
+    "bootstrap": {
+      "median": 0.131172,
+      "p_lo": 0.097772,
+      "p_hi": 0.168415,
+      "n_resamples": 2000
+    },
+    "reliability_at_median": 0.898077
+  },
+  "split_half": {
+    "estimable_players": 141,
+    "players_never_estimable": 17,
+    "well_estimated_min_games_per_half": 2,
+    "well_estimated_players": 119,
+    "all_estimable": {
+      "n_players": 141,
+      "r": 0.451738,
+      "spearman_brown": 0.622341
+    },
+    "well_estimated": {
+      "n_players": 119,
+      "r": 0.735534,
+      "spearman_brown": 0.847617
+    },
+    "strata": [
+      {
+        "min_reps_per_half": 2,
+        "n_players": 129,
+        "median_min_reps_per_half": 69.0,
+        "observed_r": 0.695905,
+        "observed_spearman_brown": 0.820688,
+        "predicted_r_two_level": 0.768201,
+        "two_level_lo": 0.638107,
+        "two_level_hi": 0.866903,
+        "predicted_r_three_level": 0.688559,
+        "three_level_lo": 0.55125,
+        "three_level_hi": 0.787227
+      },
+      {
+        "min_reps_per_half": 5,
+        "n_players": 119,
+        "median_min_reps_per_half": 77.0,
+        "observed_r": 0.768611,
+        "observed_spearman_brown": 0.869169,
+        "predicted_r_two_level": 0.863183,
+        "two_level_lo": 0.795068,
+        "two_level_hi": 0.912714,
+        "predicted_r_three_level": 0.763733,
+        "three_level_lo": 0.66495,
+        "three_level_hi": 0.839373
+      },
+      {
+        "min_reps_per_half": 10,
+        "n_players": 108,
+        "median_min_reps_per_half": 89.0,
+        "observed_r": 0.82293,
+        "observed_spearman_brown": 0.902865,
+        "predicted_r_two_level": 0.90564,
+        "two_level_lo": 0.856562,
+        "two_level_hi": 0.940646,
+        "predicted_r_three_level": 0.809286,
+        "three_level_lo": 0.721312,
+        "three_level_hi": 0.871295
+      },
+      {
+        "min_reps_per_half": 20,
+        "n_players": 95,
+        "median_min_reps_per_half": 99.0,
+        "observed_r": 0.857583,
+        "observed_spearman_brown": 0.923332,
+        "predicted_r_two_level": 0.932491,
+        "two_level_lo": 0.898119,
+        "two_level_hi": 0.959001,
+        "predicted_r_three_level": 0.851151,
+        "three_level_lo": 0.783943,
+        "three_level_hi": 0.904794
+      },
+      {
+        "min_reps_per_half": 30,
+        "n_players": 88,
+        "median_min_reps_per_half": 110.0,
+        "observed_r": 0.877096,
+        "observed_spearman_brown": 0.934524,
+        "predicted_r_two_level": 0.941971,
+        "two_level_lo": 0.913863,
+        "two_level_hi": 0.96635,
+        "predicted_r_three_level": 0.86953,
+        "three_level_lo": 0.812097,
+        "three_level_hi": 0.915323
+      },
+      {
+        "min_reps_per_half": 50,
+        "n_players": 74,
+        "median_min_reps_per_half": 129.0,
+        "observed_r": 0.934178,
+        "observed_spearman_brown": 0.965969,
+        "predicted_r_two_level": 0.955066,
+        "two_level_lo": 0.927673,
+        "two_level_hi": 0.97517,
+        "predicted_r_three_level": 0.894402,
+        "three_level_lo": 0.842389,
+        "three_level_hi": 0.933372
+      }
+    ],
+    "curve_fit": {
+      "two_level_rmse": 0.072189,
+      "three_level_rmse": 0.018003,
+      "cuts": 6,
+      "meaning": "lower is better; a model that omits the game level cannot reproduce the observed attenuation"
+    },
+    "phase1_reproduction": {
+      "scope": "FULL_RAW_LABEL_FILE",
+      "rows": 44002,
+      "players_with_any_get_off": 196,
+      "n_players_both_halves": 159,
+      "split_half_icc_2_1": 0.634145,
+      "split_half_pearson_r": 0.634872,
+      "spearman_brown": 0.776663,
+      "matches_phase1": true,
+      "sample": "every player_get_off row in player_play.csv (run plays and non-DL included), odd/even by league-wide chronological game rank - the Phase 1 method, reproduced as a control"
+    }
+  },
+  "selection_rules": {
+    "rule_a_cuts": [
+      20,
+      30,
+      40,
+      45,
+      50,
+      60
+    ],
+    "rule_b_cuts": [
+      0.5,
+      0.6,
+      0.7,
+      0.8
+    ],
+    "smallest_effect_of_interest": 0.3,
+    "implied_rep_cut_by_reliability": [
+      {
+        "reliability": 0.5,
+        "implied_min_reps_rep_level": 6.171
+      },
+      {
+        "reliability": 0.6,
+        "implied_min_reps_rep_level": 9.257
+      },
+      {
+        "reliability": 0.7,
+        "implied_min_reps_rep_level": 14.399
+      },
+      {
+        "reliability": 0.8,
+        "implied_min_reps_rep_level": 24.685
+      }
+    ],
+    "table": [
+      {
+        "rule": "A_raw_reps",
+        "cut": 20,
+        "players_admitted": 115,
+        "players_fittable": 90,
+        "players_admitted_without_forty": 25,
+        "median_reliability_admitted_three_level": 0.93834,
+        "min_reliability_admitted_three_level": 0.666721,
+        "min_reps_admitted": 20,
+        "median_reps_admitted": 182.0,
+        "median_games_admitted": 19.0,
+        "implied_detectable_floor": 0.29218,
+        "meets_soi_fittable": true,
+        "effective_players_reliability_weighted": 89.271,
+        "floor_at_effective_players": 0.293816,
+        "meets_soi_effective": true,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reps >= cut"
+      },
+      {
+        "rule": "A_raw_reps",
+        "cut": 30,
+        "players_admitted": 109,
+        "players_fittable": 85,
+        "players_admitted_without_forty": 24,
+        "median_reliability_admitted_three_level": 0.942815,
+        "min_reliability_admitted_three_level": 0.708279,
+        "min_reps_admitted": 31,
+        "median_reps_admitted": 194.0,
+        "median_games_admitted": 20.0,
+        "implied_detectable_floor": 0.30065,
+        "meets_soi_fittable": false,
+        "effective_players_reliability_weighted": 84.517,
+        "floor_at_effective_players": 0.30065,
+        "meets_soi_effective": false,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reps >= cut"
+      },
+      {
+        "rule": "A_raw_reps",
+        "cut": 40,
+        "players_admitted": 103,
+        "players_fittable": 80,
+        "players_admitted_without_forty": 23,
+        "median_reliability_admitted_three_level": 0.944695,
+        "min_reliability_admitted_three_level": 0.733422,
+        "min_reps_admitted": 41,
+        "median_reps_admitted": 204.0,
+        "median_games_admitted": 20.0,
+        "implied_detectable_floor": 0.309903,
+        "meets_soi_fittable": false,
+        "effective_players_reliability_weighted": 79.727,
+        "floor_at_effective_players": 0.309903,
+        "meets_soi_effective": false,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reps >= cut"
+      },
+      {
+        "rule": "A_raw_reps",
+        "cut": 45,
+        "players_admitted": 100,
+        "players_fittable": 78,
+        "players_admitted_without_forty": 22,
+        "median_reliability_admitted_three_level": 0.945024,
+        "min_reliability_admitted_three_level": 0.770647,
+        "min_reps_admitted": 45,
+        "median_reps_admitted": 210.0,
+        "median_games_admitted": 20.5,
+        "implied_detectable_floor": 0.313851,
+        "meets_soi_fittable": false,
+        "effective_players_reliability_weighted": 77.792,
+        "floor_at_effective_players": 0.313851,
+        "meets_soi_effective": false,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reps >= cut"
+      },
+      {
+        "rule": "A_raw_reps",
+        "cut": 50,
+        "players_admitted": 99,
+        "players_fittable": 77,
+        "players_admitted_without_forty": 22,
+        "median_reliability_admitted_three_level": 0.945312,
+        "min_reliability_admitted_three_level": 0.799475,
+        "min_reps_admitted": 50,
+        "median_reps_admitted": 214.0,
+        "median_games_admitted": 21.0,
+        "implied_detectable_floor": 0.315883,
+        "meets_soi_fittable": false,
+        "effective_players_reliability_weighted": 76.823,
+        "floor_at_effective_players": 0.315883,
+        "meets_soi_effective": false,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reps >= cut"
+      },
+      {
+        "rule": "A_raw_reps",
+        "cut": 60,
+        "players_admitted": 92,
+        "players_fittable": 71,
+        "players_admitted_without_forty": 21,
+        "median_reliability_admitted_three_level": 0.948245,
+        "min_reliability_admitted_three_level": 0.812904,
+        "min_reps_admitted": 61,
+        "median_reps_admitted": 231.5,
+        "median_games_admitted": 22.0,
+        "implied_detectable_floor": 0.328959,
+        "meets_soi_fittable": false,
+        "effective_players_reliability_weighted": 70.907,
+        "floor_at_effective_players": 0.328959,
+        "meets_soi_effective": false,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reps >= cut"
+      },
+      {
+        "rule": "B_reliability_rep_level",
+        "cut": 0.5,
+        "players_admitted": 125,
+        "players_fittable": 99,
+        "players_admitted_without_forty": 26,
+        "median_reliability_admitted_three_level": 0.932744,
+        "min_reliability_admitted_three_level": 0.511593,
+        "min_reps_admitted": 7,
+        "median_reps_admitted": 172.0,
+        "median_games_admitted": 18.0,
+        "implied_detectable_floor": 0.278582,
+        "meets_soi_fittable": true,
+        "effective_players_reliability_weighted": 97.24,
+        "floor_at_effective_players": 0.28144,
+        "meets_soi_effective": true,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reliability_i = n_i/(n_i+k), k from the two-level model"
+      },
+      {
+        "rule": "B_reliability_rep_level",
+        "cut": 0.6,
+        "players_admitted": 122,
+        "players_fittable": 96,
+        "players_admitted_without_forty": 26,
+        "median_reliability_admitted_three_level": 0.93514,
+        "min_reliability_admitted_three_level": 0.585087,
+        "min_reps_admitted": 10,
+        "median_reps_admitted": 176.0,
+        "median_games_admitted": 18.5,
+        "implied_detectable_floor": 0.282902,
+        "meets_soi_fittable": true,
+        "effective_players_reliability_weighted": 94.73,
+        "floor_at_effective_players": 0.284387,
+        "meets_soi_effective": true,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reliability_i = n_i/(n_i+k), k from the two-level model"
+      },
+      {
+        "rule": "B_reliability_rep_level",
+        "cut": 0.7,
+        "players_admitted": 118,
+        "players_fittable": 93,
+        "players_admitted_without_forty": 25,
+        "median_reliability_admitted_three_level": 0.937581,
+        "min_reliability_admitted_three_level": 0.621503,
+        "min_reps_admitted": 15,
+        "median_reps_admitted": 181.0,
+        "median_games_admitted": 19.0,
+        "implied_detectable_floor": 0.287428,
+        "meets_soi_fittable": true,
+        "effective_players_reliability_weighted": 92.037,
+        "floor_at_effective_players": 0.288986,
+        "meets_soi_effective": true,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reliability_i = n_i/(n_i+k), k from the two-level model"
+      },
+      {
+        "rule": "B_reliability_rep_level",
+        "cut": 0.8,
+        "players_admitted": 112,
+        "players_fittable": 87,
+        "players_admitted_without_forty": 25,
+        "median_reliability_admitted_three_level": 0.94233,
+        "min_reliability_admitted_three_level": 0.690887,
+        "min_reps_admitted": 26,
+        "median_reps_admitted": 188.0,
+        "median_games_admitted": 19.0,
+        "implied_detectable_floor": 0.297174,
+        "meets_soi_fittable": true,
+        "effective_players_reliability_weighted": 86.4,
+        "floor_at_effective_players": 0.298897,
+        "meets_soi_effective": true,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reliability_i = n_i/(n_i+k), k from the two-level model"
+      },
+      {
+        "rule": "B_three_level_PROPOSED",
+        "cut": 0.5,
+        "players_admitted": 125,
+        "players_fittable": 99,
+        "players_admitted_without_forty": 26,
+        "median_reliability_admitted_three_level": 0.932744,
+        "min_reliability_admitted_three_level": 0.511593,
+        "min_reps_admitted": 7,
+        "median_reps_admitted": 172.0,
+        "median_games_admitted": 18.0,
+        "implied_detectable_floor": 0.278582,
+        "meets_soi_fittable": true,
+        "effective_players_reliability_weighted": 97.24,
+        "floor_at_effective_players": 0.28144,
+        "meets_soi_effective": true,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reliability from the three-level model (uses games as well as reps); PROPOSED, not the specified rule"
+      },
+      {
+        "rule": "B_three_level_PROPOSED",
+        "cut": 0.6,
+        "players_admitted": 120,
+        "players_fittable": 94,
+        "players_admitted_without_forty": 26,
+        "median_reliability_admitted_three_level": 0.937048,
+        "min_reliability_admitted_three_level": 0.606899,
+        "min_reps_admitted": 12,
+        "median_reps_admitted": 179.5,
+        "median_games_admitted": 19.0,
+        "implied_detectable_floor": 0.285895,
+        "meets_soi_fittable": true,
+        "effective_players_reliability_weighted": 92.967,
+        "floor_at_effective_players": 0.287428,
+        "meets_soi_effective": true,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reliability from the three-level model (uses games as well as reps); PROPOSED, not the specified rule"
+      },
+      {
+        "rule": "B_three_level_PROPOSED",
+        "cut": 0.7,
+        "players_admitted": 112,
+        "players_fittable": 88,
+        "players_admitted_without_forty": 24,
+        "median_reliability_admitted_three_level": 0.94233,
+        "min_reliability_admitted_three_level": 0.701942,
+        "min_reps_admitted": 20,
+        "median_reps_admitted": 188.0,
+        "median_games_admitted": 19.0,
+        "implied_detectable_floor": 0.295481,
+        "meets_soi_fittable": true,
+        "effective_players_reliability_weighted": 87.403,
+        "floor_at_effective_players": 0.297174,
+        "meets_soi_effective": true,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reliability from the three-level model (uses games as well as reps); PROPOSED, not the specified rule"
+      },
+      {
+        "rule": "B_three_level_PROPOSED",
+        "cut": 0.8,
+        "players_admitted": 99,
+        "players_fittable": 77,
+        "players_admitted_without_forty": 22,
+        "median_reliability_admitted_three_level": 0.945312,
+        "min_reliability_admitted_three_level": 0.8074,
+        "min_reps_admitted": 38,
+        "median_reps_admitted": 214.0,
+        "median_games_admitted": 21.0,
+        "implied_detectable_floor": 0.315883,
+        "meets_soi_fittable": false,
+        "effective_players_reliability_weighted": 76.826,
+        "floor_at_effective_players": 0.315883,
+        "meets_soi_effective": false,
+        "smallest_effect_of_interest": 0.3,
+        "note": "reliability from the three-level model (uses games as well as reps); PROPOSED, not the specified rule"
+      }
+    ]
+  },
+  "residual_reliability_sensitivity": [
+    {
+      "share_of_between_player_variance_removed": 0.0,
+      "assumed_median_reps": 101.0,
+      "assumed_median_games": 12.0,
+      "reliability_of_residual": 0.898077
+    },
+    {
+      "share_of_between_player_variance_removed": 0.25,
+      "assumed_median_reps": 101.0,
+      "assumed_median_games": 12.0,
+      "reliability_of_residual": 0.868569
+    },
+    {
+      "share_of_between_player_variance_removed": 0.5,
+      "assumed_median_reps": 101.0,
+      "assumed_median_games": 12.0,
+      "reliability_of_residual": 0.81501
+    }
+  ],
+  "reliability_distribution": {
+    "describe": {
+      "n": 158,
+      "mean": 0.7424490759493672,
+      "sd": 0.28989226244511657,
+      "min": 0.134948,
+      "p05": 0.134948,
+      "median": 0.8893825,
+      "p95": 0.98079825,
+      "max": 0.983987,
+      "sum": 117.306954
+    },
+    "below": {
+      "0.5": {
+        "players": 33,
+        "max_reps_among_them": 6,
+        "max_games_among_them": 5,
+        "fittable_among_them": 24
+      },
+      "0.7": {
+        "players": 46,
+        "max_reps_among_them": 26,
+        "max_games_among_them": 12,
+        "fittable_among_them": 35
+      },
+      "0.8": {
+        "players": 59,
+        "max_reps_among_them": 50,
+        "max_games_among_them": 18,
+        "fittable_among_them": 46
+      }
+    },
+    "meaning": "three-level reliability per player"
+  },
+  "outputs": [
+    "reliability_by_player.csv",
+    "selection_rules.csv",
+    "rule_membership.csv",
+    "overlap_matrix.csv",
+    "reliability_by_rep_count.csv",
+    "reliability_residual_sensitivity.csv",
+    "split_half_curve.csv",
+    "phase3b_summary.json",
+    "input_provenance.csv"
+  ]
+}

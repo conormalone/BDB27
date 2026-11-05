@@ -4286,3 +4286,113 @@ is not the set Phase 4 can fit: 105 players have ≥50 get-off reps, but only 77
 those have a Combine 40-yard attempt, and at that count the floor is 0.3159, above
 0.30. The Phase 3 table is the design statement that matters; the audit row keeps
 its original phrasing and is superseded on this point by D106.
+
+---
+
+## D107 — Phase 3b added: per-player reliability and the selection-rule evidence · 2026-11-05
+
+**What was asked (Conor, relayed by Main).** Compute **both** selection rules so
+he can see per-player reliability. Do not choose the threshold. Do not touch the
+Phase 4 models. Produce the honest reliability number whether or not it confirms
+his expectation ("I'd say it is very low").
+
+**What was added.** A new stage `03b_reliability`, run between Phase 3 and
+Phase 4 (`python src/run.py 03b_reliability --mode sample`), plus
+`src/reliability.py` (pure estimators) and `tests/test_reliability.py`. It reads
+`outputs/phase3/snaps.parquet` (label-side columns only),
+`data/raw/player_play.csv`, `games.csv`, `combine_tracking.csv`, `players.csv`.
+It writes `outputs/phase3b/` and `notes/selection-rule.md`.
+
+**Deviation from TASK.md's layout, stated openly.** `TASK.md` fixes the order
+01→05. `03b` is an evidence stage inserted before Phase 4 because the Phase 4
+analysis set has to be defensible before a model is fitted. The 01→05 chain is
+unchanged; `tests/test_run_order.py` now asserts the six-stage order.
+
+**Provenance ruling (this is the part that matters).** Every input to this stage
+is a complete file, so its outputs are stamped **`FULL`**, not
+`UNVALIDATED SAMPLE OUTPUT`, and the basis is written per file to
+`outputs/phase3b/input_provenance.csv`. This is not the mode stamp: `common.write_*`
+gained an explicit `stamp=` override for exactly this case, and the stage refuses
+to write if the Phase 3 table's label side does not reconcile **exactly** with a
+direct query on the complete `player_play.csv` (44,002 get-off rows, 33,061
+primary rows — both match). No tracking column is read, so the 2023 tracking
+sample cannot contaminate the numbers.
+
+**Findings (evidence, not decisions).**
+
+1. **Reliability is not "very low" for players above ~10 reps.** Two-level
+   `k = sigma_e^2/sigma_u^2 = 6.17` (bootstrap 4.80–8.76) → 0.942 at the median
+   101 reps. The three-level model (reps in games in players) gives `sigma_u =
+   0.0988 s`, `sigma_v = 0.0815 s`, `sigma_e = 0.2364 s` → **0.898** at the
+   median. The rep-level formula overstates reliability by ~4 points because reps
+   within a game are correlated; only the three-level model reproduces the
+   observed split-half attenuation curve (RMSE 0.018 vs 0.072).
+2. **Split-half, two samples.** 141 of 158 players are estimable at all
+   (17 have a single game); raw half-half `r = 0.452`, SB 0.622. Restricted to
+   the 119 players with ≥2 games per half, `r = 0.736`, SB 0.848. Both are
+   attenuated by unequal halves — the curve is in `split_half_curve.csv`.
+3. **Phase 1's 0.634 is reproduced exactly** (ICC(2,1) = 0.634145, r = 0.634872,
+   n = 159) on all 44,002 `player_get_off` rows with league-wide chronological
+   rank parity. It is a control on a different sample, not the primary-set number.
+4. **Between-player share is 0.139 on the primary set**, noise-corrected
+   (0.233 by the uncorrected Phase 1 method). Phase 1's 0.285 pooled run plays and
+   non-DL rows and did not remove sampling error. This is roughly half the SOI of
+   0.30 — see the question in D108.
+5. **Rule B, as specified, is Rule A in disguise.** With a common `k`,
+   `n/(n+k) ≥ r` ⇔ `n ≥ k·r/(1−r)`: at k = 6.17 the implied cuts are 6.2, 9.3,
+   14.4, 24.7 reps for r = 0.5/0.6/0.7/0.8. It cannot admit a different set. It
+   only becomes a distinct rule if reliability is computed per player with games
+   as a level (reported as `B_three_level_PROPOSED`, a proposal, not a decision).
+6. **The power artefact is real in principle but small at these cuts.** Median
+   fittable reliability is 0.94 at 20 reps and 0.95 at 50; the Kish effective
+   count at the 20-rep cut is 89.3 against 90 heads, and the floor moves 0.2922 →
+   0.2938. All 33 players below 0.5 reliability have ≤6 reps and are admitted by
+   no candidate rule. The threshold question between 20 and 50 reps is a
+   headcount question, not a reliability one — stated so nobody can use
+   "reliability" as a post-hoc justification for a threshold.
+7. **At 20 reps the SOI is met for the first time**: 90 fittable players, floor
+   0.2922. At 30 reps it is 0.3007 (fails), at 50 it is 0.3159. Adding the
+   candidates below 30 is what crosses the line.
+
+**Not chosen.** `audit.min_pass_rush_snaps_per_rusher` stays 50; no Phase 4 input
+was written; `threshold_chosen: false` in the summary.
+
+**Determinism.** Two consecutive `--force` runs produced byte-identical outputs
+(md5 over all eight artefacts + the note). Full suite: **187 passed**.
+
+---
+
+## D108 — The SOI's denominator is ambiguous, and 0.30 may exceed the effect · 2026-11-05
+
+**Status: PROPOSED, NEEDS CONOR.** Not a decision and not resolved by inference.
+
+**The evidence.** On the primary set (33,061 DL non-run pass-rush reps) the
+between-player share of *total* get-off variance is **0.139** after removing
+sampling error (one-way moments: `s2u = 0.0101`, `s2e = 0.0622`), or **0.233**
+by the uncorrected Phase 1 method (variance of player means over variance of
+means + pooled within). Phase 1 reported **0.285**, on all 44,002 get-off rows
+including run plays and non-DL alignments. Restricting to the primary set halves
+the corrected share, and every Phase 4 adjustment (depth, alignment, opponent)
+can only lower it further.
+
+**Why it matters.** D106 set `smallest_effect_of_interest = 0.30` and derived
+that 0.30 needs 86 fittable players. If the estimand is the between-player share
+of total variance, then 0.30 is about twice the observed value, and **no
+selection rule can make the study able to resolve it**: the detectable floor is
+0.2922 at 20 reps (90 fittable), 0.3159 at 50 reps (77 fittable), and 0.2499
+over all 123 fittable players. The threshold decision is then moot until the
+SOI or the design changes.
+
+**The ambiguity I will not resolve myself.** D106 calibrates 0.30 against the
+between-player share of *total* variance (Phase 1's 0.285). `TASK.md` Phase 4
+asks for "the share of between-player variance explained by `b*phys`, by `u`,
+and the within-player remainder" — i.e. a split of the *between-player*
+variance into physical and residual parts. Under that second reading the SOI is
+a share of a smaller quantity, the observed value is not yet estimated (it is
+Phase 4's job), and the floor comparison above does not transfer unchanged.
+
+**Question for Conor (one line).** Which share does `smallest_effect_of_interest
+= 0.30` refer to: (a) the between-player share of **total** get-off variance, or
+(b) the share of **between-player** variance attributed to `u`? If (a), the SOI
+is above anything this design can detect and needs revisiting before the prereg
+is frozen.

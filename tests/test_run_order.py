@@ -14,7 +14,11 @@ import run as RUN
 
 
 EXPECTED_ORDER = ["01_audit", "02_combine_physical_time", "03_game_snaps",
-                  "04_models", "05_validate"]
+                  "03b_reliability", "04_models", "05_validate"]
+
+# Stages that exist only as layout stubs. 03b is an added evidence stage that
+# sits between Phase 3 and Phase 4 (decisions.md D107); it is not a stub.
+STUBS = ["04_models", "05_validate"]
 
 
 def test_run_order_matches_the_spec():
@@ -39,7 +43,7 @@ def test_missing_stage_argument_exits_2(capsys):
     assert RUN.main([]) == 2
 
 
-@pytest.mark.parametrize("stage", EXPECTED_ORDER[3:])
+@pytest.mark.parametrize("stage", STUBS)
 def test_stubs_fail_loudly_and_write_nothing(stage, capsys, cfg):
     mod = load_stage(stage)
     before = C.checkpoint_path(cfg, stage, "sample")

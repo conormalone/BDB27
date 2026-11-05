@@ -57,3 +57,11 @@ Thumbs.db
 !outputs/phase3/
 !outputs/phase3/*.csv
 !outputs/phase3/*.json
+
+# Phase 3b evidence: the selection-rule tables and per-player reliability are
+# the numbers the prereg decision is made on, so they are committed (small,
+# deterministic, and their provenance basis is carried inside them). The
+# regenerable parquet stays ignored.
+!outputs/phase3b/
+!outputs/phase3b/*.csv
+!outputs/phase3b/*.json
