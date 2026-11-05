@@ -4232,3 +4232,57 @@ enters a model and never stands in for an assignment.
 
 **Consequence.** No blocker control exists; the split is unadjusted for opponent
 quality (`notes/limitations.md` §14).
+
+---
+
+## D106 — Q1 revised: SOI 0.30, and the min-reps threshold is a live decision · 2026-11-05 (11:11)
+
+**Decision (Conor, 2026-11-05 11:11, relayed by Main).**
+`audit.smallest_effect_of_interest` goes **0.25 -> 0.30**. Because the
+detectable floor is `z*sqrt(2/P)`, a 0.30 share needs **86** fittable players
+(derived by evaluating `stats.min_detectable_share` itself: P=86 gives 0.2996,
+P=85 gives 0.3014 — the number is computed in `phase3_summary.json`, not typed).
+The design has fewer than that at the current 50-rep minimum, so
+**`min_pass_rush_snaps_per_rusher` is now a live decision**, not a frozen 50.
+
+**What Phase 3 does.** It reports the table and does **not** choose. The active
+threshold in `config.yaml` stays **50**, so the primary set is unchanged
+(33,061 snaps). New artefact `outputs/phase3/min_reps_sensitivity.csv`:
+
+| min reps | players (primary) | with a 40-yd attempt | floor @ all | floor @ fittable | meets 0.30 |
+|---:|---:|---:|---:|---:|---|
+| 30 | 109 | 85 | 0.2655 | **0.3007** | no (fittable) |
+| 40 | 103 | 80 | 0.2731 | 0.3099 | no |
+| 45 | 100 | 78 | 0.2772 | 0.3139 | no |
+| **50 (active)** | **99** | **77** | 0.2786 | 0.3159 | no |
+| 60 | 92 | 71 | 0.2890 | 0.3290 | no |
+
+Plus the full per-player rep distribution (`reps_per_player_histogram.csv`,
+14 bins, 158 players): 31 players have 1-4 primary reps, 13 have 25-49, 12 have
+50-74, 20 have 200-299, and 12 have 500+.
+
+**The finding Conor needs.** *No candidate threshold reaches a 0.30 floor on the
+fittable set.* The closest is 30 reps with 85 fittable players -> 0.3007, i.e.
+0.0007 above the target. Choosing 30 would also add the 31 players with 1-29
+reps, whose player means are dominated by sampling error. So the honest options
+are (a) accept a floor marginally above the SOI and say so, (b) lower the SOI
+again, or (c) treat "at least 0.30" as not resolvable by this design. This is
+reported, not resolved here.
+
+**Stated reading of the instruction.** "Config keeps its current value" is read
+as applying to the *minimum-reps threshold* (50). The SOI value itself is updated
+to 0.30, because the message states the SOI has changed. If instead the whole
+config block was to stay untouched, only `audit.smallest_effect_of_interest` needs
+reverting.
+
+**Side effect, handled by regeneration.** The Phase 1 gate artefact
+(`outputs/audit/`) was produced under SOI 0.25. The test suite re-runs `01_audit`
+on the real label file, so it has been regenerated under SOI 0.30 and is committed
+in the same change: item (i) now reads "design resolves the smallest effect of
+interest: PASS" at **105 label-file players** (floor 0.2705).
+
+**Read that PASS carefully.** It is computed on the label-file player count, which
+is not the set Phase 4 can fit: 105 players have ≥50 get-off reps, but only 77 of
+those have a Combine 40-yard attempt, and at that count the floor is 0.3159, above
+0.30. The Phase 3 table is the design statement that matters; the audit row keeps
+its original phrasing and is superseded on this point by D106.

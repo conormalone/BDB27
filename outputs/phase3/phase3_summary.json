@@ -181,5 +181,141 @@
     "player_play_rows": 314197,
     "blitz_set_share_pass": 0.997762,
     "blitz_set_share_run": 0.007333
+  },
+  "design_sensitivity": {
+    "scope": "FULL_RAW_LABEL_FILE",
+    "smallest_effect_of_interest": 0.3,
+    "required_players_for_soi": 86,
+    "active_min_reps_per_player": 50,
+    "threshold_chosen": false,
+    "table": [
+      {
+        "min_reps_per_player": 30,
+        "players_primary": 109,
+        "players_with_forty_attempt": 85,
+        "detectable_floor_all_players": 0.265496,
+        "detectable_floor_fittable": 0.30065,
+        "smallest_effect_of_interest": 0.3,
+        "meets_soi_all_players": true,
+        "meets_soi_fittable": false,
+        "active_threshold": false
+      },
+      {
+        "min_reps_per_player": 40,
+        "players_primary": 103,
+        "players_with_forty_attempt": 80,
+        "detectable_floor_all_players": 0.273119,
+        "detectable_floor_fittable": 0.309903,
+        "smallest_effect_of_interest": 0.3,
+        "meets_soi_all_players": true,
+        "meets_soi_fittable": false,
+        "active_threshold": false
+      },
+      {
+        "min_reps_per_player": 45,
+        "players_primary": 100,
+        "players_with_forty_attempt": 78,
+        "detectable_floor_all_players": 0.277186,
+        "detectable_floor_fittable": 0.313851,
+        "smallest_effect_of_interest": 0.3,
+        "meets_soi_all_players": true,
+        "meets_soi_fittable": false,
+        "active_threshold": false
+      },
+      {
+        "min_reps_per_player": 50,
+        "players_primary": 99,
+        "players_with_forty_attempt": 77,
+        "detectable_floor_all_players": 0.278582,
+        "detectable_floor_fittable": 0.315883,
+        "smallest_effect_of_interest": 0.3,
+        "meets_soi_all_players": true,
+        "meets_soi_fittable": false,
+        "active_threshold": true
+      },
+      {
+        "min_reps_per_player": 60,
+        "players_primary": 92,
+        "players_with_forty_attempt": 71,
+        "detectable_floor_all_players": 0.288986,
+        "detectable_floor_fittable": 0.328959,
+        "smallest_effect_of_interest": 0.3,
+        "meets_soi_all_players": true,
+        "meets_soi_fittable": false,
+        "active_threshold": false
+      }
+    ],
+    "reps_histogram": [
+      {
+        "bin_lower": 1,
+        "bin_upper_exclusive": "5",
+        "players": 31
+      },
+      {
+        "bin_lower": 5,
+        "bin_upper_exclusive": "10",
+        "players": 5
+      },
+      {
+        "bin_lower": 10,
+        "bin_upper_exclusive": "25",
+        "players": 10
+      },
+      {
+        "bin_lower": 25,
+        "bin_upper_exclusive": "50",
+        "players": 13
+      },
+      {
+        "bin_lower": 50,
+        "bin_upper_exclusive": "75",
+        "players": 12
+      },
+      {
+        "bin_lower": 75,
+        "bin_upper_exclusive": "100",
+        "players": 8
+      },
+      {
+        "bin_lower": 100,
+        "bin_upper_exclusive": "150",
+        "players": 11
+      },
+      {
+        "bin_lower": 150,
+        "bin_upper_exclusive": "200",
+        "players": 15
+      },
+      {
+        "bin_lower": 200,
+        "bin_upper_exclusive": "300",
+        "players": 20
+      },
+      {
+        "bin_lower": 300,
+        "bin_upper_exclusive": "500",
+        "players": 11
+      },
+      {
+        "bin_lower": 500,
+        "bin_upper_exclusive": "750",
+        "players": 10
+      },
+      {
+        "bin_lower": 750,
+        "bin_upper_exclusive": "1000",
+        "players": 6
+      },
+      {
+        "bin_lower": 1000,
+        "bin_upper_exclusive": "1500",
+        "players": 6
+      },
+      {
+        "bin_lower": 1500,
+        "bin_upper_exclusive": "inf",
+        "players": 0
+      }
+    ]
   }
 }

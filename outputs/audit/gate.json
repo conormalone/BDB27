@@ -59,6 +59,29 @@
     "min_players_for_variance": 30,
     "comb_dl_min_attempts": 1,
     "icc_testretest_min": 0.5,
-    "smallest_effect_of_interest": 0.25
+    "smallest_effect_of_interest": 0.3,
+    "min_reps_candidates": [
+      30,
+      40,
+      45,
+      50,
+      60
+    ],
+    "reps_histogram_bins": [
+      1,
+      5,
+      10,
+      25,
+      50,
+      75,
+      100,
+      150,
+      200,
+      300,
+      500,
+      750,
+      1000,
+      1500
+    ]
   }
 }

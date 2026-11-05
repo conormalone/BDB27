@@ -349,6 +349,12 @@ something to correct.
 
 ### S16 — How many rushers clear the snap minimum on the *tracked* analysis set? (replaces S6)
 
+**Also re-run this table on full data** — `outputs/phase3/min_reps_sensitivity.csv`
+reports the player counts and the `z*sqrt(2/P)` floor at 30/40/45/50/60 reps, split
+by whether the player has a Combine 40-yard attempt. That table is what the
+operational annexe freezes (D106); the threshold is Conor's to choose, not the
+stage's.
+
 ```bash
 python src/run.py 03_game_snaps --mode full
 python - <<'PY'

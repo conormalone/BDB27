@@ -493,3 +493,56 @@ def test_planted_get_off_is_recovered_from_tracking(cfg, tmp_path):
     # Fixture noise is 0.04 yd/frame plus a 10 Hz interpolation, so 60 ms is a
     # generous known-answer tolerance, not a tuned threshold.
     assert median_abs < 0.06, median_abs
+
+
+# --------------------------------------------------------------------------- #
+# Design sensitivity: reps per player vs the detectable floor (D106)
+# --------------------------------------------------------------------------- #
+def test_min_reps_sensitivity_uses_the_design_formula(cfg, tmp_path):
+    """Floors must equal stats.min_detectable_share(P), not a copied constant."""
+    import duckdb
+    import stats as ST
+    raw, c = _fixture_world(cfg, tmp_path, n_players=4, snaps_per=70)
+    assert _run(c, tmp_path) == 0
+    rows = list(csv.DictReader(open(_out(c) / "min_reps_sensitivity.csv",
+                                    encoding="utf-8")))
+    audit = C.section(c, "audit")
+    assert [int(r["min_reps_per_player"]) for r in rows] == \
+        [int(t) for t in audit["min_reps_candidates"]]
+
+    counts = [int(r["players_primary"]) for r in rows]
+    fittable = [int(r["players_with_forty_attempt"]) for r in rows]
+    assert counts == sorted(counts, reverse=True)      # monotone non-increasing
+    assert all(f <= n for f, n in zip(fittable, counts))
+
+    for r in rows:
+        n_all = int(r["players_primary"])
+        if n_all >= 2:
+            assert float(r["detectable_floor_all_players"]) == pytest.approx(
+                ST.min_detectable_share(n_all)["min_share"], abs=1e-6)
+        n_fit = int(r["players_with_forty_attempt"])
+        if n_fit >= 2:
+            assert float(r["detectable_floor_fittable"]) == pytest.approx(
+                ST.min_detectable_share(n_fit)["min_share"], abs=1e-6)
+    assert sum(1 for r in rows if r["active_threshold"] == "True") == 1
+
+
+def test_required_players_for_share_is_derived(cfg):
+    import stats as ST
+    mod = load_stage(STAGE)
+    n = mod.required_players_for_share(0.30)
+    assert n == 86, n
+    assert ST.min_detectable_share(n)["min_share"] <= 0.30
+    assert ST.min_detectable_share(n - 1)["min_share"] > 0.30
+
+
+def test_reps_histogram_covers_every_player(cfg, tmp_path):
+    import duckdb
+    raw, c = _fixture_world(cfg, tmp_path, n_players=5, snaps_per=12)
+    assert _run(c, tmp_path) == 0
+    rows = list(csv.DictReader(open(_out(c) / "reps_per_player_histogram.csv",
+                                    encoding="utf-8")))
+    total = sum(int(r["players"]) for r in rows)
+    summary = json.loads((_out(c) / "phase3_summary.json").read_text())
+    assert total == summary["label_side_counts"]["players"]
+    assert rows[-1]["bin_upper_exclusive"] == "inf"

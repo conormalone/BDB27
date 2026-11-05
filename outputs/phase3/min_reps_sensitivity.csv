@@ -1,0 +1,6 @@
+provenance,min_reps_per_player,players_primary,players_with_forty_attempt,detectable_floor_all_players,detectable_floor_fittable,smallest_effect_of_interest,meets_soi_all_players,meets_soi_fittable,active_threshold
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,30,109,85,0.265496,0.30065,0.3,True,False,False
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,40,103,80,0.273119,0.309903,0.3,True,False,False
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,45,100,78,0.277186,0.313851,0.3,True,False,False
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,50,99,77,0.278582,0.315883,0.3,True,False,True
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,60,92,71,0.288986,0.328959,0.3,True,False,False

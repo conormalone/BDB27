@@ -152,11 +152,18 @@ bdb27:
     min_players_for_variance: 30  # DESIGN CHOICE: between-player variance with <30 players is noise
     comb_dl_min_attempts: 1       # A single attempt is usable but cannot inform test-retest
     icc_testretest_min: 0.5       # DESIGN CHOICE for item (h)
-    # Conor, 2026-11-05 (Q1): raised 0.15 -> 0.25. With 105 eligible players the
-    # realised sampling-error floor is ~0.27, so a 0.15 target could never be
-    # detected. The claim is "at least a quarter of between-player variance".
+    # Q1 revised by Conor 2026-11-05 11:11: SOI 0.25 -> 0.30. The detectable
+    # floor is z*sqrt(2/P), so 0.30 needs about 86 fittable players while the
+    # label-file design has 80 at the 50-rep minimum; that makes the minimum-reps
+    # threshold a live decision (D106). Phase 3 reports the table; Conor chooses.
     # The realised floor is recomputed and printed, never hardcoded.
-    smallest_effect_of_interest: 0.25  # share of between-player variance in get-off
+    smallest_effect_of_interest: 0.30  # share of between-player variance in get-off
+    # Candidate minimum-reps thresholds for the Phase 3 sensitivity table (D106).
+    # REPORT ONLY: the active threshold stays min_pass_rush_snaps_per_rusher.
+    min_reps_candidates: [30, 40, 45, 50, 60]
+    # Bin upper edges (inclusive lower, exclusive upper) for the per-player
+    # rep-count distribution. A presentation choice, not an analysis threshold.
+    reps_histogram_bins: [1, 5, 10, 25, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500]
 
   # ---------------------------------------------------------------------------
   # Game-snap construction (Phase 3)

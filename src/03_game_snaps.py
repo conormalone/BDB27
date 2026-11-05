@@ -78,6 +78,7 @@ if str(_SRC) not in sys.path:
 import common as C  # noqa: E402
 import physical as P  # noqa: E402
 import schema as S  # noqa: E402
+import stats as ST  # noqa: E402
 
 STAGE = "03_game_snaps"
 
@@ -1089,6 +1090,95 @@ def blitz_diagnostic(con, rel: str):
 
 
 # --------------------------------------------------------------------------- #
+# Design sensitivity: reps per player vs the detectable floor (D106)
+# --------------------------------------------------------------------------- #
+def combine_forty_players(con, cfg) -> set[int]:
+    """Players with a tracked 40-yard attempt (``entity_type = 'PLAYER'``).
+
+    Reads the Combine tracking file directly rather than Phase 2's outputs, so
+    the table can be produced even if Phase 2 has not run. The drill and the
+    entity filter are the ones Phase 2 measures.
+    """
+    ct = C.read_csv_sql(C.source_path(cfg, "combine_tracking"), cfg)
+    drill = C.section(cfg, "physical")["drill"]
+    rows = con.execute(
+        f"SELECT DISTINCT nfl_id FROM {ct} WHERE drill_name = '{drill}' "
+        f"AND entity_type = 'PLAYER'").fetchall()
+    return {int(r[0]) for r in rows}
+
+
+def required_players_for_share(share: float) -> int | None:
+    """Smallest player count whose detectable floor is at or below ``share``.
+
+    Derived by evaluating ``stats.min_detectable_share`` itself, never by
+    re-deriving the formula here.
+    """
+    for n in range(2, 100001):
+        if ST.min_detectable_share(n)["min_share"] <= float(share):
+            return n
+    return None
+
+
+def min_reps_sensitivity(con, rel: str, cfg):
+    """Player counts and detectable floors at each candidate rep threshold.
+
+    The fittable set is the players who clear the rep threshold *and* have a
+    Combine 40-yard attempt: Phase 4 needs both. The floor is computed with
+    ``stats.min_detectable_share`` so it cannot drift from the design formula.
+    """
+    audit = C.section(cfg, "audit")
+    soi = float(audit["smallest_effect_of_interest"])
+    have_forty = combine_forty_players(con, cfg)
+    per_player = player_counts(con, rel)
+    ids = per_player["nfl_id"].astype(int).tolist()
+    snaps = per_player["snaps_primary"].astype(int).tolist()
+
+    rows = []
+    for threshold in [int(t) for t in audit["min_reps_candidates"]]:
+        sel = [n for i, n in zip(ids, snaps) if n >= threshold]
+        n_all = len(sel)
+        n_fit = sum(1 for i, n in zip(ids, snaps)
+                    if n >= threshold and i in have_forty)
+        floor_all = ST.min_detectable_share(n_all)["min_share"] if n_all >= 2 else None
+        floor_fit = ST.min_detectable_share(n_fit)["min_share"] if n_fit >= 2 else None
+        rows.append({
+            "min_reps_per_player": threshold,
+            "players_primary": n_all,
+            "players_with_forty_attempt": n_fit,
+            "detectable_floor_all_players": (None if floor_all is None
+                                             else round(floor_all, 6)),
+            "detectable_floor_fittable": (None if floor_fit is None
+                                          else round(floor_fit, 6)),
+            "smallest_effect_of_interest": soi,
+            "meets_soi_all_players": (None if floor_all is None
+                                      else bool(floor_all <= soi)),
+            "meets_soi_fittable": (None if floor_fit is None
+                                   else bool(floor_fit <= soi)),
+            "active_threshold": threshold == int(
+                audit["min_pass_rush_snaps_per_rusher"]),
+        })
+    import pandas as pd
+    return pd.DataFrame(rows)
+
+
+def reps_histogram(con, rel: str, cfg):
+    """Distribution of primary reps per player, in configured bins."""
+    edges = [int(b) for b in C.section(cfg, "audit")["reps_histogram_bins"]]
+    snaps = [int(v) for v in _col(
+        con, rel, "count(*)", "in_primary_set GROUP BY nfl_id")]
+    rows = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        n = sum(1 for s in snaps if lo <= s < hi)
+        rows.append({"bin_lower": lo, "bin_upper_exclusive": str(hi),
+                     "players": n})
+    n = sum(1 for s in snaps if s >= edges[-1])
+    rows.append({"bin_lower": edges[-1], "bin_upper_exclusive": "inf",
+                 "players": n})
+    import pandas as pd
+    return pd.DataFrame(rows)
+
+
+# --------------------------------------------------------------------------- #
 # Summary helpers
 # --------------------------------------------------------------------------- #
 def _dist(values) -> dict:
@@ -1352,6 +1442,14 @@ def main(argv=None) -> int:
             bd = blitz_diagnostic(con, rel)
             C.write_csv(out_dir / "blitz_diagnostic.csv", bd.to_dict("records"),
                         list(bd.columns), mode=mode, cfg=cfg)
+            sens = min_reps_sensitivity(con, rel, cfg)
+            C.write_csv(out_dir / "min_reps_sensitivity.csv",
+                        sens.to_dict("records"), list(sens.columns),
+                        mode=mode, cfg=cfg)
+            hist = reps_histogram(con, rel, cfg)
+            C.write_csv(out_dir / "reps_per_player_histogram.csv",
+                        hist.to_dict("records"), list(hist.columns),
+                        mode=mode, cfg=cfg)
             C.write_csv(out_dir / "snaps_schema.csv",
                         [{"column": n, "dtype": t, "unit": u, "description": d}
                          for n, t, u, d in SNAP_FIELDS],
@@ -1365,6 +1463,17 @@ def main(argv=None) -> int:
                 "rows": int(n_rows), "columns": schema_info["columns"]}
             summary["frame_sampling"] = frame_sampling_profile(con, cfg, mode)
             summary["input_assumptions"] = assumptions
+            soi = float(C.section(cfg, "audit")["smallest_effect_of_interest"])
+            summary["design_sensitivity"] = {
+                "scope": "FULL_RAW_LABEL_FILE",
+                "smallest_effect_of_interest": soi,
+                "required_players_for_soi": required_players_for_share(soi),
+                "active_min_reps_per_player": int(
+                    C.section(cfg, "audit")["min_pass_rush_snaps_per_rusher"]),
+                "threshold_chosen": False,
+                "table": sens.to_dict("records"),
+                "reps_histogram": hist.to_dict("records"),
+            }
             C.write_json(out_dir / "phase3_summary.json", summary,
                          mode=mode, cfg=cfg)
         finally:
@@ -1419,6 +1528,15 @@ def print_summary(summary: dict) -> None:
     print(f"  blitz exclusion NOT applied ({summary['blitz']['status']}); "
           f"literal rule would leave "
           f"{summary['blitz']['literal_rule_would_leave']} rows")
+    ds = summary.get("design_sensitivity")
+    if ds:
+        active = [r for r in ds["table"] if r["active_threshold"]][0]
+        print(f"  design: SOI {ds['smallest_effect_of_interest']} needs "
+              f"{ds['required_players_for_soi']} fittable players; at "
+              f"{active['min_reps_per_player']} reps there are "
+              f"{active['players_with_forty_attempt']} "
+              f"(floor {active['detectable_floor_fittable']}) - threshold not "
+              f"chosen")
 
 
 if __name__ == "__main__":
