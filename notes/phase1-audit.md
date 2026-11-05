@@ -291,8 +291,9 @@ full data.
 No `FAIL` is blocking, but three rows elsewhere carry `FAIL` and must be read as
 constraints, not as go/no-go:
 
-* `quick_pressure` is not a complete binary outcome → blocks the Phase 4
-  secondary test until a null policy is agreed (B1).
+* `quick_pressure` is not a complete binary outcome → the null policy was agreed
+  on 2026-11-05 (**null -> false**, Q2/D101); it remains an assumption, not
+  verified semantics.
 * the design cannot resolve the 15% smallest effect of interest → Q1.
 * (the `FAIL` on `share of depths` seen in earlier drafts is gone; the LOS check
   now passes at 100%.)

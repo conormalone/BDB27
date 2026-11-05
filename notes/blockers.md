@@ -11,7 +11,16 @@ ceiling) is archived at
 
 ---
 
-## B1 — `quick_pressure` cannot be used as a binary outcome  · **OPEN**
+## B1 — `quick_pressure` null semantics  · **RESOLVED BY DECISION (Q2, Conor 2026-11-05)**
+
+**Resolution.** Conor decided (Q2, D101): null -> **false**. The secondary
+outcome is `(quick_pressure IS TRUE)` over all non-blitz DL pass-rush snaps, with
+the null->false assumption stated explicitly in the prereg when it is written.
+The offence-row family (`pressure_allowed`, `time_to_pressure_allowed`,
+`sack_allowed`) is a **pre-specified sensitivity comparison**, not an alternative
+primary. This manufactures 40,184 negative labels from nulls; that risk is now
+recorded in `notes/limitations.md` §5, not treated as resolved evidence. No
+implemented stage reads `quick_pressure` yet (Phase 3-4 are stubs).
 
 **Blocks:** `TASK.md` Phase 4 secondary outcome test ("predict `quick_pressure` …
 in held-out games"), and the `quick_pressure` half of Phase 3's outcome table.
@@ -33,7 +42,8 @@ snaps only.
 means "no pressure", or (b) a documented decision by Conor to define the outcome
 as `pressure_allowed`/`sack_allowed` on the offensive row, or as
 `(quick_pressure IS TRUE)` with null→false and the assumption stated in the
-prereg. **Do not choose (b) silently.**
+prereg. **(b) was chosen explicitly on 2026-11-05; (a) remains the only route to
+verified semantics.**
 
 **Interim rule in the code.** No stage reads `quick_pressure` yet (Phase 3-4 are
 stubs), so nothing is currently wrong. The audit records the null counts and the
@@ -143,14 +153,23 @@ limitation.
 
 ---
 
-## B6 — prereg is not written  · **OPEN (blocks every full run; Q5 pending)**
+## B6 — prereg is not written  · **OPEN (blocks every full run; Q5 answered, file still absent)**
 
 **Status update (2026-11-05).** Q1 (smallest effect of interest) is now answered
-and in `config.yaml` (D96), so one prerequisite is done. Q5 (prereg timing) is
-still Conor's to decide and `notes/prereg.md` still does not exist. Phase 2 is
-therefore implemented and unit-tested but driven only in `--mode sample` plus
-synthetic data. The full-mode gate was not weakened: `python src/run.py
-02_combine_physical_time --mode full` exits 4 with the prereg refusal.
+and in `config.yaml` (D96). Q5 is now answered as **option D, a two-part freeze**
+(D102): the confirmatory core is frozen next cycle before Phase 3 results, and an
+operational annexe (onset threshold, distance grid, minimum snaps) is frozen
+immediately after Phase 3. `notes/prereg.md` still does not exist during this
+cycle. Phase 2 is therefore implemented and unit-tested but driven only in
+`--mode sample` plus synthetic data. The full-mode gate was not weakened:
+`python src/run.py 02_combine_physical_time --mode full` exits 4 with the prereg
+refusal.
+
+**Tension to resolve before Phase 3 (flagged in D102).** `TASK.md` requires the
+prereg to fix the operational constants *before* the first full-data run; option
+D freezes them *after* Phase 3. Either the annexe must be frozen before that run
+too, or `TASK.md` must say the Phase 3 run is operational and only Phase 4 is
+confirmatory. Not reconciled here.
 
 **Blocks:** `--mode full`. The gate in `src/common.py` refuses to run in full mode
 unless `notes/prereg.md` exists and declares `**Status: FROZEN.**`.
@@ -159,11 +178,10 @@ unless `notes/prereg.md` exists and declares `**Status: FROZEN.**`.
 intra-drive-regeneration spec and has been archived at
 `archive/legacy-2026-11-05/notes/prereg.md`.
 
-**What would clear it.** Write `notes/prereg.md` fixing, per `TASK.md`: onset
-definition, distance definition, stance handling, variance-decomposition model,
-reliability thresholds, outcome definitions, minimum snaps per player, and the
-smallest effect of interest. Then set `**Status: FROZEN.**`. This is deliberate
-work that must happen **before** the first full-data run and after Q1 is answered.
+**What would clear it.** Write and freeze the confirmatory core first, then the
+operational annexe per Q5/D102. The gate only reads `notes/prereg.md` for
+`**Status: FROZEN.**`; whichever document is authoritative for a given full run
+must exist and be frozen at that moment.
 
 ---
 

@@ -173,10 +173,14 @@ print([c for c in cols.column_name if 'stance' in c.lower()])
 ## S9 — Does the pressure label's provenance become documented?
 
 **Why.** `quick_pressure` is null on 92.2% of DL rows and its provenance is
-inferred (`notes/blockers.md` B1).
+inferred (`notes/blockers.md` B1). **Q2 has now fixed the policy** (null ->
+false, D101), so the modelling question is closed; only the semantic
+confirmation remains open.
 
 **How.** Read the full data dictionary when it is available; check whether null
-means "no pressure". Until then, do not model `quick_pressure` as binary.
+means "no pressure". The prereg must state the null->false assumption explicitly.
+If the dictionary contradicts it, that is a prereg deviation to log as
+exploratory, not a silent re-analysis.
 
 ## S10 — Season-over-season change for the 2025 class
 

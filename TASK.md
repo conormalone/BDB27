@@ -83,7 +83,7 @@ Go/no-go: stop if a Combine sprint is absent, pre-snap depth or line of scrimmag
 - Primary snap set: pass-rush snaps by DL (non-blitz). Blitzers and non-DL are excluded from primary analyses.
 - Per snap: `player_get_off`, pre-snap depth to the line, alignment (edge vs. interior, shade), stance (if labeled or inferable), blitz flag, down and distance, score margin, quarter, game, team, opponent.
 - **Direct reaction measure:** snap-to-onset latency from tracking, with the Phase 1 onset definition. Also onset-to-cross time (the in-game counterpart of Combine physical time).
-- Outcomes: `quick_pressure` (null handling per audit), time to pressure after crossing the line (time_to_pressure minus get-off, censored at dropback end, using `dropback_duration` only for censoring), sack (exploratory). Never analyze `time_to_pressure` only among pressured snaps.
+- Outcomes: `quick_pressure` (null -> false per Q2/D101, with the assumption stated in the prereg; offence-row family as a pre-specified sensitivity), time to pressure after crossing the line (time_to_pressure minus get-off, censored at dropback end, using `dropback_duration` only for censoring), sack (exploratory). Never analyze `time_to_pressure` only among pressured snaps.
 - Write one row per snap; modeling stages read only these tables.
 
 **4. Models.**

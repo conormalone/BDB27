@@ -4024,3 +4024,67 @@ re-run of the stage on the fixture. Full suite: **142 passed**.
 Conor (D96) rather than adjusted here.
 
 **Runtime.** 9.6-10.1 s, peak RSS 273-303 MB on the Pi for the full Combine file.
+
+---
+
+## D101 — Q2: `quick_pressure` null -> false · 2026-11-05 (09:27)
+
+**Decision (Conor, 2026-11-05, Q2, relayed 09:27).** `quick_pressure` remains the
+secondary outcome, and a **null is treated as "no pressure"**. The outcome is
+`(quick_pressure IS TRUE)` over **all non-blitz DL pass-rush snaps**. The
+assumption must be stated explicitly in the prereg when it is written; it is not
+stated there in this cycle because `notes/prereg.md` still does not exist.
+
+**Evidence base (unchanged, from the complete label file).** On the 43,562 DL
+rows carrying `player_get_off`: 3,378 non-null `quick_pressure`; **40,184 null
+(92.2%)**; among rows with a pressure time, **2,334 explicit `false`**, 1,044
+`true`, and 40 with a null flag. The decision therefore manufactures **40,184
+negative labels** from nulls. That is a stated assumption, not a verified
+semantic: the audit's observation that "null is not false" remains a true
+description of the raw data.
+
+**Pre-specified sensitivity, not an alternative primary.** The offence-row family
+(`pressure_allowed`, `time_to_pressure_allowed`, `sack_allowed`) is recorded as a
+sensitivity comparison. It does not replace the primary outcome and must not be
+selected after seeing results.
+
+**Contradiction check.** `notes/blockers.md` B1 previously said "Do not choose
+(b) silently"; Conor has now chosen (b) explicitly, so the choice is not silent.
+No code or note states that null *is* false as a data fact; the policy is labelled
+an assumption. Phase 3/4 remain stubs, so no implemented stage changes.
+
+**Consequence for Phase 3.** Add `quick_pressure_binary = (quick_pressure IS
+TRUE)` to the per-snap table as the secondary outcome, over non-blitz DL
+pass-rush snaps, and carry the null share and explicit-false count beside it. The
+sensitivity columns are `pressure_allowed`, `time_to_pressure_allowed`,
+`sack_allowed` from the offensive row. B1 moves from OPEN to RESOLVED BY DECISION;
+the label-provenance risk moves to `notes/limitations.md` §5.
+
+---
+
+## D102 — Q5: prereg timing, option D (two-part freeze) · 2026-11-05 (09:27)
+
+**Decision (Conor, 2026-11-05, Q5, relayed 09:27).** The prereg is frozen in two
+parts:
+
+1. **Confirmatory core**, next cycle and **before Phase 3 results**: estimand,
+   model form, reliability threshold, smallest effect of interest (0.25), and the
+   outcome hierarchy.
+2. **Operational annexe**, a second frozen document **immediately after Phase 3**:
+   onset threshold, distance grid, minimum snaps per player.
+
+**Consequence for this run.** `notes/prereg.md` remains absent. The full-mode gate
+is unchanged and still refuses with exit 4; Phase 2 stays sample + synthetic only.
+
+**Contradiction to flag, not reconcile.** `TASK.md` Rules currently require the
+prereg, before the first full-data run, to fix *all* of: onset definition,
+distance definition, stance handling, variance-decomposition model, reliability
+thresholds, outcome definitions, minimum snaps per player, and the smallest effect
+of interest. Option D moves **onset threshold, distance grid and minimum snaps**
+to an annexe frozen *after* Phase 3. Unless the operational annexe is also frozen
+before Phase 3's first full run, the first full run will use operational constants
+that are not yet frozen, which is a deviation from the current `TASK.md` wording.
+I have recorded the decision as given and have **not** edited `TASK.md` to
+reconcile it. The choice for Conor is either (a) freeze the operational annexe
+before Phase 3's full run too, or (b) amend `TASK.md` to state that the Phase 3
+run is operational/exploratory and only Phase 4 is confirmatory.

@@ -147,7 +147,7 @@ with a reason rather than silently passing.
 | `notes/phase1-audit.md` | items a–i with evidence, and the gate decision |
 | `notes/schema.md` | every file, column, type, unit; sample provenance; mismatch log |
 | `notes/rules.md` | competition limits, with provenance and what is unverified |
-| `notes/blockers.md` | B1–B7: what is blocked and what would clear it |
+| `notes/blockers.md` | B1–B8: what is blocked and what would clear it |
 | `notes/limitations.md` | the threat/mitigation list |
 | `notes/assumptions.md` | unverified beliefs about full data + their runtime assertions |
 | `notes/scale.md` | measured memory/time and the full-data extrapolation |

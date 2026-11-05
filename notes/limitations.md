@@ -117,9 +117,19 @@ pressure" is partly circular.
 the audit. (b) The Phase 4 outcome test estimates `u` and `phys` from
 **odd-numbered games** and predicts in **even-numbered games**, so get-off cannot
 mechanically contribute to the outcome it predicts. (c) `sack` (an objective
-event) is available as an exploratory check on any pressure result.
+event) is available as an exploratory check on any pressure result. (d) The
+offence-row family (`pressure_allowed`, `time_to_pressure_allowed`,
+`sack_allowed`) is a pre-specified sensitivity comparison.
 
-**Implemented in.** Audit item (f); Phase 4 split (stub).
+**Q2 assumption (Conor, 2026-11-05, D101).** Null `quick_pressure` is treated as
+false, so the outcome is `(quick_pressure IS TRUE)` over all non-blitz DL
+pass-rush snaps. This manufactures **40,184 negative labels** from the 92.2% null
+share; only 2,334 rows are explicit `false`. If null actually means "unknown" or
+"not evaluated" rather than "no pressure", the outcome is misclassified and the
+Phase 4 effect will be attenuated or biased. The assumption is stated here and
+must be stated in the prereg; it is an assumption, not a verified semantic.
+
+**Implemented in.** Audit item (f); Phase 4 split (stub); Q2 decision D101.
 
 **Residual.** The odd/even split removes mechanical leakage *within* the labelled
 snaps but not the possibility that the label itself is a function of the same
