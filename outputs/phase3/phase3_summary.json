@@ -1,0 +1,185 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT",
+  "stage": "03_game_snaps",
+  "mode": "sample",
+  "rows_total": 44002,
+  "base_rows_from_label_file": 44002,
+  "parts": 38,
+  "plays_with_ball_snap_seen": 12606,
+  "label_side_counts": {
+    "scope": "FULL_RAW_LABEL_FILE",
+    "dl_pass_rush_snaps": 33061,
+    "edge": 18658,
+    "interior": 14403,
+    "players": 158,
+    "players_ge_min_snaps": 99,
+    "min_snaps_per_player": 50,
+    "players_ge_min_games": 134,
+    "min_games_per_player": 3,
+    "snaps_per_player": {
+      "n": 158,
+      "min": 1.0,
+      "p10": 1.700000000000001,
+      "median": 101.0,
+      "p90": 576.6000000000005,
+      "max": 1284.0,
+      "mean": 209.24683544303798
+    },
+    "games_per_player": {
+      "n": 158,
+      "min": 1.0,
+      "p10": 1.0,
+      "median": 12.0,
+      "p90": 39.0,
+      "max": 62.0,
+      "mean": 16.82278481012658
+    },
+    "players_ge_min_snaps_and_games": 99,
+    "players_all_primary": 158
+  },
+  "exclusions": {
+    "scope": "FULL_RAW_LABEL_FILE",
+    "rows_removed": {
+      "RUN_PLAY": 10501,
+      "NON_DL_ALIGNMENT": 440
+    }
+  },
+  "blitz": {
+    "scope": "FULL_RAW_LABEL_FILE",
+    "exclusion_applied": false,
+    "status": "NOT_APPLIED_FLAG_IS_NOT_A_BLITZ_INDICATOR",
+    "flag_counts_in_primary": {
+      "FALSE": 27,
+      "NULL": 47,
+      "TRUE": 32987
+    },
+    "literal_rule_would_leave": 74,
+    "literal_rule_would_remove": 32987,
+    "pressure_labels_on_flag_true": 3375,
+    "pressure_labels_total": 3375
+  },
+  "tracking_scope": {
+    "scope": "SAMPLE_TRACKING",
+    "rows_with_tracking": 1962,
+    "primary_with_tracking": 1477,
+    "primary_with_usable_depth": 1369,
+    "analysis_ready": 1369,
+    "reaction_ready": 1253,
+    "onset_status": {
+      "FOUND": 1454,
+      "NO_SNAP_EVENT": 23,
+      "NO_TRACKING": 31584
+    },
+    "cross_status": {
+      "CROSSED_BEFORE_ONSET": 115,
+      "DEPTH_NONPOSITIVE": 85,
+      "NOT_REACHED": 1,
+      "NO_SNAP_EVENT": 23,
+      "NO_TRACKING": 31584,
+      "OK": 1253
+    },
+    "depth_status": {
+      "DEPTH_NONPOSITIVE": 85,
+      "NO_TRACKING": 31584,
+      "OK": 1369,
+      "PLAY_METADATA_MISSING": 23
+    },
+    "snap_event_status": {
+      "MISSING": 30474,
+      "OK": 2587
+    },
+    "gap_policy": {
+      "none": 1665
+    }
+  },
+  "reaction_measures": {
+    "scope": "SAMPLE_TRACKING",
+    "snap_to_onset_latency_s": {
+      "n": 1253,
+      "min": 0.0,
+      "p10": 0.1,
+      "median": 0.3,
+      "p90": 0.5,
+      "max": 1.5,
+      "mean": 0.3111731843575419
+    },
+    "onset_to_cross_s": {
+      "n": 1253,
+      "min": 0.0,
+      "p10": 0.07499999999999818,
+      "median": 0.2499999999999999,
+      "p90": 0.4788721804511262,
+      "max": 1.1777777777777751,
+      "mean": 0.2686238087958526
+    },
+    "cross_minus_get_off_s": {
+      "n": 1368,
+      "min": -1.63000001907349,
+      "p10": -0.6235999822616594,
+      "median": -0.37035252907858457,
+      "p90": -0.1840414038197748,
+      "max": 0.15200004577636572,
+      "mean": -0.3919917558306714
+    },
+    "max_speed_flags": 0
+  },
+  "outcomes": {
+    "scope": "FULL_RAW_LABEL_FILE",
+    "quick_pressure_true": 1041,
+    "quick_pressure_false_incl_null": 32020,
+    "null_to_false_assumption": true,
+    "post_cross_status": {
+      "CENSORED": 19820,
+      "CENSORED_DROPBACK_TOO_SHORT": 187,
+      "CENSOR_MISSING": 9639,
+      "OBSERVED": 3415
+    },
+    "sack_nonnull": 32898,
+    "sack_positive": 496
+  },
+  "spec_items_not_implementable": {
+    "blitz_exclusion": "NOT_APPLIED_FLAG_IS_NOT_A_BLITZ_INDICATOR",
+    "stance": "NOT_AVAILABLE_NO_LABEL",
+    "shade": "NOT_AVAILABLE_NO_LABEL",
+    "blocker_assignment": "REMOVED_BY_Q4_D98"
+  },
+  "sample_cannot_exercise": {
+    "mode": "sample",
+    "seasons_with_tracking": [
+      2023
+    ],
+    "games_with_tracking": 253,
+    "players_with_tracking": 44,
+    "primary_players": 158,
+    "cannot_exercise": [
+      "season-over-season change (single season only)",
+      "per-game aggregates for all 22 players (1-4 players per play)",
+      "full-season snap counts per player (partial play coverage per game)",
+      "the full-file chunk loop at production scale"
+    ]
+  },
+  "output": {
+    "path": "outputs/phase3/snaps.parquet",
+    "rows": 44002,
+    "columns": 65
+  },
+  "frame_sampling": {
+    "nominal_frame_s": 0.1,
+    "median_frame_s": 0.1,
+    "share_within_tolerance": 0.999999,
+    "n_intervals": 1033963
+  },
+  "input_assumptions": {
+    "pass_result_values": [
+      "",
+      "C",
+      "I",
+      "IN",
+      "R",
+      "S"
+    ],
+    "player_play_rows": 314197,
+    "blitz_set_share_pass": 0.997762,
+    "blitz_set_share_run": 0.007333
+  }
+}

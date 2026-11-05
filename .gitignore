@@ -46,7 +46,14 @@ Thumbs.db
 *.swp
 .~*
 
-# --- Phase gate artefact: small, machine-readable, and a deliverable in its own right ---
+# --- Phase gate artefacts: small, machine-readable, and deliverables in their own right ---
 !outputs/audit/
 !outputs/audit/*.csv
 !outputs/audit/*.json
+
+# Phase 3 evidence: counts, null provenance, exclusion counts, summary. The
+# per-snap table itself (snaps.parquet, ~1.5 MB at sample scale and much larger
+# on full data) is regenerable and stays ignored.
+!outputs/phase3/
+!outputs/phase3/*.csv
+!outputs/phase3/*.json

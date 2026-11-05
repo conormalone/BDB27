@@ -39,7 +39,7 @@ def test_missing_stage_argument_exits_2(capsys):
     assert RUN.main([]) == 2
 
 
-@pytest.mark.parametrize("stage", EXPECTED_ORDER[2:])
+@pytest.mark.parametrize("stage", EXPECTED_ORDER[3:])
 def test_stubs_fail_loudly_and_write_nothing(stage, capsys, cfg):
     mod = load_stage(stage)
     before = C.checkpoint_path(cfg, stage, "sample")
@@ -48,6 +48,15 @@ def test_stubs_fail_loudly_and_write_nothing(stage, capsys, cfg):
     err = capsys.readouterr().err
     assert "STAGE NOT IMPLEMENTED" in err
     assert not before.exists(), "a stub must not create a checkpoint"
+
+
+def test_phase3_is_no_longer_a_stub():
+    mod = load_stage("03_game_snaps")
+    assert mod.STAGE == "03_game_snaps"
+    assert callable(mod.main)
+    assert hasattr(mod, "measure_rep")
+    assert hasattr(mod, "assert_output_schema")
+    assert len(mod.SNAP_FIELDS) == len(mod.SNAP_COLUMNS)
 
 
 def test_phase2_is_no_longer_a_stub():

@@ -1,0 +1,66 @@
+provenance,column,dtype,unit,description
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,game_id,BIGINT,id,game identifier
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,play_id,BIGINT,id,play identifier
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,nfl_id,BIGINT,id,rusher (defensive player) identifier
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,season,INTEGER,year,season from games.csv
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,season_type,VARCHAR,category,REG / PRE / POST
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,week,INTEGER,week,week from games.csv
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,team_abbr,VARCHAR,category,defensive team (the rusher's team)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,opponent_team,VARCHAR,category,offensive team (possession_team)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,possession_team,VARCHAR,category,offensive team
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,quarter,INTEGER,quarter,period
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,down,INTEGER,down,down (1-4)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,yards_to_go,INTEGER,yd,distance to the first-down marker
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,score_margin_def,INTEGER,points,"defensive team score minus opponent score, pre-snap"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,play_direction,VARCHAR,category,offence direction: left / right
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,lined_up_position,VARCHAR,category,player_play.lined_up_position (the Q3 authority)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,alignment_class,VARCHAR,category,"EDGE / INTERIOR / NON_DL, from lined_up_position"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,shade,VARCHAR,category,always null: no shade label exists in the release
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,shade_status,VARCHAR,status,NOT_AVAILABLE_NO_LABEL
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,stance,VARCHAR,category,always null: no stance label exists and none is inferred
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,stance_status,VARCHAR,status,NOT_AVAILABLE_NO_LABEL
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,is_pass_play,BOOLEAN,flag,pass_result non-empty (C/I/S/R/IN); '' is a run
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,pass_result,VARCHAR,category,C / I / S / R / IN / '' (run)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,blitz_flag,VARCHAR,category,raw player_play.blitzing as TRUE / FALSE / NULL (tri-state preserved)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,blitz_flag_status,VARCHAR,status,SET / NULL
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,blitz_exclusion_status,VARCHAR,status,NOT_APPLIED_FLAG_IS_NOT_A_BLITZ_INDICATOR (notes/blockers.md B9)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,pass_rushers_encountered_max,INTEGER,count,descriptive only: max per-blocker pass_rushers_encountered on the play
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,pass_rushers_encountered_rows,INTEGER,count,how many offensive rows carried pass_rushers_encountered
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,player_get_off,DOUBLE,s,as published in player_play; never recomputed
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,get_off_status,VARCHAR,status,OK / OUT_OF_RANGE
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,quick_pressure_raw,VARCHAR,category,TRUE / FALSE / NULL
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,quick_pressure_binary,BOOLEAN,flag,"quick_pressure IS TRUE; null -> false (Q2/D101, an ASSUMPTION)"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,time_to_pressure_raw,DOUBLE,s,as published; null = no pressure event
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,post_cross_pressure_time_s,DOUBLE,s,"time_to_pressure - player_get_off, observed events only"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,post_cross_event,BOOLEAN,flag,"1 when a pressure time is observed, 0 otherwise (never condition on it)"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,post_cross_censor_time_s,DOUBLE,s,"dropback_duration - player_get_off, used ONLY for censoring"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,post_cross_status,VARCHAR,status,OBSERVED / OBSERVED_DROPBACK_TOO_SHORT / CENSORED / CENSORED_DROPBACK_TOO_SHORT / CENSOR_MISSING / NEGATIVE_OBSERVED
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,dropback_duration,DOUBLE,s,"play-level, verified consistent within play"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,sack,DOUBLE,credit,0 / 0.5 / 1.0; exploratory
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,tracking_present,BOOLEAN,flag,the rusher has frames for this play
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,snap_event_status,VARCHAR,status,OK / CONFLICTING / MISSING
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,snap_event_spread_s,DOUBLE,s,max-min of ball_snap timestamps on the play
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,snap_x,DOUBLE,yd,rusher x at the first frame at/after the snap
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,los_x,DOUBLE,yd,line of scrimmage x (notes/schema.md section 6)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,depth_yd,DOUBLE,yd,signed pre-snap depth to the line (positive = lined up onside)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,depth_status,VARCHAR,status,OK / DEPTH_NONPOSITIVE / DEPTH_EXCEEDS_MAX / PLAY_METADATA_MISSING / NO_SNAP_EVENT / NO_POST_SNAP_FRAMES / NO_TRACKING
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,n_pre_snap_frames,INTEGER,frames,frames before the snap
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,n_post_snap_frames,INTEGER,frames,frames at/after the snap
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,baseline_speed_presnap,DOUBLE,yd/s,median pre-snap speed in the baseline window (context only)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,baseline_status,VARCHAR,status,OK / INSUFFICIENT_PRE_SNAP_FRAMES
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,onset_status,VARCHAR,status,FOUND / NOT_DETECTED / NO_TRACKING / NO_SNAP_EVENT / NO_POST_SNAP_FRAMES
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,onset_latency_s,DOUBLE,s,snap-to-onset latency (same onset definition as Phase 2)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,onset_reason,VARCHAR,text,the onset detector's own reason string
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,max_speed_post_snap,DOUBLE,yd/s,max provided speed after the snap
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,speed_cap_flag,BOOLEAN,flag,max_speed_post_snap above onset.speed_cap_yds
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,cross_status,VARCHAR,status,OK / CROSSED_BEFORE_ONSET / NOT_REACHED / NOT_INTERPOLABLE / NO_ONSET / DEPTH_NONPOSITIVE / NO_TRACKING / NO_SNAP_EVENT / NO_POST_SNAP_FRAMES
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,cross_time_s,DOUBLE,s,"tracked LOS crossing, seconds from the snap"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,onset_to_cross_s,DOUBLE,s,cross_time_s - onset_latency_s
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,cross_interpolated,BOOLEAN,flag,crossing interpolated between frames
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,cross_gap_policy,VARCHAR,status,none / bridged / forbidden_first_second / too_long
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,cross_minus_get_off_s,DOUBLE,s,"tracked crossing minus the published label (evidence, not a correction)"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,in_primary_set,BOOLEAN,flag,"DL alignment AND pass play AND get_off in range (blitz not excludable, B9)"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,exclusion_reason,VARCHAR,status,NON_DL_ALIGNMENT / RUN_PLAY / GET_OFF_OUT_OF_RANGE / PASS_RESULT_MISSING; null = in primary set
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,analysis_ready,BOOLEAN,flag,in_primary_set AND tracking AND usable depth (what Phase 4 can fit)
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,reaction_ready,BOOLEAN,flag,analysis_ready AND onset found AND crossing interpolable
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,provenance,VARCHAR,stamp,mode provenance

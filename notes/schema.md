@@ -356,6 +356,43 @@ the signature of a model-derived pressure label, not a naive function of the
 rusher's own tracking. There is **no row-level provenance column** to confirm it.
 Logged as a threat in `notes/limitations.md`.
 
+
+### 7a. What `blitzing` and `pass_result` actually encode (Phase 3 finding)
+
+This was not visible until Phase 3 had to define "pass-rush snaps". Both columns
+are needed, and both behave differently from their names.
+
+**`pass_result` is the pass/run indicator.** Values in the complete file:
+`C` (115,903), `""` (**103,636** — a run), `I` (65,187), `S` (13,888), `R` (11,326
+— a QB scramble on a pass play), `IN` (4,257). One value per play (114,954/114,954
+plays), so it is a play-level field. `player_get_off` is **not** pass-only: 10,501
+of the 43,562 DL get-off rows sit on run plays, so "pass-rush snaps" must be a
+subset of the get-off rows, not all of them.
+
+**`blitzing` is null on run plays and is a participation flag on pass plays.**
+
+| scope | `true` | `false` | null |
+|---|---:|---:|---:|
+| DL rows with a `player_get_off`, pass play | 32,987 | 27 | 47 |
+| DL rows with a `player_get_off`, run play | 77 | 0 | 10,424 |
+| CB/SLOT rows on the plays where DL are true | 234 | 11,771 | — |
+| all CB rows | 81 | 19,780 | — |
+
+It is null on essentially every run play, true on 99.8% of DL pass-rush reps, and
+false on 98.1% of the CB/SLOT rows of the same plays (corner blitzes are the 1.9%
+that are true). All 3,375 non-null `quick_pressure` values sit on
+`blitzing = true` rows. Within a play, DL rows agree 5,834 of 5,836 times.
+
+That is a per-player *pass-rush participation* flag ("this defender rushed the
+passer"), not a blitz call. It cannot separate blitzers from base rushers, so
+`TASK.md`'s non-blitz exclusion is not implementable (D104, blocker B9). Phase 3
+carries the raw tri-state and does not apply the exclusion.
+
+**`pass_rushers_encountered` is per blocker, not per play.** Its values are
+0/1/2/3, it sits on offensive rows, and it disagrees across the offensive rows of
+1,550 plays. With only 510 players in the release, summing it would undercount.
+Carried as descriptive columns only (D105).
+
 ## 8. Stance
 
 There is no stance column in any file. `TASK.md` Phase 1(c) asks whether stance

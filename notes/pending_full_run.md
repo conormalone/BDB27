@@ -274,3 +274,139 @@ the between-player SD (`sqrt(tau2_s2)` in `hierarchical_fit.csv`). If the SE is 
 large fraction of the between-player SD, the regression-calibration step is
 load-bearing, not optional. **Decision rule:** report the ratio; do not plug
 `phys_i` in as if observed when the ratio is large.
+
+---
+
+## Phase 3 at full scale (game snaps)
+
+The stage now exists and runs end-to-end in `--mode sample`. Everything below is
+`PENDING FULL RUN` because the tracking sample is one season, 1-4 players per
+play, and covers 1,477 of 33,061 primary snaps.
+
+The deliverable path changed: the per-snap table is
+**`outputs/phase3/snaps.parquet`** (one row per game x play x rusher), not
+`data/interim/snaps/*.parquet`. S6/S10 above were written before Phase 3 existed;
+use the path below.
+
+### S14 — Does the null → false assumption survive the full data?
+
+**Why.** 89.8% of primary snaps are null, and in 152 of 907 games *every* snap is
+null (B1). If full data shows whole games or whole teams without a single
+positive, the secondary outcome is a recording-rate proxy there.
+
+**How.**
+
+```bash
+python src/run.py 03_game_snaps --mode full
+python - <<'PY'
+import duckdb
+q = duckdb.sql("""
+  select grouping, level, n_snaps, n_qp_null, null_rate_quick_pressure,
+         n_time_present_flag_false, n_time_present_flag_null, n_both_null
+  from read_csv_auto('outputs/phase3/null_provenance.csv')
+  where grouping in ('overall','season','down')
+  order by grouping, level""")
+print(q.df().to_string())
+g = duckdb.sql("""
+  select n_snaps, null_rate_quick_pressure
+  from read_csv_auto('outputs/phase3/null_provenance.csv')
+  where grouping='game'""").df()
+print('games fully null:', (g.null_rate_quick_pressure == 1).sum(), 'of', len(g))
+PY
+```
+
+**Look at:** the null rate by season (is 2023's 90.1% stable?), the share of games
+with zero positives, and whether the 40 "time but null flag" rows stay rare.
+**Decision rule:** if any season or team has <1% positive labels, the secondary
+outcome cannot be estimated there; report the stratum, do not pool it silently.
+
+### S15 — Is the tracked-crossing minus label offset stable across seasons?
+
+**Why.** On the 2023 sample the tracked crossing leads `player_get_off` by a
+median 0.370 s (§17). If that offset is a constant clock difference it is
+harmless for within-player comparisons; if it drifts by season, any
+season-over-season comparison is contaminated.
+
+```bash
+python src/run.py 03_game_snaps --mode full
+python - <<'PY'
+import duckdb
+print(duckdb.sql("""
+  select season,
+         count(*) filter (where cross_status='OK') n,
+         median(cross_minus_get_off_s) med,
+         quantile_cont(cross_minus_get_off_s, 0.1) p10,
+         quantile_cont(cross_minus_get_off_s, 0.9) p90
+  from read_parquet('outputs/phase3/snaps.parquet')
+  where cross_status in ('OK','CROSSED_BEFORE_ONSET')
+  group by 1 order by 1""").df().to_string())
+PY
+```
+
+**Decision rule:** a stable median within ~0.05 s across seasons supports a
+clock/definition offset. A drifting median is a finding about the label, not
+something to correct.
+
+### S16 — How many rushers clear the snap minimum on the *tracked* analysis set? (replaces S6)
+
+```bash
+python src/run.py 03_game_snaps --mode full
+python - <<'PY'
+import duckdb
+print(duckdb.sql("""
+  select count(*) players,
+         count(*) filter (where n >= 50) ge50,
+         median(n) med, max(n) mx
+  from (select nfl_id, count(*) n from read_parquet('outputs/phase3/snaps.parquet')
+        where analysis_ready group by 1)""").df().to_string())
+PY
+```
+
+**Matters because:** Phase 4's power floor (`stats.min_detectable_share`) is set
+by the number of players with usable *tracked* snaps, not by the label-file count
+(158 players / 99 at ≥50 in the complete file). If tracking QC removes many, the
+floor rises above the 0.25 smallest effect of interest.
+
+### S17 — Does the blitz-flag semantics hold on full data? (B9)
+
+**Why.** The primary set is *not* non-blitz because `blitzing` behaves as a
+pass-rush participation flag (D104). If the three full season files show a
+different pattern, B9 must be re-opened.
+
+```bash
+python src/run.py 03_game_snaps --mode full
+python - <<'PY'
+import duckdb
+print(duckdb.sql("""
+  select blitz_flag, count(*) filter (where in_primary_set) primary_rows,
+         count(*) filter (where in_primary_set and quick_pressure_raw <> 'NULL') labelled
+  from read_parquet('outputs/phase3/snaps.parquet') group by 1 order by 1""").df())
+print(duckdb.sql("select * from read_csv_auto('outputs/phase3/blitz_diagnostic.csv')").df())
+PY
+```
+
+The stage already asserts the pattern at run time (`assert_input_assumptions`:
+≥95% set on DL pass reps, ≤5% on DL run reps) and stops if it fails.
+
+### S18 — Onset detection and crossability on full data
+
+**Why.** 115 of 1,454 detected onsets in the sample cross *before* onset
+(`CROSSED_BEFORE_ONSET`), and 85 of 1,477 tracked reps line up at or behind the
+line (`DEPTH_NONPOSITIVE`). Those shares decide how much of the reaction measure
+survives.
+
+```bash
+python src/run.py 03_game_snaps --mode full
+python - <<'PY'
+import json
+s = json.load(open('outputs/phase3/phase3_summary.json'))
+print(json.dumps(s['tracking_scope'], indent=1))
+print(json.dumps(s['reaction_measures'], indent=1))
+PY
+```
+
+**Look at:** `onset_status`, `cross_status`, `depth_status` and the latency
+distribution. **Decision rule:** if `NOT_DETECTED` or `CROSSED_BEFORE_ONSET`
+exceeds ~15% of tracked primary snaps, say so in the writeup and report the
+reaction measure on the clean subset only (it never enters the primary estimand,
+but it is the agreement check).

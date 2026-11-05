@@ -4088,3 +4088,147 @@ I have recorded the decision as given and have **not** edited `TASK.md` to
 reconcile it. The choice for Conor is either (a) freeze the operational annexe
 before Phase 3's full run too, or (b) amend `TASK.md` to state that the Phase 3
 run is operational/exploratory and only Phase 4 is confirmatory.
+
+---
+
+## D103 — Phase 3 engineering: one row per DL pass-rush snap · 2026-11-05
+
+**Scope.** `src/03_game_snaps.py` implements `TASK.md` Phase 3, one code path for
+`--mode sample|full`, config-driven, checkpointed, with `--force`. No Phase 4-5
+work was done.
+
+**Result on the complete label file (real counts, not sample):** 44,002 rows
+carry a `player_get_off`; **33,061** are in the primary set (EDGE 18,658 /
+INTERIOR 14,403); 10,501 are removed as `RUN_PLAY` and 440 as
+`NON_DL_ALIGNMENT`. 158 rushers have ≥1 primary snap, 99 clear the 50-snap
+minimum, 79 clear 100; median 101 snaps and 12 games per rusher.
+
+**Definitions (each is a choice that must be in the prereg annexe).**
+
+* **Pass play** = `pass_result` in `{C, I, S, R, IN}`. `""` is a run; `R` is a
+  QB scramble on a pass play and is kept. `pass_result` is one value per play
+  (114,954/114,954 plays), so the definition is at play level, not player level.
+* **Primary set** = `lined_up_position ∈ {EDGE, INTERIOR_LINE}` (Q3) AND pass
+  play AND `player_get_off` inside `schema.get_off_range`. Base set = *every*
+  row with a `player_get_off`, so the CB/SLOT rows are counted as excluded
+  rather than dropped.
+* **Depth** = `sign * (x_at_snap − LOS_x)`, `sign=+1` for `play_direction=right`.
+  The defence lines up on the *far* side of the ball: for a right-moving offence
+  the rusher sits at `x > LOS` and moves toward decreasing x. Validated on the
+  sample (n=1,369 usable): median depth 0.59 yd, p10-p90 0.21-1.02, range
+  0.01-1.78. The audit's LOS formula is
+  used unchanged (`notes/schema.md` §6).
+* **Tracked crossing** = the x-axis LOS crossing, interpolated between the
+  bracketing 10 Hz frames, through the same Phase 2 gap policy
+  (`physical.time_at_distance_qc`): no bridging inside the first second, none
+  over 0.5 s. Chosen over an along-travel projection because the audit showed
+  the x-axis crossing reproduces `player_get_off` better (abs median 0.383 s vs
+  0.679 s). On this sample the signed difference is **−0.370 s** (n=1,368), i.e.
+  the tracked crossing leads the label by ~0.37 s — consistent with the audit's
+  measurement-lag explanation.
+* **Onset** = `physical.detect_onset`, unchanged threshold (absolute 1.0 yd/s
+  sustained 2 frames), searched from the snap. `onset_latency_s` is therefore the
+  same quantity as in Phase 2, in the same units. The only code change to the
+  shared function is an optional `baseline_from` argument that makes the
+  *context* baseline pre-snap; it cannot move the onset because the threshold is
+  absolute. Phase 2's tests are unchanged and pass.
+* **`onset_to_cross_s`** = crossing − onset, and is null with
+  `cross_status = CROSSED_BEFORE_ONSET` when the crossing precedes the detected
+  onset (115 of 1,454 detected onsets). A negative "duration" is not written.
+* **Post-crossing pressure** = `time_to_pressure − player_get_off` observed;
+  `dropback_duration − player_get_off` as the censoring time; `post_cross_event
+  = 1` iff a pressure time exists. Nothing conditions on pressure occurring;
+  rows without it are censored rows. Negative observed times are flagged
+  (`NEGATIVE_OBSERVED`), never clamped or dropped.
+* **`quick_pressure_binary`** = `quick_pressure IS TRUE` with null → false
+  (Q2/D101). The raw tri-state is carried beside it.
+* **Stance and shade** are null with an explicit `NOT_AVAILABLE_NO_LABEL`
+  status. No inference rule was invented.
+
+**Memory and speed.** Both raw CSVs are converted once to Parquet with explicit
+column lists; tracking is partitioned by `game_id` and each game is read from its
+own partition. The label-side base table (44,002 rows) is the only table held in
+memory. The per-game loop reads ~3-12 k rows, and part files checkpoint every
+`snaps.games_per_part = 25` games so a long full run resumes.
+
+One measured defect was fixed rather than tolerated: DuckDB's row-at-a-time
+insert (`executemany`) cost **2.7 s per ~800-row part**, making the sample stage
+207 s; the columnar insert costs **0.04 s** and the whole sample stage now runs
+in **19 s**, peak RSS **355 MB**. Nulls and dtypes round-trip exactly
+(`tests/test_phase3.py`).
+
+**Determinism.** Two `--force` runs produce byte-identical Parquet and JSON.
+
+**Test evidence.** 24 Phase-3 tests: known-answer crossing (0.8 yd at 4 yd/s =
+0.200 s), known-answer onset-to-cross, pre-snap baseline, insufficient baseline,
+missing onset, missing frames (gap inside the first second), no tracking, no snap
+event, no post-snap frames, depth near zero and non-positive, crossed-before-
+onset, censoring and negative observed times, null→false, empty primary set,
+zero-row fallback typing, output schema/type/value assertions, blitz flag
+carried-not-applied, one-snap players, checkpointing, determinism, and recovery of
+the fixture's planted get-off from its own frames. Full suite: **166 passed**.
+
+**Outputs** (under `outputs/phase3/`): `snaps.parquet` (65 columns, one row per
+(game, play, rusher); schema in `snaps_schema.csv`), `phase3_summary.json`,
+`exclusion_counts.csv`, `null_provenance.csv`, `null_cooccurrence.csv`,
+`snap_counts_by_player.csv`, `blitz_diagnostic.csv`.
+
+---
+
+## D104 — `blitzing` is not a blitz indicator; the exclusion is NOT applied · 2026-11-05
+
+**Finding (evidence, not interpretation).** On the complete label file:
+
+| observation | value |
+|---|---:|
+| DL pass-rush reps with `blitzing = true` | 32,987 of 33,061 |
+| ... `false` | 27 |
+| ... null | 47 |
+| CB/SLOT rows on the *same* plays with `blitzing = true` | 234 of 12,005 (1.9%) |
+| plays with ≥2 DL reps carrying *mixed* `blitzing` values | 2 of 5,836 |
+| DL reps on run plays (`pass_result = ''`) with `blitzing` non-null | 77 of 10,501 |
+| pressure labels (`quick_pressure` non-null) on `blitzing = true` | 3,375 of 3,375 |
+
+`blitzing` is null on 99.3% of DL run-play reps, true on 99.8% of DL pass-rush
+reps, and false on 99.6% of the CB rows of the same plays. That is the signature
+of a per-player **pass-rush participation** flag ("this defender rushed the
+passer on this play"), not of a blitz call. It is certainly not "the defence sent
+more rushers than the line".
+
+**Consequence.** `TASK.md`'s "Blitzers ... are excluded from primary analyses"
+cannot be implemented with this column: the literal rule
+(`blitzing IS NOT TRUE`) leaves **74** of 33,061 rows. Deleting 99.8% of the
+primary set is not an exclusion, it is a destruction of the analysis.
+
+**What the code does.** The exclusion is **not applied**. Every row carries the
+raw tri-state `blitz_flag` (`TRUE`/`FALSE`/`NULL`) and
+`blitz_exclusion_status = NOT_APPLIED_FLAG_IS_NOT_A_BLITZ_INDICATOR`, so a future
+rule can re-filter without re-running. `phase3_summary.json` reports both the
+literal-rule counts and the flag distribution.
+
+**Status of this decision: PROPOSED, NEEDS CONOR.** I have not decided that
+blitzers are unimportant; I have recorded that this release cannot identify them.
+Options for Conor: (a) accept "all DL pass-rush reps" as the primary set and state
+that blitzes are unadjustable (recommended, since the evidence is unambiguous);
+(b) supply a rule that identifies blitzers from another field if one exists;
+(c) obtain a data dictionary that gives `blitzing` its documented meaning and
+re-open. Recorded as blocker B9.
+
+---
+
+## D105 — Q4 amendment, implemented in the per-snap table · 2026-11-05
+
+**Decision recorded (D98) and implemented here.** The per-snap table contains no
+"assigned blocker(s)" and no "blocker count". `pass_rushers_encountered` is
+carried as `pass_rushers_encountered_max` (max over the play's offensive rows)
+plus `pass_rushers_encountered_rows` (how many rows carried it), documented as
+**descriptive only**.
+
+**Why it cannot be more than descriptive.** The column sits on offensive rows and
+is *per blocker*, not per play: its values are 0/1/2/3 and it disagrees across
+offensive rows of the same play in 1,550 plays of 45,056. Only players in the
+510-attendee release appear, so summing it would silently undercount. It never
+enters a model and never stands in for an assignment.
+
+**Consequence.** No blocker control exists; the split is unadjusted for opponent
+quality (`notes/limitations.md` §14).

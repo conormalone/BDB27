@@ -166,3 +166,69 @@ start-type label exists — and the code says so instead of inventing an offset
   and the conflict is reported, not reconciled (`notes/blockers.md` B3, D97).
 * That the sample is representative of the season — it is a 1–4 player-per-play
   draw, and nothing is tuned on it.
+
+---
+
+## A14 — `pass_result` carries exactly the verified vocabulary · **LIVE (Phase 3)**
+
+**Assumption.** `pass_result ∈ {"", "C", "I", "S", "R", "IN"}` in every season
+file, and `""` means a run. Verified on the complete 2023-2025 label file
+(`{"", C, I, IN, R, S}`); a new value would silently be treated as a run.
+
+**Assertion.** `03_game_snaps.assert_input_assumptions` raises
+`PASS-RESULT VOCABULARY CHANGED` listing the unexpected values, before any table
+is built.
+
+**Why it matters.** The primary set is "pass-rush snaps"; misclassifying a new
+pass category as a run deletes those reps from every downstream model.
+
+## A15 — `(game_id, play_id, nfl_id)` is unique in `player_play` · **LIVE**
+
+**Assumption.** One row per player per play, so a per-snap table cannot silently
+double-count a rep.
+
+**Assertion.** Row count vs distinct-key count in
+`assert_input_assumptions`; raises `PLAYER_PLAY KEY NOT UNIQUE` with the
+duplicate count. Holds today: 314,197 rows / 314,197 keys.
+
+## A16 — `dropback_duration` and `pass_result` are play-level · **LIVE**
+
+**Assumption.** Both take one value per play, so the label-side join cannot pick
+one of several. `pressure_allowed`, `time_to_pressure_allowed` and `sack_allowed`
+are *not* play-level (they are per offensive player) and are not joined.
+
+**Assertion.** `count(DISTINCT pass_result)` and `count(DISTINCT
+dropback_duration)` per play must both be ≤ 1; otherwise
+`PLAY-LEVEL FIELD NOT PLAY-LEVEL`.
+
+**Evidence.** One distinct value per play in 114,954/114,954 plays (both columns);
+`pressure_allowed` disagrees within a play in hundreds of plays, which is why the
+offence-row sensitivity family is deferred to Phase 4 rather than aggregated here.
+
+## A17 — `blitzing` is a pass-rush participation flag, not a blitz call · **LIVE**
+
+**Assumption (D104).** On DL reps carrying a `player_get_off`, `blitzing` is set
+on ≥95% of pass reps and on ≤5% of run reps. Observed: **99.78%** and **0.73%**.
+
+**Assertion.** `assert_input_assumptions` computes both shares and raises
+`BLITZ-FLAG SEMANTICS CHANGED` outside those bounds, telling the reader to re-open
+B9. The bounds live in `config.yaml` (`snaps.blitz_flag_*`) and are validation
+bounds, not analysis thresholds.
+
+**Why it matters.** The whole "non-blitz primary set" question hinges on this. If
+the full release differs, the primary set must be redefined by Conor, not
+reinterpreted by the code.
+
+## A18 — The Parquet cache is complete · **LIVE**
+
+**Assumption.** A killed or partially written conversion is not mistaken for a
+finished one, and every `game_id=<n>` partition directory is present.
+
+**Assertion.** `ensure_parquet` re-derives the row count from Parquet metadata and
+compares it with the manifest, and for a partitioned cache compares the number of
+`game_id=` directories with `count(DISTINCT game_id)`; raises
+`PARQUET CACHE INCOMPLETE` with `--force` in the message.
+
+**Why it matters.** Phase 3 reads one game partition at a time. A missing
+partition would silently produce rows with `tracking_present = false` — a
+data-integrity failure disguised as "no tracking for this game".

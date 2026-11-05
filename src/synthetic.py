@@ -190,39 +190,53 @@ def make_game_frames(seed: int = 11, n_players: int = 12, snaps_per: int = 30,
             "vmax": vmax, "tau": tau, "jump": jump,
             "edge": i % 2 == 0,
         }
-        for _ in range(snaps_per):
+        for snap_i in range(snaps_per):
             play_id += 1
+            # Every fifth snap is a run: pass_result "", blitzing null. That is
+            # the real relationship in the release (blitzing is null exactly on
+            # run plays), so the fixture exercises the RUN_PLAY exclusion.
+            is_run = (snap_i % 5 == 4)
             depth = rng.uniform(0.5, 1.5)
             # planted get-off: physical time for that depth + jump + noise
             phys = physical_time(vmax, tau, depth)
             get_off = round(max(0.2, phys + jump + rng.gauss(0, 0.03)), 3)
             los_x = 60.0
-            x0 = los_x - depth
-            out_dir = 1.0                      # offence moves +x; rusher moves +x
+            # The defence lines up on the FAR side of the ball from the
+            # offence's direction of travel: offence moves +x, so the rusher
+            # starts at x0 > LOS and moves toward decreasing x.
+            x0 = los_x + depth
             n_pre = 10
             n_total = n_pre + int(round(2.0 / FRAME_S))
+            accel = 2.0 * depth / max(get_off, 1e-6) ** 2
             for k in range(n_total):
                 t = (k - n_pre) * FRAME_S      # 0 at the snap
                 if t < 0:
                     x = x0 + rng.gauss(0, noise_yd)
                 else:
                     # constant acceleration that reaches depth at get_off
-                    a = 2.0 * depth / max(get_off, 1e-6) ** 2
                     tt = min(t, get_off)
-                    x = x0 + 0.5 * a * tt ** 2
+                    x = x0 - 0.5 * accel * tt ** 2
                     if t > get_off:
-                        x = x0 + depth + 0.5 * a * get_off * (t - get_off) * 0.2
+                        x = x0 - depth - 0.1 * accel * get_off * (t - get_off)
                     x += rng.gauss(0, noise_yd)
-                v = 0.0 if t <= 0 else (2.0 * depth / max(get_off, 1e-6) ** 2) * min(t, get_off)
+                v = 0.0 if t <= 0 else accel * min(t, get_off)
                 tracking.append({
                     "game_id": 2024000001, "play_id": play_id, "nfl_id": nfl_id,
                     "time": _stamp(GAME_BASE, t), "x": round(x, 4), "y": 26.0,
                     "s": round(max(0.0, v + rng.gauss(0, 0.02)), 4),
-                    "a": 0.0, "dis": round(v * FRAME_S, 4), "o": 90.0,
-                    "dir": 90.0 if out_dir > 0 else 270.0,
+                    "a": 0.0, "dis": round(v * FRAME_S, 4), "o": 270.0,
+                    "dir": 270.0,
                     "event": "ball_snap" if k == n_pre else "",
                 })
-            press = rng.random() < 0.05
+            # Force one pressure on each player's first snap so the pressure
+            # columns are never all-NA (DuckDB would infer VARCHAR and the
+            # schema gate would fail on a fixture artefact).
+            press = (not is_run) and (snap_i == 0 or rng.random() < 0.06)
+            quick = None
+            ttp = None
+            if press:
+                ttp = round(2.4 if rng.random() < 0.5 else 2.6, 3)
+                quick = rng.random() < 0.5
             player_play.append({
                 "game_id": 2024000001, "play_id": play_id, "team_abbr": "BBB",
                 "nfl_id": nfl_id,
@@ -231,16 +245,19 @@ def make_game_frames(seed: int = 11, n_players: int = 12, snaps_per: int = 30,
                 "possession_team": "AAA", "yardline_side": "AAA",
                 "yardline_number": int(round(los_x - 10)), "game_clock": "15:00",
                 "pre_snap_home_score": 0, "pre_snap_visitor_score": 0,
-                "play_direction": "right", "dropback_duration": 2.8,
-                "pass_rushers_encountered": 1,
+                "play_direction": "right", "pass_result": "" if is_run else "C",
+                "dropback_duration": None if is_run else 2.8,
+                "pass_rushers_encountered": None if is_run else 1,
                 "pressure_allowed": (press or None),
                 "sack_allowed": (0.0 if press else None),
-                "time_to_pressure_allowed": (2.4 if press else None),
-                "quick_pressure": (False if press else None),
+                "time_to_pressure_allowed": (ttp if press else None),
+                "quick_pressure": quick,
                 "unblocked_pressure": (False if press else None),
-                "blitzing": False, "player_get_off": get_off, "sack": 0.0,
-                "time_to_pressure": (2.4 if press else None),
-                "time_to_qb_hurry": (2.6 if press else None),
+                # Real relationship: null on runs, true for a DL pass rusher.
+                "blitzing": None if is_run else True,
+                "player_get_off": get_off, "sack": 0.0,
+                "time_to_pressure": ttp,
+                "time_to_qb_hurry": (None if ttp is None else ttp + 0.2),
             })
             truth["snaps"] += 1
     return tracking, player_play, games, truth
@@ -267,7 +284,7 @@ PLAYER_PLAY_COLS = ["game_id", "play_id", "team_abbr", "nfl_id",
                     "lined_up_position", "quarter", "down", "yards_to_go",
                     "possession_team", "yardline_side", "yardline_number",
                     "game_clock", "pre_snap_home_score", "pre_snap_visitor_score",
-                    "play_direction", "dropback_duration",
+                    "play_direction", "pass_result", "dropback_duration",
                     "pass_rushers_encountered", "pressure_allowed",
                     "sack_allowed", "time_to_pressure_allowed", "quick_pressure",
                     "unblocked_pressure", "blitzing", "player_get_off", "sack",

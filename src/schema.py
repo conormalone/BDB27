@@ -60,6 +60,7 @@ REQUIRED: dict[str, dict[str, str]] = {
         "yardline_side": "str", "yardline_number": "int", "game_clock": "time",
         "pre_snap_home_score": "int", "pre_snap_visitor_score": "int",
         "play_direction": "str", "dropback_duration": "float",
+        "pass_result": "str",
         "pass_rushers_encountered": "int", "pressure_allowed": "bool",
         "sack_allowed": "float", "time_to_pressure_allowed": "float",
         "quick_pressure": "bool", "unblocked_pressure": "bool",

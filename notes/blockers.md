@@ -229,3 +229,96 @@ run when calibration is not `ESTIMATED` (TASK.md stop condition).
 recorded start type, and Phase 3's in-game times; then estimate the global
 offsets on full data and re-run Phase 2 to write `status = "ESTIMATED"` with
 `FULL` provenance.
+
+---
+
+## B9 — the blitz exclusion cannot be applied with this release  · **OPEN (needs Conor)**
+
+**Blocks:** `TASK.md` Phase 3's "Primary snap set: pass-rush snaps by DL
+(non-blitz). Blitzers ... are excluded from primary analyses", and any claim in
+the writeup that the primary set is *non-blitz*.
+
+**Evidence (complete label file, D104).** `player_play.blitzing` is true on
+**32,987 of 33,061** DL pass-rush reps (99.8%), false on 27, and null on 47. On
+the *same* plays, CB/SLOT rows are true 1.9% of the time. The column is null on
+99.3% of DL reps on run plays. All **3,375** labelled pressure rows sit on
+`blitzing = true` rows. Within a play, DL rows agree on the value in 5,834 of
+5,836 multi-DL plays.
+
+That pattern is a per-player **pass-rush participation** flag, not a blitz call.
+Applying the literal rule (`blitzing IS NOT TRUE`) would leave **74** of 33,061
+rows — i.e. it would delete the primary set, not trim it.
+
+**What the code does (not a proxy).** The exclusion is **not applied**; the raw
+tri-state `blitz_flag` is carried on every row with
+`blitz_exclusion_status = NOT_APPLIED_FLAG_IS_NOT_A_BLITZ_INDICATOR`, and both
+the literal-rule counts and the flag distribution are reported in
+`outputs/phase3/phase3_summary.json` and `blitz_diagnostic.csv`. A future rule can
+re-filter the existing table without a re-run.
+
+**What would clear it.** (a) Conor accepts "all DL pass-rush reps" as the primary
+set, with the unadjustable-blitz limitation stated; or (b) a data dictionary
+documents `blitzing` and (if it really is a blitz call) explains the value
+distribution above; or (c) another field identifies extra rushers (none does
+today: `pass_rushers_encountered` is a per-blocker count, 0-3).
+
+**Not decided by me.** This is recorded as a question for Conor (D104), because
+choosing to keep blitzers changes what the primary set means.
+
+---
+
+## B1 — `quick_pressure` null semantics · **RESOLVED BY DECISION, now IMPLEMENTED**
+
+**Status update (Phase 3 run).** The policy is implemented and the assumption is
+measured. `quick_pressure_binary = (quick_pressure IS TRUE)` over the 33,061
+non-blitz-candidate DL pass-rush snaps: **1,041 true**, **2,334 explicit false**,
+**29,686 nulls converted to false**. The null share is 89.8% (not 92.2%, which was
+the figure on *all* DL get-off rows including run plays).
+
+The diagnostic that full data must confirm, already written per season / game /
+team / down (`outputs/phase3/null_provenance.csv`):
+
+* by season: 90.1% (2023), 89.2% (2024), 90.1% (2025);
+* by down: 91.3% / 90.5% / 86.9% / 88.3% for downs 1-4;
+* by team: 84.7% (HOU) to 96.1% (LV);
+* by game: 0% in 3 games, 100% in **152** games. **That last number is the real
+  threat**: in 152 of 907 games every snap is a manufactured negative. A
+  game-level fixed effect does not fix a game with no positives.
+
+`null` is still not documented as `false`. Treating it as `false` manufactures
+29,686 negatives; treating it as missing leaves 3,375 usable labels. Conor chose
+null → false explicitly (Q2/D101), so this is an assumption, not a data fact, and
+it is stated in `notes/limitations.md` §15.
+
+---
+
+## B5 — the dataset is pre-filtered to 510 Combine attendees · **OPEN (structural)**
+
+**Status update (Phase 3 run).** Unchanged and now quantified on the analysis set:
+the label file yields **196** players with ≥1 `player_get_off`, **158** of them in
+the Phase 3 primary set, and **40** of those appear in the 2023 tracking sample.
+The restriction is a property of the release, not a sampling accident: there is
+no unmatched group to compare against, so selection cannot be estimated, only
+stated. The study population remains "*Combine attendees from the 2023-2025
+classes who recorded ≥1 NFL pass-rush rep*".
+
+---
+
+## B7 — no full-data game tracking on this machine · **OPEN (environmental)**
+
+**Status update (Phase 3 run).** The Phase 3 code path now exists and is driven
+in `--mode sample`. In full mode it would (i) convert the three season files to
+Parquet partitioned by `game_id`, (ii) read one game at a time, and (iii) refuse
+before writing anything if `notes/prereg.md` is missing — which it still is, so
+`--mode full` exits 4. The absence of the full files remains the blocker for every
+`PENDING_FULL_RUN` item in `notes/pending_full_run.md`.
+
+---
+
+## B8 — Phase 2 calibration offsets are not estimable from the released files · **OPEN**
+
+**Status update (Phase 3 run).** Phase 3 now produces the in-game side that B8
+said was missing: `onset_to_cross_s` (1,253 usable reps in the sample) and the
+tracked crossing. What is *still* missing is a stance label and a Combine start
+type, so the global offsets remain unestimable and `outputs/calibration.json`
+stays `PLACEHOLDER`. Phase 3 does not read calibration and does not depend on it.

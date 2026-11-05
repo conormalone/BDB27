@@ -8,6 +8,14 @@ Numbers are from `outputs/run_log.csv`, which every stage appends to.
 | stage | input | wall | peak RSS |
 |---|---|---:|---:|
 | `01_audit` | 1,048,575 tracking rows + 314,197 `player_play` + 463,189 combine | **42.8 s** | **439 MB** |
+| `02_combine_physical_time` | 463,189 combine rows | **9.6 s** | **313 MB** |
+| `03_game_snaps` (cold) | 1,048,575 tracking + 314,197 `player_play` | **18.7 s** | **347 MB** |
+| `03_game_snaps` (cached Parquet) | same, caches reused | **5.4 s** | **361 MB** |
+
+Phase 3's peak is flat between cold and warm runs: the memory is the label-side
+base table (44,002 rows) plus one game's frames, not the 94 MB tracking file. The
+first implementation used `executemany` and took **207 s**; the columnar insert is
+the 19 s number above (D103).
 
 The audit is I/O-bound on CSV scanning: DuckDB re-reads the 94 MB sample once for
 the schema/unit gate and once per 25-game batch for the definition check.
@@ -39,7 +47,7 @@ should do is replace it with the real numbers in `outputs/run_log.csv`.
 |---|---|---:|---|
 | `01_audit` | CSV scans + 25-game pandas batches | 0.4–1.5 GB | **low** — bounded by the batch, not the file |
 | `02_combine_physical_time` | Combine only (463 k rows, 84 MB) | 0.5 GB | **low** — fits in RAM on the Pi today |
-| `03_game_snaps` | per-game streaming → one row per snap | 0.8–2.0 GB | **medium** — see below |
+| `03_game_snaps` | per-game streaming → one row per snap | 0.5–1.0 GB (measured 0.35 GB at sample scale) | **low-medium** — see below |
 | `04_models` | reads the per-snap summary only | 1–3 GB | **low** on a bigger machine; PyMC/Stan is the real cost |
 | `05_validate` | re-reads summaries + refits | 1–3 GB | **low** |
 
@@ -51,7 +59,16 @@ At ~170 M tracking rows, **never** load the file. The stage must:
    list, zstd) — this is a streaming `COPY`, so peak RAM is DuckDB's buffer
    (1.2 GB limit), not the file size;
 2. iterate **per game** with a DuckDB query filtered on `game_id`;
-3. write one row per snap to `data/interim/snaps/*.parquet` in append mode.
+3. write one row per snap to a part file every 25 games
+   (`data/interim/phase3_parts/part_*.parquet`), then merge into
+   `outputs/phase3/snaps.parquet`.
+
+Measured shape at sample scale: 1,001 games -> 38 parts -> 44,002 rows, 19 s cold.
+The per-game work is O(rows in that game), and the label-side base table is 44,002
+rows regardless of season count, so the full run's Python-side memory is the same
+as the sample's. The cost that grows is DuckDB's one pass over the Parquet cache
+(snap times + frame sampling) and the per-game partition reads: both linear in
+rows.
 
 Parquet at zstd should land around **2–4 GB** for the three seasons — it fits on
 the 7 GB free on the USB, but only just. Convert one season at a time and delete

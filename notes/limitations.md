@@ -258,3 +258,77 @@ must state that the physical/jump split is *unadjusted for opponent quality*.
 
 **Residual.** Total for opponent quality. This is a design limitation, not a
 missing-data problem that more tracking could fix without an assignment rule.
+
+---
+
+## 15. Null → false manufactures most of the negative labels (Q2)
+
+**Threat.** `quick_pressure` is null on **29,686 of 33,061** DL pass-rush snaps
+(89.8%). The agreed policy (Q2/D101) turns every one of those into `false`. If a
+null actually means "not recorded" rather than "no pressure", the secondary
+outcome is mostly an artefact of missingness, and its base rate (3.1%) is a
+recording rate, not a pressure rate.
+
+**Evidence that it is *probably* "no pressure".** `quick_pressure` and
+`time_to_pressure` are populated together (2,334 `false` + 1,041 `true` + 40 with
+a time but a null flag); 29,646 rows have neither. The null share is stable
+across seasons (89.2-90.1%) and downs (86.9-91.3%), and varies 84.7-96.1% across
+teams.
+
+**Evidence that it matters.** In **152 of 907 games every snap is null**, and in
+3 games none is. A team-game random effect cannot rescue a game with zero
+positives; those games contribute no information about pressure, only about
+get-off.
+
+**Mitigation.** Keep the assumption explicit in the prereg; report the null rate
+by season / game / team / down (`outputs/phase3/null_provenance.csv`) and the
+co-occurrence table (`null_cooccurrence.csv`); run the offence-row family
+(`pressure_allowed`, `time_to_pressure_allowed`, `sack_allowed`) as the
+pre-specified sensitivity comparison; never present `quick_pressure` as a
+complete binary. **Residual: total for semantic uncertainty.**
+
+## 16. The primary set is not "non-blitz"
+
+**Threat.** `TASK.md` asks for non-blitz pass-rush snaps. This release has no
+blitz-call field, and the only candidate (`blitzing`) behaves like a pass-rush
+participation flag: true on 99.8% of DL pass-rush reps, false on 98.1% of the
+CB/SLOT rows of the same plays, null on 99.3% of DL run-play reps.
+
+**Mitigation.** The exclusion is not applied (D104/B9); the raw flag is carried
+per row and both readings are counted, so the decision is reversible without a
+re-run. **Residual.** Blitzers are in the primary set. If blitzing changes get-off
+(plausible: a blitzing DL may have a different stance and a clearer path), the
+estimated player effects mix blitz and base reps. The writeup must not claim a
+non-blitz sample.
+
+## 17. The tracked crossing leads the published `player_get_off` by ~0.37 s
+
+**Threat.** On the sample the interpolated x-axis crossing is earlier than the
+label (median signed difference **−0.370 s**, n=1,368; median absolute 0.370 s).
+The audit attributed the earlier 0.383 s gap to onset/10 Hz lag; the sign here is
+the opposite of "detection starts late" for the *crossing* itself, which suggests
+the label's clock and the tracking clock are not identical (snap event vs play
+clock, or a crossing plane that is not exactly `LOS_x`).
+
+**Mitigation.** The label is never overwritten and is the outcome in Phase 4; the
+tracked crossing is carried separately with `cross_minus_get_off_s` as evidence.
+`onset_to_cross_s` therefore inherits any label-clock offset and is **not**
+directly comparable to `player_get_off` in level — only in spread. Any
+Combine-vs-game comparison must use the model-free Combine curve and the tracked
+crossing, not a difference of levels.
+
+**Residual.** A constant or game-dependent offset. `notes/pending_full_run.md`
+S15 checks whether it is stable across the three seasons.
+
+## 18. Phase 3's tracking columns are sample-only in this cycle
+
+**Threat.** The tracking sample is 2023 only, 1-4 players per play, and partial
+per game. Only **40 of 158** primary players and **1,477 of 33,061** primary
+snaps have any tracking. Every onset, crossing, depth and latency number in
+`outputs/phase3/` is therefore `UNVALIDATED SAMPLE OUTPUT`.
+
+**Mitigation.** The label-side counts (primary set, exclusions, per-player
+snap/game counts, null provenance) come from the complete label file and are
+real; they are labelled `FULL_RAW_LABEL_FILE` in `phase3_summary.json`. Tracking
+blocks are labelled `SAMPLE_TRACKING`. The stage is wired so the same code path
+produces the full numbers with `--mode full` once the files and the prereg exist.

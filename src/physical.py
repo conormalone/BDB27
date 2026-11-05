@@ -110,12 +110,19 @@ class OnsetResult(dict):
 
 def detect_onset(times: Sequence[float], speed: Sequence[float],
                  cfg: Mapping, *, search_from: float | None = None,
-                 search_to: float | None = None) -> OnsetResult:
+                 search_to: float | None = None,
+                 baseline_from: float | None = None) -> OnsetResult:
     """First sustained crossing of the configured speed threshold.
 
     ``times`` are seconds relative to an arbitrary origin (snap time for game
     tracking, first frame for a Combine attempt). ``search_from`` defaults to the
     first frame; for game snaps it must be the snap time.
+
+    ``baseline_from`` changes only the *context* baseline window, never the
+    onset rule: the threshold is absolute, so the baseline cannot move the
+    detected onset. For a game snap pass ``-baseline_window_s`` so the reported
+    at-rest speed is measured before the snap instead of during the first 0.5 s
+    of movement.
 
     Returns a dict with ``found`` (bool), ``onset_s`` (seconds, same origin),
     ``index``, ``baseline_speed``, ``threshold``, ``reason``.
@@ -137,14 +144,24 @@ def detect_onset(times: Sequence[float], speed: Sequence[float],
                            baseline_speed=None, threshold=thr,
                            reason=f"only {len(idx)} frames in search window")
 
-    base_idx = [i for i in idx if float(times[i]) < t0 + b_win]
-    if len(base_idx) < min_b:
-        base_idx = idx[:min_b]
-    if len(base_idx) < min_b:
-        return OnsetResult(found=False, onset_s=None, index=None,
-                           baseline_speed=None, threshold=thr,
-                           reason="baseline not estimable")
-    baseline = sorted(float(speed[i]) for i in base_idx)[len(base_idx) // 2]
+    if baseline_from is None:
+        base_idx = [i for i in idx if float(times[i]) < t0 + b_win]
+        if len(base_idx) < min_b:
+            base_idx = idx[:min_b]
+        if len(base_idx) < min_b:
+            return OnsetResult(found=False, onset_s=None, index=None,
+                               baseline_speed=None, threshold=thr,
+                               reason="baseline not estimable")
+        baseline = sorted(float(speed[i]) for i in base_idx)[len(base_idx) // 2]
+        baseline_ctx = round(baseline, 4)
+    else:
+        # Pre-onset context only. No fallback to post-onset frames: a
+        # contaminated baseline is reported as absent, not as a number.
+        base_idx = [i for i in range(len(times))
+                    if float(baseline_from) <= float(times[i]) < t0]
+        baseline_ctx = (round(sorted(float(speed[i]) for i in base_idx)
+                              [len(base_idx) // 2], 4)
+                        if len(base_idx) >= min_b else None)
 
     limit = t0 + min(max_lat, float(o["search_window_s"]))
     for pos in range(len(idx) - need + 1):
@@ -153,10 +170,10 @@ def detect_onset(times: Sequence[float], speed: Sequence[float],
             break
         if all(float(speed[idx[pos + k]]) >= thr for k in range(need)):
             return OnsetResult(found=True, onset_s=float(times[i]), index=i,
-                               baseline_speed=round(baseline, 4),
+                               baseline_speed=baseline_ctx,
                                threshold=thr, reason="ok")
     return OnsetResult(found=False, onset_s=None, index=None,
-                       baseline_speed=round(baseline, 4), threshold=thr,
+                       baseline_speed=baseline_ctx, threshold=thr,
                        reason=f"no {need}-frame run at or above {thr} yd/s "
                               f"within {max_lat}s")
 

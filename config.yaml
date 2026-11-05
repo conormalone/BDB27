@@ -162,9 +162,27 @@ bdb27:
   # Game-snap construction (Phase 3)
   # ---------------------------------------------------------------------------
   snaps:
-    exclude_blitz: true          # TASK.md Phase 3: primary set is non-blitz
+    # TASK.md: "Blitzers and non-DL are excluded from primary analyses".
+    # The blitz half is NOT APPLIED: player_play.blitzing is true on 92% of DL
+    # pass-rush reps and null exactly on run plays (it reads as pass-rush
+    # participation, not a blitz call). Excluding it would leave 27 rows of
+    # 43,562. See notes/blockers.md B9 and decisions.md D103. The raw flag is
+    # carried per row so a future rule can filter without a re-run.
+    blitz_exclusion: not_implementable
+    # Verified pass_result categories (notes/schema.md). "" is a run; R is a
+    # QB scramble on a pass play and is kept.
+    pass_results: [C, I, S, R, IN]
     max_depth_yd: 5.0            # DESIGN CHOICE: deeper than this is not a rush alignment; flag, do not drop silently
+    # Semantic gates on the blitz flag (D104/B9). VALIDATION BOUNDS, not analysis
+    # thresholds: if full data behaves differently the stage stops and the B9
+    # question must be re-answered rather than silently reinterpreted. Observed
+    # in the complete label file: 99.8% set on pass reps, 0.7% set on run reps.
+    blitz_flag_min_share_on_pass: 0.95
+    blitz_flag_max_share_on_run: 0.05
     min_pre_snap_frames: 5       # DESIGN CHOICE: need a baseline window before the snap
+    # DESIGN CHOICE: games per checkpoint part. A part is skipped on re-run if
+    # it exists, so a 1,000-game full run resumes instead of restarting.
+    games_per_part: 25
 
   # ---------------------------------------------------------------------------
   # Schema / unit sanity bounds. These are VALIDATION bounds, not analysis
