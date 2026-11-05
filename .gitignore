@@ -72,3 +72,10 @@ Thumbs.db
 !outputs/crossing_diagnostic/
 !outputs/crossing_diagnostic/*.csv
 !outputs/crossing_diagnostic/*.json
+
+# Prereg evidence (2026-11-05): the design-power artefact and its short table
+# are the numbers the DRAFT prereg cites, so they are committed. Both are pure
+# arithmetic on the complete-file Phase 3b artefacts (provenance FULL).
+!outputs/prereg/
+!outputs/prereg/*.json
+!outputs/prereg/*.md

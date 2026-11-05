@@ -23,6 +23,8 @@ bdb27:
     tmp: data/interim/tmp
     outputs: outputs
     phase2: outputs/phase2
+    phase3b: outputs/phase3b
+    prereg_outputs: outputs/prereg
     calibration: outputs/calibration.json
     figures: outputs/figures
     notes: notes
@@ -269,6 +271,24 @@ bdb27:
     # than his own body geometry allows. Used only to convert an LOS bound into
     # a time bound in the hypothesis table; it is not estimated from the data.
     los_systematic_bound_yd: 0.30
+
+  # ---------------------------------------------------------------------------
+  # Design power for the locked smallest effect of interest (Conor 2026-11-05).
+  #
+  # The SOI is a 50 ms jump SD, expressed as a share of BETWEEN-PLAYER variance
+  # (denominator B), not of total get-off variance. The between-player SD and
+  # the reliability evidence are read from outputs/phase3b/ (provenance FULL);
+  # only the design constants below live here. The estimator is the Phase 1(i) /
+  # Phase 3b floor z*sqrt(2/P_eff), extended with the variance-share-to-SD
+  # inversion in src/stats.py. No threshold is chosen by this block.
+  # ---------------------------------------------------------------------------
+  power:
+    z: 1.96                    # 95% normal floor; same z as stats.min_detectable_share
+    jump_sd_ms: 50.0           # LOCKED by Conor 2026-11-05 (absolute jump SD)
+    # Candidate minimum-reps cuts for the power table (TASK.md: 20/25/30/40/50/60).
+    min_reps_candidates: [20, 25, 30, 40, 50, 60]
+    reliability_table: reliability_by_player.csv   # relative to paths.phase3b
+    summary_table: phase3b_summary.json            # relative to paths.phase3b
 
   # ---------------------------------------------------------------------------
   # Schema / unit sanity bounds. These are VALIDATION bounds, not analysis

@@ -153,6 +153,12 @@ non-estimable calibration. This assumption is currently **false** — no stance 
 start-type label exists — and the code says so instead of inventing an offset
 (blocker B8).
 
+**Decision (Conor, 2026-11-05, D110/D113).** The unestimable offset no longer
+blocks: stance is not a covariate and is absorbed into the residual `u_i` and
+the rep-level error (prereg §6). The outcome is the tracked LOS crossing, so no
+stance/start-type calibration is applied to it. `calibration.json` stays
+`PLACEHOLDER`.
+
 ---
 
 ## Assumptions that are *not* made

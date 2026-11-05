@@ -4464,3 +4464,180 @@ tracked crossing so both sides use the same definition?"*
 **Determinism.** Two consecutive runs produced byte-identical artefacts (md5).
 Full suite: **206 passed**, including 19 new known-answer tests for the LOS,
 the sign and the crossing interpolation.
+
+---
+
+## D110 — The outcome is the tracked LOS crossing on both sides; `player_get_off` is validation only · Conor, 2026-11-05
+
+**Status: DECIDED (Conor, 2026-11-05). Clears B10.**
+
+**Decision.** The outcome in Phase 3 and Phase 4 is the **tracked
+line-of-scrimmage crossing**: `cross_time_s`, the time from the snap to the
+first tracked position that crosses the LOS derived from `yardline_side` /
+`yardline_number` / `play_direction`. It is used on **both** sides of the model:
+the outcome is the crossing, and `phys_i(d_ij)` is evaluated at the pre-snap
+depth, the distance to that same crossing. `player_get_off` is demoted to a
+**validation check**, never an outcome and never a model input. The two tracked
+quantities are the same event, so Phase 2's existing distance definition is
+correct as written and **no offset of any kind is applied**.
+
+**Why this is the coherent choice.** The 2026-11-05 crossing diagnostic (D109)
+showed the published label times a plane ≈0.86 yd past the line (sample median),
+i.e. a median 1.50 yd of travel, against a pre-snap depth of 0.65 yd. Using the
+label as the outcome while evaluating `phys` at the pre-snap depth compares two
+different events and would return `b ≈ 1.31`, misreported as a stance difference.
+Moving the outcome to the tracked crossing makes the estimand internally
+consistent: both sides measure the same line crossing.
+
+**Costs, recorded not hidden.** The tracked crossing inherits the integer-yard
+ball-spot error (≈0.29 yd, ≈0.14 s; sample estimate, `UNVALIDATED SAMPLE
+OUTPUT`) and the ≈0.3 yd line bound. The reliability
+and power evidence were measured on the published label, so the power table is
+an optimistic upper bound for the locked estimand (D114). These are limitations,
+not reasons to reintroduce an offset.
+
+**Hard constraints.** The 0.86 yd plane offset is `UNVALIDATED SAMPLE OUTPUT`
+and is **not hard-coded anywhere** in code, config or the prereg. The label
+remains measured and reported as validation: median label − tracked crossing =
++0.379 s (p10 +0.191, p90 +0.664) and median plane offset 0.86 yd (sample).
+Those numbers are stamped as sample evidence and never enter a model.
+
+**Consequences.** `notes/prereg.md` fixes the tracked crossing as the outcome;
+TASK.md Phase 2/3/4 carry in-line amendments; Phase 4's `u_i` is estimated from
+the tracked crossing. B10 is closed as *decided*; it is no longer a blocker.
+
+---
+
+## D111 — The smallest effect of interest is a 50 ms jump SD, on the between-player denominator · Conor, 2026-11-05
+
+**Status: DECIDED (Conor, 2026-11-05). Supersedes the 0.30 variance-share SOI
+of D106/D108.**
+
+**Decision.** The SOI is a **50 ms SD of the residual jump**, expressed as a
+share of **between-player variance** (denominator B: the variance of player
+effects), not of total get-off variance. On the Phase 3b FULL evidence the
+between-player SD is **0.1004 s**, so 50 ms is **49.8% of that SD** and
+**24.8% of between-player variance**. The share is the **square** of the SD
+ratio; comparing the unsquared ratio to a variance-share floor would overstate
+power by roughly four times in players required.
+
+**Inputs (all `FULL`, complete label files, not sample tracking).**
+- Between-player SD: 0.1004 s (`sd_between_player_anova` = 0.100387).
+- Between-player share of total variance (noise-corrected): 0.139.
+- Three-level reliability at the median player: 0.898; two-level `k = 6.17`.
+
+**Why this resolves D108.** D108 asked whether 0.30 referred to (a) the
+between-player share of total variance or (b) a share of between-player
+variance. Conor's answer is neither 0.30 nor a share at all for the estimand:
+the SOI is an **absolute jump SD of 50 ms**, and the share is a derived
+diagnostic on denominator B. The old 0.30 share is withdrawn; it is not carried
+into the prereg.
+
+**Power consequence.** Computed in D114: 50 ms is **not detectable** at any
+candidate minimum-reps cut (smallest detectable 54.4 ms at 20 reps; 51.8 ms with
+all 123 fittable players), and would need `P_eff ≥ 125`. This is recorded as the
+honest power answer, not adjusted away.
+
+---
+
+## D112 — The pressure secondary is dropped entirely · Conor, 2026-11-05
+
+**Status: DECIDED (Conor, 2026-11-05).**
+
+**Decision.** Spec question 3 (secondary: does the residual predict quick
+pressure beyond physical burst, in held-out games?) is **dropped**. No pressure
+field enters any model. The `quick_pressure` null → false rule (Q2/D101) is
+**withdrawn**, and its offence-row sensitivity family is withdrawn with it. The
+Phase 4 outcome-test subsection is removed (struck through in TASK.md for
+provenance), and the three-model outcome figure is dropped from the
+deliverables.
+
+**Why.** Pressure labels in this release are model-derived and mostly null
+(89.8% of primary reps), so the secondary rested on a missingness assumption
+(limitations §15). With the outcome moved to the tracked crossing (D110) and the
+SOI fixed as a jump SD (D111), the secondary adds a large, weakly identified
+side analysis that cannot change the primary answer.
+
+**What remains.** `sack`, `quick_pressure`, `time_to_pressure` and the other
+pressure columns are not analysed and not modelled. They may be described in the
+data audit as missingness evidence only. `player_get_off` remains a validation
+check (D110).
+
+---
+
+## D113 — The blitz exclusion is dropped; all DL pass-rush reps stay · Conor, 2026-11-05
+
+**Status: DECIDED (Conor, 2026-11-05). Supersedes the "non-blitz" primary-set
+wording and the D104/B9 interim posture.**
+
+**Decision.** The primary set is **all DL pass-rush reps**. The blitz exclusion
+is not applied, not approximated and not inferred. The raw `blitzing` flag may
+be carried per row as descriptive metadata, but it does not filter any analysis.
+This is documented as a limitation: the estimated player effects mix blitz and
+base reps, and the writeup must not claim a non-blitz sample.
+
+**Why.** The release has no blitz-call field; `blitzing` behaves as pass-rush
+participation (true on 99.8% of DL pass-rush reps), and excluding it would leave
+27 rows of 43,562 (B9, limitations §16). Dropping the exclusion keeps the
+primary set complete and avoids pretending a flag is a call.
+
+**Consequences.** TASK.md Phase 3 is amended in-line. `notes/limitations.md` §16
+is updated from "not implementable" to "deliberately dropped (D113)".
+
+---
+
+## D114 — Power: 50 ms is not detectable at any candidate cut; the min-reps rule has no solution · 2026-11-05
+
+**Status: EVIDENCE + OPEN QUESTION. Not a decision. The min-reps proposal needs
+Conor.**
+
+**What was computed.** `src/power_calc.py` (standalone, not a `run.py` stage)
+reads the complete-file Phase 3b artefacts and writes
+`outputs/prereg/power.json` + `outputs/prereg/power_table.md`. The estimator is
+the Phase 1(i)/Phase 3b design floor `z·sqrt(2/P_eff)` — a normal approximation
+to the sampling SD of a between-player variance share — with `P_eff` the Kish
+count of the fittable players' three-level reliabilities, inverted through
+`share = (jump_sd / between_sd)^2`. The functions live in `src/stats.py`
+(`effective_players`, `min_detectable_share_effective`,
+`variance_share_from_sd`, `sd_from_variance_share`,
+`players_required_for_share`). It is a design approximation, not a posterior
+width; Phase 4's fit is the confirmation.
+
+**Result (FULL evidence, no tracking input).**
+
+| min reps/player | P admitted | fittable P | median reliability, fittable | P_eff | smallest detectable jump SD (ms) | 50 ms? |
+|---:|---:|---:|---:|---:|---:|:---:|
+| 20 | 115 | 90 | 0.943 | 89.3 | 54.4 | no |
+| 25 | 112 | 87 | 0.944 | 86.4 | 54.8 | no |
+| 30 | 109 | 85 | 0.945 | 84.5 | 55.1 | no |
+| 40 | 103 | 80 | 0.945 | 79.7 | 55.9 | no |
+| 50 | 99 | 77 | 0.946 | 76.8 | 56.5 | no |
+| 60 | 92 | 71 | 0.949 | 70.9 | 57.6 | no |
+| no cut (all) | 158 | 123 | 0.897 | 108.0 | 51.8 | no |
+
+**Answers.** 50 ms = 0.248 of between-player variance. **No candidate cut
+resolves it**, and neither does the whole fittable set: the best case is
+**51.8 ms** with all 123 fittable players. It would become detectable at
+`P_eff ≥ 125`; the release supplies at most **123** fittable players, so the
+locked SOI is outside what this design can resolve. The 20-rep cut gives 90
+fittable players and 54.4 ms.
+
+**The min-reps rule has no solution.** The agreed rule — "the most restrictive
+rep threshold whose fittable P still resolves 50 ms" — selects nothing, because
+no cut resolves 50 ms. I will not silently substitute a different rule. My
+**proposal, pending Conor**, is the least restrictive candidate, **20 reps per
+player** (P_fittable = 90, P_eff = 89.3, smallest detectable 54.4 ms), because
+when the target is unreachable the defensible move is to maximise fittable
+players rather than tighten a threshold that cannot reach it. The prereg records
+20 reps as DRAFT, explicitly does **not** claim it satisfies the SOI, and cannot
+be frozen until Conor confirms or changes this.
+
+**Honesty limits.** (1) Reliability is measured on the raw get-off mean, an
+upper bound on the residual jump's reliability (0.869 at 25% removed, 0.815 at
+50%); the table is a best case. (2) The locked outcome is the tracked crossing,
+which adds the sample-estimated ≈0.29 yd spot error; that noise is absent from the reliability
+evidence, so the true smallest detectable SD is larger. (3) The 0.86 yd plane
+offset is not used anywhere.
+
+**Determinism.** The script is pure arithmetic on committed artefacts; two runs
+produce byte-identical output. Full suite: see the commit message.

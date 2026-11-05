@@ -1,0 +1,134 @@
+{
+  "provenance": "FULL",
+  "stage": "power_calculation",
+  "status": "EVIDENCE_DRAFT",
+  "question": "what is the smallest detectable jump SD given the fittable player count and the Phase 3b reliability, and is the locked 50 ms SOI detectable?",
+  "locked_soi": {
+    "jump_sd_ms": 50.0,
+    "between_player_sd_s": 0.100387,
+    "between_player_share_noise_corrected": 0.139447,
+    "jump_share_of_between_player_variance": 0.2480761749934852,
+    "denominator": "between_player_variance",
+    "reading": "50 ms is 49.8% of the 0.1004 s between-player SD, i.e. 24.8% of between-player variance. The share is squared; comparing an SD ratio to a variance-share floor would overstate power."
+  },
+  "estimator": {
+    "floor": "z*sqrt(2/P_eff): normal approximation to the sampling SD of a between-player variance share",
+    "z": 1.96,
+    "p_eff": "Kish (sum r)^2/sum r^2 over fittable players' three-level reliabilities",
+    "smallest_detectable_jump_sd": "between_sd*sqrt(floor)",
+    "why": "This is the design floor already used by Phase 1(i) and Phase 3b, extended with the share-to-SD inversion. It is a design approximation, not a posterior width; the Phase 4 fit is the confirmation.",
+    "k_two_level_cross_check": 6.171195,
+    "reliability_three_level_at_median": 0.898077
+  },
+  "table": [
+    {
+      "min_reps_per_player": 20.0,
+      "players_admitted": 115,
+      "players_fittable": 90,
+      "median_reliability_fittable_three_level": 0.94275,
+      "effective_players_fittable": 89.27062678039532,
+      "floor_share_effective": 0.2933707270717572,
+      "smallest_detectable_jump_sd_ms_effective": 54.37332160934579,
+      "floor_share_headcount": 0.2921795490599725,
+      "smallest_detectable_jump_sd_ms_headcount": 54.26282288211562,
+      "resolves_50ms": false
+    },
+    {
+      "min_reps_per_player": 25.0,
+      "players_admitted": 112,
+      "players_fittable": 87,
+      "median_reliability_fittable_three_level": 0.944101,
+      "effective_players_fittable": 86.39965689961547,
+      "floor_share_effective": 0.29820509562772324,
+      "smallest_detectable_jump_sd_ms_effective": 54.819491903498935,
+      "floor_share_headcount": 0.2971744330829301,
+      "smallest_detectable_jump_sd_ms_headcount": 54.72467578220623,
+      "resolves_50ms": false
+    },
+    {
+      "min_reps_per_player": 30.0,
+      "players_admitted": 109,
+      "players_fittable": 85,
+      "median_reliability_fittable_three_level": 0.944531,
+      "effective_players_fittable": 84.51695093558773,
+      "floor_share_effective": 0.30150822136004357,
+      "smallest_detectable_jump_sd_ms_effective": 55.12226507064553,
+      "floor_share_headcount": 0.3006502756281692,
+      "smallest_detectable_jump_sd_ms_headcount": 55.0437836245515,
+      "resolves_50ms": false
+    },
+    {
+      "min_reps_per_player": 40.0,
+      "players_admitted": 103,
+      "players_fittable": 80,
+      "median_reliability_fittable_three_level": 0.9450240000000001,
+      "effective_players_fittable": 79.72660405046527,
+      "floor_share_effective": 0.3104341110945618,
+      "smallest_detectable_jump_sd_ms_effective": 55.93223761437336,
+      "floor_share_headcount": 0.3099032106965012,
+      "smallest_detectable_jump_sd_ms_headcount": 55.88438985411654,
+      "resolves_50ms": false
+    },
+    {
+      "min_reps_per_player": 50.0,
+      "players_admitted": 99,
+      "players_fittable": 77,
+      "median_reliability_fittable_three_level": 0.946255,
+      "effective_players_fittable": 76.82302180406089,
+      "floor_share_effective": 0.3162462440188149,
+      "smallest_detectable_jump_sd_ms_effective": 56.453407898539886,
+      "floor_share_headcount": 0.3158826018979491,
+      "smallest_detectable_jump_sd_ms_headcount": 56.42094151809057,
+      "resolves_50ms": false
+    },
+    {
+      "min_reps_per_player": 60.0,
+      "players_admitted": 92,
+      "players_fittable": 71,
+      "median_reliability_fittable_three_level": 0.949317,
+      "effective_players_fittable": 70.90680240778408,
+      "floor_share_effective": 0.3291752080215776,
+      "smallest_detectable_jump_sd_ms_effective": 57.59582920280233,
+      "floor_share_headcount": 0.3289590924523021,
+      "smallest_detectable_jump_sd_ms_headcount": 57.576919213806036,
+      "resolves_50ms": false
+    }
+  ],
+  "no_rep_cut": {
+    "min_reps_per_player": 0.0,
+    "players_admitted": 158,
+    "players_fittable": 123,
+    "median_reliability_fittable_three_level": 0.897274,
+    "effective_players_fittable": 108.04099626359219,
+    "floor_share_effective": 0.2666716076297637,
+    "smallest_detectable_jump_sd_ms_effective": 51.840104146000556,
+    "floor_share_headcount": 0.24993007152082863,
+    "smallest_detectable_jump_sd_ms_headcount": 50.186479598801114,
+    "resolves_50ms": false
+  },
+  "answers": {
+    "soi_share_of_between_player_variance": 0.2480761749934852,
+    "detectable_at_any_candidate_cut": false,
+    "smallest_cut_resolving_50ms": null,
+    "smallest_detectable_jump_sd_ms_at_20_reps": 54.37332160934579,
+    "smallest_detectable_jump_sd_ms_best_case": 51.840104146000556,
+    "best_case_min_reps_per_player": 0.0,
+    "players_required_for_50ms": 125,
+    "fittable_players_available": 123,
+    "verdict": "50 ms is not detectable at any candidate cut, nor with every fittable player. The smallest detectable jump SD is 54.4 ms at the 20-rep cut and 51.8 ms with all 123 fittable players. It would become detectable at P_eff >= 125 (about 125 fittable players at the cut-20 reliability mix). The release supplies at most 123 fittable players, so the locked SOI is outside what this design can resolve."
+  },
+  "caveats": [
+    "The reliability evidence is measured on the published player_get_off mean, an upper bound on the reliability of the residual jump (0.869 at 25% of between-player variance removed, 0.815 at 50%). The table is therefore a best case.",
+    "The locked outcome is the tracked LOS crossing, which carries the integer-yard spot error (about 0.29 yd, 0.14 s). That noise is not in the reliability evidence; it can only raise the smallest detectable SD.",
+    "The floor is a design approximation, not a model-based power simulation. Phase 4's posterior intervals are the confirmation.",
+    "The Kish count weights players by relative reliability only; a cruder P * mean-reliability attenuation gives a slightly larger smallest detectable SD at every cut. The verdict \u2014 no candidate cut resolves 50 ms \u2014 is unchanged.",
+    "No number here is UNVALIDATED SAMPLE OUTPUT: every input is a complete label-file artefact (Phase 3b, provenance FULL). The 0.86 yd plane offset does not enter this calculation."
+  ],
+  "inputs": {
+    "phase3b_summary": "/home/conormalone/.openclaw/workspace/BDB27/outputs/phase3b/phase3b_summary.json",
+    "phase3b_summary_sha256": "d252191153e9b8c9131f869f97283e6ce9cc5194ea0d89285e0bdd5a052c444f",
+    "reliability_table": "/home/conormalone/.openclaw/workspace/BDB27/outputs/phase3b/reliability_by_player.csv",
+    "reliability_table_sha256": "19fabdc3dc93df8fa650768c338a74da260be36575997c9756164112dde720e2",
+    "reliability_estimator": "three-level nested ANOVA (reps in games in players), method of moments"
+  }
+}

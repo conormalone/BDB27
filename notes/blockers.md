@@ -315,7 +315,7 @@ before writing anything if `notes/prereg.md` is missing — which it still is, s
 
 ---
 
-## B8 — Phase 2 calibration offsets are not estimable from the released files · **OPEN**
+## B8 — Phase 2 calibration offsets are not estimable from the released files · **OPEN — NON-BLOCKING**
 
 **Status update (Phase 3 run).** Phase 3 now produces the in-game side that B8
 said was missing: `onset_to_cross_s` (1,253 usable reps in the sample) and the
@@ -323,9 +323,27 @@ tracked crossing. What is *still* missing is a stance label and a Combine start
 type, so the global offsets remain unestimable and `outputs/calibration.json`
 stays `PLACEHOLDER`. Phase 3 does not read calibration and does not depend on it.
 
+**Decision (Conor, 2026-11-05, D110/D113).** This no longer blocks the prereg.
+No stance inference rule is invented: stance is not a covariate, not a
+stratifier and not imputed. Stance and start-type variation are absorbed into
+the residual `u_i` and the rep-level error, and this is stated in
+`notes/prereg.md` §6 as a documented component of what "jump" contains. The
+calibration file stays `PLACEHOLDER`; Phase 4 does not read it.
+
 ---
 
-## B10 — `player_get_off` is not a line-of-scrimmage crossing, and Phase 2's distance does not match it · **OPEN (needs Conor)**
+## B10 — `player_get_off` is not a line-of-scrimmage crossing, and Phase 2's distance does not match it · **RESOLVED (Conor, 2026-11-05)**
+
+**Resolution (Conor, 2026-11-05, D110).** The outcome moves to the **tracked
+line-of-scrimmage crossing** on both sides of the model: `cross_time_s` is the
+outcome, and `phys_i(d_ij)` is evaluated at the pre-snap depth to that same
+line. `player_get_off` is demoted to a validation check and never enters a
+model. No offset of any kind is applied; the 0.86 yd sample median is not
+hard-coded. Phase 2's distance definition is therefore correct as written. The
+prereg fixes this in §3 and §5. The evidence below is retained for provenance;
+the "what would clear it" list is answered by option (b), with the caveat that
+the tracked crossing adds the ≈0.29 yd integer-yard spot error to the outcome
+(limitations §21).
 
 **Blocks:** `TASK.md` Phase 2's "physical time for each in-game pre-snap depth *d*
 (the distance the rusher must cover to cross the line)" **as a predictor of
@@ -372,6 +390,10 @@ one of:
     not interpretable as the physics (weakest; the decomposition share survives).
 Not acceptable: a time calibration offset, or silently replacing one measure
 with the other.
+
+**Chosen: (b).** Conor selected the tracked `snap → line-of-scrimmage crossing`
+as the outcome (D110). The original ±0.29 yd spot-error caveat is now
+limitation §21 and is carried in the prereg's power caveat.
 
 **Not a TASK.md stop-list item.** The line and the depth *can* be derived; this
 is a definitional gap, so the pipeline is not stopped — but the prereg cannot be

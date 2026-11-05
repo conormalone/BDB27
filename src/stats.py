@@ -138,6 +138,73 @@ def min_detectable_share(n_players: int, z: float = 1.96) -> dict:
             "method": "z*sqrt(2/P), normal approximation to variance sampling SD"}
 
 
+def effective_players(reliabilities: Sequence[float]) -> float:
+    """Kish effective count ``(sum r)^2 / sum r^2`` for unequal reliability.
+
+    The ``z*sqrt(2/P)`` floor assumes every player is an equally informative,
+    independent estimate of the between-player effect. A player whose effect is
+    estimated with reliability ``r`` contributes less information than a
+    perfectly measured one. This is the same Kish count used by
+    :func:`reliability.effective_players`, kept here as a pure function so the
+    power calculation has no numpy dependency.
+    """
+    r = [float(x) for x in reliabilities
+         if x is not None and not (isinstance(x, float) and math.isnan(x))]
+    if not r:
+        return float("nan")
+    denom = sum(x * x for x in r)
+    return (sum(r) ** 2) / denom if denom > 0 else 0.0
+
+
+def min_detectable_share_effective(reliabilities: Sequence[float],
+                                   z: float = 1.96) -> dict:
+    """Sampling floor on a between-player variance share, reliability-weighted.
+
+    Identical to :func:`min_detectable_share` except that ``P`` is the Kish
+    effective player count implied by the per-player reliabilities, not the raw
+    headcount. The estimator and its approximation are unchanged; only the
+    denominator is made honest about unequal information.
+    """
+    p_eff = effective_players(reliabilities)
+    if not (p_eff >= 2) or math.isnan(p_eff):
+        return {"p_eff": p_eff, "min_share": float("nan"), "z": z,
+                "method": "z*sqrt(2/P_eff), P_eff = Kish (sum r)^2/sum r^2"}
+    return {"p_eff": p_eff, "min_share": z * math.sqrt(2.0 / p_eff), "z": z,
+            "method": "z*sqrt(2/P_eff), P_eff = Kish (sum r)^2/sum r^2"}
+
+
+def variance_share_from_sd(sd: float, between_sd: float) -> float:
+    """Share of between-player **variance** carried by an SD ``sd``.
+
+    ``share = (sd / between_sd)^2``. Squaring is the whole point: a 50 ms jump
+    SD against a 0.1004 s between-player SD is 24.8% of the variance, not
+    49.8%. Returning the unsquared ratio would overstate power by ~4x in
+    players required.
+    """
+    if between_sd is None or between_sd <= 0 or sd is None or sd < 0:
+        return float("nan")
+    return (float(sd) / float(between_sd)) ** 2
+
+
+def sd_from_variance_share(share: float, between_sd: float) -> float:
+    """Inverse of :func:`variance_share_from_sd`: ``between_sd*sqrt(share)``."""
+    if (share is None or math.isnan(share) or share < 0
+            or between_sd is None or between_sd <= 0):
+        return float("nan")
+    return float(between_sd) * math.sqrt(float(share))
+
+
+def players_required_for_share(share: float, z: float = 1.96) -> int:
+    """Smallest ``P`` whose floor ``z*sqrt(2/P)`` does not exceed ``share``.
+
+    Inverts the design floor: ``P >= 2*z^2/share^2``. Reported as a headcount
+    requirement; the caller compares it with the available fittable players.
+    """
+    if share is None or math.isnan(share) or not 0 < share < 1:
+        return -1
+    return int(math.ceil(2.0 * z * z / (float(share) ** 2)))
+
+
 def reliability_from_share(share: float, snaps_per_player: float) -> float:
     """Model-based reliability of a player mean: s2u / (s2u + s2e/n)."""
     if share is None or math.isnan(share) or not 0 <= share < 1:

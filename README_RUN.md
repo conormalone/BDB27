@@ -85,6 +85,7 @@ python src/run.py 01_audit --mode sample --force
 python src/run.py 02_combine_physical_time --mode sample          # ~10 s, ~300 MB
 python src/run.py 02_combine_physical_time --mode sample --force
 python src/crossing_diagnostic.py --mode sample   # ~34 s; NOT a stage, not in run.py
+python src/power_calc.py --mode sample            # <1 s; writes outputs/prereg/power.json
 ```
 
 `--mode sample|full` and `--force` are defined once, in `src/common.py`; every
@@ -92,7 +93,8 @@ stage takes the same three flags (`--mode`, `--force`, `--config`).
 
 `--mode full` **will refuse to run here**, by design, for three independent
 reasons it reports explicitly: the three season files are missing; the row count
-does not exceed the sample cap; `notes/prereg.md` does not exist.
+does not exceed the sample cap; `notes/prereg.md` is DRAFT and does not declare
+`FROZEN`.
 
 ### What runs on the Pi
 
@@ -103,6 +105,7 @@ does not exceed the sample cap; `notes/prereg.md` does not exist.
 | `03_game_snaps` | sample only; full needs 2–4 GB peak | stream per game; see `notes/scale.md` |
 | `03b_reliability` | **yes** | 25 s, 4,000-replicate bootstrap over 158 players; no tracking read |
 | `crossing_diagnostic` (not a stage) | **yes** | 34 s, 206 MB; why the tracked crossing leads `player_get_off` |
+| `power_calc` (not a stage) | **yes** | <1 s; design power for the 50 ms jump SD, pure arithmetic on Phase 3b artefacts |
 | `04_models` | **no** | PyMC/Stan belongs on the bigger machine |
 | `05_validate` | sample only | refits the model |
 
@@ -133,6 +136,8 @@ does not exceed the sample cap; `notes/prereg.md` does not exist.
 | `outputs/crossing_diagnostic/summary.json` | the gap diagnosis: headline numbers, verdicts, the LOS/line checks |
 | `outputs/crossing_diagnostic/definitions.csv` | candidate crossing definitions scored against the label |
 | `outputs/crossing_diagnostic/rep_diagnostic.csv` | one row per rep: depth, label, crossing, implied distance `d_star`, plane offset |
+| `outputs/prereg/power.json` | **prereg evidence**: smallest detectable jump SD at every candidate cut, and the 50 ms verdict |
+| `outputs/prereg/power_table.md` | the same table in Markdown, for the prereg |
 | `outputs/calibration.json` | **PLACEHOLDER** in sample mode; no estimates |
 | `outputs/run_log.csv` | one row per stage run: wall time, peak RSS, provenance |
 
@@ -144,7 +149,7 @@ provenance basis is written to `outputs/phase3b/input_provenance.csv`.
 ## 6. Tests
 
 ```bash
-python -m pytest -q          # ~5 min on the Pi, 187 tests
+python -m pytest -q          # ~5 min on the Pi, 217 tests
 python -m pytest -q -k "not audit_stage_is_byte_identical"
 ```
 
@@ -165,6 +170,7 @@ with a reason rather than silently passing.
 | `notes/schema.md` | every file, column, type, unit; sample provenance; mismatch log |
 | `notes/rules.md` | competition limits, with provenance and what is unverified |
 | `notes/blockers.md` | B1–B10: what is blocked and what would clear it |
+| `notes/prereg.md` | **DRAFT** pre-registration: onset, distance, stance, model, reliability, outcomes, minimum snaps, SOI |
 | `notes/limitations.md` | the threat/mitigation list |
 | `notes/assumptions.md` | unverified beliefs about full data + their runtime assertions |
 | `notes/scale.md` | measured memory/time and the full-data extrapolation |

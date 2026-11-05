@@ -263,6 +263,11 @@ missing-data problem that more tracking could fix without an assignment rule.
 
 ## 15. Null → false manufactures most of the negative labels (Q2)
 
+**Status (Conor, 2026-11-05).** The pressure secondary is **dropped entirely**
+(D112). No pressure field enters any model and the null → false rule is
+withdrawn. This threat is retired with the analysis; retained for provenance
+and for the data-audit description of missingness.
+
 **Threat.** `quick_pressure` is null on **29,686 of 33,061** DL pass-rush snaps
 (89.8%). The agreed policy (Q2/D101) turns every one of those into `false`. If a
 null actually means "not recorded" rather than "no pressure", the secondary
@@ -289,12 +294,17 @@ complete binary. **Residual: total for semantic uncertainty.**
 
 ## 16. The primary set is not "non-blitz"
 
+**Status (Conor, 2026-11-05).** The blitz exclusion is **deliberately dropped**
+(D113). All DL pass-rush reps stay. This is no longer an unimplemented rule: the
+primary set is defined as all DL pass-rush reps, and the writeup must not claim a
+non-blitz sample. The limitation remains exactly as described below.
+
 **Threat.** `TASK.md` asks for non-blitz pass-rush snaps. This release has no
 blitz-call field, and the only candidate (`blitzing`) behaves like a pass-rush
 participation flag: true on 99.8% of DL pass-rush reps, false on 98.1% of the
 CB/SLOT rows of the same plays, null on 99.3% of DL run-play reps.
 
-**Mitigation.** The exclusion is not applied (D104/B9); the raw flag is carried
+**Mitigation.** The exclusion is not applied (D104/B9, now D113); the raw flag is carried
 per row and both readings are counted, so the decision is reversible without a
 re-run. **Residual.** Blitzers are in the primary set. If blitzing changes get-off
 (plausible: a blitzing DL may have a different stance and a clearer path), the
@@ -324,6 +334,11 @@ play, and a constant time offset fits nothing (residual SD unchanged at 0.205 s)
 The line of scrimmage itself is validated against the offensive line's body
 positions and bounded at ≈0.3 yd. The remaining open item is the **distance
 definition** (limitation 20 and blocker B10), not the crossing formula.
+
+**Decided (Conor, 2026-11-05, D110).** The outcome is the **tracked LOS
+crossing** on both sides of the model; the label's clock is no longer the
+outcome. The `cross_minus_get_off_s` column is validation evidence only. The
+label's level offset is not a bias to remove.
 
 ## 18. Phase 3's tracking columns are sample-only in this cycle
 
@@ -376,3 +391,36 @@ Options and the decision owed are in blocker **B10**.
 Conor, frozen in the prereg, and estimated on full data — never from the sample,
 and never as a time offset. The 0.86 yd value is `UNVALIDATED SAMPLE OUTPUT` and
 must not be hard-coded as a constant.
+
+**Resolved (Conor, 2026-11-05, D110).** The outcome moves to the tracked LOS
+crossing, so `phys` at the pre-snap depth and the outcome refer to the same
+event. No offset is applied and the 0.86 yd value is not used. The cost is
+limitation 21.
+
+---
+
+## 21. The tracked-crossing outcome carries the integer-yard spot error
+
+**Threat.** The outcome is now the tracked crossing (D110). The derived line is
+validated against the offensive line's body positions and bounded at ≈0.3 yd,
+but `yardline_number` is an integer, so the true ball spot is fractional and
+unknown. The per-play spot error is ≈0.29 yd (uniform ±0.5, SD 0.289; the 0.29
+is a sample estimate, `UNVALIDATED SAMPLE OUTPUT`), or ≈0.14 s at the median
+crossing speed. Within a play the line cancels, but
+across plays it is 2.5× the true depth variation.
+
+**Why it cannot be corrected here.** The ball is not tracked and the fraction is
+not recoverable from the release. A correction would need an outside source or
+an invented constant; both are forbidden. No time offset is applied.
+
+**Mitigation.** The error is carried in the rep-level residual and reported as
+a property of the estimand. It lowers the effective reliability of the outcome,
+so the Phase 3b reliability (measured on the published label) is an **upper
+bound** for the locked outcome. The power table in `outputs/prereg/power.json`
+is therefore optimistic and is labelled as such in the prereg §10. The
+within-play design (two rushers on one snap) is used where it can cancel the
+line error; it is a diagnostic, not the primary outcome.
+
+**Residual.** Realised attenuation is unknown until the full tracking data are
+available. It can only make the smallest detectable jump SD larger, never
+smaller.
