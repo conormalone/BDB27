@@ -1,0 +1,25 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT",
+  "status": "PLACEHOLDER",
+  "estimated": false,
+  "mode": "sample",
+  "estimates": {
+    "stance": null,
+    "start_type": null,
+    "global_combine_to_game_offset_s": null
+  },
+  "reason": "TASK.md Phase 2 forbids calibrating from the sample; calibration is estimated only in a full run. Stance (three-point vs stand-up) and Combine start type are not labelled in any provided file, and the global Combine-to-game offset needs Phase 3 in-game onset-to-cross times, which do not exist yet. No offset is estimated rather than inventing one.",
+  "estimator_spec": {
+    "target": "per-rep residual r_ij = onset_to_cross_ij - phys_i(d_ij)",
+    "global_offset": "precision-weighted mean of r_ij over all reps",
+    "stance_offsets": "one additive term per stance level, only if a stance label (or a Conor-approved inference rule) exists",
+    "applied_as": "phys_adjusted = phys_model_free + offset",
+    "scope": "global, never per player"
+  },
+  "required_inputs": [
+    "full game tracking (Phase 3 onset-to-cross times)",
+    "a stance label or an approved stance-inference rule"
+  ],
+  "downstream_contract": "Full-mode consumers must call common.require_calibration_full; it refuses a placeholder or non-estimable record. Sample-mode consumers must not apply these numbers (there are none).",
+  "blocker": "B8"
+}

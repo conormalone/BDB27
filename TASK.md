@@ -36,7 +36,7 @@ You run on a Raspberry Pi with limited RAM. Game tracking here is a ~100 MB SAMP
 - Before the first full-data run, write /notes/prereg.md fixing: onset definition, distance definition, stance handling, variance-decomposition model, reliability thresholds, outcome definitions, minimum snaps per player, smallest effect of interest. Do not change it after seeing full-data results; log any deviation as exploratory.
 
 ## Variables to expect (verify in Phase 1)
-Game: `player_get_off` (seconds from snap until the rusher crosses the line of scrimmage), `quick_pressure` (1.0 if pressured within 2.50 s; may be null), `time_to_pressure`, `time_to_qb_hurry`, `sack`, `blitzing`, `unblocked_pressure` (may be null), `dropback_duration`, plus x/y/speed/time tracking, pre-snap alignment, snap time, line-of-scrimmage location, rusher-blocker assignments.
+Game: `player_get_off` (seconds from snap until the rusher crosses the line of scrimmage), `quick_pressure` (1.0 if pressured within 2.50 s; may be null), `time_to_pressure`, `time_to_qb_hurry`, `sack`, `blitzing`, `unblocked_pressure` (may be null), `dropback_duration`, plus x/y/speed/time tracking, pre-snap alignment, snap time, line-of-scrimmage location. (Rusher–blocker assignments were expected but do not exist; removed by the Q4 amendment.)
 Combine: x/y/time tracking per drill attempt for DL.
 
 ## Engineering
@@ -73,20 +73,27 @@ Go/no-go: stop if a Combine sprint is absent, pre-snap depth or line of scrimmag
 - Output a per-player table: physical time as a function of distance, with uncertainty.
 
 **3. Game snaps** (full data only for final; scripted and unit-tested now).
+
+> **Spec amendment (Conor, 2026-11-05, Q4).** Rusher–blocker assignments do not
+> exist in the data, are not to be inferred from tracking geometry, and are
+> removed from the Phase 3 field list and from every Phase 4 model. Blocker
+> open questions are resolved-not-applicable. Logged as D98; consequence in
+> `notes/limitations.md` §14.
+
 - Primary snap set: pass-rush snaps by DL (non-blitz). Blitzers and non-DL are excluded from primary analyses.
-- Per snap: `player_get_off`, pre-snap depth to the line, alignment (edge vs. interior, shade), stance (if labeled or inferable), assigned blocker(s) and blocker count, blitz flag, down and distance, score margin, quarter, game, team, opponent.
+- Per snap: `player_get_off`, pre-snap depth to the line, alignment (edge vs. interior, shade), stance (if labeled or inferable), blitz flag, down and distance, score margin, quarter, game, team, opponent.
 - **Direct reaction measure:** snap-to-onset latency from tracking, with the Phase 1 onset definition. Also onset-to-cross time (the in-game counterpart of Combine physical time).
 - Outcomes: `quick_pressure` (null handling per audit), time to pressure after crossing the line (time_to_pressure minus get-off, censored at dropback end, using `dropback_duration` only for censoring), sack (exploratory). Never analyze `time_to_pressure` only among pressured snaps.
 - Write one row per snap; modeling stages read only these tables.
 
 **4. Models.**
 - **Variance decomposition (primary):** hierarchical model for rep-level get-off:
- `get_off_ij = a + b * phys_i(d_ij) + u_i + alignment/stance/depth effects + blocker, team-game random effects + e_ij`
+ `get_off_ij = a + b * phys_i(d_ij) + u_i + alignment/stance/depth effects + team-game random effects + e_ij`
  with u_i ~ N(0, sigma_u^2). Treat phys_i as latent with its posterior SE (measurement-error model, Bayesian or regression calibration). Physics predicts b near 1; report b and its interval, since b far from 1 means systematic differences between settings.
  Report: share of between-player variance explained by b * phys, by u, and the within-player remainder, all with posterior intervals. Edge, interior and pooled. Fit with Stan or PyMC on the bigger machine.
 - **Reliability of jump:** split-half across games (odd vs. even games) of player-level u, and model-based reliability (sigma_u^2 / (sigma_u^2 + mean SE^2)).
 - **Agreement with direct latency:** correlation between player-level u and mean snap-to-onset latency; and between phys and mean onset-to-cross time. Report both; agreement supports the interpretation, disagreement is a finding.
-- **Outcome test (secondary):** estimate u and phys from odd-numbered games; predict `quick_pressure` (logistic mixed model) and post-crossing pressure time (censored survival model) in even-numbered games, with blocker and team-game random effects and alignment controls. Compare models with phys only, with u added, and with both. Player-grouped cross-validation; held-out log score with bootstrap CIs over players. This split prevents get-off from mechanically contributing to the outcome it predicts.
+- **Outcome test (secondary):** estimate u and phys from odd-numbered games; predict `quick_pressure` (logistic mixed model) and post-crossing pressure time (censored survival model) in even-numbered games, with team-game random effects and alignment controls. Compare models with phys only, with u added, and with both. Player-grouped cross-validation; held-out log score with bootstrap CIs over players. This split prevents get-off from mechanically contributing to the outcome it predicts.
 - **Born or learned (exploratory):** within player, year-to-year change in get-off decomposed into change in u and change in phys-related terms (weight and role changes noted as confounds).
 - Convergence fallbacks, logged in decisions.md: (1) simpler variance model with phys as a fixed covariate and no measurement-error correction (report both); (2) per-player estimates with empirical Bayes shrinkage; (3) random intercept only.
 

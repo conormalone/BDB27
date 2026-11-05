@@ -149,6 +149,111 @@ def reliability_from_share(share: float, snaps_per_player: float) -> float:
     return s2u / (s2u + s2e / snaps_per_player)
 
 
+def hierarchical_normal(groups: Sequence[tuple[object, Sequence[float]]]) -> dict:
+    """Empirical-Bayes pooling of repeated measurements per subject.
+
+    Model (``TASK.md`` Phase 2: "pool attempts per player with hierarchical
+    shrinkage", "carry posterior SEs forward")::
+
+        y_ai = theta_i + e_ai,   e_ai ~ N(0, sigma2)
+        theta_i ~ N(mu, tau2)
+
+    ``sigma2`` is the pooled within-subject variance (attempt-to-attempt
+    measurement noise plus genuine attempt variation; the two are not
+    separable with two or three attempts). ``tau2`` is the between-subject
+    variance by the one-way random-effects method of moments, the same moment
+    used by :func:`icc_oneway`, so the two reports cannot disagree about the
+    variance components.
+
+    Posterior, for subject ``i`` with ``n_i`` attempts and sampling variance
+    ``v_i = sigma2 / n_i``::
+
+        w_i = v_i / (v_i + tau2)                 # weight on the grand mean
+        theta_hat_i = (1 - w_i) * mean_i + w_i * mu
+        Var(theta_hat_i) = v_i * (1 - w_i)
+
+    Degenerate cases are reported, never patched with a floor:
+
+    * no subject has two attempts -> ``sigma2`` is not estimable, no pooling,
+      ``posterior_sd`` is ``None`` (an SE cannot be invented);
+    * ``tau2 <= 0`` -> there is no between-subject variance to shrink toward,
+      so the raw subject mean is returned with its unpooled SE.
+
+    Never selects a best attempt: the input is every usable attempt.
+    """
+    cleaned: list[tuple[object, list[float]]] = []
+    for subject, values in groups:
+        vals = [float(x) for x in values
+                if x is not None and not (isinstance(x, float) and math.isnan(x))]
+        if vals:
+            cleaned.append((subject, vals))
+    if not cleaned:
+        return {"mu": float("nan"), "sigma2": float("nan"),
+                "tau2": float("nan"), "n_subjects": 0, "n_obs": 0,
+                "pooled": False, "reason": "no observations", "records": []}
+
+    k = len(cleaned)
+    N = sum(len(v) for _, v in cleaned)
+    grand = sum(sum(v) for _, v in cleaned) / N
+    means = [(_mean(v), len(v)) for _, v in cleaned]
+    ssb = sum(n * (m - grand) ** 2 for m, n in means)
+    ssw = sum(sum((x - _mean(v)) ** 2 for x in v) for _, v in cleaned)
+    dfb, dfw = k - 1, N - k
+
+    sigma2 = (ssw / dfw) if dfw >= 1 else float("nan")
+    if dfw < 1:
+        reason = ("within-subject variance not estimable: no subject has two "
+                  "usable attempts")
+        rows = []
+        for subject, vals in cleaned:
+            rows.append({"subject": subject, "n": len(vals), "mean": _mean(vals),
+                         "raw_sd": (math.sqrt(_var(vals)) if len(vals) >= 2 else None),
+                         "posterior_mean": _mean(vals), "posterior_sd": None,
+                         "posterior_var": None, "shrinkage_weight": 0.0,
+                         "pooled": False})
+        return {"mu": grand, "sigma2": sigma2, "tau2": float("nan"),
+                "n_subjects": k, "n_obs": N, "df_between": dfb,
+                "df_within": dfw, "pooled": False, "reason": reason,
+                "records": rows}
+
+    if dfb >= 1:
+        msb = ssb / dfb
+        n0 = (N - sum(n * n for _, n in means) / N) / dfb
+        tau2 = max(0.0, (msb - sigma2) / n0) if n0 > 0 else 0.0
+    else:
+        tau2 = 0.0
+
+    pooled = tau2 > 0
+    rows = []
+    for subject, vals in cleaned:
+        n = len(vals)
+        m = _mean(vals)
+        v = sigma2 / n
+        if pooled:
+            w = v / (v + tau2)
+            post_mean = (1.0 - w) * m + w * grand
+            post_var = v * (1.0 - w)
+            post_sd = math.sqrt(max(post_var, 0.0))
+        else:
+            w = 0.0
+            post_mean = m
+            post_var = v
+            post_sd = math.sqrt(v) if v > 0 else None
+        rows.append({
+            "subject": subject, "n": n, "mean": m,
+            "raw_sd": (math.sqrt(_var(vals)) if n >= 2 else None),
+            "posterior_mean": post_mean, "posterior_sd": post_sd,
+            "posterior_var": post_var, "shrinkage_weight": w,
+            "pooled": pooled,
+        })
+    return {"mu": grand, "sigma2": sigma2, "tau2": tau2,
+            "n_subjects": k, "n_obs": N, "df_between": dfb, "df_within": dfw,
+            "pooled": pooled,
+            "reason": ("ok" if pooled else
+                       "tau2 <= 0: no between-subject variance to shrink toward"),
+            "records": rows}
+
+
 def describe(values: Sequence[float]) -> dict:
     v = [float(x) for x in values if x is not None and not math.isnan(float(x))]
     if not v:

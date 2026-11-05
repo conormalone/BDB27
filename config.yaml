@@ -22,6 +22,8 @@ bdb27:
     checkpoints: data/interim/checkpoints
     tmp: data/interim/tmp
     outputs: outputs
+    phase2: outputs/phase2
+    calibration: outputs/calibration.json
     figures: outputs/figures
     notes: notes
     fixtures: fixtures/synthetic
@@ -81,12 +83,16 @@ bdb27:
 
   # ---------------------------------------------------------------------------
   # Onset definition. TASK.md Phase 1(e)/Phase 2 require the SAME definition in
-  # the Combine and in-game. Design choice: speed threshold sustained over
-  # consecutive frames, measured relative to a pre-onset baseline.
-  # Provisional until notes/prereg.md freezes it.
+  # the Combine and in-game. Design choice: an ABSOLUTE speed threshold
+  # sustained over consecutive frames. (The pre-onset baseline is estimated and
+  # reported as context, but the threshold is not baseline-relative: Phase 1's
+  # reported ICCs depend on the absolute comparison, so changing it would
+  # silently change a frozen measurement.) Provisional until notes/prereg.md
+  # freezes it.
   # ---------------------------------------------------------------------------
   onset:
     hz: 10                     # verified: 100 ms frame spacing in BOTH settings
+    sampling_tolerance_s: 0.02 # DESIGN CHOICE: a rate gate, not an analysis threshold
     method: speed_threshold    # alternatives: displacement_threshold
     speed_yds: 1.0             # DESIGN CHOICE: stationary jitter is ~0.1-0.3 yd/s; 1.0 yd/s is clearly above it
     displacement_yds: 0.10     # DESIGN CHOICE: cross-check definition (0.10 yd ~ 1 frame at 1.0 yd/s)
@@ -105,12 +111,35 @@ bdb27:
   # only for the Combine cross-check.
   # ---------------------------------------------------------------------------
   physical:
-    distances_yd: [0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 20.0, 40.0]
+    # Distance grid, in yards from motion onset. Dense through the whole in-game
+    # depth range (the audit measured 0.0-2.3 yd), then sparse for the 40-yard
+    # cross-check. DESIGN CHOICE: a lookup grid, not a binning of results --
+    # Phase 3 interpolates the per-frame attempt curve at each rep's exact depth.
+    distances_yd: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0,
+                   4.0, 5.0, 10.0, 20.0, 40.0]
     min_frames_per_interval: 2   # DESIGN CHOICE: need both brackets to interpolate
     max_frames_lost_first_s: 0   # TASK.md: no interpolation inside the first second
+    first_second_s: 1.0          # TASK.md wording: "only outside the first second"
+    # DESIGN CHOICE: a 40-yard dash does not move half a yard backwards. More
+    # than this behind the onset point means the tracked segment contains a
+    # walk-back/repositioning, so "time from onset along the direction of
+    # travel" is not a sprint measurement. Flagged and excluded from pooling,
+    # never silently re-origined.
+    max_backward_excursion_yd: 0.5
     drill: FORTY_YARD_DASH       # verified as the only straight-line sprint from a stance
     min_attempts_for_shrinkage: 1
     shrinkage: hierarchical      # TASK.md Phase 2: pool attempts per player, never best attempt
+    # Parametric CROSS-CHECK only. TASK.md: "Use a parametric speed-time fit
+    # (v(t) = vmax(1 - exp(-t/tau))) only as a cross-check; it is poorly
+    # constrained in the first yard." It never enters the estimand.
+    crosscheck:
+      window_s: 2.0              # DESIGN CHOICE: fit the acceleration phase, not the plateau
+      vmax_range: [5.0, 13.0]    # yd/s; verified sprint speeds are 8.5-11.9
+      tau_range: [0.1, 3.0]      # s
+      grid_points: 17            # DESIGN CHOICE: coarse deterministic grid
+      refine_points: 9           # DESIGN CHOICE: local refinement grid
+      refine_rounds: 3           # DESIGN CHOICE
+      min_samples: 5             # DESIGN CHOICE: below this the fit is not reported
 
   # ---------------------------------------------------------------------------
   # Audit gate (Phase 1). Each is a DESIGN CHOICE recorded in decisions.md.
@@ -123,7 +152,11 @@ bdb27:
     min_players_for_variance: 30  # DESIGN CHOICE: between-player variance with <30 players is noise
     comb_dl_min_attempts: 1       # A single attempt is usable but cannot inform test-retest
     icc_testretest_min: 0.5       # DESIGN CHOICE for item (h)
-    smallest_effect_of_interest: 0.15  # DESIGN CHOICE: 15% of between-player variance in get-off
+    # Conor, 2026-11-05 (Q1): raised 0.15 -> 0.25. With 105 eligible players the
+    # realised sampling-error floor is ~0.27, so a 0.15 target could never be
+    # detected. The claim is "at least a quarter of between-player variance".
+    # The realised floor is recomputed and printed, never hardcoded.
+    smallest_effect_of_interest: 0.25  # share of between-player variance in get-off
 
   # ---------------------------------------------------------------------------
   # Game-snap construction (Phase 3)

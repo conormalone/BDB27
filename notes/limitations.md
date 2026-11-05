@@ -18,21 +18,27 @@ different effective start conditions, then "time to cover *d*" is not the same
 quantity in both, and the coefficient `b` on `phys_i` in the Phase 4 model will
 not be near 1 for physical reasons rather than football reasons.
 
-**Mitigation.** (a) One onset definition, applied identically (`src/physical.py`,
-`onset.*` in `config.yaml`), so the *definition* is shared even if the setting is
-not. (b) `TASK.md` Phase 2 requires **global (not per-player) calibration
-offsets** for stance and start type, estimated on full data and written to
-`outputs/calibration.json`, so the offset is explicit and inspectable rather than
-absorbed into the player effects. (c) `b` is reported *with an interval* and is
-itself the diagnostic: `b` far from 1 is a finding about setting differences, not
-a modelling failure.
+**Mitigation.** (a) One onset definition, applied identically
+(`src/physical.py`, `onset.*` in `config.yaml`), so the *definition* is shared
+even if the setting is not. Phase 2 uses the same `detect_onset` function.
+(b) `TASK.md` Phase 2 asks for **global (not per-player) calibration offsets**
+for stance and start type, written to `outputs/calibration.json`. That file is
+currently a **PLACEHOLDER with no estimates**: stance and start type are not
+labelled anywhere, and the Combine-to-game offset needs Phase 3 in-game times
+(blocker B8). `common.require_calibration_full` refuses the placeholder in a
+full run, so the offset cannot leak into a result as if it existed.
+(c) `b` is reported *with an interval* and is itself the diagnostic: `b` far from
+1 is a finding about setting differences, not a modelling failure.
 
 **Implemented in.** `src/physical.py` (shared onset), `config.yaml → onset`,
-Phase 2 (not yet implemented), Phase 4 model coefficient `b`.
+`src/02_combine_physical_time.py` (calibration record + estimator spec),
+`common.require_calibration_full`, Phase 4 model coefficient `b`.
 
-**Residual.** Stance is not labelled (`notes/schema.md` §8), so the offset cannot
-be stance-specific — only a single pooled offset. If stance varies systematically
-between the players who look good and bad, the offset will not remove it.
+**Residual.** Stance is not labelled (`notes/schema.md` §8), so no stance-specific
+offset exists — not even a single pooled one. If stance varies systematically
+between the players who look good and bad, the uncalibrated physical time will
+absorb it. The only anchor is the in-game onset-to-cross time (Phase 3), which
+has a different error structure.
 
 ## 2. Alignment effects
 
@@ -180,9 +186,12 @@ indistinguishable from a change in role or in opponent quality.
 
 53 players labelled `EDGE` in games attended the Combine as `DB`; 440 get-off reps
 sit on rows labelled `CB`/`SLOT_CB`. The edge/interior split is therefore
-**noisy at the player level**. Mitigation: report both the `lined_up_position`
-split and the excluded/conflicted counts; do not silently reassign. This is
-blocker B3 and needs a rule from Conor.
+**noisy at the player level**. **Resolved by rule (Q3, Conor 2026-11-05):**
+`player_play.lined_up_position` is the in-game authority; the vocabularies are
+not required to agree. CB/SLOT get-off reps are excluded from the primary set and
+listed in `outputs/phase2/position_conflicts.csv` with rep counts, so the
+exclusion is explicit and reversible for a sensitivity analysis. Residual: the
+labels themselves may still be wrong; the data cannot say.
 
 ### 10. `player_get_off` is capped at 2.0 s
 
@@ -200,14 +209,18 @@ tracked distance curve, measurement-error treatment in Phase 4, and a reported
 where the instrument is weakest — this is inherent to the question, not fixable
 by method.
 
-### 12. Only ~105 players clear the snap minimum
+### 12. The measured design is smaller than the label-file design
 
-Per-player mean reliability is high (0.98), but **between-player variance**
-precision is driven by the number of players: the smallest detectable variance
-share is ~0.27, not the 0.15 chosen as the smallest effect of interest. See open
-question Q1. Mitigation: report intervals, not point estimates, and interpret a
-small jump share as informative only if the interval excludes the smallest effect
-of interest.
+Per-player mean reliability is high, but **between-player variance** precision is
+driven by the number of players. Three computed counts matter (Phase 2 summary):
+105 players clear the 50-rep minimum on the unfiltered get-off count (floor
+0.271); 103 clear it under the Q3 primary-DL rule (floor 0.273); and only **80**
+of those have a Combine 40-yard attempt (floor **0.310**). The smallest effect of
+interest was raised to 0.25 by Conor (Q1), but 0.25 remains below the floor of
+the design that can actually be fitted. This is surfaced in `D96` as a number
+needing Conor's confirmation, not silently retuned. Mitigation: report intervals,
+not point estimates, and interpret a small jump share as informative only if the
+interval excludes the smallest effect of interest.
 
 ### 13. Development on a non-random sample
 
@@ -217,3 +230,21 @@ fixtures with planted effects. **No threshold, calibration or interpretation was
 set from the sample.** Mitigation: every sample artefact is stamped
 `UNVALIDATED SAMPLE OUTPUT`, and `src/common.py` refuses to let a sample run
 assert `FULL` provenance.
+
+### 14. No blocker control (Q4)
+
+**Threat.** There are no rusher–blocker assignments in the data. Opponent quality
+and double-teams are therefore uncontrolled: a player who draws the left tackle
+every week and a player who draws a rotating guard will have different get-off
+opportunities, and the residual "jump" can absorb that matchup difference.
+
+**Mitigation.** None in the data. Conor decided (Q4, D98) to drop the blocker term
+from every model and **not** to infer assignments from tracking geometry. The
+Phase 4 model contains team-game random effects but no blocker term. The writeup
+must state that the physical/jump split is *unadjusted for opponent quality*.
+
+**Implemented in.** `TASK.md` Phase 3/4 amendment; `notes/blockers.md` B2
+(resolved — not applicable); this entry.
+
+**Residual.** Total for opponent quality. This is a design limitation, not a
+missing-data problem that more tracking could fix without an assignment rule.

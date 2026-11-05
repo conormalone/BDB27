@@ -65,6 +65,8 @@ def cfg_for_fixture(cfg, fixture_dir):
     b["paths"]["checkpoints"] = str(fixture_dir / "interim" / "checkpoints")
     b["paths"]["tmp"] = str(fixture_dir / "interim" / "tmp")
     b["paths"]["outputs"] = str(fixture_dir / "outputs")
+    b["paths"]["phase2"] = str(fixture_dir / "outputs" / "phase2")
+    b["paths"]["calibration"] = str(fixture_dir / "outputs" / "calibration.json")
     b["paths"]["run_log"] = str(fixture_dir / "outputs" / "run_log.csv")
     b["files"]["game_tracking_sample"] = "game_tracking.csv"
     return c

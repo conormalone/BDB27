@@ -41,7 +41,15 @@ stubs), so nothing is currently wrong. The audit records the null counts and the
 
 ---
 
-## B2 — rusher–blocker assignments do not exist as data  · **OPEN**
+## B2 — rusher–blocker assignments do not exist as data  · **RESOLVED — NOT APPLICABLE (Q4, Conor 2026-11-05)**
+
+**Resolution.** Conor decided that the blocker term is dropped from every model,
+that assignments are **not** to be inferred from tracking geometry, and that the
+blocker / blocker-count fields are removed from the Phase 3 field list. The gap
+is no longer a question about a needed input: there is no blocker term to feed.
+`TASK.md` Phase 3/4 were amended (D98). The consequence — the physical/jump split
+is unadjusted for opponent quality — is recorded in `notes/limitations.md` §14.
+The historical evidence below is kept for provenance.
 
 **Blocks:** `TASK.md` Phase 3's per-snap fields "assigned blocker(s) and blocker
 count", and the `+ blocker` term in the Phase 4 model.
@@ -65,7 +73,17 @@ direction — approved by Conor and written into the prereg.
 
 ---
 
-## B3 — position vocabularies disagree, and one is noisy  · **OPEN**
+## B3 — position vocabularies disagree, and one is noisy  · **RESOLVED (Q3, Conor 2026-11-05)**
+
+**Resolution.** Trust `player_play.lined_up_position` as the in-game
+position/alignment authority; do **not** require `combine_position` to agree; do
+not add a second rule. Players whose only get-off reps are on `CB`/`SLOT_CB` rows
+are excluded from the primary set and listed in
+`outputs/phase2/position_conflicts.csv` with their rep counts, so the exclusion is
+documented rather than silent (D97). Recomputed counts match the evidence below:
+53 EDGE-attended-as-DB, 9 INTERIOR_LINE-attended-as-DB, 25 CB/SLOT-attended-as-DL,
+440 CB/SLOT get-off reps. The split remains *noisy* — that is a stated limitation,
+not an unresolved question.
 
 **Blocks:** the edge vs. interior split's *validity* (not its computability).
 
@@ -87,7 +105,13 @@ The audit reports the split using `lined_up_position` and states the conflict.
 
 ---
 
-## B4 — no official reproduction of `player_get_off`'s definition  · **OPEN**
+## B4 — no official reproduction of `player_get_off`'s definition  · **OPEN (accepted, wording fixed)**
+
+**Status update (2026-11-05).** No data dictionary has appeared. Phase 2 does not
+read `player_get_off`; it measures Combine kinematics from tracking only. The
+working definition remains "as defined in the competition data", and the writeup
+must not quote an official wording (see `notes/limitations.md`). This is a
+standing interpretive limit, not a computational blocker.
 
 **Blocks:** nothing computationally; it limits how strongly the label can be
 interpreted.
@@ -119,7 +143,14 @@ limitation.
 
 ---
 
-## B6 — prereg is not written  · **OPEN (blocks every full run)**
+## B6 — prereg is not written  · **OPEN (blocks every full run; Q5 pending)**
+
+**Status update (2026-11-05).** Q1 (smallest effect of interest) is now answered
+and in `config.yaml` (D96), so one prerequisite is done. Q5 (prereg timing) is
+still Conor's to decide and `notes/prereg.md` still does not exist. Phase 2 is
+therefore implemented and unit-tested but driven only in `--mode sample` plus
+synthetic data. The full-mode gate was not weakened: `python src/run.py
+02_combine_physical_time --mode full` exits 4 with the prereg refusal.
 
 **Blocks:** `--mode full`. The gate in `src/common.py` refuses to run in full mode
 unless `notes/prereg.md` exists and declares `**Status: FROZEN.**`.
@@ -151,3 +182,32 @@ run if they are missing.
 
 **Not a blocker for this run:** Phase 1 is answerable because the Combine data and
 the label file are complete; only tracking-derived checks are limited.
+
+---
+
+## B8 — Phase 2 calibration offsets are not estimable from the released files  · **OPEN (blocks a calibrated full run)**
+
+**Blocks:** `TASK.md` Phase 2's "global (not per-player) calibration offsets for
+stance and start type", and therefore any Phase 4 model that is supposed to use
+calibrated physical times.
+
+**Evidence.**
+
+* No column in any provided file labels stance (three-point vs stand-up). Phase 1
+  §c recorded this and did not test inferability.
+* No column labels the Combine start type.
+* The global Combine-to-game offset needs in-game onset-to-cross times, which are
+  produced by Phase 3 — a stage that does not exist yet.
+* `TASK.md` forbids calibrating from the sample, so nothing can be estimated in
+  this run.
+
+**What the code does.** Phase 2 writes `outputs/calibration.json` with
+`status = "PLACEHOLDER"` (sample) and `estimates = null`, plus the exact
+estimator specification. `common.require_calibration_full` refuses a placeholder
+or non-estimable record in full mode. Phase 2 itself refuses to complete a full
+run when calibration is not `ESTIMATED` (TASK.md stop condition).
+
+**What would clear it.** A stance label (or a Conor-approved inference rule), a
+recorded start type, and Phase 3's in-game times; then estimate the global
+offsets on full data and re-run Phase 2 to write `status = "ESTIMATED"` with
+`FULL` provenance.

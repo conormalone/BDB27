@@ -59,6 +59,6 @@
     "min_players_for_variance": 30,
     "comb_dl_min_attempts": 1,
     "icc_testretest_min": 0.5,
-    "smallest_effect_of_interest": 0.15
+    "smallest_effect_of_interest": 0.25
   }
 }

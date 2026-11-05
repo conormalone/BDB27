@@ -3811,3 +3811,216 @@ regenerable and is excluded.
 
 **Evidence.** `.gitignore` lines 47–50; `git check-ignore -v outputs/audit/gate.json`
 matches the negation.
+
+## D96 — Q1: smallest effect of interest raised to 0.25 · 2026-11-05
+
+**Decision (Conor, 2026-11-05, Q1).** `bdb27.audit.smallest_effect_of_interest`
+goes **0.15 -> 0.25**. The rationale recorded with the decision is: with 105
+eligible players the sampling-error floor is ~0.271, so a 0.15 target could never
+be detected; the paper therefore claims "**at least a quarter** of between-player
+variance", not a target the design cannot resolve.
+
+**Implementation.**
+- `config.yaml` is the only place the value lives; no code constant.
+- The realised floor is recomputed and printed, never hardcoded:
+  `stats.min_detectable_share(P)` remains the single formula
+  (`z*sqrt(2/P)`), and Phase 1 item (i) already reports it.
+- Phase 2 reports **three** computed counts/floors because they answer different
+  questions: all get-off reps (105, floor 0.271 — reproduces the audit and Q1),
+  primary-DL reps (103, floor 0.273), and primary-DL **with a Combine 40-yard
+  attempt** (80, floor **0.310**).
+
+**New computed number, needs Conor's confirmation — not a decision of mine.**
+The 80-player / 0.310 floor is the design that Phase 4 can actually fit: 23 of
+the 103 DL players with >=50 reps have no 40-yard attempt, and Q3 removes the
+CB/SLOT rows. At that count a 0.25 share is *below* the detectable floor, so the
+"at least a quarter" claim is not yet supportable by the measured design. This is
+reported in `outputs/phase2/phase2_summary.json` (`design`) and surfaced to
+Conor; I have **not** changed the 0.25 target.
+
+---
+
+## D97 — Q3: `lined_up_position` is the position authority · 2026-11-05
+
+**Decision (Conor, 2026-11-05, Q3).** Trust `player_play.lined_up_position` as
+the position/alignment authority. Do **not** require the `combine_position`
+vocabulary to agree, and do not invent a second reconciliation rule.
+
+**Implementation.**
+- `primary_analysis_set` is defined as: the player has at least one
+  `player_get_off` row whose `lined_up_position` is `EDGE` or `INTERIOR_LINE`.
+- Players whose only get-off reps are on `CB`/`SLOT_CB` rows are **excluded**
+  from the primary set, not silently included. They still get a Combine physical
+  time in the per-player table (`pooling_group = "other"`) so a sensitivity
+  analysis can add them back explicitly.
+- `outputs/phase2/position_conflicts.csv` lists every player whose two labels
+  disagree, with rep counts split by `REPS_EDGE` / `REPS_INTERIOR_LINE` /
+  `CB`+`SLOT_CB`, plus a `has_forty_attempt` flag.
+- The reported counts are computed from the complete label file, not hardcoded:
+  **53** players with EDGE reps who attended the Combine as `DB`; **9** with
+  INTERIOR_LINE reps as `DB`; **25** players with CB/SLOT_CB get-off reps who
+  attended as `DL`; **440** get-off reps on CB/SLOT_CB rows. All four match
+  `notes/schema.md` §5a.
+
+**Consequence for the player universe.** The audit's 196 "DL rushers with >=1
+get-off" used the Combine position vocabulary. Under the Q3 rule the primary set
+is 169 players (>=1 rep at EDGE/INTERIOR_LINE); the difference is the CB/SLOT
+reps group plus players with no DL-labelled rep.
+
+---
+
+## D98 — Q4: drop the blocker term; spec amendment · 2026-11-05
+
+**Decision (Conor, 2026-11-05, Q4).** There are no rusher-blocker assignments in
+the data. Drop the blocker term from **every** model, do **not** infer
+assignments from tracking geometry, and remove the blocker / blocker-count
+fields from the Phase 3 field list.
+
+**Implementation.**
+- `TASK.md` Phase 3 bullet no longer asks for "assigned blocker(s) and blocker
+  count"; an amendment note cites this decision.
+- The Phase 4 variance-decomposition formula and the outcome model no longer
+  contain `+ blocker`.
+- `notes/blockers.md` B2 is **RESOLVED — NOT APPLICABLE** (it was a question
+  about a field that is no longer in the design, not a missing input).
+- `notes/limitations.md` records the consequence: the physical/jump split is
+  **unadjusted for opponent quality**, and the design cannot distinguish a
+  player effect from a matchup effect. That is a stated limitation, not a
+  quantity to be estimated from geometry.
+- No stage reads `pass_rushers_encountered` or `unblocked_pressure` as a blocker
+  assignment.
+
+---
+
+## D99 — Phase 2 engineering choices (Combine physical time) · 2026-11-05
+
+**Scope.** `src/02_combine_physical_time.py` implements `TASK.md` Phase 2 only,
+one code path for `--mode sample|full`, config-driven, checkpointed, with
+`--force`. The Combine tracking file is complete (463,189 rows / 84 MB) and fits
+in RAM, so the 40-yard measurements are real; the *mode* still controls
+provenance because the in-game side of calibration is sample-only.
+
+**Onset.**
+- Primary definition: provided `s` crosses `onset.speed_yds = 1.0` yd/s for
+  `sustained_frames = 2`; the **same function** (`physical.detect_onset`) is used
+  by Phase 1's in-game check, so the definition is literally shared.
+- The threshold is **absolute**, not baseline-relative. The config comment said
+  "relative to a pre-onset baseline"; the code has always compared the absolute
+  speed, and Phase 1's published ICCs depend on that behaviour. I kept the
+  behaviour and corrected the comment rather than silently changing a frozen
+  measurement. The baseline is still reported per attempt as context.
+- Sensitivity, not a second rule: onset from speed recomputed from `x,y`
+  (central differences) and onset from cumulative displacement
+  (`onset.displacement_yds = 0.10`). Median absolute difference from the primary
+  onset: **0.000 s** for both; no attempt differs.
+- 793/793 attempts have a detectable onset.
+- The 10 Hz assumption is asserted at runtime (`assert_sampling_rate`):
+  per-attempt median frame spacing must be within
+  `onset.sampling_tolerance_s = 0.02` of 1/`onset.hz`; measured 0.100 s, with
+  100% of 40,707 gaps inside the tolerance.
+
+**Direction and model-free time.**
+- Direction of travel is the principal axis of the post-onset coordinate path
+  (`physical.travel_direction`); `dir` is never used (it wraps).
+- Distance along that axis is projected from the onset frame; the crossing time
+  at each `d` is linearly interpolated between the bracketing frames
+  (`physical.time_at_distance_qc`). This is the estimand.
+- The parametric fit `v(t) = vmax(1-exp(-t/tau))` is fitted on the first 2 s
+  post-onset by a deterministic grid plus local refinement, and is used **only**
+  as a cross-check. It never enters a per-player value. Median disagreement
+  (parametric minus model-free) falls from **+0.077 s at 0.25 yd** to **+0.020 s
+  at 10 yd**, and its p95 absolute disagreement at 40 yd is 0.29 s — i.e. the
+  fit is worst exactly where the estimand lives, as `TASK.md` warned.
+
+**Gap policy.** The "first second" clock is **motion onset** in the Combine (the
+in-game counterpart will be the snap). A crossing inside a frame gap in that
+first second is reported `crossed=true, ok=false` and never filled. A gap below
+`onset.interpolate_max_gap_s = 0.5 s` is bridged **only** outside the first
+second; a gap at or above 0.5 s is never bridged. The whole real Combine file has
+zero gaps larger than 0.1 s, so the policy fires only in tests/synthetic data.
+
+**Backward-start QC (an engineering addition, logged as such).** One tracked
+segment (55999 attempt 4) moves 1.8 yd **backwards** for ~1.5 s before starting
+forward; two segments exceed 0.5 yd of backward excursion. "Time from onset to
+*d*" is then measuring a walk-back, not a sprint. I added
+`physical.max_backward_excursion_yd = 0.5` (design choice: tracking noise is
+~0.03 yd; half a yard is real motion) and flag those attempts
+(`qc_exclude`, reason `backward_start`). They are **excluded from pooling, not
+re-origined** at the turnaround, because re-origining would be a new onset rule
+that `TASK.md` does not authorise. Two attempts are excluded; both are
+non-primary. Attempt numbers and the original clock times remain in
+`combine_attempts.csv`.
+
+**Pooling.** Per distance, per pooling group (`primary_dl`, `other`):
+`y_ai = theta_i + e_ai`, `theta_i ~ N(mu, tau2)`. `sigma2` is the pooled
+within-player variance; `tau2` is the one-way random-effects moment estimator
+(the same moment as `icc_oneway`). Posterior mean and SE are the precision-
+weighted combination; **every usable attempt contributes**, there is no
+"best attempt" path. Degenerate cases are reported, not floored: no repeated
+attempts -> no pooling and `posterior_sd = null`; `tau2 <= 0` -> raw mean with
+its unpooled SE.
+
+**Distances.** The config grid is dense from 0.25 to 5 yd (whole in-game range)
+and sparse to 40 yd for the cross-check. Per-frame curves are also written, so
+Phase 3 can interpolate at each rep's exact depth rather than snapping to the
+grid.
+
+**Player universe.** All 418 Combine players with a 40-yard attempt are measured
+(the kinematics do not need a position label). `primary_analysis_set` and the
+pooling group come from the Q3 rule. Measuring everyone avoids a position filter
+silently deleting a player before he can be reported.
+
+**Calibration.** `outputs/calibration.json` is written with
+`status = "PLACEHOLDER"` and `estimates = null` in sample mode. It cannot be
+estimated from the sample (`TASK.md` forbids it), and it cannot be estimated at
+full scale either with these files: no column labels stance or Combine start
+type, and the global Combine-to-game offset needs Phase 3 in-game times. The
+estimator is specified in the file rather than replaced by a guessed number.
+`common.require_calibration_full` refuses any placeholder/non-estimable record
+in full mode; there is no override.
+
+**Fixture.** `src/synthetic.py` now writes `players.csv` and
+`combine_results.csv`, uses matching Combine/game ids, and plants the Q3 label
+conflict for every seventh player. `fixtures/synthetic/demo` was regenerated with
+the same parameters. The existing four fixture files are byte-identical (ids have
+the same width), so no other test's expectations moved.
+
+---
+
+## D100 — Phase 2 outputs, tests and the realised design floor · 2026-11-05
+
+**Artefacts** (all stamped `UNVALIDATED SAMPLE OUTPUT` in sample mode):
+`outputs/phase2/combine_attempts.csv` (one row per attempt: onset, flags, fit),
+`combine_attempt_times.csv` (attempt x distance, model-free + parametric),
+`combine_attempt_curves.csv` (per-frame elapsed/along curve for exact-depth use),
+`physical_time_by_player.csv` (**deliverable**), `hierarchical_fit.csv`
+(variance components per distance/group), `position_conflicts.csv` (Q3),
+`phase2_summary.json`, and `outputs/calibration.json`.
+
+**Per-player table schema.** `nfl_id, pooling_group, display_name, draft_year,
+combine_position, linedup_positions, reps_dl, reps_cb_slot,
+primary_analysis_set, conflict_class, distance_yd, in_game_depth_range,
+n_attempts_used, posterior_mean_s, posterior_sd_s, posterior_var_s2, raw_mean_s,
+raw_sd_s, shrinkage_weight, pooled, pooling_note, attempt_numbers`. One row per
+player x distance; `attempt_numbers` keeps the original numbers.
+
+**Sanity-check counts on the real Combine file.** 793 attempts / 418 players;
+793 with a detectable onset; **0** speeds above 12 yd/s; **0** duplicate attempt
+keys; **0** duplicate frame rows; **0** attempts with a first-second gap; maximum
+frame gap 0.1 s; **2** backward-start attempts excluded from pooling. The checks
+are exercised with planted failures in `tests/test_phase2.py`, so "0" here means
+the file is clean, not that the check is inert.
+
+**Tests.** 26 Phase-2 tests added: schema/dtype/unit and sampling-rate failures that must raise,
+known-answer interpolation, the full gap policy (inside/outside the first second,
+under/over the cap), onset determinism, backward-start detection, duplicate
+detection, speed-cap flags, hierarchical shrinkage, one-attempt players, the
+no-repeat-attempt fallback, the calibration full-mode gates, and a byte-identical
+re-run of the stage on the fixture. Full suite: **142 passed**.
+
+**Realised design floor.** Computed, printed, not hardcoded: 105 players ->
+0.2705; 103 primary-DL -> 0.2731; 80 primary-DL with a 40-yard attempt ->
+**0.3099**. The last is the number Phase 4 can actually use; it is flagged for
+Conor (D96) rather than adjusted here.
+
+**Runtime.** 9.6-10.1 s, peak RSS 273-303 MB on the Pi for the full Combine file.

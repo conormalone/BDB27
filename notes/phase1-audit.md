@@ -282,6 +282,12 @@ the **number of players**, not the number of reps. More snaps do not help.
 **Decision: CONDITIONAL GO** — no kill condition triggered; two conditions await
 full data.
 
+> **Update 2026-11-05 (Phase 2 run).** Phase 2 is now implemented and produces
+> per-player physical time at 0.25–40 yd (`outputs/phase2/`). The
+> `combine_vs_get_off` condition nevertheless stays **PENDING**: relating
+> physical time to mean get-off needs the Phase 3 snap table and a full run, not
+> Phase 2 alone. The audit's gate artefact is historical and was not rewritten.
+
 No `FAIL` is blocking, but three rows elsewhere carry `FAIL` and must be read as
 constraints, not as go/no-go:
 

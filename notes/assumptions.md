@@ -43,6 +43,12 @@ editions before.
 (game, play, player) and fails if the median is more than 20 ms from 1/`onset.hz`.
 Measured on the sample: median **0.100 s**, p99 **0.100 s**.
 
+**Combine side (LIVE, Phase 2).**
+`02_combine_physical_time.assert_sampling_rate` computes the per-attempt median
+frame spacing over the 40-yard dash and raises `SchemaError` if it is more than
+20 ms from 1/`onset.hz`. Measured on the complete Combine file: median
+**0.100 s**, 100% of gaps within 20 ms.
+
 **Why it matters.** Every onset threshold is expressed in frames. A 30 Hz file
 would make `sustained_frames = 2` mean 0.067 s instead of 0.2 s.
 
@@ -134,14 +140,18 @@ sample would not preserve attempt counts like that.
 11.85 yd/s, `dis` ≤ 1.44 yd — consistent with a 40-yard dash at 10 Hz, i.e. the
 units are right.
 
-## A13 — Calibration offsets can be estimated globally  · PLANNED
+## A13 — Calibration offsets can be estimated globally  · LIVE (asserts *not* estimable today)
 
 **Assumption.** There are enough DL attempts, across enough stance/start types, to
 estimate a global stance offset.
 
-**Assertion (to add in 02).** Refuse to write `outputs/calibration.json` with
-provenance `FULL` unless each calibration cell has ≥ 30 attempts; otherwise write
-the cell as `null` with a reason. Never fall back to a per-player offset.
+**Assertion (implemented in 02).** `outputs/calibration.json` is written with
+`status = "PLACEHOLDER"` and `estimates = null` in sample mode;
+`common.require_calibration_full` refuses any `status != "ESTIMATED"` or
+provenance that is not `FULL`. Phase 2 itself refuses to complete a full run on a
+non-estimable calibration. This assumption is currently **false** — no stance or
+start-type label exists — and the code says so instead of inventing an offset
+(blocker B8).
 
 ---
 
@@ -151,7 +161,8 @@ the cell as `null` with a reason. Never fall back to a per-player offset.
   subset exists to test against.
 * That `quick_pressure` null means "no pressure" — explicitly **not** assumed
   (`notes/blockers.md` B1).
-* That `lined_up_position` is correct where it conflicts with `combine_position` —
-  explicitly **not** resolved (`notes/blockers.md` B3).
+* That `combine_position` is correct where it conflicts with
+  `lined_up_position` — **not** assumed; by Q3 the in-game label is the authority
+  and the conflict is reported, not reconciled (`notes/blockers.md` B3, D97).
 * That the sample is representative of the season — it is a 1–4 player-per-play
   draw, and nothing is tuned on it.

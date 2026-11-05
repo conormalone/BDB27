@@ -10,6 +10,9 @@ data/*
 outputs/*
 !outputs/.gitkeep
 
+# --- Phase 2 calibration contract (small, placeholder in sample mode) ---
+!outputs/calibration.json
+
 # --- Writeup figures: the ≤5 deliverable figures are committed (small, deterministic PNGs; no data) ---
 !outputs/figures/
 !outputs/figures/*.png

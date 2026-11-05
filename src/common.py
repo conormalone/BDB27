@@ -265,6 +265,53 @@ def require_prereg(cfg: Mapping, mode: str, stage: str) -> Path:
 
 
 # --------------------------------------------------------------------------- #
+# Phase 2 calibration contract
+# --------------------------------------------------------------------------- #
+def calibration_path(cfg: Mapping) -> Path:
+    return abs_path(block(cfg)["paths"]["calibration"])
+
+
+def read_calibration(cfg: Mapping) -> dict:
+    path = calibration_path(cfg)
+    if not path.exists():
+        return {"status": "MISSING", "provenance": None,
+                "path": str(path)}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.setdefault("path", str(path))
+    return payload
+
+
+def require_calibration_full(cfg: Mapping, mode: str, stage: str) -> dict:
+    """Refuse a full-mode consumer unless calibration was estimated on full data.
+
+    ``TASK.md`` Phase 2: calibration provenance is ``PLACEHOLDER_SAMPLE`` in
+    sample mode and ``FULL`` in full mode; "later scripts assert FULL in full
+    mode". There is no override flag, for the same reason there is none on the
+    prereg gate: a placeholder offset silently added to every physical time is
+    exactly the failure this check exists to prevent.
+    """
+    cal = read_calibration(cfg)
+    if mode == "full":
+        if cal.get("status") == "MISSING":
+            raise GateRefused(
+                f"STAGE {stage}: refusing to run — {cal['path']} does not exist. "
+                f"Phase 2 must run on full data first.")
+        prov = str(cal.get("provenance") or "")
+        if not prov.startswith("FULL"):
+            raise GateRefused(
+                f"STAGE {stage}: refusing to run — calibration provenance is "
+                f"{prov!r}, not FULL ({cal['path']}).")
+        if cal.get("status") != "ESTIMATED":
+            raise GateRefused(
+                f"STAGE {stage}: refusing to run — calibration status is "
+                f"{cal.get('status')!r}, not ESTIMATED. A placeholder or "
+                f"non-estimable calibration cannot be used in a full run.")
+        return cal
+    cal["placeholder"] = SAMPLE_STAMP in str(cal.get("provenance") or "")
+    return cal
+
+
+# --------------------------------------------------------------------------- #
 # Writers (provenance is mandatory)
 # --------------------------------------------------------------------------- #
 def _ensure_parent(path: Path) -> None:

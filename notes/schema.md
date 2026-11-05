@@ -300,11 +300,14 @@ not agree**, and the disagreement is not merely nominal:
 | `SLOT_CB` | **`DL`** | **25** |
 
 Also, 440 `player_get_off` reps sit on rows labelled `CB` or `SLOT_CB`. Either
-`lined_up_position` is noisy, or `combine_position` is being used loosely. **No
-rule for resolving this conflict is specified in `TASK.md`, and none has been
-invented.** It is logged as an open question in `notes/blockers.md` (B3). The
-audit's edge/interior split uses `lined_up_position` because it is the only
-in-game alignment label, and says so.
+`lined_up_position` is noisy, or `combine_position` is being used loosely.
+**Resolved by rule (Q3, Conor 2026-11-05, D97):** `lined_up_position` is the
+in-game position/alignment authority and the two vocabularies are **not**
+required to agree. The `CB`/`SLOT_CB` reps are **excluded** from the primary DL
+set and reported per player in `outputs/phase2/position_conflicts.csv` (53
+EDGE-attended-as-DB, 9 INTERIOR_LINE-attended-as-DB, 25 CB/SLOT-attended-as-DL,
+440 excluded reps) so a sensitivity analysis can add them back explicitly.
+`notes/blockers.md` B3 is resolved. The label noise itself remains a limitation.
 
 ## 6. Deriving the line of scrimmage (validated)
 

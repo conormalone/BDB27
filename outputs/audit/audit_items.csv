@@ -48,9 +48,9 @@ PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,h,"test-retest ICC, onset->2 yd",P
 PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,h,"test-retest ICC, onset->5 yd",PASS,0.624667,ICC_1_1,FULL_RAW,"84 players, 2.00 attempts each",min 0.5
 PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,players meeting the snap minimum,INFO,105,players,FULL_RAW,reps >= 50,
 PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,median reps per eligible player,INFO,261.0,reps,FULL_RAW,player_get_off non-null,
-PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,smallest detectable between-player variance share,PASS,0.270506,share,DESIGN,"z*sqrt(2/P), normal approximation to variance sampling SD",smallest effect of interest = 0.15
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,smallest detectable between-player variance share,PASS,0.270506,share,DESIGN,"z*sqrt(2/P), normal approximation to variance sampling SD",smallest effect of interest = 0.25
 PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,design resolves the smallest effect of interest,FAIL,no,,DESIGN,compare the two rows above,
-PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,model-based reliability at the smallest effect of interest,INFO,0.97875,reliability,DESIGN,sigma_u^2/(sigma_u^2+sigma_e^2/n),
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,model-based reliability at the smallest effect of interest,INFO,0.988636,reliability,DESIGN,sigma_u^2/(sigma_u^2+sigma_e^2/n),
 PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,d,median |along-travel crossing - player_get_off|,INFO,0.679281,s,SAMPLE_TRACKING,n=1912 DL snaps with a detectable onset,"UNVALIDATED SAMPLE OUTPUT: a definition check, not a finding"
 PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,d,median signed difference (along-travel),INFO,0.283299,s,SAMPLE_TRACKING,n=1912,UNVALIDATED SAMPLE OUTPUT
 PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,d,median |x-axis crossing - player_get_off|,INFO,0.383308,s,SAMPLE_TRACKING,n=1889,UNVALIDATED SAMPLE OUTPUT; compare with the along-travel row

@@ -57,6 +57,39 @@ def relative_seconds(values) -> list[float]:
     return [(x - ts[0]).total_seconds() for x in ts]
 
 
+def player_directory(truth: dict, *, draft_year: int = 2024) -> tuple[list[dict], list[dict]]:
+    """Schema-compliant ``players.csv`` and ``combine_results.csv`` rows.
+
+    The Combine ids deliberately equal the game ids in the fixture, so a stage
+    that joins the two can be exercised. Every seventh player is given a
+    ``DB`` Combine label while lining up on the DL in games: that is the Q3
+    vocabulary conflict, planted so the reporter has something to report.
+    """
+    players, results = [], []
+    for i, (nfl_id, rec) in enumerate(sorted(truth["players"].items(),
+                                             key=lambda kv: int(kv[0]))):
+        pid = int(nfl_id)
+        is_db = (i % 7 == 0)
+        players.append({
+            "nfl_id": pid, "display_name": f"Fixture {i}",
+            "draft_year": draft_year,
+            "nfl_position": "DB" if is_db else "DL",
+        })
+        results.append({
+            "draft_year": draft_year, "nfl_id": pid,
+            "combine_position": "DB" if is_db else "DL",
+            "combine_height": 74.0, "combine_weight": 300,
+            "ten_yd_split": round(physical_time(rec["vmax"], rec["tau"], 10.0), 3),
+            "forty": round(physical_time(rec["vmax"], rec["tau"], 40.0), 3),
+            # Numeric placeholders, not NA: an all-NA column is inferred as
+            # VARCHAR by DuckDB and would trip the schema gate on a *fixture*
+            # artefact rather than on a real unit problem.
+            "vertical": 30.0, "broad_jump": 110, "three_cone": 7.2,
+            "short_shuttle": 4.4, "bench_reps": 20,
+        })
+    return players, results
+
+
 def _speed(vmax: float, tau: float, t: float) -> float:
     """Exponential approach to top speed (the Phase 2 cross-check form)."""
     if t <= 0:
@@ -96,7 +129,8 @@ def make_combine_frames(seed: int = 7, n_players: int = 24,
     rng = random.Random(seed)
     rows, truth = [], {"players": {}}
     for i in range(n_players):
-        nfl_id = 900000 + i
+        # Same ids as make_game_frames: the fixture must exercise the join.
+        nfl_id = 800000 + i
         vmax = rng.uniform(8.5, 11.0)
         tau = rng.uniform(0.6, 1.4)
         truth["players"][str(nfl_id)] = {"vmax": vmax, "tau": tau,
@@ -243,6 +277,11 @@ GAMES_COLS = ["game_id", "game_key", "season", "season_type", "week",
 COMBINE_COLS = ["draft_year", "event_id", "nfl_id", "entity_type", "time",
                 "drill_type", "drill_name", "attempt", "x", "y", "s", "a",
                 "dis", "dir"]
+PLAYERS_COLS = ["nfl_id", "display_name", "draft_year", "nfl_position"]
+COMBINE_RESULTS_COLS = ["draft_year", "nfl_id", "combine_position",
+                        "combine_height", "combine_weight", "ten_yd_split",
+                        "forty", "vertical", "broad_jump", "three_cone",
+                        "short_shuttle", "bench_reps"]
 
 
 def build_fixture(outdir: str | Path, *, seed: int = 11, n_players: int = 12,
@@ -254,10 +293,14 @@ def build_fixture(outdir: str | Path, *, seed: int = 11, n_players: int = 12,
         seed=seed, n_players=n_players, snaps_per=snaps_per, jump_sd=jump_sd,
         burst_sd=burst_sd)
     comb, comb_truth = make_combine_frames(seed=seed + 1, n_players=n_players)
+    players, combine_results = player_directory(comb_truth)
     _write_csv(out / "game_tracking.csv", tracking, GAME_TRACKING_COLS)
     _write_csv(out / "player_play.csv", player_play, PLAYER_PLAY_COLS)
     _write_csv(out / "games.csv", games, GAMES_COLS)
     _write_csv(out / "combine_tracking.csv", comb, COMBINE_COLS)
+    _write_csv(out / "players.csv", players, PLAYERS_COLS)
+    _write_csv(out / "combine_results.csv", combine_results,
+               COMBINE_RESULTS_COLS)
     truth["combine"] = comb_truth
     truth["params"] = {"seed": seed, "n_players": n_players,
                        "snaps_per": snaps_per, "jump_sd": jump_sd,
