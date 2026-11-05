@@ -1,0 +1,65 @@
+provenance,item,name,status,value,unit,scope,evidence,note
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,a,combine DL players,INFO,118,players,FULL_RAW,player_play cross-check below,combine_position='DL' in combine_results.csv
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,a,DL class years covered,INFO,2023-2025,years,FULL_RAW,combine_results.draft_year,3 distinct draft years
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,a,distinct drills containing DL players,INFO,20,drills,FULL_RAW,combine_tracking x combine_results,see combine_drill_inventory.csv
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,a,straight-line sprint from a stance present,PASS,PASS,,FULL_RAW,FORTY_YARD_DASH rows for combine DL players,177 attempts by 93 DL
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,a,40yd attempts per DL player,INFO,1.9,attempts/player,FULL_RAW,"count(DISTINCT (nfl_id, attempt))",
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,a,DL players with >=2 40yd attempts,INFO,84,players,FULL_RAW,needed for test-retest (item h),
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,b,players in player_play,INFO,497,players,FULL_RAW,count(DISTINCT nfl_id) player_play.csv,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,b,matched to a Combine row,INFO,497,players,FULL_RAW,inner join on nfl_id,"the provided dataset is pre-filtered to Combine attendees, so matching is 100% by construction — there is no unmatched group to audit"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,b,DL rushers with >=1 player_get_off,INFO,196,players,FULL_RAW,player_get_off non-null,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,b,median pass-rush reps per rusher,INFO,67.0,reps,FULL_RAW,player_get_off non-null,"min 1, max 1833"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,b,rushers with >= min_pass_rush_snaps_per_rusher,INFO,105,players,FULL_RAW,threshold 50 from config,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,b,median games per rusher,INFO,9.5,games,FULL_RAW,distinct game_id per nfl_id,"min 1, max 62"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,b,get-off reps at EDGE,INFO,26232,reps,FULL_RAW,lined_up_position,153 players
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,b,get-off reps at INTERIOR_LINE,INFO,17330,reps,FULL_RAW,lined_up_position,114 players
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,b,get-off reps at SLOT_CB,INFO,281,reps,FULL_RAW,lined_up_position,69 players
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,b,get-off reps at CB,INFO,159,reps,FULL_RAW,lined_up_position,55 players
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,c,stance column present,INFO,no,,FULL_RAW,DESCRIBE player_play,columns matching /stance/: none
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,c,plays in tracking sample,INFO,12638,plays,SAMPLE_TRACKING,game_tracking sample,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,c,plays with a ball_snap event,INFO,12606,plays,SAMPLE_TRACKING,event='ball_snap',"snap time is an explicit event, not inferred"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,c,snap-time derivation,PASS,event='ball_snap',,FULL_RAW,tracking event column,explicit; no inference needed
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,c,pre-snap depth derivable,PASS,yes,,VALIDATION,|x_at_snap - LOS| where LOS is derived from yardline_side/yardline_number/play_direction,"LOS is metadata-derived, so this does not depend on the tracking sample at all"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,c,median pre-snap depth,INFO,0.63,yd,SAMPLE_TRACKING,n=2915,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,c,p95 pre-snap depth,INFO,1.24,yd,SAMPLE_TRACKING,n=2915,depth is the distance to cover to cross the line; a small value means the first yard dominates
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,c,"share of depths in [0,5] yd",PASS,1.0,share,VALIDATION,n=2915,a low share would mean the LOS formula is wrong
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,d,definition in official documentation,PENDING_FULL_RUN,NOT AVAILABLE,,FULL_RAW,no data dictionary ships with the provided files; the Kaggle competition pages are client-rendered (notes/rules.md §1),TASK.md states 'seconds from snap until the rusher crosses the line of scrimmage'. That is the working definition; it is not confirmed against an official dictionary.
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,d,max observed player_get_off,INFO,2.0,s,FULL_RAW,player_play.csv,capped at 2.0 s
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,d,reps at the 2.0 s cap,INFO,2,reps,FULL_RAW,player_get_off >= 1.999,"a hard cap; treat as censored, not as a true value"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,f,quick_pressure: null / non-null on DL rows,INFO,40184/3378,rows,FULL_RAW,DL rows = 43562,92.2% null
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,f,unblocked_pressure: null / non-null on DL rows,INFO,10585/32977,rows,FULL_RAW,DL rows = 43562,24.3% null
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,f,time_to_pressure: null / non-null on DL rows,INFO,40144/3418,rows,FULL_RAW,DL rows = 43562,92.2% null
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,f,time_to_qb_hurry: null / non-null on DL rows,INFO,40074/3488,rows,FULL_RAW,DL rows = 43562,92.0% null
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,f,quick_pressure=False & time_to_pressure_null=False,INFO,2334,rows,FULL_RAW,cross-tab on DL rows,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,f,quick_pressure=True & time_to_pressure_null=False,INFO,1044,rows,FULL_RAW,cross-tab on DL rows,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,f,quick_pressure=None & time_to_pressure_null=False,INFO,40,rows,FULL_RAW,cross-tab on DL rows,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,f,quick_pressure usable as a complete binary outcome,FAIL,NO,,FULL_RAW,9224.6% of DL get-off rows are null; null is not 'no pressure',BLOCKER: the secondary outcome cannot be modelled as a binary target without a documented null policy. Logged in blockers.md.
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,f,pressure label provenance,INFO,model-derived,,FULL_RAW,"player_play carries peak_pressure_probability_allowed, pressure_allowed, time_to_pressure_allowed, quick_pressure",a pressure-probability model produces these; they are not a naive function of the rusher's own tracking. No row-level provenance column exists to confirm this.
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,g,split-half ICC of player mean get-off,PENDING_FULL_RUN,0.634145,ICC_2_1,FULL_RAW,"odd/even games, n=159 players","PROVISIONAL — computed from the provided player_play (1001/1002 games), not from game tracking. Value is recorded for continuity; the gate stays PENDING."
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,g,split-half Pearson r,PENDING_FULL_RUN,0.634872,r,FULL_RAW,n=159,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,g,Spearman-Brown stepped-up reliability,PENDING_FULL_RUN,0.776663,reliability,FULL_RAW,n=159,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,g,between-player SD of mean get-off,PENDING_FULL_RUN,0.176187,s,FULL_RAW,n=196 players,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,g,within-player SD of rep get-off,PENDING_FULL_RUN,0.279371,s,FULL_RAW,pooled within-player variance,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,g,between-player share of total get-off variance,PENDING_FULL_RUN,0.284552,share,FULL_RAW,one-way decomposition (unadjusted for depth),"upper bound: not adjusted for pre-snap depth, which is exactly what Phase 2-4 must do"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,h,DL 40yd attempts measured,INFO,177,attempts,FULL_RAW,"FORTY_YARD_DASH, entity_type=PLAYER",
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,h,attempts with a detectable onset,PASS,177,attempts,FULL_RAW,onset.speed_yds from config,100.0%
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,h,"test-retest ICC, onset->1 yd",PASS,0.501569,ICC_1_1,FULL_RAW,"84 players, 2.00 attempts each",min 0.5
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,h,"test-retest ICC, onset->2 yd",PASS,0.55887,ICC_1_1,FULL_RAW,"84 players, 2.00 attempts each",min 0.5
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,h,"test-retest ICC, onset->5 yd",PASS,0.624667,ICC_1_1,FULL_RAW,"84 players, 2.00 attempts each",min 0.5
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,players meeting the snap minimum,INFO,105,players,FULL_RAW,reps >= 50,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,median reps per eligible player,INFO,261.0,reps,FULL_RAW,player_get_off non-null,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,smallest detectable between-player variance share,PASS,0.270506,share,DESIGN,"z*sqrt(2/P), normal approximation to variance sampling SD",smallest effect of interest = 0.15
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,design resolves the smallest effect of interest,FAIL,no,,DESIGN,compare the two rows above,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,i,model-based reliability at the smallest effect of interest,INFO,0.97875,reliability,DESIGN,sigma_u^2/(sigma_u^2+sigma_e^2/n),
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,d,median |along-travel crossing - player_get_off|,INFO,0.679281,s,SAMPLE_TRACKING,n=1912 DL snaps with a detectable onset,"UNVALIDATED SAMPLE OUTPUT: a definition check, not a finding"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,d,median signed difference (along-travel),INFO,0.283299,s,SAMPLE_TRACKING,n=1912,UNVALIDATED SAMPLE OUTPUT
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,d,median |x-axis crossing - player_get_off|,INFO,0.383308,s,SAMPLE_TRACKING,n=1889,UNVALIDATED SAMPLE OUTPUT; compare with the along-travel row
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,d,snaps used in the definition check,INFO,1912,snaps,SAMPLE_TRACKING,item d empirical,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,e,"sampling rate, Combine tracking",INFO,10,Hz,FULL_RAW,"100 ms spacing, verified by lag-difference",nominal
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,e,"sampling rate, game tracking",INFO,10,Hz,SAMPLE_TRACKING,"mode of lag(time) == 100 ms over 1,033,962 pairs",
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,e,Combine 40yd frames per attempt (min/median/max),INFO,49/53.0/60,frames,FULL_RAW,n=177 DL attempts,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,e,Combine frames in the first second after onset,INFO,10,frames,FULL_RAW,10 Hz x 1 s,by construction; the measured rate confirms 10 Hz
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,e,frames to cover the first yard at 8 yd/s,INFO,2,frames,FULL_RAW,1 yd / 8 yd/s = 0.125 s = 1-2 frames,resolution in the first yard is 1-2 samples in BOTH settings: this is the binding constraint on onset
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,e,game frames in the first second after snap (min/median/max),INFO,10/10.0/10,frames,SAMPLE_TRACKING,"4540 DL player-plays, 4401 distinct plays","per player-per-play, not summed across players"
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,e,median pre-snap frames per DL player-play,INFO,10.0,frames,SAMPLE_TRACKING,4540 DL player-plays,
+PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT,e,same onset definition usable in both settings,PASS,PASS (structurally),,FULL_RAW,identical 10 Hz grid and identical threshold formula,whether the SAME threshold value is appropriate in both settings is a calibration question -> PENDING_FULL_RUN

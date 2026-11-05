@@ -1,421 +1,373 @@
-# Data schema — NFL Big Data Bowl 2027 (leverage × ceiling task)
+# Data schema — NFL Big Data Bowl 2027 (burst vs. jump)
 
-**Captured:** 2026-10-26 on the Raspberry Pi. Source: `data/raw` → USB
-(`/mnt/project_data/conor_downloads/bdb27`). Every number below was produced by
-DuckDB over the actual files; the query or `DESCRIBE` that produced it is named.
-Binding spec: `TASK.md`.
+**Captured:** 2026-11-05 on the Raspberry Pi. Source: `data/raw` → USB
+(`/mnt/project_data/conor_downloads/bdb27`). Every count below was produced by
+DuckDB against the actual file, with the null marker set to `NA`. Binding spec:
+`TASK.md` (commit `bcfd48b`).
+
+This file replaces the leverage × ceiling schema note. That note is preserved at
+`archive/legacy-2026-11-05/`.
+
+---
 
 ## 1. File inventory
 
-| file | bytes | parsed rows | `wc -l` | line−row delta | comment |
-|---|---:|---:|---:|---:|---|
-| `combine_tracking.csv` | 83,788,174 | 463,189 | 463,190 | 1 (header) | 510 players, 56 drill names, 6,301 attempts |
-| `combine_results.csv` | 41,020 | 510 | 511 | 1 (header) | table-stakes drill results |
-| `players.csv` | 47,301 | 510 | 511 | 1 (header) | one row per invited player |
-| `games.csv` | 43,174 | 1,002 | 1,003 | 1 (header) | 3 seasons × (272 REG + 49 PRE + 13 POST) |
-| `player_play.csv` | 146,879,042 | 314,197 | 327,020 | **12,823** | quoted newlines in `play_description` |
-| `game_tracking_2023_sample.csv` | 93,739,461 | **1,048,575** | 1,048,576 | 1 (header) | exactly 2²⁰−1 rows: row-capped sample |
-| `player_career_successes.csv` | 13,801 | 510 | 511 | 1 (header) | not used by this task |
+| file | bytes | parsed rows | physical lines | note |
+|---|---:|---:|---:|---|
+| `games.csv` | 43,174 | 1,002 | 1,003 | 3 seasons × (272 REG + 49 PRE + 13 POST) |
+| `players.csv` | 47,301 | 510 | 511 | one row per player in scope |
+| `combine_results.csv` | 41,020 | 510 | 511 | same 510 `nfl_id` as `players.csv`, exactly |
+| `combine_tracking.csv` | 83,788,174 | 463,189 | 463,190 | 56 drill names, 6,301 (player, attempt) pairs |
+| `player_play.csv` | 146,879,042 | **314,197** | 327,020 | **12,823 embedded newlines** inside quoted `play_description` |
+| `game_tracking_2023_sample.csv` | 93,739,461 | **1,048,575** | 1,048,576 | exactly 2²⁰−1 data rows — see §3 |
+| `player_career_successes.csv` | 13,801 | 510 | 511 | not used by this task |
 
-**`wc -l` vs parsed rows.** `player_play.csv` has 327,020 physical lines but
-314,197 CSV records: 12,823 records contain an embedded newline inside a quoted
-`play_description`. The DuckDB CSV parser handles this correctly; `wc -l` and
-any line-based tool do not. Never use `wc -l` for row counts.
+`wc -l` on `player_play.csv` overcounts by 12,823 because some
+`play_description` values contain newlines inside quotes. **Never use `wc -l`
+for a row count.** DuckDB's CSV reader handles the quoting correctly.
 
-**Null marker: `NA`.** Every reader must pass `nullstr=['NA']`. Without it,
-DuckDB tries to parse `NA` as a number and aborts (e.g. `Could not convert string
-"NA" to 'DOUBLE'` on `pre_snap_home_team_win_probability`), and a small-sample
-sniff instead infers `VARCHAR` for numeric columns. Empty string is **not** a
-null marker here: `pass_result == ""` is a real category (103,636 rows), so
-`lc_common` only nulls `NA` and preserves `""`.
+**Null marker.** Every file uses the literal `NA`. Every reader must pass
+`nullstr=['NA']`. Empty string is *not* a null marker: `pass_result == ""` is a
+real category, so `""` is preserved.
 
-## 2. Column-level schema (actual inferred types)
+## 2. Columns, as read by DuckDB
 
-Types are DuckDB types from `DESCRIBE SELECT * FROM read_csv_auto(path, nullstr=['NA'])`.
-Non-null and distinct counts come from a single aggregate scan per file.
+### `games.csv`
 
-### `combine_tracking.csv` — 463,189 rows, 83,788,174 bytes
+| # | column | DuckDB type |
+|---:|---|---|
+| 1 | `game_id` | `BIGINT` |
+| 2 | `game_key` | `BIGINT` |
+| 3 | `season` | `BIGINT` |
+| 4 | `season_type` | `VARCHAR` |
+| 5 | `week` | `BIGINT` |
+| 6 | `home_team_abbr` | `VARCHAR` |
+| 7 | `visitor_team_abbr` | `VARCHAR` |
 
-| column | dtype | non-null | distinct | unit |
-|---|---|---:|---:|---|
-| `draft_year` | BIGINT | 463,189 | 3 | — |
-| `event_id` | VARCHAR | 463,189 | 6,310 | — |
-| `nfl_id` | BIGINT | 463,189 | 510 | — |
-| `entity_type` | VARCHAR | 463,189 | 2 | — |
-| `time` | TIMESTAMP | 463,189 | 429,596 | timestamp (absolute wall clock) |
-| `drill_type` | VARCHAR | 463,189 | 9 | — |
-| `drill_name` | VARCHAR | 463,189 | 56 | — |
-| `attempt` | BIGINT | 463,189 | 17 | — |
-| `x` | DOUBLE | 463,189 | 178,985 | yd |
-| `y` | DOUBLE | 463,189 | 179,841 | yd |
-| `s` | DOUBLE | 463,189 | 182,182 | yd/s |
-| `a` | DOUBLE | 463,189 | 371,251 | yd/s^2 |
-| `dis` | DOUBLE | 463,189 | 179,472 | UNRESOLVED (NOT yards; do not use) |
-| `dir` | DOUBLE | 463,189 | 429,809 | degrees |
+### `players.csv`
 
-### `combine_results.csv` — 510 rows, 41,020 bytes
+| # | column | DuckDB type |
+|---:|---|---|
+| 1 | `nfl_id` | `BIGINT` |
+| 2 | `display_name` | `VARCHAR` |
+| 3 | `draft_year` | `BIGINT` |
+| 4 | `nfl_position` | `VARCHAR` |
+| 5 | `birth_date` | `DATE` |
+| 6 | `college_name` | `VARCHAR` |
+| 7 | `college_conference` | `VARCHAR` |
+| 8 | `draft_round` | `BIGINT` |
+| 9 | `draft_pick_within_round` | `BIGINT` |
+| 10 | `draft_overall_pick` | `BIGINT` |
 
-| column | dtype | non-null | distinct | unit |
-|---|---|---:|---:|---|
-| `draft_year` | BIGINT | 510 | 3 | — |
-| `nfl_id` | BIGINT | 510 | 510 | — |
-| `combine_position` | VARCHAR | 510 | 5 | — |
-| `combine_height` | DOUBLE | 510 | 95 | in |
-| `combine_weight` | BIGINT | 510 | 149 | lb |
-| `hand_size` | DOUBLE | 510 | 27 | in |
-| `arm_length` | DOUBLE | 510 | 60 | in |
-| `wing_span` | DOUBLE | 510 | 114 | in |
-| `ten_yd_split` | DOUBLE | 425 | 46 | — |
-| `forty` | DOUBLE | 424 | 106 | — |
-| `vertical` | DOUBLE | 438 | 41 | — |
-| `broad_jump` | BIGINT | 423 | 42 | — |
-| `three_cone` | DOUBLE | 180 | 95 | — |
-| `short_shuttle` | DOUBLE | 201 | 88 | — |
-| `bench_reps` | BIGINT | 192 | 25 | — |
-| `ngs_athleticism_score` | BIGINT | 510 | 48 | — |
-| `ngs_college_production_score` | BIGINT | 509 | 44 | — |
-| `ngs_final_score` | BIGINT | 509 | 42 | — |
+### `combine_results.csv`
 
-### `players.csv` — 510 rows, 47,301 bytes
+| # | column | DuckDB type |
+|---:|---|---|
+| 1 | `draft_year` | `BIGINT` |
+| 2 | `nfl_id` | `BIGINT` |
+| 3 | `combine_position` | `VARCHAR` |
+| 4 | `combine_height` | `DOUBLE` |
+| 5 | `combine_weight` | `BIGINT` |
+| 6 | `hand_size` | `DOUBLE` |
+| 7 | `arm_length` | `DOUBLE` |
+| 8 | `wing_span` | `DOUBLE` |
+| 9 | `ten_yd_split` | `DOUBLE` |
+| 10 | `forty` | `DOUBLE` |
+| 11 | `vertical` | `DOUBLE` |
+| 12 | `broad_jump` | `BIGINT` |
+| 13 | `three_cone` | `DOUBLE` |
+| 14 | `short_shuttle` | `DOUBLE` |
+| 15 | `bench_reps` | `BIGINT` |
+| 16 | `ngs_athleticism_score` | `BIGINT` |
+| 17 | `ngs_college_production_score` | `BIGINT` |
+| 18 | `ngs_final_score` | `BIGINT` |
 
-| column | dtype | non-null | distinct | unit |
-|---|---|---:|---:|---|
-| `nfl_id` | BIGINT | 510 | 510 | — |
-| `display_name` | VARCHAR | 510 | 508 | — |
-| `draft_year` | BIGINT | 510 | 3 | — |
-| `nfl_position` | VARCHAR | 510 | 17 | — |
-| `birth_date` | DATE | 510 | 441 | — |
-| `college_name` | VARCHAR | 510 | 112 | — |
-| `college_conference` | VARCHAR | 510 | 21 | — |
-| `draft_round` | BIGINT | 383 | 7 | — |
-| `draft_pick_within_round` | BIGINT | 383 | 42 | — |
-| `draft_overall_pick` | BIGINT | 383 | 222 | — |
+### `combine_tracking.csv`
 
-### `games.csv` — 1,002 rows, 43,174 bytes
+| # | column | DuckDB type |
+|---:|---|---|
+| 1 | `draft_year` | `BIGINT` |
+| 2 | `event_id` | `VARCHAR` |
+| 3 | `nfl_id` | `BIGINT` |
+| 4 | `entity_type` | `VARCHAR` |
+| 5 | `time` | `TIMESTAMP` |
+| 6 | `drill_type` | `VARCHAR` |
+| 7 | `drill_name` | `VARCHAR` |
+| 8 | `attempt` | `BIGINT` |
+| 9 | `x` | `DOUBLE` |
+| 10 | `y` | `DOUBLE` |
+| 11 | `s` | `DOUBLE` |
+| 12 | `a` | `DOUBLE` |
+| 13 | `dis` | `DOUBLE` |
+| 14 | `dir` | `DOUBLE` |
 
-| column | dtype | non-null | distinct | unit |
-|---|---|---:|---:|---|
-| `game_id` | BIGINT | 1,002 | 1,002 | — |
-| `game_key` | BIGINT | 1,002 | 1,002 | — |
-| `season` | BIGINT | 1,002 | 3 | — |
-| `season_type` | VARCHAR | 1,002 | 3 | — |
-| `week` | BIGINT | 1,002 | 23 | — |
-| `home_team_abbr` | VARCHAR | 1,002 | 33 | — |
-| `visitor_team_abbr` | VARCHAR | 1,002 | 33 | — |
+### `player_play.csv`
 
-### `player_play.csv` — 314,197 rows, 146,879,042 bytes
+| # | column | DuckDB type |
+|---:|---|---|
+| 1 | `game_id` | `BIGINT` |
+| 2 | `play_id` | `BIGINT` |
+| 3 | `team_abbr` | `VARCHAR` |
+| 4 | `nfl_id` | `BIGINT` |
+| 5 | `lined_up_position` | `VARCHAR` |
+| 6 | `play_description` | `VARCHAR` |
+| 7 | `quarter` | `BIGINT` |
+| 8 | `down` | `BIGINT` |
+| 9 | `yards_to_go` | `BIGINT` |
+| 10 | `possession_team` | `VARCHAR` |
+| 11 | `yardline_side` | `VARCHAR` |
+| 12 | `yardline_number` | `BIGINT` |
+| 13 | `game_clock` | `TIME` |
+| 14 | `pre_snap_home_score` | `BIGINT` |
+| 15 | `pre_snap_visitor_score` | `BIGINT` |
+| 16 | `play_direction` | `VARCHAR` |
+| 17 | `pre_snap_home_team_win_probability` | `DOUBLE` |
+| 18 | `pre_snap_visitor_team_win_probability` | `DOUBLE` |
+| 19 | `home_team_win_probability_added` | `DOUBLE` |
+| 20 | `visitor_team_win_probility_added` | `DOUBLE` |
+| 21 | `expected_points_added` | `DOUBLE` |
+| 22 | `expected_points` | `DOUBLE` |
+| 23 | `offense_formation` | `VARCHAR` |
+| 24 | `receiver_alignment` | `VARCHAR` |
+| 25 | `pass_result` | `VARCHAR` |
+| 26 | `pass_length` | `BIGINT` |
+| 27 | `play_nullified_by_penalty` | `VARCHAR` |
+| 28 | `penalty_yards` | `BIGINT` |
+| 29 | `pre_penalty_yards_gained` | `BIGINT` |
+| 30 | `yards_gained` | `BIGINT` |
+| 31 | `team_coverage_man_zone` | `VARCHAR` |
+| 32 | `team_coverage_type` | `VARCHAR` |
+| 33 | `in_motion_at_ball_snap` | `BOOLEAN` |
+| 34 | `target` | `BOOLEAN` |
+| 35 | `rec_yards` | `BIGINT` |
+| 36 | `rush_yards` | `BIGINT` |
+| 37 | `yards_after_catch` | `BIGINT` |
+| 38 | `fumble` | `BIGINT` |
+| 39 | `fumble_lost` | `BIGINT` |
+| 40 | `route_ran` | `VARCHAR` |
+| 41 | `separation_at_pass_forward` | `DOUBLE` |
+| 42 | `cushion` | `DOUBLE` |
+| 43 | `expected_yards_after_catch` | `DOUBLE` |
+| 44 | `dropback_duration` | `DOUBLE` |
+| 45 | `extended_sack_allowed` | `DOUBLE` |
+| 46 | `pass_rushers_encountered` | `BIGINT` |
+| 47 | `peak_pressure_probability_allowed` | `DOUBLE` |
+| 48 | `pressure_allowed` | `BOOLEAN` |
+| 49 | `sack_allowed` | `DOUBLE` |
+| 50 | `time_to_pressure_allowed` | `DOUBLE` |
+| 51 | `quick_pressure` | `BOOLEAN` |
+| 52 | `unblocked_pressure` | `BOOLEAN` |
+| 53 | `blitzing` | `BOOLEAN` |
+| 54 | `player_get_off` | `DOUBLE` |
+| 55 | `sack` | `DOUBLE` |
+| 56 | `tackle` | `BIGINT` |
+| 57 | `assist` | `BIGINT` |
+| 58 | `caused_forced_fumble` | `BIGINT` |
+| 59 | `recovered_fumble` | `BOOLEAN` |
+| 60 | `tackle_for_loss` | `BOOLEAN` |
+| 61 | `time_to_pressure` | `DOUBLE` |
+| 62 | `time_to_qb_hurry` | `DOUBLE` |
+| 63 | `coverage_assignment` | `VARCHAR` |
+| 64 | `coverage_assignment_at_snap` | `VARCHAR` |
 
-| column | dtype | non-null | distinct | unit |
-|---|---|---:|---:|---|
-| `game_id` | BIGINT | 314,197 | 1,001 | — |
-| `play_id` | BIGINT | 314,197 | 4,931 | — |
-| `team_abbr` | VARCHAR | 314,197 | 33 | — |
-| `nfl_id` | BIGINT | 314,197 | 497 | — |
-| `lined_up_position` | VARCHAR | 312,814 | 17 | — |
-| `play_description` | VARCHAR | 314,197 | 114,899 | — |
-| `quarter` | BIGINT | 314,197 | 5 | — |
-| `down` | BIGINT | 314,197 | 5 | — |
-| `yards_to_go` | BIGINT | 314,197 | 40 | — |
-| `possession_team` | VARCHAR | 314,197 | 33 | — |
-| `yardline_side` | VARCHAR | 310,095 | 33 | — |
-| `yardline_number` | BIGINT | 314,197 | 50 | yd from own goal line |
-| `game_clock` | TIME | 314,197 | 901 | time of day (mm:ss remaining) |
-| `pre_snap_home_score` | BIGINT | 314,197 | 52 | — |
-| `pre_snap_visitor_score` | BIGINT | 314,197 | 46 | — |
-| `play_direction` | VARCHAR | 314,147 | 2 | — |
-| `pre_snap_home_team_win_probability` | DOUBLE | 314,194 | 113,328 | probability 0-1 |
-| `pre_snap_visitor_team_win_probability` | DOUBLE | 314,194 | 113,328 | — |
-| `home_team_win_probability_added` | DOUBLE | 314,191 | 114,047 | — |
-| `visitor_team_win_probility_added` | DOUBLE | 314,191 | 114,047 | — |
-| `expected_points_added` | DOUBLE | 314,197 | 112,620 | — |
-| `expected_points` | DOUBLE | 314,197 | 104,329 | points |
-| `offense_formation` | VARCHAR | 308,862 | 7 | — |
-| `receiver_alignment` | VARCHAR | 309,600 | 15 | — |
-| `pass_result` | VARCHAR | 314,197 | 6 | — |
-| `pass_length` | BIGINT | 184,739 | 82 | — |
-| `play_nullified_by_penalty` | VARCHAR | 314,197 | 2 | — |
-| `penalty_yards` | BIGINT | 20,750 | 72 | — |
-| `pre_penalty_yards_gained` | BIGINT | 314,197 | 120 | — |
-| `yards_gained` | BIGINT | 314,197 | 146 | — |
-| `team_coverage_man_zone` | VARCHAR | 275,278 | 2 | — |
-| `team_coverage_type` | VARCHAR | 275,278 | 8 | — |
-| `in_motion_at_ball_snap` | BOOLEAN | 155,966 | 2 | — |
-| `target` | BOOLEAN | 314,197 | 2 | — |
-| `rec_yards` | BIGINT | 6,260 | 88 | — |
-| `rush_yards` | BIGINT | 22 | 12 | — |
-| `yards_after_catch` | BIGINT | 6,260 | 62 | — |
-| `fumble` | BIGINT | 73 | 1 | — |
-| `fumble_lost` | BIGINT | 73 | 2 | — |
-| `route_ran` | VARCHAR | 53,308 | 12 | — |
-| `separation_at_pass_forward` | DOUBLE | 46,737 | 30,351 | — |
-| `cushion` | DOUBLE | 103,752 | 1,461 | — |
-| `expected_yards_after_catch` | DOUBLE | 8,976 | 8,947 | — |
-| `dropback_duration` | DOUBLE | 60,803 | 5,852 | — |
-| `extended_sack_allowed` | DOUBLE | 60,803 | 3 | — |
-| `pass_rushers_encountered` | BIGINT | 60,803 | 4 | — |
-| `peak_pressure_probability_allowed` | DOUBLE | 58,028 | 1,566 | — |
-| `pressure_allowed` | BOOLEAN | 60,803 | 2 | — |
-| `sack_allowed` | DOUBLE | 60,803 | 3 | — |
-| `time_to_pressure_allowed` | DOUBLE | 4,970 | 80 | — |
-| `quick_pressure` | BOOLEAN | 3,763 | 2 | — |
-| `unblocked_pressure` | BOOLEAN | 86,838 | 2 | — |
-| `blitzing` | BOOLEAN | 200,727 | 2 | — |
-| `player_get_off` | DOUBLE | 44,002 | 1,662 | — |
-| `sack` | DOUBLE | 86,835 | 3 | — |
-| `tackle` | BIGINT | 11,896 | 3 | — |
-| `assist` | BIGINT | 11,896 | 2 | — |
-| `caused_forced_fumble` | BIGINT | 11,896 | 2 | — |
-| `recovered_fumble` | BOOLEAN | 2,214 | 2 | — |
-| `tackle_for_loss` | BOOLEAN | 11,896 | 2 | — |
-| `time_to_pressure` | DOUBLE | 3,804 | 78 | — |
-| `time_to_qb_hurry` | DOUBLE | 3,879 | 79 | — |
-| `coverage_assignment` | VARCHAR | 72,652 | 20 | — |
-| `coverage_assignment_at_snap` | VARCHAR | 72,125 | 20 | — |
+### `game_tracking_2023_sample.csv`
 
-### `game_tracking_2023_sample.csv` — 1,048,575 rows, 93,739,461 bytes
+| # | column | DuckDB type |
+|---:|---|---|
+| 1 | `game_id` | `BIGINT` |
+| 2 | `play_id` | `BIGINT` |
+| 3 | `nfl_id` | `BIGINT` |
+| 4 | `time` | `TIMESTAMP` |
+| 5 | `x` | `DOUBLE` |
+| 6 | `y` | `DOUBLE` |
+| 7 | `s` | `DOUBLE` |
+| 8 | `a` | `DOUBLE` |
+| 9 | `dis` | `DOUBLE` |
+| 10 | `o` | `DOUBLE` |
+| 11 | `dir` | `DOUBLE` |
+| 12 | `event` | `VARCHAR` |
 
-| column | dtype | non-null | distinct | unit |
-|---|---|---:|---:|---|
-| `game_id` | BIGINT | 1,048,575 | 333 | — |
-| `play_id` | BIGINT | 1,048,575 | 4,228 | — |
-| `nfl_id` | BIGINT | 1,048,575 | 154 | — |
-| `time` | TIMESTAMP | 1,048,575 | 865,631 | timestamp |
-| `x` | DOUBLE | 1,048,575 | 12,098 | yd |
-| `y` | DOUBLE | 1,048,575 | 6,196 | yd |
-| `s` | DOUBLE | 1,048,575 | 1,058 | yd/s |
-| `a` | DOUBLE | 1,048,575 | 880 | yd/s^2 |
-| `dis` | DOUBLE | 1,048,575 | 144 | UNRESOLVED (do not use) |
-| `o` | DOUBLE | 1,048,575 | 36,001 | yd |
-| `dir` | DOUBLE | 1,048,575 | 36,001 | degrees |
-| `event` | VARCHAR | 69,905 | 44 | — |
+## 3. Provenance of the game-tracking sample
 
-### `player_career_successes.csv` — 510 rows, 13,801 bytes
+This is the single most important fact in the audit, so it is stated precisely.
 
-| column | dtype | non-null | distinct | unit |
-|---|---|---:|---:|---|
-| `nfl_id` | BIGINT | 510 | 510 | — |
-| `career_offensive_snaps` | BIGINT | 510 | 195 | — |
-| `career_defensive_snaps` | BIGINT | 510 | 183 | — |
-| `career_special_teams_snaps` | BIGINT | 510 | 224 | — |
-| `career_games_active` | BIGINT | 510 | 51 | — |
-| `career_games_started` | BIGINT | 510 | 46 | — |
-| `ap_all_pro_1st_team` | BIGINT | 510 | 2 | — |
-| `ap_all_pro_2nd_team` | BIGINT | 510 | 2 | — |
-| `pro_bowl_original_ballot` | BIGINT | 510 | 3 | — |
+**What it is.** `game_tracking_2023_sample.csv` has **1,048,575** parsed data
+rows — exactly `2**20 - 1`. It covers **333** distinct games, all of `season
+2023` (271 REG, 49 PRE, 13 POST), spanning 2023-08-04 to 2024-02-12, i.e. the
+whole 2023 season including the Super Bowl.
 
-Not read by this task; recorded for completeness.
+**How it was drawn.** Not a head truncation and not a random row sample; it is a
+**player-in-play sample**:
 
-## 3. Units — verified vs assumed
+* within each `(game_id, play_id)` there are **1–4 players**, not 22
+  (10,830 plays have exactly 1; 1,650 have 2; 150 have 3; 8 have 4);
+* each retained player has a **complete 10 Hz series** for the play
+  (median 69 frames ≈ 6.9 s; min 22, max 249);
+* each game contributes **1–90 plays** (median 38) out of roughly 150, so play
+  coverage within a game is also partial;
+* **154 distinct `nfl_id`** appear, and the row counts are dominated by a small
+  set of players (top 10 carry 20k–27k rows each).
 
-| fact | status | evidence |
+**Which code paths it cannot exercise.**
+
+| Cannot exercise | Why | Consequence |
 |---|---|---|
-| Combine `s` is yd/s | **verified** | PLAYER max 11.854 (= elite 40-yd top speed); BALL max 25.794 |
-| Combine `a` is yd/s² | **verified by scale** | PLAYER max 10.718; BALL max 44.607; consistent with v/tau |
-| Combine `x`,`y` in yards | **verified** | 40-yard dash median per-attempt x-span **40.433 yd** (n=793) |
-| Combine `time` absolute wall clock | **verified** | distinct per attempt; elapsed = `time - min(time)` |
-| Game tracking `s` yd/s | **verified** | max 12.63, only 6 rows > 12 over 1,048,575 |
-| Game tracking `x`,`y` yd | **assumed** | consistent with `s` in yd/s and ~11.9 yd median per-track displacement; not independently anchored |
-| `dis` | **UNRESOLVED — not yards; do not use** | see §4 |
-| `game_clock` time-of-day | **verified in-file** | values parse as `TIME` and behave as mm:ss remaining |
-| `pre_snap_*_win_probability` probability | **verified** | range 0.0007595–0.99995; 3 nulls; constant within 114,953/114,954 plays |
-| `expected_points` points | **verified by scale** | range −2.90 to 6.66; 0 nulls |
-| combine drill results in seconds/inches/lb | **assumed (standard Combine units)** | ranges are consistent; no official data dictionary on the competition page |
+| Relative geometry between two tracked players | most plays carry one player | blocker/looser interaction cannot be measured from tracking; use the `player_play` labels instead |
+| Blocker assignment / blocker count from positions | as above | `pass_rushers_encountered`, `unblocked_pressure` are label-derived, not position-derived |
+| Per-game aggregates for all 22 players | only a subset of plays per game | a per-game "all rushers" table is not reconstructible |
+| Full-season per-player snap counts | 1–90 of ~150 plays per game | sample snap counts understate true counts by roughly an order of magnitude |
+| Anything requiring the 2024 and 2025 seasons | the sample is 2023 only | season-over-season questions (exploratory Q4) are untestable here |
+| The 62 games missing from `player_play` | 1,001 of 1,002 games have rows | one game has no player rows at all |
 
-## 4. The `dis` anomaly (do not use the column)
+What it *can* exercise: onset detection on real 10 Hz traces, LOS/depth
+derivation, `player_get_off` cross-checks, and the whole schema/unit gate. **57**
+of the 196 DL analysis-set players appear in the sample, with 3–282 player-plays
+each (median 68; 5,635 player-plays total). That is enough to exercise code, not
+enough to estimate anything.
 
-`dis` is **not** a yard-scale cumulative distance, and it is not monotone.
+> Every number derived from this file is stamped `UNVALIDATED SAMPLE OUTPUT` and
+> must never be quoted as a finding.
 
-* Across the 793 FORTY_YARD_DASH attempts, per-attempt `max(dis)−min(dis)` has
-  min 0.699, median 1.136, max 1.436, while `max(x)−min(x)` has median **40.433 yd**.
-* Single attempt `nfl_id=58896, attempt=1`: `x` rises 9.72 → 51.04 yd, while
-  `dis` rises 0.002 → 0.835 and then **falls** to 0.813 by the final frame.
-  A cumulative odometer cannot decrease.
-* In game tracking (tracks with >20 frames), median `dis` span is 0.46 while
-  median x/y displacement is 11.91 yd; `corr(dis_span, xy_span) = 0.834`.
+## 4. Units — verified, not assumed
 
-Conclusion: `dis` is some vendor-specific/smoothed quantity with an unknown
-unit. The pipeline derives distance from `x`,`y` and speed/acceleration from
-`s`,`a`. This is recorded in `notes/assumptions.md`; `dis` is declared in
-`lc_common.EXPECTED_SCHEMAS` as `UNRESOLVED (NOT yards; do not use)`.
-
-## 5. Combine facts that matter for the ceiling model
-
-* `entity_type` ∈ {`PLAYER` 431,094 rows, `BALL` 32,095 rows}. **Filter
-  `entity_type='PLAYER'`.** The often-quoted "max speed 25.79 / max accel 44.6"
-  are BALL values; PLAYER maxima are **s = 11.854 yd/s, a = 10.718 yd/s²**.
-  (This corrects the PM brief, which attributed BALL extremes to players.)
-* 510 players, draft years 2023/2024/2025 (160/177/173).
-* 56 distinct `drill_name` values in 9 `drill_type` groups (the brief said 62).
-* FORTY_YARD_DASH: **793 attempts, 418 players**. 43 players have 1 attempt,
-  375 have 2. **Attempt labels are not limited to {1,2}:** observed labels are
-  1 (19,495 rows), 2 (18,144), 3 (3,154), 4 (707) — the label is a trial id,
-  not a count. Keep original labels.
-* Sampling is exactly 100 ms: 424,784 of 431,094 inter-frame gaps are 0.100 s;
-  the remaining 6,310 are the first frame of each of the 6,301 attempts
-  (partition boundaries) plus one gap. Elapsed time must be
-  `time − min(time)` per `(nfl_id, drill_name, attempt)`.
-* Positions (players.csv): WR 106, TE 42, CB 60, plus linemen/defenders. This
-  task uses WR primary and TE replication.
-
-## 6. Game data facts
-
-* `player_play.csv`: 314,197 rows, 114,954 plays, 1,001 games. Rows per play:
-  1 → 29,845; 2 → 29,057; 3 → 23,826; … max 11 → 1. Mean 2.73. It does **not**
-  enumerate all 22 players.
-* `pre_snap_home_team_win_probability`: 3 nulls, range 0.0007595–0.99995,
-  constant within 114,953 of 114,954 plays. `expected_points`: 0 nulls,
-  −2.90…6.66. ⇒ leverage is definable from provided fields, no external model.
-  `*_added` columns are post-snap and must not enter the leverage definition.
-* `route_ran` is a **string** route name (`GO`, `HITCH`, `CROSS`, `IN`, `OUT`,
-  `POST`, `CORNER`, `SLANT`, `FLAT`, `SCREEN`, `WHEEL`, …), null for 260,889
-  rows (non-receivers/defenders). It is not a boolean.
-* `target` is boolean: 9,842 true / 304,355 false.
-* `down = 0` on 961 rows; `quarter = 5` (OT) on 1,437 rows. Do not divide by
-  `yards_to_go` or assume four quarters without handling these.
-* **No timeouts column exists in any of the seven files** (header check:
-  `head -1 data/raw/*.csv | grep -ic timeout` → 0 for all). `play_description`
-  contains the word "timeout" in prose, which is not a field. This is an
-  accepted gap because pre-snap WP already embeds timeout state.
-
-## 7. How the provided sample was drawn (evidence + queries)
-
-| fact | value | query |
+| column | unit | evidence |
 |---|---|---|
-| rows | 1,048,575 = 2²⁰−1 | `SELECT count(*) FROM read_csv_auto(sample)` |
-| games | 333 | `count(distinct game_id)` |
-| plays | 12,638 | `count(distinct (game_id, play_id))` |
-| players | 154 | `count(distinct nfl_id)` |
-| rows per play | 1.156 (14,612 player-play rows / 12,638 plays) | distribution below |
-| tracked players per play | 1 → 10,830; 2 → 1,650; 3 → 150; 4 → 8 | `GROUP BY n` |
+| `x`, `y` (both trackers) | yards | game tracking spans 0–120 with end zones; player positions reach −6.1 to 126 |
+| `s` | yd/s | matches `Δposition/Δt`; max 11.85 for players |
+| `a` | yd/s² | consistent with the `s` differences |
+| `dis` | **yards per frame, NOT cumulative** | over a 40-yard dash `dis ∈ [0.0, 1.44]` and `10 × dis ≈ s`; cumulative distance must be rebuilt from `x`/`y` |
+| `dir`, `o` | degrees | `dir` wraps at 0/360, so travel direction is estimated from the coordinate path |
+| `player_get_off` | seconds | range 0.004–2.0, hard cap at 2.0 (2 rows sit exactly at the cap) |
+| `time_to_pressure`, `time_to_qb_hurry`, `time_to_pressure_allowed` | seconds | 0.8–9.6 |
+| `dropback_duration` | seconds | 60,803 non-null |
+| `sack` | 0 / 0.5 / 1.0 | split credit, not a boolean |
+| `game_clock` | clock time (`TIME` in DuckDB) | not a duration |
+| `combine_height` / `arm_length` / `wing_span` | inches | |
+| `combine_weight` | lb | |
+| `forty`, `ten_yd_split`, `three_cone`, `short_shuttle` | seconds | |
+| `vertical` / `broad_jump` | inches | |
 
-The exact queries behind the table (DuckDB, `S = data/raw/game_tracking_2023_sample.csv`):
+**`entity_type` in `combine_tracking` is not all players.** 431,094 rows are
+`PLAYER` and **32,095 are `BALL`**. The ball rows carry speeds up to 25.8 yd/s
+and `y` beyond ±11 yd. They are a projectile, not a person. Every physical-time
+measurement filters to `entity_type = 'PLAYER'`; the unit gate asserts it.
 
-```sql
-SELECT count(*), count(DISTINCT game_id),
-       count(DISTINCT (game_id, play_id)), count(DISTINCT nfl_id)
-FROM read_csv_auto('data/raw/game_tracking_2023_sample.csv');
--- 1048575 | 333 | 12638 | 154
+**`combine_tracking.time` is a wall-clock timestamp, not seconds.** Relative time
+must be computed per attempt (`time - min(time)`), never used raw. A session that
+crosses midnight would break naive subtraction; the frame index at a nominal
+10 Hz is the fallback.
 
-SELECT n, count(*) FROM (
-  SELECT game_id, play_id, count(DISTINCT nfl_id) AS n
-  FROM read_csv_auto('data/raw/game_tracking_2023_sample.csv')
-  GROUP BY 1, 2) GROUP BY 1 ORDER BY 1;
--- 1|10830, 2|1650, 3|150, 4|8   (mean 14612/12638 = 1.156 players/play)
+## 5. Mismatch log — `TASK.md` "Variables to expect" vs the actual files
 
-SELECT min(game_id), max(game_id)
-FROM read_csv_auto('data/raw/game_tracking_2023_sample.csv');
--- 2023080351 | 2024021100
+`TASK.md` lists expected names from a data dictionary and instructs that they be
+verified against the actual files. Result:
 
-SELECT game_id, count(*) AS n_rows, count(DISTINCT play_id) AS n_plays,
-       count(DISTINCT nfl_id) AS n_players
-FROM read_csv_auto('data/raw/game_tracking_2023_sample.csv')
-GROUP BY 1 ORDER BY 1 DESC LIMIT 3;
--- 2024021100|1651|20|3 ; 2024012801|622|8|1 ; 2024012800|1396|18|2
+| expected name | exists? | where | verdict |
+|---|---|---|---|
+| `player_get_off` | **yes** | `player_play.col 54`, `DOUBLE` | matches TASK.md's definition ("seconds from snap until the rusher crosses the line") **empirically** (§6); **no official data dictionary was available to confirm the wording** |
+| `quick_pressure` | **yes** | `player_play.col 51`, `BOOLEAN` | exists, but **null on 92.2% of DL get-off rows**. `null` is not `false`. See §7. |
+| `time_to_pressure` | **yes** | `player_play.col 61`, `DOUBLE` | exists — but see `time_to_pressure_allowed` below |
+| `time_to_qb_hurry` | **yes** | `player_play.col 62`, `DOUBLE` | exists |
+| `sack` | **yes** | `player_play.col 55`, `DOUBLE` | 0 / 0.5 / 1.0 |
+| `blitzing` | **yes** | `player_play.col 53`, `BOOLEAN` | exists |
+| `unblocked_pressure` | **yes** | `player_play.col 52`, `BOOLEAN` | exists, null on 24.3% of DL get-off rows |
+| `dropback_duration` | **yes** | `player_play.col 44`, `DOUBLE` | exists |
+| x/y/speed/time tracking | **yes** | `game_tracking_*.csv` | 10 Hz, timestamps |
+| pre-snap alignment | **yes (label)** | `player_play.lined_up_position` | a **label**, not a tracked coordinate |
+| snap time | **yes (event)** | `game_tracking.event == 'ball_snap'` | explicit event in 12,606 of 12,638 sample plays (99.7%) |
+| line-of-scrimmage location | **no direct column** | derived from `yardline_side` + `yardline_number` + `play_direction` | **derivable**; formula in §6; validated against tracked rusher positions |
+| rusher–blocker assignments | **no** | — | **do not exist as a column.** Nearest available: `pass_rushers_encountered` (count) and `unblocked_pressure` (flag). This is a genuine gap for Phase 3's "assigned blocker(s) and blocker count". |
+| Combine x/y/time per DL drill attempt | **yes** | `combine_tracking.csv` | 14 columns, `entity_type ∈ {PLAYER, BALL}` |
+| stance (three-point vs stand-up) | **no** | — | **no column anywhere.** Not labelled, and not tested for inferability. See §8. |
 
-SELECT count(*), count(DISTINCT play_id), count(DISTINCT nfl_id)
-FROM read_csv_auto('data/raw/game_tracking_2023_sample.csv')
-WHERE game_id = 2023122410;
--- 53 | 1 | 1
+### 5a. Position vocabulary — a real inconsistency, not a naming preference
+
+`player_play.lined_up_position` uses `EDGE` / `INTERIOR_LINE` (plus `CB`,
+`SLOT_CB`, `G`, `T`, `C`, `WR`, `SLOT_WR`, `TE`, `RB`, `FB`, `MLB`, `OLB`,
+`HIGH_SAFETY`, `BOX_SAFETY`, `EXTRA_OL`). It **never** uses `DE`/`DT`/`NT`.
+
+`players.csv.nfl_position` and `combine_results.combine_position` use a different
+vocabulary (`DE`, `DT`, `NT`, `DL`, `EDGE`, `OLB`, …). **The two vocabularies do
+not agree**, and the disagreement is not merely nominal:
+
+| `lined_up_position` | `combine_position` | players |
+|---|---|---:|
+| `EDGE` | `DL` | 100 |
+| `EDGE` | **`DB`** | **53** |
+| `INTERIOR_LINE` | `DL` | 105 |
+| `INTERIOR_LINE` | **`DB`** | **9** |
+| `CB` | **`DL`** | **7** |
+| `SLOT_CB` | **`DL`** | **25** |
+
+Also, 440 `player_get_off` reps sit on rows labelled `CB` or `SLOT_CB`. Either
+`lined_up_position` is noisy, or `combine_position` is being used loosely. **No
+rule for resolving this conflict is specified in `TASK.md`, and none has been
+invented.** It is logged as an open question in `notes/blockers.md` (B3). The
+audit's edge/interior split uses `lined_up_position` because it is the only
+in-game alignment label, and says so.
+
+## 6. Deriving the line of scrimmage (validated)
+
+Field coordinates are 0–120 yd with goal lines at 10 and 110. For a play:
+
+```
+LOS_x = 10 + yardline_number   if (yardline_side == possession_team and play_direction == 'right')
+                              or (yardline_side != possession_team and play_direction == 'left')
+        110 - yardline_number  otherwise
 ```
 
-The cap is applied after ordering by `game_id` ascending, truncating the tail:
-`min(game_id)=2023080351`, `max(game_id)=2024021100`, and the last games are
-partial (e.g. `2023122410` = 53 rows / 1 play / 1 player). There is also a
-player cap in effect: only 154 distinct players appear across 333 games, i.e.
-**1.0–1.2 tracked players per play**, nowhere near all 22.
+Validation (sample, `UNVALIDATED SAMPLE OUTPUT`): `|x_at_snap − LOS_x|` for DL
+reps has median 0.63 yd, p95 1.24 yd, and 100% inside [0, 5] yd. A wrong formula
+produces depths of tens of yards, so this is a sharp test.
 
-Consequences (also in `notes/scale.md` and the audit plan):
+**Consequence for the design:** pre-snap depth is **0–2.3 yd**, i.e. the rusher is
+never more than ~1 yard off the ball. `player_get_off` is therefore dominated by
+the first 1–2 yards of acceleration, which is exactly the region where a
+parametric speed curve is least constrained. `TASK.md` anticipates this; it is
+restated here because it constrains every downstream model.
 
-* The sample **cannot** exercise all-22 completeness, multi-player joins,
-  defender distance, per-receiver effort counts, leverage bins, matched pairs,
-  or any per-receiver aggregate.
-* It **can** exercise schema/parse contract, per-frame kinematics for a single
-  player, event alignment, WP joins, and memory behaviour on a 94 MB file.
+## 7. Null semantics of the pressure labels (audit item f)
 
-## 8. Verified in-file vs assumed
+On the 43,562 DL rows that carry a `player_get_off`:
 
-**Verified by query (this file):** row counts; column names and inferred dtypes;
-`NA` null semantics; `entity_type` split; 100 ms sampling; PLAYER vs BALL speed
-and acceleration maxima; 40-yd x-span; FORTY attempt/player counts and label
-values; positions; WP/EP availability and ranges; `route_ran`/`target` types;
-`down=0`/OT counts; absence of a timeouts column; sample draw facts above;
-`dis` non-yard, non-monotone behaviour.
+| column | non-null | null | null share |
+|---|---:|---:|---:|
+| `quick_pressure` | 3,378 | 40,184 | **92.2%** |
+| `unblocked_pressure` | 32,977 | 10,585 | 24.3% |
+| `time_to_pressure` | 3,418 | 40,144 | 92.2% |
+| `time_to_qb_hurry` | 3,488 | 40,074 | 92.0% |
 
-**Assumed, not verified:** game `x`,`y` units (yd); Combine drill-result units
-(seconds/inches/lb); the exact meaning of `event` beyond its string values; the
-full-season row counts (files absent on this host); whether full-season tracking
-also has a per-play player cap (PENDING FULL RUN).
+`quick_pressure` and `time_to_pressure` are **event fields**: they are populated
+together (cross-tab: 2,334 `false`, 1,044 `true`, 40 with a time but a null
+flag). A null almost certainly means "no pressure event was recorded", but that
+is an inference, not a documented rule.
 
-## 9. Phase 3 (IDR) columns added to `snaps.csv` — 2026-11-04
+**Therefore `quick_pressure` cannot be used as a complete binary outcome.** A
+model that treats `null` as `false` would be inventing 40,184 negatives. This is
+blocker **B1** in `notes/blockers.md`.
 
-Additive to the stage-03 snap table (D80). **No existing column changed
-meaning.** `seconds_since_last_snap` is unchanged and still means the clock gap
-between a rusher's own snap instants; `inter_snap_rest_s` is a different
-quantity (previous play **end** → this snap) and is not a rename of it.
+**Label provenance.** `player_play` carries `peak_pressure_probability_allowed`,
+`pressure_allowed`, `time_to_pressure_allowed` and `quick_pressure` — a family of
+pressure fields sitting on the *offence* row as well as the defence row. That is
+the signature of a model-derived pressure label, not a naive function of the
+rusher's own tracking. There is **no row-level provenance column** to confirm it.
+Logged as a threat in `notes/limitations.md`.
 
-| column | dtype | unit | rule |
-|---|---|---|---|
-| `inter_snap_rest_s` | float | s | `t_snap − max(time)` of the team's previous defensive play; play-team level, joined to every rusher; NA on a player-game's first own snap and when the previous play has no end timestamp |
-| `rest_gap_plays` | Int64 | team plays | own snaps between the previous own snap and this one; 1 = adjacent; NA on the first own snap |
-| `rest_sequence_complete` | boolean | — | per-player-game flag: every own snap after the first is adjacent in the team's defensive sequence |
-| `rep_kinematic_load_w_per_kg` | float | **W/kg** (m²/s³) | `∫ max(0, a·v) dt` over the rep; yard-space integral × 0.9144² |
-| `rolling_kinematic_load_w_per_kg` | float | **W/kg** | sum over the prior 3 included snaps |
-| `load_window_n` | Int64 | snaps | reps actually in the sum (always 3 when present) |
-| `rows_rusher_tracked` | boolean | — | the rusher has ≥1 tracked frame at/after the snap |
-| `frames_used` | Int64 | frames | post-snap frames for this rep |
-| `a0_snap_yds2` | float | yd/s² | fitted `vmax/tau` |
-| `tau_snap_s` | float | s | fitted `tau` (by-product) |
-| `fit_ok` | boolean | — | fit succeeded with R² ≥ 0.80 |
-| `fit_at_bound` | boolean | — | `vmax` or `tau` pinned at a configured bound |
-| `rep_too_short` | boolean | — | <8 frames or <0.5 s of post-snap trace |
-| `fit_r2` | float | — | R² of the fitted curve on the fit window |
-| `a0_snap_raw_yds2` | float | yd/s² | **robustness only**: max `ds/dt` over the first 0.5 s |
-| `baseline_a0_yds2` | float | yd/s² | shrunken Combine `a0` (`player_ceiling.csv`, feature `a0`) |
-| `baseline_a0_se` | float | yd/s² | SE of that baseline, carried for error propagation |
-| `deficit_ratio` | float | fraction | `a0_snap / baseline_a0`; **below 1 = deficit** |
-| `excluded_from_load` | boolean | — | this row contributes nothing to the rolling load |
-| `exclusion_reason` | text | — | `penalty_nullified` \| `no_play_timing` \| `not_tracked` \| `rep_too_short` |
+## 8. Stance
 
-Unit conversion, stated explicitly: `a` is m/s² and `v` is m/s, so `a·v` is
-W/kg (m²/s³). Tracking gives yd/s and yd/s²; the yard-space integral is
-multiplied by `0.9144² = 0.83612736`.
+There is no stance column in any file. `TASK.md` Phase 1(c) asks whether stance
+is "labeled (three-point vs stand-up), or inferable from pre-snap speed and
+position". It is **not labelled**. Whether it is inferable has **not** been
+established: doing so honestly needs a labelled subset to validate against, and
+none exists in the provided data. This is recorded as PENDING, not answered.
 
-Rules that bind the columns: rest is never imputed (a missing previous-play
-end leaves it NA); penalty-nullified and no-play rows are excluded from the
-load and counted; a row that fails the envelope fit keeps its snap row with
-`fit_ok = false` and a counted reason.
+## 9. Combine drill inventory
 
-## 10. Phase 4 Part 1 (IDR) model artefacts — 2026-11-04
+56 distinct `drill_name` values. The straight-line sprint from a stance is
+`FORTY_YARD_DASH` (41,500 PLAYER rows, 418 players, 793 (player, attempt) pairs;
+194 of those pairs are 3rd or 4th attempts). DL-only: 118 players, 177 attempts,
+84 with two attempts and 9 with one.
 
-Additive outputs of `src/dl/dl_idr_models.py` (wired through stage 04, D81).
-No existing output key is renamed or redefined.
-
-`outputs/dl/models/idr/part1_idr.json` (provenance-stamped):
-
-| key | unit | meaning |
-|---|---|---|
-| `primary_window` | snaps | load window of the primary fit (3) |
-| `sensitivity_windows` | snaps | declared panel (1, 5), same code path |
-| `primary.status` | — | `OK` \| `NOT_ESTIMABLE` |
-| `primary.reason` | text | present whenever `status != OK` |
-| `primary.rung_used` | — | the first usable rung of the declared ladder |
-| `primary.ladder` | — | every rung walked, with its failure reason |
-| `primary.n_snaps` / `n_players` | count | complete-case rows / rushers |
-| `primary.interaction.coef_std` | log-deficit per (SD load × SD rest) | the confirmatory coefficient |
-| `primary.interaction.ci_low_std` / `ci_high_std` | same | player-clustered 95% CI |
-| `primary.interaction.p` | — | player-clustered, t with G−1 dof |
-| `primary.interaction.coef_raw` | log-deficit per (W/kg × s) | `coef_std / (sd_load·sd_rest)` |
-| `primary.scale` | — | load/rest mean and SD used for the standardisation |
-| `primary.cluster.player` | — | primary inference (CR1) |
-| `primary.cluster.game` | — | `OK` or `NOT_ESTIMABLE` with the cluster count |
-| `primary.se_iid` / `design_effect` | — | **diagnostic only**; never the inference |
-| `primary.contrast` | — | load slope at −1 SD vs +1 SD rest |
-
-`idr_windows.csv`: one row per fitted window (`window_snaps`, `is_primary`,
-`status`, `rung_used`, counts, coefficient/CI/p, raw scale, `se_iid`,
-`design_effect`). `idr_terms.csv`: the primary window's fixed effects with both
-`*_std` and `*_raw` columns and `raw_unit`.
-
-`deficit_ratio` keeps its Phase-3 meaning (fraction, below 1 = deficit). The
-model's outcome `log_deficit_ratio` is a derived column and is **not** written
-back into `snaps.csv`.
+The DL-specific drills (`SKILL_DRILLS_DL`: bag agility, hoop, club, wave, etc.)
+are change-of-direction drills. None is a straight-line sprint, so none can
+substitute for the 40-yard dash in a physical-time model.

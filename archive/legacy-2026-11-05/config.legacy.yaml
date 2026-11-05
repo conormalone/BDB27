@@ -1,0 +1,1530 @@
+# BDB27 pipeline configuration — CEILING-BINDING TASK.
+# All paths, thresholds, sizes and parameters live here (no magic numbers in code).
+# Binding spec: TASK.md  ·  Pre-registration: notes/prereg.md  ·  Decisions: notes/decisions.md
+#
+# Pre-registration FROZEN 2026-10-12 (Conor-approved values; see notes/prereg.md, notes/decisions.md D28).
+# No value below is `null`/`TBD`: a `--mode full` run is gated on this (src/gate.py) — all keys the
+# consuming stage needs must be non-null and notes/prereg.md must read FROZEN. Sample mode may run with
+# a-priori placeholders, always labelled `UNVALIDATED SAMPLE OUTPUT`.
+#
+# NOTE (D61, 2026-10-27): the active leverage x ceiling task has NO pre-registration stage. The
+# bdb27_lc.prereg gate condition was retired; notes/prereg.md is archived history and is not read by any
+# stage. The only full-run gate is evidence-based (`00_thresholds` requires genuinely FULL input). The
+# ceiling-v1 comments above describe the retired task and are kept for provenance only.
+
+project: BDB27
+pipeline_version: 1       # D49: bumped whenever a config change must invalidate every checkpoint
+seed: 20270106            # fixed seed for any stochastic step
+
+# --------------------------------------------------------------------------- #
+# Paths (resolve to REPO_ROOT / value; see src/common.py::resolve)
+# --------------------------------------------------------------------------- #
+paths:
+  raw: data/raw                 # symlink -> mounted drive (bdb27/)
+  interim: data/interim         # symlink -> scratch interim dir
+  parquet: data/interim/parquet # converted Parquet cache
+  outputs: outputs
+  figures: outputs/figures
+  notes: notes
+  fixtures: fixtures            # committed synthetic fixtures (schema-compliant)
+  synthetic: fixtures/synthetic # synthetic fixture root (see src/synthetic_fixture.py)
+
+# --------------------------------------------------------------------------- #
+# Source filenames (keys are references used by src/common.py::csv_path)
+# --------------------------------------------------------------------------- #
+files:
+  combine_tracking: combine_tracking.csv
+  combine_results: combine_results.csv
+  players: players.csv
+  games: games.csv
+  player_play: player_play.csv
+  player_career_successes: player_career_successes.csv
+  game_tracking_sample: game_tracking_2023_sample.csv
+  game_tracking_full:               # full-mode sources (bigger machine)
+    - game_tracking_2023.csv
+    - game_tracking_2024.csv
+    - game_tracking_2025.csv
+
+# --------------------------------------------------------------------------- #
+# Run mode
+# --------------------------------------------------------------------------- #
+mode:
+  default: sample
+  sample:
+    game_tracking: game_tracking_sample
+    provenance: UNVALIDATED SAMPLE OUTPUT
+    run_game_side: false            # game-side audit items (c/d/e/h/i) are full-only
+  full:
+    game_tracking: game_tracking_full
+    provenance: FULL
+    run_game_side: true
+
+logging:
+  run_log: outputs/run_log.csv
+
+runtime:
+  duckdb_threads: 1   # single-threaded => deterministic reductions (same seed => identical outputs)
+
+# --------------------------------------------------------------------------- #
+# Phase 1 — Audit (a–i)
+# --------------------------------------------------------------------------- #
+audit:
+  out_subdir: audit
+  positions: [WR, TE]               # primary = WR; replication = TE
+  primary_position: WR
+  replication_position: TE
+  sampling_rate_hz: 10              # nominal tracking rate (audit f)
+  distance_rtol: 0.05               # provided-vs-recomputed distance rel. tolerance
+  # --- go/no-go minima (FREEZE in prereg.md before a full run) ---
+  min_matched_wr: 60                # matched WR (Combine -> NFL game tracking), audit gate (prereg sec5)
+  min_route_snaps_per_player: 100   # route snaps/player (via route_ran), audit gate (prereg sec5)
+  min_icc: 0.5                      # minimum per-feature ICC to keep a Combine feature (prereg sec4)
+  # --- item status (game-side c/d/e/h/i are PENDING FULL RUN; see notes/pending_full_run.md) ---
+  game_side_items_pending_full_run: [c, d, e, h, i]
+  # --- drill families (audit) ---
+  straight_line_drills: [FORTY_YARD_DASH]                  # -> envelope fit (Phase 2)
+  cutting_drills: [THREE_CONE_DRILL, SHORT_SHUTTLE]        # -> cut metrics (Phase 2)
+  skill_drill_prefix: SKILL_DRILLS                         # heterogeneous position skill blocks (neither family)
+  # --- feature-extraction parameters (audit g; no magic numbers) ---
+  split_distances_yd: [10, 20]          # cumulative-path distances for timing/speed splits
+  speed_at_times_s: [1.0, 2.0]          # model-free speed-at-time samples (from movement onset)
+  movement_onset_speed_yds: 0.5         # speed above which the athlete is deemed moving (envelope t0)
+  onset_distance_yd: 0.5                # cumulative path distance defining drill start
+  decel_window_frames: 5                # smoothing window (frames) for deceleration metric
+  deep_pass_length_yd: 15               # pass_length >= this => "deep" route (audit i / h)
+  exceedance_margin_rel: 0.0            # relative margin defining "at/over ceiling" (prereg sec6)
+  exceedance_reframe_rate: 0.25         # >25% exceedance => not binding => reframe as utilization (prereg sec6)
+  icc_repeat_feature_drills: [FORTY_YARD_DASH, THREE_CONE_DRILL, SHORT_SHUTTLE]
+  icc_min_players_with_repeat: 5        # below this many players with >=2 attempts => ICC UNESTIMABLE
+  # --- synthetic fixture (schema-compliant; planted ceiling; NEVER a finding) ---
+  synthetic:
+    regime: binding                     # binding | null (null = no ceiling binding; Phase-5 null case)
+    seed: 424242
+    n_wr: 5
+    n_te: 3
+    n_plays_per_player: 8
+    frames_per_play: 15
+    planted_exceedance_rate: 0.10       # share of in-game efforts allowed to beat the planted ceiling
+    game_frame_width_yd: 53.3           # NFL field frame for synthetic game x,y
+    game_frame_length_yd: 120.0
+
+# --------------------------------------------------------------------------- #
+# Phase 2 — Combine envelope  (v(t) = vmax·(1 − exp(−t/tau)); a0 = vmax/tau)
+# --------------------------------------------------------------------------- #
+envelope:
+  out_subdir: envelope
+  curve: exponential              # v(t) = vmax*(1 - exp(-t/tau))  (fitted on straight-line drills)
+  a0_definition: vmax_over_tau     # a0 = vmax / tau
+  fit_drills: FORTY_YARD_DASH      # straight-line family used for the envelope fit
+  # --- model-free features (per attempt + per player) ---
+  split_distances_yd: [5, 10, 20]  # timing/speed splits (prereg sec8)
+  speed_at_times_s: [1.0, 2.0]     # model-free speed-at-time samples (prereg sec8)
+  cut_metrics: [entry_speed, exit_speed, cod_deficit]  # cutting-drill metrics (prereg sec8; not headlined)
+  # --- feature selection (FIXED in prereg.md before the full run) ---
+  max_features: 3                  # <= 3 Combine features in the primary model
+  selection_rule: [icc, vif]       # keep by ICC first, then prune by VIF
+  icc_min: 0.5                     # ICC threshold, from prereg sec4 (= audit.min_icc)
+  vif_max: 5.0                     # VIF ceiling / redundancy-pruning trigger (prereg sec3, sec8)
+  shrinkage: hierarchical           # per-player envelope parameters are hierarchically shrunk
+  min_attempts_per_player: 1        # straight-line attempts needed to fit an envelope (prereg sec8; shrinkage)
+  # --- exponential-envelope fit parameters (config-driven; no magic numbers) ---
+  fit:
+    onset_speed_yds: 0.5            # speed above which the athlete is moving (= audit.movement_onset_speed_yds)
+    vmax_bounds: [0.0, 30.0]        # yd/s  (lower, upper) — audit-consistent bounds (prereg sec4 evidence)
+    tau_bounds: [0.05, 10.0]        # s     (lower, upper) — audit-consistent; wide => noisy thin attempts
+    p0_tau_s: 0.8                   # initial tau guess (initial vmax guess = observed peak)
+    maxfev: 5000                    # curve_fit iteration cap
+    min_points: 5                   # min positive-speed frames required to attempt a fit
+    min_speed_yds: 0.05             # frames with speed above this are 'positive' for the fit
+  # --- plausibility flag (prereg sec3.4 pattern: flag, never silently drop) ---
+  flag_vmax_over_peak: 1.5          # flag a player whose raw ceiling exceeds this x their mean peak speed
+  # --- analysis population for ICC/VIF feature selection (Combine side only; prereg sec3) ---
+  selection_positions: [WR, TE, DB, OL, DL, LB, RB, QB]  # all dash participants (ICC is computed over all)
+  # --- candidate Combine feature pool (prereg sec3); vendor s-derived features EXCLUDED ---
+  candidate_features: [peak_speed, speed_at_5yd, speed_at_10yd, speed_at_20yd,
+                       speed_at_t1.0s, speed_at_t2.0s, time_to_5yd, time_to_10yd, time_to_20yd,
+                       min_speed_after_peak, speed_deficit_after_peak, max_decel,
+                       env_vmax, env_tau, env_a0]
+  expected_features: [peak_speed, speed_at_20yd, env_vmax]  # pre-declared (prereg sec3) reliable set
+
+# --------------------------------------------------------------------------- #
+# Phase 3 — Game demand
+# --------------------------------------------------------------------------- #
+game:
+  out_subdir: game
+  thresholds_file: thresholds.json # outputs/thresholds.json (FULL in full mode; PLACEHOLDER in sample)
+  # --- D49 season scope: ONE build carries season/season_type on every effort; the scope is
+  # applied at the MODEL stage (07/08/09), never by rebuilding 03. Primary excludes preseason,
+  # whose 14.9% share is played largely against backups and deeper depth charts.
+  scope:
+    active: primary                # which list the model stages apply by default
+    active_panel: all_seasons      # panel axis: all_seasons | rookie_only (model-stage only)
+    primary: [REG, POST]           # the new primary specification
+    sensitivity: [REG, POST, PRE]  # the all-games version, retained (never deleted)
+    panels: [all_seasons, rookie_only]  # 2x2 grid with the season-type axis; PRIMARY is
+                                        # REG+POST x all_seasons. rookie_only = season == draft_year.
+  # --- data-QC per-frame speed validity bound (game side only; notes/decisions.md D35) ---
+  # `peak_speed` is max() over per-frame speed = step distance / dt (recomputed from x,y); one
+  # noisy/duplicated frame can define a physically-impossible peak. This is the frame-level DESPIKE
+  # bound (yd/s): impossible per-frame samples (speed > cap) are DISCARDED and the per-effort peak
+  # and accel are recomputed from the RETAINED (valid) frames only — the effort itself is kept.
+  # 12.5 yd/s = 25.6 mph — ABOVE every real in-game route speed (NGS in-game tops ~21-22 mph), so it
+  # removes ONLY impossible samples. This is a DATA-QC bound, NOT an analysis knob (never tuned to a
+  # result); post-freeze (prereg.md stays FROZEN; the margin 0.0 / reframe rate 0.25 are untouched).
+  speed_cap_yds: 12.5
+  route_snap_col: route_ran        # 'route ran' flag on player_play.csv
+  # --- effort sampling ---
+  top_k_efforts: 5                 # top-k efforts per fixed route-snap count (prereg sec2)
+  route_snap_count: 100            # the fixed route-snap denominator (prereg sec2)
+  top_k_metric: speed              # metric ranking top-k efforts within a player (speed | accel)
+  # --- per-effort features ---
+  effort_metrics: [speed, accel]   # per-effort speed/accel (yard-space)
+  envelope_fraction: max_over_ceiling  # per-effort envelope fraction (effort / player ceiling)
+  # --- Phase-2 ceiling source (envelope fraction = effort / player ceiling) ---
+  ceiling:
+    source_subdir: envelope        # outputs/<source_subdir>/
+    file: per_player_envelope.csv  # per-player Phase-2 ceiling table
+    speed_column: env_vmax         # ceiling speed (yd/s)
+    accel_column: env_a0           # ceiling initial accel (yd/s^2)
+  # --- effort cut-offs (produced by 00_thresholds.py; never derived from the sample) ---
+  thresholds:
+    method: percentile             # percentile | fixed
+    high_speed_percentile: 0.90    # (prereg sec8)
+    accel_percentile: 0.90         # (prereg sec8)
+    histogram:                     # streamed percentile accumulation (memory-bounded)
+      speed_bin_yds: 0.05
+      accel_bin_yds2: 0.05
+      max_speed_yds: 40.0
+      max_accel_yds2: 100.0
+  sample_placeholders:
+    high_speed_threshold_yds: 8.0  # a-priori placeholder ONLY (never set from the sample; prereg sec8)
+    accel_threshold_yds2: 3.0      # a-priori placeholder ONLY (never set from the sample; prereg sec8)
+
+# --------------------------------------------------------------------------- #
+# Phase 4 — Models
+# --------------------------------------------------------------------------- #
+models:
+  out_subdir: models
+  quantiles: [0.5, 0.75, 0.9, 0.99]  # pre-registered tau ladder (prereg sec1)
+  level: effort                    # effort-level regression
+  cluster: player                  # player-clustered bootstrap
+  bootstrap_reps: 1000             # player-clustered bootstrap reps (prereg sec8)
+  bootstrap_seed_offset: 101
+  controls_without_draft: [position, age, height, weight, bmi]  # controls excluding draft (prereg sec8)
+  controls_with_draft: [position, age, height, weight, bmi, draft_position]  # + draft; undrafted = level
+  exceedance: true                 # model/measure the exceedance rate
+  utilization: u                   # utilization covariate/quantity
+  pooling: [pooled, WR, TE]        # pooled vs per-position
+  fallbacks: [refit_increased_max_iter, adjacent_tau_report, pool_positions, report_null]  # prereg sec7
+  # --- model specification (implementation; frozen values above are untouched) ---
+  response: peak_speed             # in-game effort speed (yd/s) = the modelled outcome (efforts.csv)
+  primary_feature: env_vmax        # Combine ceiling feature (prereg sec3 retained set); maps to efforts.ceiling_speed_yds
+  bmi_constant: 703.0              # BMI = constant * weight_lb / height_in^2 (imperial)
+  fit_max_iter: 1000               # QuantReg IRLS iteration cap (base fit)
+  fit_max_iter_retry: 20000        # QuantReg iteration cap for the refit_increased_max_iter fallback
+  fit_p_tol: 1.0e-06               # QuantReg primal tolerance
+  bootstrap_ci: [0.025, 0.975]     # percentile CI for the player-clustered bootstrap
+  min_obs_per_stratum: 5           # below this a stratum reports a null (never a forced fit)
+  control_vif_max: 5.0             # drop near-collinear controls above this VIF (never the primary; = envelope.vif_max)
+  utilization_percentiles: [0.05, 0.5, 0.95]  # percentiles summarising the utilization u distribution
+
+# --------------------------------------------------------------------------- #
+# Phase 5 — Validation
+# --------------------------------------------------------------------------- #
+validate:
+  out_subdir: validate
+  cv_grouping: player              # player-grouped CV
+  cv_folds: 5                      # player-grouped CV folds (prereg sec8)
+  cv_seed: 20270106
+  baseline: controls_only          # compare against a controls-only baseline
+  permutation: true
+  perm_reps: 1000                  # permutation reps (prereg sec8)
+  perm_tau: 0.9                    # tau at which the permutation null is computed
+  perm_seed_offset: 202            # permutation RNG seed = config seed + offset (config-driven)
+  measurement_error_correction: icc_attenuation  # divide slope by reliability (prereg sec8)
+  measurement_error_feature: env_vmax  # feature whose ICC drives the attenuation correction
+  min_repeats_for_sensitivity: 2   # thin-repeat threshold (drop_thin_repeats sensitivity)
+  sensitivity: [alt_quantiles, drop_thin_repeats, exclude_optouts, margin_grid]  # prereg sec8
+  sensitivity_alt_quantiles: [0.5, 0.8, 0.95]   # alt_quantiles sensitivity ladder
+  sensitivity_margin_grid: [0.0, 0.01, 0.02, 0.05]  # exceedance margin grid (margin_grid sensitivity)
+  optout_fields: [forty, ten_yd_split, combine_height, combine_weight]  # exclude_optouts fields
+
+# --------------------------------------------------------------------------- #
+# Phase 0.5 — External pre-Combine expectation proxies (Grinding The Mocks)
+# --------------------------------------------------------------------------- #
+# Source of truth: the Phase 0.5 spec in notes/phase-0.5-external-proxies.md. The task is to map
+# Kaggle `nflId` to a Pre-Combine Expected Draft Position (EDP), filtered to February mock-draft
+# snapshots so the EDP is uncontaminated by Combine performance. GTM is the SOLE external source.
+# All paths/thresholds/parameters live here (no magic numbers in code).
+external:
+  # RETIRED live acquisition (D43). The board export below
+  # (`data/raw/external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv`) is the exposure source for all
+  # 783 exposures in 06_security. The GTM runtime scraper in 00b is a leftover from when we
+  # thought no export existed: it is now a RETIRED FALLBACK and must never touch the network.
+  # Keep this false. Set true only if the board export is ever lost and a live route is revived.
+  enabled: false
+  source: gtm                        # Grinding The Mocks (the only in-scope external source)
+  out_subdir: external               # outputs/external/ (sample + synthetic labels)
+  proxy_file: pre_combine_expectation.parquet   # full run writes outputs/pre_combine_expectation.parquet
+  unmatched_file: unmatched_external_ids.csv
+  manifest_file: external_data_manifest.md      # written under notes/ (compliance / Kaggle forum)
+  raw_cache_dir: external            # data/raw/external/ (raw GTM responses cached before processing)
+  years: [2023, 2024, 2025]          # draft classes represented in the Kaggle players.csv
+  positions: [WR, TE]                # match-rate assertion population (spec: drafted WRs/TEs)
+  require_for_phase4: false          # the proxy is NOT used by the model; board export supersedes it (D43)
+  # --- strict deliverable schema (EXACT names + order; asserted on write) ---
+  schema: [nflId, Pre_Combine_EDP, match_confidence_score]
+  # --- API pacing / bounded acquisition (spec: strict rate limiting) ---
+  request_sleep_s: 0.5               # sleep between live calls (rate limit)
+  max_retries: 2                     # bounded retries per source beyond the first attempt
+  connect_timeout_s: 8
+  read_timeout_s: 12
+  gtm:
+    # Endpoints/URLs attempted (each result + access date logged to notes/external_data_manifest.md).
+    endpoints:
+      - https://grindingthemocks.com/
+      - https://grindingthemocks.shinyapps.io/Dashboard/
+    # Raw file(s) expected once an export is obtained; cached under data/raw/external/gtm/.
+    raw_files: [gtm_mock_history.csv]
+  # --- February snapshot filter (spec Step 1: pre-Combine, uncontaminated by Combine perf) ---
+  snapshot:
+    month: 2                         # February only (Combine runs late-Feb/early-March)
+  # --- EDP aggregation across the retained February snapshots (spec: median/mean per player) ---
+  aggregation: median                # median | mean (median is the pre-registered choice)
+  # --- fuzzy ID resolution (string similarity on Name + Draft Year + Position + College) ---
+  fuzzy:
+    name_weight: 0.6                 # weights combine into match_confidence_score in [0,1]
+    college_weight: 0.25
+    position_weight: 0.15
+    year_weight: 0.0                 # draft year is a HARD filter, not a soft weight
+    min_score: 0.90                  # accept a match at/above this combined score
+    min_name_score: 0.80             # guard: names must be at least this similar
+  # --- spec threshold: halt if the drafted WR/TE match rate is not ABOVE this ---
+  min_match_rate: 0.85
+  # --- synthetic GTM fixture (schema-compliant; NEVER a finding) ---
+  synthetic:
+    fixture_dir: synthetic/gtm       # under fixtures/ (see src/synthetic_gtm_fixture.py)
+    players_file: kaggle_players.csv # fixture players table (schema-compliant subset)
+    gtm_file: gtm_mock_history.csv   # fixture raw GTM mock history
+    seed: 770077
+    n_players: 12
+    n_mocks_per_player: 6            # February snapshots per player
+    n_unmatched_gtm: 3               # GTM prospects with NO Kaggle player (exercise unmatched)
+    n_near_miss: 2                   # deliberate spelling perturbations (exercise fuzzy matching)
+
+  # ------------------------------------------------------------------------- #
+  # Security / stakes BOARD (Phase 0 external data — EDP snapshots export).
+  # The REAL board schema (below) SUPERSEDES the hypothetical GTM mapping above
+  # (notes/decisions.md D37): new security code joins the board on `nfl_id` directly.
+  # Permission: the competition's External Data section permits external data (with
+  # citation/obligations); Conor confirmed the board is permitted (2026-10-17).
+  # Provenance + sha256 are recorded in notes/rules.md and notes/external_data_manifest.md.
+  # The board file is NOT committed (data/ is gitignored).
+  # ------------------------------------------------------------------------- #
+  board:
+    enabled: true
+    permitted: true                  # Conor 2026-10-17: competition External Data permits it
+    # Path is relative to data/raw/ (the mounted drive); the .xlsx twin is ignored.
+    file: external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv
+    sha256: 4664b369e56dfcbe62de678932059695c2c5b8b128989fa5a9068994857563b4
+    n_rows_expected: 3625
+    csv_delim: ","
+    date_format: "%d/%m/%Y"          # DD/MM/YYYY (raw strings; day values 14/21/28 force DMY)
+    # EXACT columns (order as in the file); asserted on read.
+    columns: [draft_year, name, position, school, type, nfl_id, n_total, n, edp, edp_rank,
+              pos_rank, snapshot_date, snapshot_note]
+    type_value: "All"
+    # snapshot_note vocabulary and the ONLY pre-Combine exposures (post/week-of never used).
+    snapshot_pre: ["2 Weeks Pre-Combine", "1 Week Pre-Combine"]
+    snapshot_primary: "1 Week Pre-Combine"
+    snapshot_trend_base: "2 Weeks Pre-Combine"
+    snapshot_post: ["1 Week Post-Combine", "2 Weeks Post-Combine"]
+    snapshot_combine_week: "Combine Week"
+    # Board position -> competition (combine) position group (audit d position-mismatch check).
+    position_map: {WR: WR, TE: TE, CB: DB, S: DB, EDGE: DL, DT: DL, LB: LB,
+                   OT: OL, G: OL, C: OL, QB: QB, RB: RB, ST: ST}
+    min_match_rate: 0.85             # halt if board->Combine nfl_id match rate (WR/TE) <= this
+
+# --------------------------------------------------------------------------- #
+# Security / stakes analysis (Phase 4 — src/06_security.py) — the new primary axis.
+# Pre-Combine information ONLY as exposures (post-Combine / week-of are outcomes).
+# Cutoffs/thresholds are fixed in notes/prereg.md before the first full-data run.
+# --------------------------------------------------------------------------- #
+security:
+  out_subdir: security
+  exposures_file: security_exposure.parquet  # per-player security exposure table (Phase 4)
+  analysis_a_file: analysis_a.json
+  primary_position: WR
+  replication_position: TE
+  drop_missing_primary: true       # Conor: players with NO 1-week-pre snapshot are dropped from B
+  # --- legacy mapping (kept for provenance): the old canonical exposure names ---
+  edp_column: edp
+  consensus_n_column: n
+  consensus_total_column: n_total
+  # --- primary-model population minima (the merged headline gate) ---
+  min_matched_receivers_per_tier: 15   # min matched receivers in each security tier (prereg)
+  # --- security tiers (a SENSITIVITY check only; cutoffs fixed from COUNTS in prereg) ---
+  tier_method: quantile            # quantile | fixed
+  tier_quantiles: [0.3333, 0.6667] # low/mid/high split of log(EDP) (VIF-safe default)
+  tier_cutoffs: null               # frozen in prereg before a full run (counts-based)
+  # --- exposure table schema (EXACT names + order; asserted on write) ---
+  schema: [nfl_id, draft_year, position, position_group, edp_pre, log_edp_pre, edp_trend,
+           consensus_share, n_snapshots, has_primary, has_trend, participation_pattern, n_drills]
+  # --- analysis A (5A): pre->post-Combine EDP change ~ speed x pre-Combine EDP ---
+  analysis_a:
+    outcome: edp_change           # post - pre EDP (positive = fell / less secure)
+    speed_feature: env_vmax       # shrunken Combine ceiling speed (Phase-2 output)
+    standardize_speed: true
+    controls: [position_group, draft_year]
+    cluster: false                # one row per player; robust (HC1) SEs when clustering is off
+    alpha: 0.05
+    min_n: 40                     # below this, analysis A is reported as underpowered
+    speed_effect_sign: negative    # faster -> lower EDP (market reward) is the expected sign
+    # robustness panel: refit the same spec across shrunken speed features (sign-stability check)
+    robustness_features: [env_vmax, peak_speed, speed_at_20yd]
+    # --- D38: Analysis A is appendix-only (the gate is retired); this is the attenuation panel ---
+    attenuation: true             # write outputs/security/analysis_a_attenuation.csv
+    reliability_features: [env_vmax, peak_speed, speed_at_20yd]
+    attenuation_min_n: 40         # below this a feature's attenuation row is a reported null
+    attenuation_note: "approximate classical measurement-error correction: corrected = raw / ICC (prereg validate.measurement_error_correction=icc_attenuation)"
+  # --- item (l) power calculation inputs ---
+  power:
+    alpha: 0.05
+    power: 0.80
+    residual_sd_log_speed: 0.20   # assumed residual SD of log(game top-k speed)
+    exposure_sd_log_edp: 0.70     # assumed SD of log(pre-Combine EDP) (a-priori; sample-labelled)
+    min_detectable_effect_abs: 0.0  # headline gate: an MDE above this is 'undetectable at any plausible size'
+
+# --------------------------------------------------------------------------- #
+# Phase 5 B–G — security / incentive-exposure models (src/07_security_models.py)
+# D38: the spine is INCENTIVE EXPOSURE (a slipping draft stock => a stronger reason to invest in the
+# speed mechanism => a SMALLER Combine→game gap). Group assignment uses PRE-COMBINE information ONLY:
+# the 1wk-pre vs 2wk-pre EDP trend where available, else within-position tertiles of log(EDP_pre).
+# Post-Combine EDP / pre→post change are NEVER used for assignment or any primary model.
+# Sign convention: a NEGATIVE `group_coef` means moved_down sits further below its ceiling (a LARGER
+# gap) i.e. AGAINST the incentive hypothesis; the hypothesis predicts POSITIVE.
+# --------------------------------------------------------------------------- #
+security_models:
+  out_subdir: security_models
+  # --- input filenames (real: outputs/game|security|envelope; synthetic: the fixture dir) ---
+  inputs:
+    efforts: efforts.csv
+    top_k_efforts: top_k_efforts.csv
+    player_summary: player_summary.csv
+    route_snap_counts: route_snap_counts.csv
+    games: games.csv
+    thresholds_applied: thresholds_applied.csv
+    security_exposure: security_exposure.parquet       # real path (outputs/security/)
+    security_exposure_csv: security_exposure.csv       # synthetic fixture path
+    per_player_envelope: per_player_envelope.csv
+    attempt_features: attempt_features.csv
+    selection_pool: selection_pool.csv                 # synthetic fixture only (transparency)
+    covariates: covariates.csv                         # synthetic fixture only
+    reliability: feature_reliability.csv               # synthetic fixture only
+    meta: meta.json                                    # synthetic fixture only
+  # --- the PRE-COMBINE sort key (D38; thresholded by D40) ---
+  sort:
+    # ASYMMETRIC THRESHOLD (D40): edp_trend = 1wk-pre - 2wk-pre (positive = EDP number rose = worse).
+    # moved_down iff edp_trend >= fall_threshold -- a real fall of 3+ EDP spots, not any movement.
+    # high_secure = every other player WITH a trend (edp_trend < threshold) = stable OR rising.
+    # There is NO unclassified middle in the trend stratum: a stable player is high_secure by design.
+    fall_threshold: 3.0             # PRIMARY: moved_down iff the player fell >= 3 EDP spots
+    sensitivity_threshold: 5.0      # DECLARED SENSITIVITY panel (panel_threshold_T5); never tuned
+    level_fallback: true            # has_trend=false & has_primary=true -> within-position tertiles
+    level_tertiles: [0.3333333333, 0.6666666667]  # bottom = high_secure, top = moved_down
+    min_group_n: 15                 # below this a group/scatter is reported as thin (never forced)
+    groups: [moved_down, high_secure]        # the two-group contrast (order = sign convention)
+    unclassified_label: unclassified
+  # --- B: effort-level primary model ---
+  primary:
+    response: log_peak_speed        # log(in-game top-k effort peak speed)
+    speed_feature: env_vmax         # primary Combine feature (config: models.primary_feature)
+    robustness_features: [peak_speed, speed_at_20yd]
+    controls: [route_family, pass_length, snap_share, position, height, weight, years_since_combine]
+    cluster: player                 # statsmodels OLS cov_type="cluster", groups=nfl_id
+    attenuation: true               # FWL + ICC moment-matrix correction (both estimates reported)
+    attenuation_reps: 200           # player-clustered bootstrap reps for the corrected group SE
+    attenuation_seed_offset: 303
+    snap_share_clip: 1.0            # snap_share = min(n_route_snaps / route_snap_count, clip)
+    min_obs: 40
+    # D44 COVARIATE PLAUSIBILITY BOUNDS. An NFL Combine participant cannot be outside these; a
+    # value that is (e.g. height 1e200 from a corrupt join) is treated as a CORRUPT ROW, never kept:
+    # the field is set to NaN, a WARNING names nfl_id + the raw value, the row drops out of every
+    # model, and it is reported in outputs/security_models/covariate_quality.csv + SUMMARY.
+    # Bounds are deliberately wide: they catch corruption, not unusual athletes.
+    covariate_bounds:
+      height_in: [48.0, 90.0]       # 4'0" to 7'6"
+      weight_lb: [100.0, 400.0]     # 100 to 400 lb
+      bmi: [15.0, 60.0]             # BMI = 703 * weight_lb / height_in^2
+    scopes: [WR, TE, pooled]
+    stratum_fe: true                # headline = pooled two-group split WITH a stratum fixed effect
+    panels: [trend_only, level_fallback]   # pre-declared sensitivity panels (one stratum each)
+    topk_mean_variant: true         # per-player log(top-k mean speed) variant (HC1)
+    route_family_map:
+      GO: VERTICAL
+      POST: VERTICAL
+      CORNER: VERTICAL
+      WHEEL: VERTICAL
+      CROSS: BREAK_IN
+      IN: BREAK_IN
+      SLANT: BREAK_IN
+      ANGLE: BREAK_IN
+      OUT: BREAK_OUT
+      FLAT: BREAK_OUT
+      HITCH: SHORT
+      SCREEN: SHORT
+    route_family_default: OTHER
+    # D49: the season now comes from games.csv (the true season). The digits below are only the
+    # FALLBACK when games.csv is absent (synthetic fixtures): parse YYYYMMDD and map Jan/Feb to
+    # year-1. `season_digits` is retained for provenance but is no longer the primary rule.
+    season_digits: 4
+    season_min: 1999
+    season_max: 2100
+  # --- C: which end drives it (continuous log-EDP piecewise model) ---
+  c:
+    scopes: [WR, TE, pooled]
+    security_percentiles: [0.1, 0.5, 0.9]
+    knot_percentiles: [0.3333333333, 0.6666666667]   # piecewise-linear knots in log(EDP_pre)
+    min_obs: 40
+    wilson_z: 1.959963984540054     # 95% Wilson interval
+  # --- D: skippers (exploratory) ---
+  d:
+    min_n: 15
+    alpha: 0.05
+    skipper_patterns: [cut_only, no_speed_drills]
+    dash_patterns: [dash_only, dash_and_cut]
+  # --- E: selection + IPW ---
+  e:
+    min_n: 60
+    min_appeared: 30
+    weight_trim: [0.01, 0.99]        # w clipped to these weight percentiles
+    weight_grid: [[0.0, 1.0], [0.01, 0.99], [0.05, 0.95]]   # truncation sensitivity grid
+    max_iter: 200
+    cluster: player
+    # separation / non-convergence guards: the odds ratios are reported as a labelled null rather
+    # than letting math.exp overflow when a predictor separates (D43).
+    separation_max_coef: 20.0        # |coef| above this => separation suspected
+    separation_max_se: 50.0          # se above this => separation suspected
+    or_exponent_clip: 700.0          # exp() exponent clipped here; overflow reported explicitly
+  # --- F: falsification ---
+  f:
+    placebo: [height, weight]        # standardized placebos in place of the group term
+    effort_split_k: 5               # bottom-k low-effort placebo (top-k is the primary)
+    min_obs: 40
+  # --- G: ceiling / tail ---
+  g:
+    quantile_source: models.quantiles   # the FROZEN prereg tau ladder
+    scopes: [WR, TE, pooled]
+    bootstrap_reps: 60              # config reps (player-clustered); full runs may raise this
+    seed_offset: 404
+    max_iter: 400                   # QR iteration cap for the point fit + bootstrap
+    p_tol: 1.0e-05
+    instability_ratio: 1.0          # boot_se > ratio * |estimate| => reported null
+    min_obs: 40
+    utilization_percentiles: [0.5, 0.9, 0.99]
+  # --- selection-model population floor (E) ---
+  selection:
+    min_n: 60
+  # --- committed synthetic game-side fixture (NEVER a finding) ---
+  synthetic:
+    root: synthetic/security_game
+    regimes: [planted, null, selection]
+    seed_offset: 909
+    n_wr: 140                       # >=120 WR (brief minimum)
+    n_te: 110                       # >=40 TE (raised for the D40 threshold rule: enough TE moved_down)
+    n_edge: 8                       # forced edge-case players (documented in meta.json)
+    route_snaps_min: 100            # main population: >=100 route snaps (the fixed denominator)
+    route_snaps_max: 170
+    low_snap_min: 25                # forced <100-snap edge players
+    low_snap_max: 60
+    k_top: 5
+    k_bottom: 5
+    base_gap_log: -0.24             # E[log(game speed) - log(ceiling)] (≈21% below the ceiling)
+    gap_player_sd: 0.015
+    gap_noise_sd: 0.030
+    bottom_gap_offset: 0.14         # low-effort placebo sits clearly below the top-k
+    delta: 0.08                     # planted moved_down advantage (log units); null regime = 0
+    delta_null: 0.0
+    delta_selection: 0.08
+    dose_gamma: 0.08                # continuous log(EDP) gradient (at-risk -> smaller gap)
+    measurement_noise_sd: 0.02      # env_vmax = true ceiling * exp(noise)
+    log_edp_mu: 3.70
+    log_edp_sd: 0.75
+    combine_speed_mu: 8.90
+    combine_speed_sd: 0.75
+    trend_share: 0.50               # share with a 2-week snapshot (trend stratum)
+    trend_sd_edp: 10.0              # EDP-point SD of the pre-Combine drift (D40: ~38% fall 3+ spots)
+    trend_level_corr: 0.60          # at-risk drift correlates with the EDP level (realistic)
+    absence_rate: 0.10              # base no-game-data rate (planted/null regimes)
+    selection_log_edp_slope: -3.00  # selection regime: at-risk less likely to appear
+    selection_speed_slope: 0.45     # better Combine speed -> slightly more likely to appear
+    selection_intercept: 1.10
+    selection_te_shift: -0.25
+    skipper_rate: 0.12              # share of high_secure forced into cut_only/no_speed_drills
+    one_effort_players: 2
+    low_snap_players: 6
+    missing_covariate_players: 2
+    no_primary_players: 1
+    speed_at_20yd_ratio: 0.94
+    attempt_sd: 0.02
+    icc: {env_vmax: 0.64, peak_speed: 0.97, speed_at_20yd: 0.97}
+    height_mu: 73.0
+    height_sd: 2.6
+    weight_mu: 200.0
+    weight_sd: 16.0
+
+# --------------------------------------------------------------------------- #
+# Route-mix robustness for the group contrast (analysis-only; src/08_route_robustness.py)
+# D47. Re-estimates block B's exact specification on route strata, leave-one-player-out and a
+# player-label permutation. NOT a pre-declared test: it cannot change b_primary.csv or the verdict.
+# --------------------------------------------------------------------------- #
+route_robustness:
+  out_subdir: route_robustness
+  perm_reps: 1000                  # player-label permutations (>=1000; fixed seed)
+  perm_seed_offset: 505            # permutation RNG seed = config seed + offset
+  strata:
+    vertical_family: VERTICAL      # the route family tested in isolation (config route_family_map)
+    # Depth bands (inclusive, yards). The 'deep' stratum is audit.deep_pass_length_yd (15).
+    pass_length_bands: [[0, 9], [10, 19], [20, null]]
+
+# --------------------------------------------------------------------------- #
+# Draft-outcome and targeted-route probes (analysis-only; src/09_draft_and_target.py)
+# D48. TWO EXPLORATORY checks that never enter the pre-registered §8 panel:
+#   A. realised draft capital (POST-Combine) by group, plus the group contrast with
+#      log(draft_overall_pick) as a covariate and within draft bands — a mechanism/diagnostic
+#      probe, not a clean adjustment (conditioning on a post-Combine outcome can open a collider).
+#   B. the same contrast on target==True / target==False / all rows. Target-only is selection on
+#      a post-treatment, role-dependent variable; the non-target subset is the decoy/mechanical
+#      channel, not a causal estimate.
+# min_obs / min_group_n null means "reuse security_models.primary.min_obs / sort.min_group_n".
+# --------------------------------------------------------------------------- #
+draft_target:
+  out_subdir: draft_and_target
+  draft_file: null                 # null -> files.players under paths.raw (players.csv)
+  round_bands: [[1, 1], [2, 2], [3, 4], [5, 7]]   # descriptive R1 / R2 / R3-4 / R5-7
+  strata_bands: [[1, 2], [3, 4], [5, 7]]          # declared bands for the conditional fits
+  target_subsets: [all, target, non_target]       # target==True / target==False / everything
+  min_obs: null                    # null -> security_models.primary.min_obs
+  min_group_n: null                # null -> security_models.sort.min_group_n
+  seed_offset: 606                 # reserved for any resampling added later; fixed, never tuned
+
+# --------------------------------------------------------------------------- #
+# Dose-response panel — continuous pre-Combine stock movement (D50; src/10_dose_response.py)
+# EXPLORATORY / POST HOC. It models the exposure continuously instead of at the binary D40 cut and
+# CANNOT change the pre-registered binary result (b_primary.csv, TASK.md H1). Every emitted table is
+# labelled exploratory / post hoc. Sign convention: `coef` is the change in log(game peak speed) per
+# +1 EDP spot FALLEN, holding the Combine ceiling fixed; NEGATIVE = a slipping player realises LESS
+# of his ceiling (the PI's stated expectation). TASK.md H1's wording predicts POSITIVE — see D50.
+# --------------------------------------------------------------------------- #
+dose:
+  out_subdir: dose                 # outputs/security_models/dose/ (never touches a 07/08/09 output)
+  # --- thin discipline (a cell is FITTED only when both floors are met) ---
+  min_obs: 40                      # effort rows
+  min_players: 15                  # distinct nfl_id (the cluster unit)
+  # --- panels / scopes / features ---
+  season_scopes: [all_seasons, rookie_only]   # fitted in ONE invocation (two row builds)
+  scopes: [WR, TE, pooled]
+  features: [env_vmax, peak_speed, speed_at_20yd]      # every spec's ceiling feature pool
+  linear_spline_features: [env_vmax, peak_speed, speed_at_20yd]  # linear+spline robustness set
+  other_spec_features: [env_vmax]  # knot5 / bins / kink run on the primary feature only
+  # --- spline / kink geometry ---
+  knots_3df: [0.05, 0.35, 0.65, 0.95]   # 4 knots -> df = 3 (Harrell restricted cubic)
+  knot5: 5.0                            # the declared panel threshold, as an EXPLICIT knot
+  knot5_percentiles: [0.10, 0.90]       # knots = unique(sort([q10, 5.0, q90]))
+  knot5_fallback_percentiles: [0.10, 0.50, 0.90]  # used when knot5 is outside the observed range
+  kink_at: 5.0                          # segmented model knot (>= 5 spots)
+  # --- fixed bins on d = edp_trend (integer EDP spots) ---
+  bins:
+    labels: ["<=0", "1-2", "3-4", "5-9", "10+"]
+    # [lo, hi] inclusive; null = unbounded
+    bounds: [[null, 0], [1, 2], [3, 4], [5, 9], [10, null]]
+    reference: "<=0"
+  quantile_bins: 5                 # quantile variant, fitted only when a fixed bin is thin
+  # --- capital (draft-cost) confound: mandatory for every spec ---
+  capital:
+    treatments: [unadjusted, pick_linear, round_band, pick_plus_level,
+                 within_R1, within_R2_R3, within_R4plus]
+    pick_column: draft_overall_pick      # players.parquet (real) / covariates.csv (fixture)
+    fixture_pick_column: overall_pick    # the synthetic covariates.csv column name (D50 fixture)
+    round_column: draft_position         # R1..R7 / undrafted
+    pick_linear_note: "undrafted rows (no pick) are EXCLUDED for this treatment"
+    round_band_note: "undrafted is kept as its own level; R1 is the reference"
+    bands:                               # within-band treatments fit ONLY that band
+      within_R1: [R1]
+      within_R2_R3: [R2, R3]
+      within_R4plus: [R4, R5, R6, R7, undrafted]
+    band_labels:
+      within_R4plus: R4plus_or_undrafted
+    level_control: log_edp_pre           # pick_plus_level adds the pre-Combine LEVEL too
+  # --- plotting grid (dose_curve.csv) ---
+  grid_n: 61                       # points spanning [min(d), max(d)] of the fitted rows
+  z: 1.959963984540054             # 95% normal quantile (curve / bin intervals)
+  curve:
+    specs: [dose_linear, dose_spline, dose_spline_knot5, dose_kink]
+    feature: env_vmax
+    capital_treatments: [unadjusted, pick_linear, round_band]
+  # --- figure (supplementary/exploratory: NOT one of the 5 writeup figures) ---
+  figure:
+    file: fig_dose_response.png
+    dpi: 300
+    figsize: [7.6, 5.4]
+    reference_spots: [3.0, 5.0]
+  # --- the plain-words sign convention stamped on every row (§9) ---
+  sign_convention: "coef = change in log(game peak speed) per +1 EDP spot fallen, holding the Combine ceiling fixed; NEGATIVE = a slipping player realises LESS of the ceiling (the PI's stated expectation); the pre-registered TASK.md H1 wording predicts POSITIVE — see D50."
+  # --- planted truth for the four dose fixture regimes (NEVER a finding) ---
+  fixture:
+    regimes: [dose, dose_null, dose_kink, dose_capital]
+    trend_slope: -0.002            # `dose`: gap += trend_slope * edp_trend
+    trend_slope_null: 0.0          # `dose_null`
+    kink_slope_above: -0.006       # `dose_kink`: 0 below 5, this per spot above 5
+    trend_range: [-6.0, 14.0]      # deterministic grid of edp_trend for dose/dose_null
+    trend_levels: 81
+    kink_trend_range: [-4.0, 20.0] # kink regime: most of the mass above the 5-spot knot
+    # Nuisance noise for the dose regimes only. The dose slope is small (-0.002), so a large
+    # player-level draw would swamp it in a single fixture replication; the effort-level noise is
+    # kept, so the clustered SE machinery is still exercised.
+    dose_gap_player_sd: 0.010
+    dose_measurement_noise_sd: 0.010
+    capital_trend_per_pick: 0.05   # `dose_capital`: edp_trend generated FROM the pick
+    capital_gap_per_pick: -0.0003  # pick drives the gap => unadjusted slope ~ -0.006
+    capital_trend_noise_sd: 2.0    # keeps dose and pick from being exactly collinear
+    pick_round_size: 32            # deterministic pick inside its round band
+
+# --------------------------------------------------------------------------- #
+# Deliverables / sample discipline
+# --------------------------------------------------------------------------- #
+deliverables:
+  figures_max: 5                   # <= 5 figures (stricter than the official "<10")
+  sample_label: UNVALIDATED SAMPLE OUTPUT
+  kaggle_notebook: true            # public Kaggle notebook + writeup is a pass/fail gate
+
+# --------------------------------------------------------------------------- #
+# db_decay — NFL Big Data Bowl 2027: in-game decay of DB effort vs Combine ceiling
+# (task pivot 2026-10-25, D51). Appended verbatim-preserving; do not rewrite.
+# --------------------------------------------------------------------------- #
+db_decay:
+  audit:
+    out_subdir: audit/db_decay
+    positions: [CB, SS, FS, DB]
+    snap_source: player_play
+    min_matched_dbs: 40
+    min_efforts_per_db: 20
+    min_efforts_per_db_slope: 60
+    min_total_efforts: 4000
+    min_icc_primary: 0.60
+    min_icc_secondary: 0.50
+    min_repeat_players_icc: 5
+    sampling_rate_hz: 10
+    dt_tolerance_s: 0.02
+    distance_rtol: 0.05
+    exceedance_margin_rel: 0.0
+    icc_ci_alpha: 0.05
+    provenance_thresholds: PLACEHOLDER_SAMPLE
+    alignment_map: {CB: outside_corner, SLOT_CB: slot_corner, HIGH_SAFETY: safety, BOX_SAFETY: safety}
+    alignment:
+      safety_min_depth_yd: 8.0
+      los_max_depth_yd: 2.0
+      slot_max_lateral_yd: 10.0
+      min_offense_rows_for_lateral: 5
+    drill_families:
+      FORTY_YARD_DASH: straight_line
+      SHORT_SHUTTLE: shuffle
+      THREE_CONE_DRILL: cut
+      BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL: backpedal
+      BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION: backpedal
+      GAUNTLET_DRILL: backpedal
+      BOX_DRILL: cut
+      TERYL_AUSTIN_DRILL_1: cut
+      TERYL_AUSTIN_DRILL_2: cut
+      W_DRILL: cut
+      LINE: other
+      LINE_DRILL: other
+    pending_full_run: [c_tracking, e_tracking, h, i]
+  ceiling:
+    fit_drills: FORTY_YARD_DASH
+    curve: exponential
+    a0_definition: vmax_over_tau
+    required_features: [vmax]        # features the primary estimand depends on
+    candidates: [vmax, a0, max_decel, cut_entry_speed, cut_cod_deficit]
+    selection:
+      rule: icc_then_vif
+      icc_min: 0.60
+      vif_max: 5.0
+      max_features: 3
+    shrinkage: hierarchical
+    shrink_method: reliability_weighted_mean
+    min_attempts_per_player: 1
+    cut_drills: [THREE_CONE_DRILL, W_DRILL, BOX_DRILL]
+    cut_metrics: [entry_speed, exit_speed, cod_deficit]
+    sanity:                          # pre-registered data-quality exclusions
+      vmax_yds_max: 12.5
+      vmax_over_peak_max: 1.5
+    smooth_window_frames: 5
+    cut_window_s: 1.0
+    cut_min_speed_yds: 2.0
+    heading_window_frames: 3
+  game:
+    effort_speed_frac_of_vmax: 0.85
+    effort_speed_floor_yds: 6.0
+    effort_accel_frac_of_a0: 0.80
+    effort_accel_floor_yds2: 4.0
+    min_effort_duration_s: 0.3
+    load_primary: prior_hi_efforts_per10
+    load_secondary: prior_distance_yd_per100
+    garbage_time_q4_margin: 21
+    garbage_time_any_margin: 28
+    min_snaps_per_player: 100
+  power:
+    alpha: 0.05
+    power: 0.80
+    reps: 500
+    seed_offset: 907
+    effect_grid: [0.0025, 0.005, 0.0075, 0.01, 0.015, 0.02]
+    assumed_sd_effort_fraction: 0.05
+    assumed_load_icc_within_player: 0.25
+    assumed_efforts_per_db: 80
+    assumed_games_per_db: 12
+    smallest_effect_of_interest: 0.01
+    assumed_load_sd_per10: 2.0
+    assumed_random_intercept_sd: 0.03
+    assumed_random_slope_sd: 0.005
+  model:
+    reliability_threshold: 0.5
+    slope_spec: "(1 + cumulative_load | player)"
+    fallbacks: [uncorrelated_re, eb_slopes, random_intercept]
+
+# =========================================================================== #
+# ACTIVE TASK — leverage x ceiling (NFL BDB 2027). Added 2026-10-26.
+# Binding spec: TASK.md. EVERY number in this block is a DESIGN PLACEHOLDER:
+# none was estimated from the sample or from outcomes. Sample mode emits
+# provenance PLACEHOLDER_SAMPLE and stamps every artefact
+# "UNVALIDATED SAMPLE OUTPUT"; full mode emits FULL only after the full
+# tracking input passes the row-cap check in src/00_thresholds.py.
+# Do not tune any value against sample results.
+# =========================================================================== #
+bdb27_lc:
+  provenance_note: >-
+    Design placeholders pending full-data freeze. Sample-mode provenance is
+    PLACEHOLDER_SAMPLE; full-mode provenance requires the full tracking input
+    to exist and its parsed row count to exceed the provided sample row cap.
+
+  paths:
+    raw: data/raw
+    interim: data/interim
+    parquet: data/interim/parquet
+    checkpoints: data/interim/checkpoints
+    tmp: data/interim/tmp
+    outputs: outputs
+    figures: outputs/figures
+    fixtures: fixtures
+    synthetic: fixtures/synthetic/lc
+    thresholds: outputs/thresholds.json
+    run_log: outputs/run_log.csv
+
+  files:
+    combine_tracking: combine_tracking.csv
+    combine_results: combine_results.csv
+    players: players.csv
+    games: games.csv
+    player_play: player_play.csv
+    game_tracking_sample: game_tracking_2023_sample.csv
+    game_tracking_full:
+      - game_tracking_2023.csv
+      - game_tracking_2024.csv
+      - game_tracking_2025.csv
+
+  seeds:
+    base: 20270106            # mirrors top-level `seed`
+    fixture: 20270107
+    bootstrap: 20270108
+    permutation: 20270109
+    model: 20270110
+
+  mode:
+    default: sample
+    sample:
+      tracking_key: game_tracking_sample
+      provenance: PLACEHOLDER_SAMPLE
+      sample_row_cap: 1048575   # 2^20-1: the provided sample is exactly this many rows
+    full:
+      tracking_key: game_tracking_full
+      provenance: FULL
+
+  runtime:
+    duckdb_threads: 1                  # single-threaded => deterministic reductions
+    duckdb_memory_limit: "1200MB"      # 4 GB box; ~1.8 GB was available at setup
+    temp_directory: data/interim/tmp   # USB volume; root tmpfs has ~104 MB free
+    csv_null_marker: "NA"              # raw CSVs encode missing as NA (see notes/schema.md)
+    empty_string_is_category: true     # pass_result "" is a real category, not NULL
+    parquet_compression: zstd
+    parquet_row_group_size: 122880
+    chunk_rows: 250000
+    min_free_mb_root: 40
+    min_free_mb_interim: 2048
+    rss_sample_interval_s: 0.2
+
+  thresholds:
+    speed_cap_yds: 12.0                # combine sanity flag (PLAYER rows only)
+    combine_sampling_hz: 10
+    combine_dt_tolerance_s: 0.02
+    despike:
+      method: speed_cap_replace
+      replacement: linear_interpolate
+      max_consecutive_frames: 5
+    peak_window:
+      frac_of_max: 0.9
+      pad_s: 0.2
+    gap:
+      interp_max_s: 0.5
+      interpolate_inside_peak_window: false
+    smoothing:
+      method: centered_rolling_median
+      window_frames: 5
+    icc_min: 0.50
+    vif_max: 5.0
+    max_features: 3
+    min_attempts_per_player: 1
+    min_receivers_both_extremes:
+      WR: 30
+      TE: 10
+    min_efforts_per_player: 20
+    min_efforts_per_bin: 5
+    smallest_effect_of_interest: 0.03  # log max-speed, ~3 %
+    equivalence_margin: 0.02
+
+  audit:
+    positions: [WR, TE]
+    primary_position: WR
+    replication_position: TE
+    coverage_years: [2023, 2024, 2025]
+    straight_line_drills: [FORTY_YARD_DASH]
+    track_entity: PLAYER
+    straight_line_sinuosity_max: 1.10
+    straight_line_min_attempts: 50
+    min_matched:
+      WR: 40
+      TE: 12
+    pending_full_run: [c_tracking, d_leverage, e_seasons, g_effort_counts, h_icc, i_confound]
+    out_subdir: audit/lc
+    summary_filename: SUMMARY.md
+
+  ceiling:
+    fit_drills: [FORTY_YARD_DASH]
+    model: "vmax * (1 - exp(-t / tau))"
+    a0_definition: vmax_over_tau
+    fit_method: bounded_least_squares
+    bounds:
+      vmax_yds: [5.0, 13.0]            # 40-yd times 4.2-5.5 s
+      tau_s: [0.3, 3.0]                # upper bound deliberately generous; probe pinned 3.0
+    initial:
+      vmax_frac_of_peak: 1.05
+      tau_s: 1.4
+    min_frames: 20
+    min_r2: 0.90
+    max_speed_over_vmax: 1.5
+    candidate_features: [vmax, tau, a0]
+    max_features: 3
+    icc_min: 0.50
+    vif_max: 5.0
+    shrinkage:
+      method: reliability_weighted_mean
+      min_attempts: 1
+    sanity:
+      duplicate_attempt_flag: true
+      peak_window_gap_flag: true
+    out_subdir: ceiling/lc
+    summary_filename: summary.json
+    output_schema: [nfl_id, draft_year, position, feature, estimate, se, n_attempts, icc, reliability, selected, vif]
+
+  leverage:
+    definition_id: wp_swing_4p1mp
+    formula: "4 * wp_pre * (1 - wp_pre)"
+    source_column: pre_snap_home_team_win_probability
+    perspective: home
+    require_pre_snap_only: true
+    binning:
+      method: terciles
+      n_bins: 3
+      labels: [low, medium, high]
+      computed_on: FULL
+    garbage_time:
+      status: placeholder
+      rule: quarter_and_margin
+      q4_margin: 21
+      any_quarter_margin: 28
+
+  efforts:
+    definition_id: route_depth_and_duration
+    out_subdir: game/lc/efforts
+    summary_filename: efforts_summary.json
+    min_route_depth_yd: 5.0
+    min_route_depth_yd_sensitivity: 8.0
+    min_duration_s: 1.0
+    require_pass_route: true
+    target_conditioned_primary: false
+    sensitivity_without_target: true
+    max_speed_source: tracking_s
+    load_measures:
+      primary: prior_high_intensity_efforts
+      secondary: prior_distance_yd
+
+  # --- Phase 4: the within-player leverage estimand (D65 wires it as a stage) ---
+  # Every value here mirrors TASK.md Phase 4 as written; no feature is added
+  # beyond the declared specification.  `break_depth_yd` is a CONTROL and is
+  # reported, never interpreted.
+  models:
+    out_subdir: game/lc/models
+    summary_filename: model_result.json
+    outcome: log_max_speed
+    leverage_column: leverage_z        # per 1 within-player SD of leverage
+    controls: [route_family, break_depth_yd, break_found, time_to_throw_s,
+               prior_efforts, quarter, score_margin, down, yards_to_go]
+    cluster: player
+    # TASK.md Phase 4 convergence fallbacks, in the declared order.
+    fallbacks: [uncorrelated_re, player_fixed_effects, random_intercept]
+    mixed_max_iter: 500
+    variance_component_floor: 1.0e-08  # a slope variance at 0 is a failed rung
+    report_depth_control: true
+    depth_note: "break_depth_yd is a control; reported, never interpreted"
+    mde_note: >-
+      Analytic MDE at n efforts/player; D60's 0.0443 log-speed at 40
+      efforts/player is stated alongside every interval and is not a gate.
+
+  # --- Phase 5: validation of the within-player leverage estimand (D66) ---
+  # Every number here is a declared design constant.  The module reads this
+  # block and nothing else: the permutation block structure, the
+  # orthogonalisation controls, the equivalence test and the sensitivity curve
+  # are data, not code.  Duplicated constants are asserted equal in tests so
+  # they cannot drift.
+  validation:
+    out_subdir: game/lc/validation
+    summary_filename: validation_result.json
+    permutations:
+      reps: 1000                   # declared shuffle count (both schemes)
+      seed_offset: 0               # RNG seed = seeds.permutation + this
+      schemes: [player_game, route_family]
+      block_columns:               # shuffle leverage WITHIN these blocks
+        player_game: [nfl_id, game_id]
+        route_family: [nfl_id, route_family]
+      p_value_rule: "(1 + #{|null| >= |observed|}) / (reps + 1), two-sided"
+    orthogonalisation:
+      controls: [game_elapsed_s, prior_efforts]   # time and cumulative load
+      time_column: game_elapsed_s
+      load_column: prior_efforts
+    equivalence:
+      margin: 0.02                 # must equal power.equivalence_margin (asserted)
+      alpha: 0.05                  # must equal power.alpha (asserted)
+      smallest_effect_of_interest: 0.03   # must equal power.smallest_effect_of_interest
+    garbage_time:
+      rule: quarter_and_margin     # the margins live in leverage.garbage_time
+      q4: 4                        # "fourth quarter or later"
+    placebo_outcomes: [break_depth_yd, break_found, time_to_throw_s]
+    tactical_demand:
+      defender_distance_available: false   # not in the effort table; stated, not faked
+      time_to_throw_restriction: true
+    # The declared TASK.md Phase 5 sensitivity list.  A spec is a row of data
+    # here; `apply_spec` filters, nothing is invented in code.
+    sensitivity:
+      leverage_definitions: [leverage]     # alternate definition: raw 4p(1-p)
+      bin_cutoffs: [tercile, quartile]     # high-vs-low contrast per cut
+      effort_thresholds: [5.0, 8.0]        # route extension, yd
+      min_efforts_grid: [0, 20]            # no floor in the primary spec
+      exclude_final_two_minutes: true
+      final_two_minutes_s: 120
+      ceiling_features: [vmax]             # not applicable: no ceiling in D65
+      matching_tolerances: null            # CEM tolerances: exact strata, see phase4.matched
+
+  # --- D67: the remaining TASK.md Phase 4 analyses (stage 07_phase4) -------------
+  # Every constant below is a design choice frozen in notes/decisions.md D67.
+  # 07 reads 04's effort table (plus 02's ceiling and the players mirror) and
+  # never re-specifies the D65 primary model or the D66 validation logic.
+  phase4:
+    definition_id: phase4_remainder_v1
+    out_subdir: game/lc/phase4
+    summary_filename: phase4_result.json
+    ceiling_file: player_ceiling.csv     # 02_combine_ceiling long-format table
+    players_parquet: lc_players          # written by 04_efforts' key join
+    matched:
+      treatment_bin: high
+      control_bin: low
+      coarsen:
+        depth_bin_edges: [0.0, 5.0, 10.0, 15.0, 20.0, 1000.0]  # break depth, yd
+        load_bin_edges: [0.0, 2.0, 5.0, 9.0, 100000.0]         # prior efforts
+      min_pairs: 2                # below this the matched sample is COLLAPSED (reported)
+      bootstrap_reps: 1000        # player-clustered bootstrap
+      seed_key: bootstrap         # RNG = seeds.bootstrap (+1 for the bootstrap draws)
+    headroom:
+      baseline_bin: low           # utilisation is measured on low-leverage efforts
+      min_low_efforts_for_split: 4   # need >= 2 per half after the seeded split
+      half_split_seed_key: model     # split seed is logged in the output
+    ceiling_bound:
+      exceedance_ratio: 1.0       # effort fraction above 1.0 = above the ceiling
+      leverage_bin: high          # counterfactual leverage reference bin
+    dose_response:
+      bins: [low, medium, high]
+      monotonicity_tolerance: 1.0e-9
+    per_player:
+      reliability_threshold: 0.5  # model-based; no odd/even split-half (TASK.md)
+      min_efforts: 8              # below this a within-player slope is not attempted
+      min_players: 10             # the gate also needs a usable population
+    replication:
+      position: TE
+      exploratory_below_players: 30   # label, never a reason to hide the estimate
+    tactical_demand:
+      defender_distance_field: defender_distance_yd  # absent -> NOT RUN, never proxied
+      comparable_window_s: 0.30   # +/- window around the median time to throw
+
+  # --- D61: route depth as DEPTH AT THE BREAK (the depth control in the model) ---
+  # Every number below is a design constant frozen in notes/decisions.md D61
+  # (D62 relaxes only the break resolution: 45 deg/0.3 s -> 35 deg/0.4 s).
+  # The smoother is the existing ceiling smoother
+  # (thresholds.smoothing.window_frames); no second smoothing convention exists.
+  route_depth:
+    definition_id: depth_at_break_v1
+    out_subdir: game/lc/route_depth   # outputs/ (never data/interim)
+    smoothing_window_frames: 5       # must equal thresholds.smoothing.window_frames (asserted)
+    heading_window_s: 0.2            # heading from smoothed velocity over this window
+    stem_min_s: 0.8                  # minimum post-snap motion before a break can count
+    break_window_s: 0.4              # cumulative |dtheta| is summed over this window (D62)
+    break_angle_deg: 35.0            # cumulative turn that defines a break (D62)
+    sustain_window_s: 0.3            # the new heading must persist this long
+    sustain_angle_deg: 20.0          # ...within this tolerance
+    min_frames: 10                   # below this a track cannot support the definition
+    min_speed_yds: 2.0               # heading undefined below this local speed
+    max_gap_s: 0.5                   # a longer frame gap cannot be spanned by a break window
+    nominal_hz: 10                   # only a sanity check; dt comes from the frames
+    snap_event: ball_snap            # tracking event marking the snap frame
+    throw_event: pass_forward        # tracking event marking the throw frame (not re-derived)
+    snap_tolerance_s: 0.15           # play-level snap event must land this near a frame
+    sensitivity_max_tracks: 2000     # deterministic subsample for the specification curve
+    direction_column: play_direction
+    direction_right: right           # play_direction 'right' => +x is downfield
+    direction_left: left             # play_direction 'left'  => -x is downfield
+    # Declared specification curve: the answer must not be threshold-art.
+    robustness:
+      break_angle_deg: [35.0, 45.0, 55.0]
+      break_window_s: [0.2, 0.3, 0.4]
+    # How the control enters the model: family + centred depth + indicator.
+    model_control:
+      depth_column: break_depth_yd
+      indicator_column: break_found
+      centre: true                   # depth centred; no scaling (yards stay yards)
+      include_after_throw: true      # headline fit keeps every detected break
+      exclude_after_throw_sensitivity: true   # sensitivity refit drops them
+    # --- D63: the keep-or-fall-back rule for the continuous depth control ---------------
+    # D62 fixed the resolution (35 deg / 0.4 s) but no number for choosing between the
+    # continuous depth term and the option-4 fallback. This block IS that number. It is
+    # evaluated on FULL data only; sample counts are descriptive and never decide it.
+    # Derivation (D63): a control must be estimated to ~1/3 of the smallest effect of
+    # interest, delta = power.smallest_effect_of_interest / 3 = 0.01; with
+    # sigma = power.assumed_within_player_sd_log_speed = 0.10,
+    # n_min = (1.96 * sigma / delta)^2 = 384.2; x design-effect allowance 1.3 (efforts
+    # cluster within player) = 499.4 -> 500.
+    decision_rule:
+      definition: "continuous_depth_vs_option4"
+      min_pre_throw_breaks: 500        # condition (a): breaks with a known pre-throw timestamp
+      min_families_meeting_bar: 6      # condition (b): families carrying within-family depth
+      min_pre_throw_breaks_per_family: 25   # per-family floor (SE of median depth ~1 yd)
+      fallback: "route_family_plus_break_indicator (D61 option 4)"
+      evaluated_on: FULL               # sample output can never satisfy or fail this rule
+
+  power:
+    reps: 1000
+    alpha: 0.05
+    power: 0.80
+    smallest_effect_of_interest: 0.03
+    equivalence_margin: 0.02
+    assumed_within_player_sd_log_speed: 0.10
+    assumed_efforts_per_player: 40
+    min_detectable_effect_target: 0.03
+
+  gate:
+    min_matched_wr: 40
+    min_matched_te: 12
+    max_leverage_time_partial_corr: 0.50
+    min_mde: 0.03
+    min_icc: 0.50
+    min_efforts_per_player: 20
+    min_efforts_per_bin: 5
+    min_receivers_both_extremes:
+      WR: 30
+      TE: 10
+    require_wp_available: true
+    require_thresholds_provenance: FULL
+
+  fixture:
+    seed: 20270107
+    n_players: 60
+    n_games: 6
+    plays_per_game: 16
+    frames_per_effort: 34
+    tracking_hz: 10
+    planted_beta_leverage: 0.05          # log max speed per 1 SD leverage
+    planted_within_player_sd: 0.04
+    confounded_beta_leverage: 0.0
+    confounded_leverage_time_corr: 0.85
+    confounded_beta_time_log_speed_per_sd: -0.06
+
+bdb27_dl:
+  paths: {raw: data/raw, interim: data/interim, parquet: data/interim/dl_parquet,
+          checkpoints: data/interim/dl_checkpoints, tmp: data/interim/tmp,
+          outputs: outputs/dl, figures: outputs/dl/figures,
+          fixtures: fixtures/synthetic/dl, thresholds: outputs/dl/thresholds.json,
+          run_log: outputs/run_log.csv, prereg: notes/prereg.md}
+  files: {combine_tracking: combine_tracking.csv, combine_results: combine_results.csv,
+          players: players.csv, games: games.csv, player_play: player_play.csv,
+          game_tracking_sample: game_tracking_2023_sample.csv,
+          game_tracking_full: [game_tracking_2023.csv, game_tracking_2024.csv, game_tracking_2025.csv]}
+  seeds: {base: 20270106, fixture: 20270107, bootstrap: 20270108,
+          permutation: 20270109, model: 20270110}
+  mode: {default: sample,
+         sample: {tracking_key: game_tracking_sample, provenance: PLACEHOLDER_SAMPLE,
+                  sample_row_cap: 1048575, run_game_side: true},
+         full: {tracking_key: game_tracking_full, provenance: FULL,
+                sample_row_cap: 1048575, run_game_side: true}}
+  runtime: {duckdb_threads: 1, duckdb_memory_limit: "1200MB",
+            temp_directory: data/interim/tmp, csv_null_marker: "NA",
+            empty_string_is_category: true, parquet_compression: zstd,
+            parquet_row_group_size: 122880, chunk_rows: 250000,
+            min_free_mb_root: 40, min_free_mb_interim: 1024,
+            rss_sample_interval_s: 0.2}
+  positions: {dl: [DE, DT, NT], edge: [EDGE], interior: [INTERIOR_LINE],
+              ol: [G, T, C], qb: [QB]}
+  thresholds:
+    speed_cap_yds: 12.0
+    combine_sampling_hz: 10
+    combine_dt_tolerance_s: 0.02
+    smoothing: {method: centered_rolling_median, window_frames: 5}
+    peak_window: {frac_of_max: 0.9, pad_s: 0.2}
+    gap: {interp_max_s: 0.5, interpolate_inside_peak_window: false}
+    icc_min: 0.50
+    vif_max: 5.0
+    max_features: 3
+    min_attempts_for_icc: 2
+    min_frames: 20
+    min_r2: 0.90
+  ceiling:
+    fit_drills: [FORTY_YARD_DASH]
+    lateral_drills: [SHORT_SHUTTLE, THREE_CONE_DRILL]
+    model: "vmax * (1 - exp(-t / tau))"
+    a0_definition: vmax_over_tau
+    bounds: {vmax_yds: [4.0, 13.0], tau_s: [0.3, 3.0]}
+    initial: {vmax_frac_of_peak: 1.05, tau_s: 1.4}
+    candidate_features: [a0, vmax, tau, speed_at_1_0, speed_at_2_0,
+                         ten_yd_split, peak_accel]
+    primary_feature: a0
+    fallback_feature: speed_at_1_0        # only on Conor's decision, never automatic
+    lateral: {entry_window_s: 0.3, exit_window_s: 0.3, braking_min_drop_yds: 1.0}
+  audit:
+    min_matched_dl: 40
+    min_pass_rush_snaps_per_rusher: 100
+    min_players_meeting_snaps: 25
+    min_snap_coverage_share: 0.90         # Part 2 requirement
+    design_effect: 1.3
+    alpha: 0.05
+    power: 0.80
+    max_mde_hr: 1.15
+    out_subdir: audit
+  game:
+    snap_out_subdir: game/snaps
+    post_snap_window_s: [1.0, 2.0]
+    los_tolerance_yds: 1.0
+    blocker_radius_yds: 2.0
+    blitz_rusher_threshold: 4             # team rushers > 4 => blitz
+    min_snaps_per_player: 100
+    # --- rusher / blocker derivation (D75, 2026-11-01) -------------------
+    # All of these are *measurement* constants of the geometric derivation
+    # documented in notes/dl-design.md §5.4a.  None is tuned on a result.
+    rush_advance_min_yd: 1.5      # net movement toward the offensive backfield
+                                  # inside post_snap_window_s that counts as a rush
+    protector_max_retreat_yd: 2.0 # max net retreat of a stay-in protector
+    protector_max_lateral_yd: 2.0 # max lateral travel of a stay-in protector
+    all22_min_players: 20         # distinct tracked players at the snap frame
+                                  # before any team-level count is derived
+    # The tracking product this dataset ships (D78, 2026-11-02).  The 2027 game
+    # tracking carries combine prospects only (1.5 players/play on full data,
+    # 1-4 on the provided sample), so no play can carry all22_min_players and
+    # the team-level rusher/blocker derivation is not applicable.  Declared
+    # here as a *data fact*, never as a result: the derivation module stays in
+    # the tree, parked, for a future all-22 product.  If the data ever carries a
+    # 20-player snap frame the probe below overrides this declaration.
+    tracking_product: prospect_only
+    all22_probe_games: 25         # games inspected before the prospect-only
+                                  # short-circuit is confirmed (deterministic:
+                                  # lowest game_id first)
+    qb_min_depth_yd: 3.0          # central player this deep is the QB (excluded
+    qb_central_lateral_yd: 2.5    # from the protector count and from engagement)
+    primary_blocker_min_share: 0.5  # share of window frames the primary blocker
+                                    # must be within blocker_radius_yds
+    te_lateral_min_yd: 6.0        # geometry label: TE band [6.0, 10.0] yd off ball
+    te_lateral_max_yd: 10.0
+    interior_lateral_max_yd: 3.5  # geometry label: interior inside 3.5 yd
+    derivation_gate:              # distribution checks (full run decides; §5.4a)
+      n_rushers_mean: [3.0, 5.0]
+      n_blockers_mean: [5.0, 7.0]
+      blitz_share: [0.25, 0.35]
+      max_na_share: 0.0
+      max_side_inference_rows: 0    # motion-only rushers must never be classified
+    garbage_time: {q4_margin: 21, any_quarter_margin: 28, q4: 4}
+  load:
+    absolute_speed_grid_yds: [1.5, 2.0, 2.5, 3.0, 3.5]
+    relative_fraction_grid: [0.5, 0.6, 0.7, 0.8, 0.9]
+    recency_half_life_s: 300.0            # identical for both definitions
+    rest_column: seconds_since_last_snap
+    posterior_draws: 200
+    # Matched in-game elapsed times for v_player(t_match) in the relative-load
+    # ceiling (prereg §7: "1.0 s and 2.0 s"). The per-rusher ceiling speed used
+    # is the draw-mean of v(t) over these times and the posterior draws.
+    t_match_s: [1.0, 2.0]
+
+  # ----------------------------------------------------------------------- #
+  # Phase 3 derived columns (IDR spec, 2026-11-04).  ADDITIVE to stage 03:
+  # no existing column changes meaning.  Every value here is a measurement
+  # constant or an explicitly declared design choice (notes/decisions.md D80).
+  # ----------------------------------------------------------------------- #
+  phase3:
+    rest:
+      # Rest is a PLAY-TEAM quantity: seconds from the last recorded
+      # timestamp of the team's previous defensive play to this snap.  It is
+      # computed once per (game, defensive team, play) and joined to rushers.
+      unit: s
+      # The current snap must be the team's very next defensive play after
+      # the one carrying the previous own snap; otherwise the interval spans
+      # snaps we cannot see and rest is NA (never imputed).
+      max_gap_plays: 1
+    load:
+      # rolling_kinematic_load = sum over the prior n *included* snaps of
+      # integral(a*v dt) per rep.  a in m/s^2, v in m/s => W/kg.
+      window_snaps: 3
+      clip_negative_power: true   # accumulate positive (accelerative) power only
+      yard_to_metre: 0.9144       # 1 yd = 0.9144 m (a*v in yd^2/s^3 -> x0.83612736)
+      max_dt_s: 0.5               # never integrate across a tracking gap
+      min_frames: 5               # below this a rep contributes no power integral
+    fit:
+      # v(t) = vmax * (1 - exp(-t/tau)); a0_snap = vmax / tau
+      min_frames: 8
+      min_duration_s: 0.5
+      vmax_bounds_yds: [1.0, 15.0]
+      tau_bounds_s: [0.05, 5.0]
+      p0_tau_s: 1.0
+      maxfev: 2000
+      # The exponential is fitted on the acceleration phase only: a pass-rush
+      # rep plateaus/declines once engaged, so a whole-play fit is not the
+      # model's domain.  The window is a declared measurement choice.
+      fit_window_s: 1.5
+      min_r2: 0.80
+      raw_window_s: 0.5           # robustness column: max ds/dt in this window
+    baseline:
+      source_subdir: ceiling          # outputs/dl/ceiling (bdb27_dl.paths.outputs)
+      file: player_ceiling.csv
+      feature: a0                 # shrunken Combine a0 (yd/s^2)
+      estimate_column: estimate
+      se_column: se
+
+  # ----------------------------------------------------------------------- #
+  # Phase 4 — Part 1 (IDR spec): rolling load x inter-snap rest -> deficit.
+  # Binding spec: TASK.md Phase 4 Part 1.  Outcome log(deficit_ratio).
+  # Every value is a measurement/design constant; none is tuned on a result.
+  # The window 3 primary is Phase 3's declared load window (D80); 1 and 5 are
+  # a declared SENSITIVITY panel, never selected by looking at the sample.
+  # ----------------------------------------------------------------------- #
+  idr_part1:
+    out_subdir: idr
+    outcome: log_deficit_ratio
+    load_column: rep_kinematic_load_w_per_kg   # windowed by this module
+    rest_column: inter_snap_rest_s
+    windows:
+      primary: 3
+      sensitivity: [1, 5]
+    # The spec's fixed control list.  `blitz` is declared and expected to be
+    # UNAVAILABLE on the prospect-only tracking product (D78); the model
+    # reports that, it never drops a declared control silently.
+    controls:
+      categorical: [alignment, down]
+      continuous: [yards_to_go, score_margin]
+      absent_ok: [blitz]
+    min_control_coverage: 0.5   # below this a control is reported, not fitted
+    min_level_n: 20             # categorical level floor for a dummy
+    min_rows: 100               # complete snaps needed for a fit
+    min_players: 8              # rushers (the random-effect grouping)
+    min_clusters_game: 10       # game-clustered SE only above this cluster count
+    random_effect: rusher
+    rungs: [correlated_random_slopes, uncorrelated_re_alt_optimiser,
+            random_intercept, fixed_effects_only]
+    mixed_max_iter: 500
+    variance_component_floor: 1.0e-08   # a slope variance at 0 is a failed rung
+    alpha: 0.05
+
+  # ----------------------------------------------------------------------- #
+  # IDR Part 2 (TASK.md, 2026-11-04): time-to-pressure survival comparison.
+  # Two Weibull AFT arms on the SAME rows, folds and controls:
+  #   deficit  = the Phase-3 per-snap dynamic deficit (deficit_ratio)
+  #   absolute = cumulative recency-weighted absolute load at 2.5 yd/s
+  # Tuning freedom is equal by construction: one fixed candidate per arm.
+  # 2.5 yd/s is the midpoint of load.absolute_speed_grid_yds, declared before
+  # any score is seen.  blitz is declared UNAVAILABLE (notes/blockers.md).
+  # ----------------------------------------------------------------------- #
+  idr_part2:
+    out_subdir: idr
+    deficit_column: deficit_ratio
+    absolute_column: absolute_load_2p5
+    absolute_threshold_yds: 2.5
+    deficit_grid_value: 1.0
+    grid_budget: 1
+    min_rows: 100
+    min_players: 8
+    min_events: 20
+
+  models:
+    out_subdir: models
+    primary_estimator: aft_frailty_lognormal
+    frailty_quadrature_nodes: 20
+    # Product-rule nodes for the *slope* dimension of Part 2's random-slope
+    # model.  The frailty/intercept dimension keeps the prereg's 20 nodes;
+    # a 20x7 product rule is the tractable 2-D extension (P2 does not fix a
+    # slope node count — recorded in every fit artefact).
+    slope_quadrature_nodes: 7
+    # CV fits: one optimiser start and a lower iteration cap (the CV score is a
+    # prediction metric; the reported fits keep the full max_iter and 2 starts).
+    cv_starts: 1
+    cv_max_iter: 250
+    p2_starts: 2
+    rungs: [aft_frailty_lognormal, cox_cluster, aft_cluster]
+    cluster: player
+    # §8 (amended 2026-11-02, D78): the fixed primary control list.  blitz,
+    # n_blockers and primary_blocker_group were removed with the derivation:
+    # team-level rush/protection counts are unobservable on a prospect-only
+    # tracking product.  height/weight/years are retained size/timing controls
+    # (prereg §1: "beyond position, size and play context").  pre_snap_depth_yd
+    # is exercised in the declared sensitivity panel: it exists only where the
+    # prospect's own tracking exists (2.3 % of the provided sample), so as a
+    # complete-case primary control it would silently restrict the estimand to
+    # tracked plays.
+    controls: [position_group, alignment, down, yards_to_go, quarter, score_margin,
+               seconds_since_last_snap, snaps_in_drive, height_in, weight_lb,
+               years_since_combine]
+    random_effect: rusher
+    # §8: team and season fixed effects.  ``season`` is derived from games.csv
+    # (game_id join), never from a clock or a filename.
+    crossed_fixed_effects: [team, season]
+    # §8 sensitivity panel (never primary, never in P1/P2's confirmatory fit).
+    sensitivity_controls: [team_coverage_man_zone, offense_formation, pre_snap_depth_yd]
+    cv_folds: 5
+    bootstrap_reps: 1000
+    max_iter: 500
+    # --- stage-04 wiring (no design value below is tunable against a result) ----
+    inputs:
+      snaps: game/snaps/snaps.csv          # relative to bdb27_dl.paths.outputs
+      ceiling: ceiling/player_ceiling.csv  # relative to bdb27_dl.paths.outputs
+      players: players.csv                 # relative to bdb27_dl.paths.raw
+      combine_results: combine_results.csv # relative to bdb27_dl.paths.raw
+    # §9: a player-grouped CV fold must contain >= 10 rushers with >= 100 snaps.
+    min_rushers_per_fold: 10
+    # Categorical treatment of the control list; everything else is continuous.
+    categorical_controls: [alignment, down, quarter, position_group, team, season]
+    # Chunk size for the (n x quadrature) matrices; a runtime memory knob only.
+    quadrature_chunk_rows: 2000
+    # Fields the full run derives from tracking.  A sample-mode absence of one of
+    # these is PENDING_FULL_RUN, never a silent GO and never a NO-GO on sample data.
+    # §8 controls are measured on this product, so a missing one is a real
+    # failure (never PENDING_FULL_RUN).  Only the load columns remain
+    # full-run-derived.
+    full_run_fields: [absolute_load, relative_load]
+    mde_note: "HR per 1 SD a0; smallest effect fixed in prereg"
+  validate:
+    out_subdir: validation
+    # --- IDR spec (TASK.md, 2026-11-04): the two Phase-5 items ------------
+    # The binding spec names exactly two checks.  The ceiling permutation
+    # below belongs to the retired 2026-10-30 spec: its code is kept for
+    # provenance, it is NOT in the default run path, and every artefact
+    # labels it SUPERSEDED.  Set enabled=true only to re-run the historical
+    # check deliberately.
+    ceiling_permutation: {enabled: false, superseded: true,
+                          superseded_by: "TASK.md 2026-11-04 (IDR spec)"}
+    # 1. within-(rusher, game) rest permutation.  Block structure, rep count,
+    #    seed and the minimum share of usable refits are data, not code.
+    rest_permutation:
+      enabled: true
+      scheme: within_player_game
+      block_columns: [nfl_id, game_id]
+      reps: 199               # refits; p resolution 1/200 = 0.005
+      sample_reps: 9          # sample mode is a machinery check, never a test
+      seed_key: permutation   # bdb27_dl.seeds.permutation
+      window: null            # null => idr_part1.windows.primary (3)
+      min_permutable_fraction: 0.5   # fewer usable refits => NOT_ESTIMABLE
+      p_value_rule: "(1 + #{|null| >= |observed|}) / (reps + 1), two-sided"
+    # 2. the three TASK.md context exclusions.  The garbage-time margins live
+    #    in bdb27_dl.game.garbage_time (q4 4 / 21 / 28); the final-two-minute
+    #    clock threshold is validate.final_two_minutes_s.  `obvious_passing`
+    #    has NO definition anywhere in this repo: it stays rule: null and is
+    #    reported DEFINITION_UNDEFINED when enabled.  Conor skipped this one
+    #    context control by decision on 2026-11-04 ("Don't care, skip",
+    #    notes/blockers.md B-DL-IDR-01 -> RESOLVED; notes/decisions.md D83),
+    #    so enabled: false and the row reports SKIPPED_BY_DECISION.  Garbage
+    #    time and the final two minutes stay enabled.  Reversible: set
+    #    enabled: true and supply a rule.
+    context_controls:
+      garbage_time: {enabled: true, rule: quarter_and_margin, q4: 4}
+      final_two_minutes: {enabled: true, rule: quarter_and_clock, quarters: [2, 4],
+                          seconds: 120}
+      obvious_passing: {enabled: false, rule: null}
+    # --- SUPERSEDED ceiling permutation (prereg §3, §7; old spec) ----------
+    # 199 refits is the configured design: p resolution 1/200 = 0.005, well
+    # inside the 0.05 decision level, and ~40x cheaper than the 1000 the
+    # design sketch carried as a placeholder (no prereg value fixes the rep
+    # count).  A permutation refit is the primary model only: one optimiser
+    # start (the CV convention, models.cv_starts) and no secondary block.
+    permutations:
+      reps: 199
+      sample_reps: 9          # sample mode is a machinery check, never a test
+      ceiling_scheme: within_position_group
+      order_scheme: within_player_game
+      starts: 1
+      seed_key: permutation   # bdb27_dl.seeds.permutation
+      min_rows: 500           # below this no refit is attempted (NOT_ESTIMABLE)
+    # The group the ceiling is shuffled within: interior vs edge.  The labelled
+    # per-snap field is ``alignment``; a player's group is his modal alignment
+    # over his own snaps.  If alignment is absent the roster position is mapped
+    # (fallback_map) and the source is recorded per player.
+    position_group:
+      source: alignment
+      values: [edge, interior]
+      fallback_column: position_group
+      fallback_map: {edge: [EDGE, DE], interior: [INTERIOR_LINE, DT, NT]}
+    # null => take the relative-load grid value stage 04 selected in the
+    # plurality of CV folds from part2_result.json
+    relative_load_column: null
+    placebos: [alignment, pre_snap_depth_yd, height_in, weight_lb]
+    equivalence: {margin_hr: 1.05, soi_hr: 1.10, alpha: 0.05,
+                  margin_logscore: 0.002, soi_logscore: 0.005}
+    garbage_time: {rule: quarter_and_margin, q4: 4}
+    final_two_minutes_s: 120
+  power:
+    smallest_effect_hr: 1.10
+    equivalence_margin_hr: 1.05
+    smallest_effect_logscore: 0.005
+    equivalence_margin_logscore: 0.002
+    assumed_sd_a0: 1.0
+    design_effect: 1.3
+  fixture:
+    seed: 20270107
+    n_players: 40
+    n_games: 12
+    drives_per_game: 6
+    snaps_per_drive: 6
+    # 11 (not 9): §8 now requires ``seconds_since_last_snap``, which is
+    # structurally NA on the first snap of every player-game, so each player
+    # loses ``n_games`` rows to complete cases.  12 games x 10-12 snaps keeps
+    # every fixture rusher above the §9 floor of 100 usable snaps.  A fixture
+    # size, not an analysis knob.
+    snaps_per_game: 11
+    frames_per_snap: 40
+    tracking_hz: 10
+    # Informational: the authoritative per-world truths are in
+    # src/dl/dl_fixtures.py::PLANT (each of the four worlds differs).  These two
+    # rows describe the two decay worlds; a test asserts they cannot drift.
+    planted_hr_a0: 2.0             # per 1 SD a0 (planted / absolute / censoring)
+    planted_decay_relative: 1.5    # log-hazard per SD of relative load (planted)
+    planted_decay_absolute: 1.5    # log-hazard per SD of absolute load (absolute)
+    null_world: false
+    rare_pressure_rate: 0.02

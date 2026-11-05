@@ -1,0 +1,46 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT",
+  "combine_tracking": {
+    "xmin": 9.066666667,
+    "xmax": 52.8,
+    "ymin": -2.246992588,
+    "ymax": 2.7,
+    "smin": 0.193333333,
+    "smax": 11.85423152,
+    "amin": 0.003333333,
+    "amax": 9.779180834,
+    "dmin": 0.0,
+    "dmax": 1.440000429,
+    "dirmax": 357.08564,
+    "dirmin": 0.427803948,
+    "n": 41500.0
+  },
+  "game_tracking": {
+    "xmin": -5.89,
+    "xmax": 123.29,
+    "ymin": -6.07,
+    "ymax": 60.72,
+    "smin": 0.0,
+    "smax": 12.63,
+    "amin": 0.0,
+    "amax": 13.52,
+    "dmin": 0.0,
+    "dmax": 3.44,
+    "dirmax": 360.0,
+    "dirmin": 0.0,
+    "n": 1048575.0
+  },
+  "tracking_contract": {
+    "mode": "sample",
+    "nominal_hz": 10.0,
+    "median_frame_interval_s": 0.1,
+    "p99_frame_interval_s": 0.1,
+    "plays": 12638,
+    "plays_with_ball_snap": 12606,
+    "ball_snap_share": 0.997468,
+    "players_per_play_min": 1,
+    "players_per_play_median": 1.0,
+    "players_per_play_max": 4,
+    "duplicate_keys": 0
+  }
+}

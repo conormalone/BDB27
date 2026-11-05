@@ -3599,3 +3599,215 @@ control. With `enabled: true` and `rule: null` the row returns to
 
 **Blocker.** `notes/blockers.md` B-DL-IDR-01 is closed: **RESOLVED — skipped by
 decision**.
+
+---
+
+## D84 — 2026-11-05 — New binding spec: burst vs. jump; Phase 0+1 only · scope
+
+**Decision.** `TASK.md` (commit `bcfd48b`) supersedes the intra-drive-regeneration
+spec. This cycle implements **Phase 0 + Phase 1 only**. Phases 2–5 exist as
+modules that exit 3 with `STAGE NOT IMPLEMENTED`; they create no checkpoint, so a
+later run cannot mistake a stub for finished work.
+
+**Why.** The spec's own run order requires the layout to be real and addressable,
+and Phase 1 is the gate. Implementing later phases before the gate is decided
+would build on an unvalidated premise.
+
+**Evidence.** `TASK.md` "## Phases" and "## Layout and run order`.
+
+**Reversible.** `src/02_combine_physical_time.py` … `05_validate.py` are additive.
+
+## D85 — 2026-11-05 — Archive the retired analyses; keep only genuine infra
+
+**Decision.** `git mv` every retired analysis into
+`archive/legacy-2026-11-05/`, preserving history:
+
+* `src/00_thresholds.py` … `src/07_phase4.py`, `ceiling_core.py`, `lc_*.py`,
+  `synthetic_lc_fixture.py`, the whole `src/dl/` package, `legacy_ceiling_v1/`,
+  `legacy_db_decay/`;
+* all 38 legacy test modules and `tests/conftest.py`;
+* `notebooks/bdb27_dl_full_run.ipynb`, `notebooks/bdb27_full_run.ipynb`;
+* `notes/{dl-design,dl-evidence,dose_stage_spec,phase-0.5-external-proxies,
+  lc-closeout,external_data_manifest,prereg}.md`;
+* the old `blockers/limitations/assumptions/scale/pending_full_run` notes;
+* the 5 retired figures under `outputs/figures/`;
+* `config.yaml` → `archive/legacy-2026-11-05/config.legacy.yaml`.
+
+**Kept (reusable, rewritten into a clean namespace).** The infrastructure ideas
+in `dl_common.py` — DuckDB connect with a memory limit and redirected temp dir,
+explicit-column CSV→Parquet, provenance writers that stamp every artefact,
+`timed_stage` with peak-RSS sampling and `run_log.csv`, config-fingerprint
+checkpoints, disk guard, and the prereg/provenance gates — were re-implemented
+self-contained in `src/common.py`. Nothing else was kept.
+
+**Not kept: `bdb27_run/`.** Untracked scratch notebooks from the retired task.
+Moved out of the repo to `/mnt/project_data/bdb27_scratch_archive/` rather than
+deleted, because `trash` semantics beat `rm` and it was never in git.
+
+**Also removed from the working tree (untracked build output, retired spec):**
+`outputs/{ceiling,dl,envelope,external,game,models,security,security_models,
+validate,thresholds.json,run_log.csv,run_log_legacy_2026-10-26.csv}` → same
+scratch archive.
+
+**Why.** The tree was full of analyses for two superseded specs. Leaving them
+would imply unimplemented stages and pollute `pytest` collection. Archiving keeps
+history and the option to recover a helper.
+
+**Evidence.** `git status` shows renames (`R`), not deletions, for every archived
+file.
+
+**Test impact.** No *passing* test was deleted without archiving: the legacy tests
+moved with their modules and are not collected (`pytest.ini testpaths = tests`).
+The new suite is 114 tests and exits 0.
+
+## D86 — 2026-11-05 — One `bdb27:` config block; every number commented
+
+**Decision.** `config.yaml` now has a single top-level `bdb27:` block. Every
+numeric design choice carries an inline comment saying what it is and why. Paths,
+thresholds, sizes and seeds all live there; no magic numbers in code.
+
+**Why.** `TASK.md` Engineering: "Paths, thresholds and sizes live in config.yaml;
+no magic numbers." The previous 82 KB file mixed three retired specs.
+
+**Evidence.** `git mv config.yaml archive/legacy-2026-11-05/config.legacy.yaml`.
+
+**Reversible.** The legacy config is intact at the archive path; archived code
+would need `--config` pointed at it.
+
+## D87 — 2026-11-05 — Onset definition: 1.0 yd/s sustained for 2 frames
+
+**Decision.** Onset is the first frame where `s >= 1.0 yd/s` for **two
+consecutive** frames, inside a search window starting at the snap (game) or the
+first frame (Combine), with a 0.5 s pre-onset baseline recorded.
+
+**Why these values.** Stationary tracking jitter sits at ~0.1–0.3 yd/s, so 1.0
+yd/s is clearly above the noise floor at 10 Hz. One frame is too easy to trip on a
+single bad sample; two frames (0.2 s) costs 0.1–0.2 s of detection lag but
+prevents a spike from starting the clock.
+
+**This is provisional.** `TASK.md` requires the onset definition in
+`notes/prereg.md` **before the first full-data run**; the values move there
+unchanged or with a logged reason. Phase 5 varies the threshold over a config
+grid.
+
+**Evidence.** `01_audit` item (h): all 177 DL 40-yard attempts produced a
+detectable onset at this threshold, so it is not so high that it misses real
+starts.
+
+**Reversible.** `onset.speed_yds`, `onset.sustained_frames`.
+
+## D88 — 2026-11-05 — Item (g) is computed but the gate stays PENDING
+
+**Decision.** The split-half ICC, the SD decomposition and the between-player
+share are **computed and written**, because `player_play.csv` is complete
+(1,001/1,002 games). The gate condition is nevertheless `PENDING_FULL_RUN`,
+because `TASK.md` marks item (g) "full data only" and because the split-half here
+is unadjusted for pre-snap depth.
+
+**Why not withhold the number.** Conor needs to know whether reliability is
+plausible before committing to a full run. Withholding it would be
+over-cautious; presenting it as a result would be dishonest. So it is labelled
+`PROVISIONAL` in `audit_items.csv` with its scope (`FULL_RAW` label file, not
+tracking) and never becomes a PASS.
+
+**Evidence.** `outputs/audit/audit_items.csv` item `g`; `notes/phase1-audit.md`
+§g.
+
+## D89 — 2026-11-05 — The sample's coverage is measured, not assumed
+
+**Decision.** `01_audit` reports the tracking sample's structure explicitly
+(1,048,575 rows = 2²⁰−1; 333 games; 1–4 players per play; 1–90 plays per game;
+154 players) and which code paths it cannot exercise.
+
+**Why.** `TASK.md` Engineering: "Check how the sample was drawn and note which
+code paths it cannot exercise." The sample is a **player-in-play** draw, not a
+head truncation and not a random row sample — that distinction changes what can
+be tested (no relative geometry, no blocker inference, 2023 only).
+
+**Evidence.** `notes/schema.md` §3; `outputs/audit/units_measured.json`
+(`tracking_contract`).
+
+## D90 — 2026-11-05 — Missing rusher–blocker data is a blocker, not a proxy
+
+**Decision.** No blocker assignment is inferred from tracking geometry. Phase 3's
+"assigned blocker(s) and blocker count" is recorded as **unavailable**
+(`notes/blockers.md` B2).
+
+**Why.** `TASK.md` is silent on how to infer it, and the sample cannot support the
+inference anyway (1–4 players per play). Per the standing rule, silence is a
+question, not an opening.
+
+**Reversible.** Full tracking plus a Conor-approved matching rule.
+
+## D91 — 2026-11-05 — Edge/interior split uses `lined_up_position`, with the conflict reported
+
+**Decision.** The split uses `player_play.lined_up_position` (`EDGE` /
+`INTERIOR_LINE`) because it is the only in-game alignment label. The conflict with
+`combine_position` (53 `EDGE` players attended as `DB`; 440 get-off reps on
+`CB`/`SLOT_CB` rows) is reported in `notes/schema.md` §5a and logged as blocker
+B3.
+
+**Why.** At most one label is right for those players and the data cannot say
+which. Choosing "trust the in-game label" is the least-inventive option, but it is
+**still an assumption** and is flagged as needing Conor's rule.
+
+**Not done.** No player was silently reassigned, and no conflicting row was
+dropped.
+
+## D92 — 2026-11-05 — Sample artefacts are stamped by the writer, not by convention
+
+**Decision.** Every artefact goes through `common.write_csv/json/markdown`, which
+prepends a provenance stamp keyed off `mode`. In sample mode the stamp contains
+the literal `UNVALIDATED SAMPLE OUTPUT`. `--mode full` refuses to run unless (a)
+provenance is `FULL`, (b) the tracking input exceeds the sample row cap, and (c)
+`notes/prereg.md` declares `**Status: FROZEN.**`.
+
+**Why.** `TASK.md`: "Label every sample output `UNVALIDATED SAMPLE OUTPUT`" and
+"Before the first full-data run, write /notes/prereg.md". A convention that
+depends on the author remembering is not a control.
+
+**Evidence.** `tests/test_common_gates.py` asserts the stamp on CSV, JSON and
+Markdown, and that a mislabelled full mode raises.
+
+## D93 — 2026-11-05 — New run log; the old one had a different header
+
+**Decision.** `outputs/run_log.csv` was moved to the scratch archive and restarted.
+The legacy log had two incompatible row formats (an old header with `when` first,
+new rows with `stage` first), so appending would have corrupted it.
+
+**Why.** `TASK.md` requires wall time and peak RAM per stage; a log that cannot be
+parsed provides neither.
+
+**Evidence.** The restarted log has one header and one row after the Phase 1 run.
+
+## D94 — 2026-11-05 — Tests: 108 new, legacy suite archived not deleted
+
+**Decision.** A new `tests/` suite covers schema/dtype/unit failures, the tracking
+contract, provenance and full-run gates, onset and crossing primitives, reliability
+estimators, run order and stub behaviour, determinism (including a byte-identical
+re-run of Phase 1), and the edge cases `TASK.md` names.
+
+**Why.** `TASK.md` "Tests before handoff". The schema test also *found two real
+bugs* during this cycle: `game_clock` is a `TIME` and `sack_allowed` is a
+`DOUBLE` (0/0.5/1.0), not the `VARCHAR`/`BOOLEAN` the first registry assumed.
+
+**Not done.** The synthetic-recovery test required by `TASK.md` Tests item 2 for
+the **Phase 4 decomposition** (planted b, shared baseline error) is not written,
+because Phase 4 does not exist. A Phase-1-level version (planted jump recovered by
+the one-way share, plus a null world) is written and passing.
+
+**Evidence.** `pytest -q` → 114 passed.
+
+## D95 — 2026-11-05 — The gate artefact is committed; bulky outputs are not
+
+**Decision.** `outputs/audit/*.csv` and `*.json` are committed (≈44 kB) and
+exempted from the `outputs/*` ignore rule. Everything else under `outputs/` stays
+gitignored.
+
+**Why.** The Phase 1 gate decision is a deliverable, not a build product: Conor
+and any later run need to see *which* conditions passed and on what evidence
+without re-running a 43 s stage. Everything larger (Parquet, per-snap tables) is
+regenerable and is excluded.
+
+**Evidence.** `.gitignore` lines 47–50; `git check-ignore -v outputs/audit/gate.json`
+matches the negation.

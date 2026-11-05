@@ -1,295 +1,153 @@
-# Blockers — BDB27
+# Blockers — burst vs. jump
 
-## Current task — DL acceleration ceiling → pressure (D68, 2026-10-30)
+A blocker is something that **stops a specified analysis from being done
+correctly**, not something that is merely hard. Each entry states what is blocked,
+the evidence, and exactly what would clear it. Nothing here has been worked
+around with a proxy.
 
-**Status 2026-11-02 (D78):** 1 data blocker (full tracking files absent on this
-host); the all-22 derivation blocker is **closed as not applicable** — see the
-D78 update below. Sample-mode Phases 1–4 run end to end.
-
-**1 active blocker (full run only).** `--mode full` needs
-`game_tracking_2023.csv`, `game_tracking_2024.csv`, `game_tracking_2025.csv` in
-`data/raw/`. None of the three exists on this host; only the truncated 2023
-sample (`game_tracking_2023_sample.csv`, 2^20−1 rows) is present. This blocks
-Phases 3–5 population estimates and snap coverage. It does **not** block
-`--mode sample`, Phase 1, or Phase 2,
-which run on `combine_tracking.csv`, `combine_results.csv`, `players.csv`,
-`player_play.csv`, `games.csv` — all present.
-
-**Second, non-blocking gap (reported, not stopping): no rusher–blocker
-assignment field exists in any provided file, and no data dictionary was
-available to confirm the provenance of `pressure_allowed` /
-`time_to_pressure` / `peak_pressure_probability_allowed`.** The pipeline derives
-assignments from snap-time proximity at full run and states the provenance
-limitation in the report; see `notes/dl-evidence.md` §3. Neither is a missing
-required field for the sample pipeline.
-
-**Update after D75 (2026-11-02).** The missing assignment *field* is no longer an
-open design question: `src/dl/dl_blockers.py` derives rushers, protectors and
-the primary blocker from all-22 tracking, with planted-truth recovery and a
-distribution gate (`notes/dl-design.md` §5.4a, `notes/decisions.md` D75).
-
-**CLOSED — not applicable to this dataset (D78, 2026-11-02).** The full run of
-the derivation reported **0 of 14,677 plays** with `all22_min_players` (20)
-tracked players at the snap frame (tracking density 1.5 players/play full,
-1.16 sample, median 1, max 4). The 2027 tracking is a **prospect-only**
-product, so team-level rush/protection counts are unobservable, not missing.
-Resolution: prereg §8 was amended **before any full-data result** — `blitz`,
-`n_blockers` and `primary_blocker_group` were removed from the control list and
-replaced by team and season fixed effects plus three play-context/rest
-controls; `team_coverage_man_zone`, `offense_formation` and `pre_snap_depth_yd`
-form a declared sensitivity panel. `dl_blockers.py` is **parked** (kept, tested,
-never called on this product) for a future all-22 dataset. Stage 03 now
-short-circuits with one `NOT_APPLICABLE` line instead of scanning every play;
-the §15 derivation gate reports five `NOT_APPLICABLE` items and never blocks on
-them, while a missing required §8 control is still a hard `FAIL`.
-
-**Still open after D78 (all non-blocking, reported):**
-
-1. **Partial tracking coverage of the rusher's own snaps** — `pre_snap_depth_yd`
-   exists on 2.3 % of sample snaps and on full-data snaps only where the
-   prospect's own tracking row is present. That is why it is a sensitivity
-   control, not a primary one. Not a blocker; it is a coverage statement the
-   full run must quantify.
-2. **`seconds_since_last_snap` is structurally undefined on the first snap of a
-   player-game** — complete cases drop that snap (counted, never imputed).
-3. **Blocker/scheme adjustment is limited to team and season fixed effects plus
-   the sensitivity panel** — the report must state that play-level protection
-   scheme is unobserved.
-4. **`dl_blockers.py` is dormant, not deleted** — if an all-22 product appears,
-   flip `tracking_product` and re-run; the gate then evaluates normally.
-5. The pre-existing items below (absent full tracking files; no rusher–blocker
-   assignment field; unverified label provenance). Phase 5 is built as of D79.
-
-**BUILT 2026-11-04 (D79) — `src/dl/stage_05_validate.py` (Phase 5).** The stage
-now exists, is in `dl.run.STAGES` after `04_models`, and is in the notebook's
-`DL_STAGE_ORDER`; its headline prints Phase 5 from `validation_result.json` and
-prints `NOT RUN` when the artefact is absent or not `FULL`. **Implemented:** the
-ceiling permutation (within position group, relative load and the Part-1
-exposure rebuilt, Part-1 and S1 refits, permutation p over a config-driven rep
-count and seed). **Not implemented — stubs that raise `NotImplementedError` and
-are listed as `NOT_IMPLEMENTED`, never as a pass:** within-player order
-permutation, the CV-vs-controls-only baseline, the measurement-error correction.
-**Not built either, and written as `NOT_IMPLEMENTED` rows in their own artefact
-files:** placebos, rotation/survivorship, context sensitivity, mechanical
-coupling, equivalence/TOST. The stage refuses `provenance != FULL` for a
-reportable verdict and stamps sample output; it ran clean in `--mode sample`
-(9 permutations, 3m21s, `NOT_INTERPRETED_SAMPLE`).
-
-**Open question from that build (not a blocker).** The prereg fixes *that* the
-ceiling shuffle is within position group (interior vs edge) but not how the
-group is derived on a prospect-only tracking product. D79 §3 uses each player's
-modal `alignment`, with a roster-position fallback and an `unknown` bucket that
-is never mixed in. Conor may prefer a different derivation before the full run;
-the choice is one config block (`validate.position_group`).
-
-## Retired task — leverage × ceiling (D60, 2026-10-27)
-
-**0 active blockers.** Sample-mode Phases 1–2 ran clean and the gate is `GO_PENDING_FULL_RUN`
-(`outputs/audit/lc/decision.json`). No field required by the leverage definition is missing: the provided
-pre-snap WP covers 100% of plays and no external model is used. Items (c/g/h/i/j) that need full tracking
-are marked `PENDING FULL RUN`, not treated as failures.
-
-**Watch item (not a blocker until counts exist):** the analytic MDE at the configured 40 efforts/player is
-0.0443 log-speed, above the 0.03 target; 88 efforts/player are needed. Matched route snaps (median 254 WR /
-212 TE) make this plausible, but a full run must verify the count before the primary model is fitted.
-
-**Route-depth coverage (D61, 2026-10-27) — open design question, reported not hidden.**
-`src/03_route_depth.py` was run on the provided sample (UNVALIDATED, not a finding). Of 3,054 WR/TE route
-snaps with tracking, the frozen break definition detects a break in **89 (2.9%)**; only **27 (0.9%)** are
-before the throw. 62 of the 81 breaks with a known throw (76.5%) are post-throw adjustments. Per-play
-support counts are complete rather than dropped: `play_direction` is missing on 0 route rows,
-`ball_snap` on 1 track, and heading is unavailable on 4 tracks. 50,162 route snaps have no tracking in the
-provided sample because the sample covers 333 of the 967 games that contain WR/TE routes — a sample-scope
-limit, not a missing field. The continuous depth control is therefore estimated off very few pre-throw
-breaks if this generalises. This does **not** stop the implementation; it is recorded here and in
-`notes/decisions.md` D61 §6 because it must be settled **before** the full run. Constants were not
-changed (TASK.md forbids tuning on sample output). There is no prereg in this project (D61 §9); the
-absence of a document is not a blocker.
-
-The sections below are the retired cycles' record, preserved for history.
-
-**Status: 0 ACTIVE · 1 OPEN-WORKAROUND** (game `a` fails its definition check — worked around, not closed;
-see the entry at the end of this file). Per `TASK.md`, a blocker stops work and must be written here. **Prior
-(combine-fatigue) blockers B1–B7 are archived at git tag `archive/combine-fatigue-v1`** (HEAD `fdc794c`).
-
-As of **2026-10-12 (Cycle 4)** there are **no active blockers**. `04_models` and `05_validate` are now
-implemented and tested on the synthetic fixture (D31), completing the game-side pipeline; their real
-`--mode full` execution remains **data-blocked** by watch-item 3 below (the full game-tracking files are
-absent on this Pi).
-
-As of **2026-10-12 (Cycle 3)** there were **no active blockers**. `00_thresholds` and `03_game_demand`
-were implemented and tested on the synthetic fixture (D30); their real `--mode full` execution remained
-**data-blocked** by watch-item 3 below (the full game-tracking files are absent on this Pi).
-
-As of **2026-10-12 (Cycle 2)** there were **no active blockers**. The pre-registration blocker that gated the
-full run has been **resolved**: `notes/prereg.md` is **FROZEN** (Conor-approved values; `notes/decisions.md`
-D28) and the freeze gate (`src/gate.py`) now passes for `--mode full` of the Combine-side stage
-(`02_combine_envelope`). Remaining obstacles to a *whole-pipeline* full run are the **game-tracking files
-being absent on this Pi** (watch-item 3, `PENDING FULL RUN`) — a data-availability limit, not a design
-blocker.
-
-Trigger a blocker on:
-
-- A **missing required Combine/game field**.
-- **Matched receivers or route snaps below config minima**.
-- **Key Combine features unreliable** (below the ICC threshold).
-- **Thresholds provenance not `FULL` in a full run**.
-- Any instruction **conflicting with competition rules**.
-
-(A missing or unfrozen pre-registration is **not** a blocker: the project has no prereg stage; D61 §9.)
-
-## Watch-items (documented, not blockers)
-
-1. **Competition caps unverified at source.** Kaggle pages are JS-rendered; caps captured from live-page
-   snippets + secondary mirrors (`notes/rules.md` §6). **Action:** re-verify word/figure caps on the
-   competition page before the final writeup. Safe posture: ≤2,000 words, ≤5 figures.
-2. **Time zone unverified.** `time` is naive; assumed UTC. **Action:** confirm before using absolute
-   time-of-day as an exposure.
-3. **Full game-tracking files absent.** `game_tracking_{2023,24,25}.csv` are not on the drive; game-side
-   audit items (c/d/e/h/i) and Phases 3–5 are `PENDING FULL RUN` (expected, not blocking Phase 0).
-4. **`notes/prereg.md` freeze — RESOLVED 2026-10-12.** Was a skeleton (TBD values); now **FROZEN** with
-   Conor-approved values (`notes/decisions.md` D28). The runtime freeze gate is `src/gate.py`; the go/no-go
-   gate for game-side full runs additionally needs the audit gate (matched WR, route snaps, ICC).
-5. **`route_ran` is categorical, not a flag** (audit d, 2026-10-11). Config key `game.route_snap_col`
-   still reads as a flag; *route snap* is defined as `route_ran IS NOT NULL`. Handled in code — documented
-   so nobody treats it as boolean. Not a blocker.
-6. **Thin Combine repeats → low/unestimated ICC** (audit g, 2026-10-11). 40-yd dash has ~2 attempts/player;
-   cutting drills mostly 1 (many features ICC≈0 or `UNESTIMABLE`). This is a design constraint for Phase-2
-   feature selection (reliable: `peak_speed`, `speed_at_10/20yd`, `env_vmax`), not a blocker. **Frozen
-   threshold** `envelope.icc_min=0.5` (prereg §4); residue: the two retained raw-speed features remain
-   collinear (VIF>5) — flagged, not a blocker (`notes/limitations.md`).
+Maintained from 2026-11-05 (Phase 0+1 run). Previous blockers file (leverage ×
+ceiling) is archived at
+`archive/legacy-2026-11-05/notes/blockers-legacy.md`.
 
 ---
 
-## Phase 0.5 — External pre-Combine expectation proxy · 2026-10-16
+## B1 — `quick_pressure` cannot be used as a binary outcome  · **OPEN**
 
-**Status: DATA BLOCKER.** The Phase 0.5 spec requires the external **Grinding The Mocks (GTM)**
-expected-draft-position export. It is **not machine-obtainable** from this host via any bounded,
-policy-compliant route (full route table + access dates in `notes/external_data_manifest.md`):
+**Blocks:** `TASK.md` Phase 4 secondary outcome test ("predict `quick_pressure` …
+in held-out games"), and the `quick_pressure` half of Phase 3's outcome table.
 
-- Direct `grindingthemocks.com` — DNS resolves (216.92.3.120); HTTPS (:443) TCP connect **times out**;
-  HTTP (:80) returns **301** → `https://grindingthemocks.shinyapps.io/Dashboard`.
-- Redirect target `grindingthemocks.shinyapps.io/Dashboard/` is **reachable** but is an interactive **Shiny
-  websocket** app (no static export; `robots.txt` = `User-agent: * / Disallow: /` → not crawled). A
-  third-party renderer (`r.jina.ai`) returns the landing shell only — the data table loads lazily.
-- **No GitHub mirror** (repo search returns 0 relevant; code search needs auth — none available, none
-  invented). **Wayback** holds only the ~2020–2024 app shell; the CDX endpoint 429s/times out. Static
-  export probes (`/Dashboard/data.csv`, `www/data.csv`, …) → **404**.
+**Evidence.** On the 43,562 DL rows that carry `player_get_off`:
 
-**Action taken:** per the spec we **do not fabricate data** and **do not substitute a source** (the
-non-GTM fallback covers only 2025/26 and is out of spec; CFBD is out of scope). The Phase 0.5 pipeline
-(`src/00b_external_proxies.py`) is **built and fully exercised** end-to-end against a schema-compliant
-synthetic GTM fixture (`src/synthetic_gtm_fixture.py`, `fixtures/synthetic/gtm/`); its real `--mode full`
-execution is **BLOCKED (data)** until a raw GTM export is supplied under `data/raw/external/gtm/`.
+* `quick_pressure` is non-null on 3,378 rows and **null on 40,184 (92.2%)**;
+* `time_to_pressure` has exactly the same null pattern (3,418 non-null);
+* the 3,418 rows with a pressure time split into 2,334 `false`, 1,044 `true`,
+  and **40 with a null flag**.
 
-**Resume condition:** drop the raw GTM mock-history export (canonical `gtm_mock_history.csv`) into
-`data/raw/external/gtm/`, then run `python src/00b_external_proxies.py --mode full`.
+`quick_pressure` and `time_to_pressure` behave like an **event record**: they are
+populated together, and a null almost certainly means "no pressure on this rep".
+But that is an inference. Treating null as `false` would manufacture 40,184
+negative labels; treating null as missing makes the outcome available on 7.8% of
+snaps only.
 
----
+**What would clear it.** Either (a) an official data dictionary stating that null
+means "no pressure", or (b) a documented decision by Conor to define the outcome
+as `pressure_allowed`/`sack_allowed` on the offensive row, or as
+`(quick_pressure IS TRUE)` with null→false and the assumption stated in the
+prereg. **Do not choose (b) silently.**
 
-## Security EDP board — AVAILABLE (not a blocker) · 2026-10-17
-
-The **Phase-4 security axis** does **not** use the blocked GTM fuzzy proxy. It uses a separately supplied
-**EDP board** export (`data/raw/external/gtm/GTM_BDB_EDP_Snapshots_20261016.csv`, sha256 `4664b369…63b4`),
-which is **present and permitted** (Conor 2026-10-17; `notes/rules.md` §6). The Phase-4 stage
-(`src/06_security.py`) and the Phase-1 board audit extension therefore run for real on this Pi; their
-`--mode full` execution is **not** data-blocked. **One open caveat** (documented, not a blocker): the
-board→Combine exact `nfl_id` WR/TE match rate is ≈0.757, below `external.board.min_match_rate` (0.85), because
-the board spans a broader prospect pool than the 2027 subset — logged in `notes/decisions.md` D37 for the
-cycle-2 validator; the implemented go/no-go minima are evaluated separately.
+**Interim rule in the code.** No stage reads `quick_pressure` yet (Phase 3-4 are
+stubs), so nothing is currently wrong. The audit records the null counts and the
+`FAIL` row so this cannot be forgotten.
 
 ---
 
-## Game `a` fails its definition check — OPEN-WORKAROUND · 2026-10-26
+## B2 — rusher–blocker assignments do not exist as data  · **OPEN**
 
-**Status: OPEN-WORKAROUND.** Not closed, and not a stop condition: the pipeline runs without the field.
+**Blocks:** `TASK.md` Phase 3's per-snap fields "assigned blocker(s) and blocker
+count", and the `+ blocker` term in the Phase 4 model.
 
-**The problem.** The provided game-tracking `a` is **not** the derivative of the provided game `s`.
-Audit item f (`outputs/audit/db_decay/f_reliability_game.csv`, n = 225,679 frames):
-**r = 0.0027**, **bias = +1.733 yd/s²**, **88.0%** of frames outside a 5% relative tolerance — a
-one-directional discrepancy, not noise. A field named `a` that is not `ds/dt` breaks any acceleration-based
-threshold, deceleration metric or exceedance test that assumes it.
+**Evidence.** No column in `player_play.csv` or any tracking file names a blocker
+for a rusher. The nearest fields are `pass_rushers_encountered` (an integer count
+on the play), `unblocked_pressure` (a flag) and `pressure_allowed` /
+`sack_allowed` (on the offensive player's row).
 
-**Workaround (in force).** Acceleration is **derived from smoothed speed** (`ds/dt` of a Savitzky–Golay fit
-on speed computed from `x`/`y`) in every stage, Combine and game (D55). The provided `a` is retained **only**
-as a cross-check and is never a model input. Consequence: the acceleration branch of the effort definition is
-a derived quantity, and the audit's **acceleration exceedance rate is provisional** — audit item h says so in
-its own note, because that number was computed with the provided `a`. It must not be quoted in the writeup
-until recomputed from derived acceleration on full data.
+The blocker could in principle be *inferred* from tracking geometry
+(nearest offensive lineman in front of the rusher at the snap), but:
 
-**Not closed because** the underlying field is still wrong in the supplied data and the cause is unknown
-(possible lateral/centripetal component, or a vendor smoothing that is not differenced the same way). The
-workaround makes the pipeline correct; it does not make the field usable.
+* the provided tracking sample carries **1–4 players per play** (median 1), so the
+  linemen are usually not present;
+* `TASK.md` does not authorise an inference method, and inventing one would breach
+  the "if the task is silent, that is a question" rule.
 
-**What would close it:** an official definition of the `a` column from the competition data documentation, or
-a vendor correction. Until then, any analysis that needs the *provided* acceleration (e.g. a
-vendor-comparable deceleration metric) is out of scope.
-
-**Related.** `notes/schema.md` §4; `notes/decisions.md` D55; `notes/limitations.md` §43.
+**What would clear it.** Full game tracking (22 players per play) plus a documented
+matching rule — nearest opponent within *x* yards and in front along the rush
+direction — approved by Conor and written into the prereg.
 
 ---
 
-## Go/no-go condition triggered: Part 1 power adequate only for implausibly large effects — OPEN · 2026-11-03
+## B3 — position vocabularies disagree, and one is noisy  · **OPEN**
 
-**Status: OPEN.** Spec citation: `TASK.md` Phase 1 go/no-go — *"…or power is only adequate for implausibly large effects."*
+**Blocks:** the edge vs. interior split's *validity* (not its computability).
 
-**Evidence (provenance FULL).** From the full run of 2026-11-03 and the corrected power arithmetic (`D79`, commit `0614454`):
+**Evidence** (`notes/schema.md` §5a):
 
-| quantity | value |
-|---|---|
-| Part 1 fit | Weibull AFT, log-normal frailty by rusher |
-| sample | 13,161 snaps · 1,135 events · 70 players |
-| estimate | HR 0.9245 [0.6787, 1.1703] per 1 SD `a0`; log −0.0785, SE 0.136 |
-| realised MDE (80% power) | **1.4638** |
-| power at prereg HR 1.10 | **10.4%** |
-| power at equivalence margin HR 1.05 | **5.5%** |
-| effective information | 1/SE² ≈ **54 units** vs 70 players, 1,135 events |
-| events needed for MDE 1.05 | ≈ **69,000** (≈61× current, ≈4,300 players) |
+* `player_play.lined_up_position` uses `EDGE` / `INTERIOR_LINE`, never `DE`/`DT`/`NT`.
+* `players.csv` and `combine_results.csv` use `DE`/`DT`/`NT`/`DL`/`DB`.
+* Cross-tab: **53** players labelled `EDGE` in games attended the Combine as `DB`;
+  **9** `INTERIOR_LINE` as `DB`; **7** `CB` and **25** `SLOT_CB` as `DL`.
+* **440** `player_get_off` reps sit on rows labelled `CB` or `SLOT_CB`.
 
-**Why the shortfall is structural, not a modelling defect.** `a0` is a single number per player, so events do not buy information: the effective sample is the cohort. The cohort cannot be extended either:
+At most one of the two labels is right for those players, and the data cannot say
+which.
 
-- the ceiling needs 10 Hz tracking (510 prospects, classes 2023–25);
-- the outcome needs `time_to_pressure` (NGS `player_play`, seasons 2023–25 only);
-- the free historical combine source carries no 10-yard split — `nflverse` `combine.csv` was checked on 2026-11-03: 8,968 prospects 2000–2026, columns end at `forty`, `bench`, `vertical`, `broad_jump`, `cone`, `shuttle`; `nflcombineresults.com` likewise carries no split. So no acceleration proxy exists for any earlier class.
+**What would clear it.** A rule from Conor, e.g. "trust `lined_up_position` because
+it is the in-game alignment and drop the conflicting players", or "require both
+labels to agree and report the excluded count". **Neither has been chosen.**
+The audit reports the split using `lined_up_position` and states the conflict.
 
-**Consequence.** The preregistered equivalence claim (HR 1.05) is unreachable in this dataset by roughly an order of magnitude, and the confirmatory hypothesis cannot be rejected or supported. Per the go/no-go rule this is a stop condition for Part 1 as a *confirmatory* claim.
+---
 
-**Not closed because** closing it requires more players with both a fitted ceiling and in-game pressure, which no permitted data source provides.
+## B4 — no official reproduction of `player_get_off`'s definition  · **OPEN**
 
-**Decision needed** (to be recorded in `decisions.md` once taken): whether Part 1 is reported as non-confirmatory/descriptive with the equivalence claim withdrawn, or the paper leads on the measurement contribution and Part 2 instead.
+**Blocks:** nothing computationally; it limits how strongly the label can be
+interpreted.
 
-**Related.** `notes/decisions.md` D79; `outputs/audit/k_power.csv`; the open Part-2 `NA` (no reason recorded yet); `notes/pending_full_run.md`.
+**Evidence.** No data dictionary ships with the files, and the Kaggle pages are
+client-rendered shells (`notes/rules.md` §1). The empirical check in the audit
+(`notes/phase1-audit.md` item d) shows an x-axis crossing reproduces the label
+better than an along-travel crossing, which is *consistent* with "crosses the
+line of scrimmage" but does not prove the official wording.
 
-**Scope of this blocker — Part 1 only (2026-11-03).** The effective-information argument is a
-*player-level* statement and binds only the first primary question, where the exposure (`a0`) is
-constant within a player. It does **not** extend to the second primary question: in-game load varies
-within a player-game, so the decay estimate draws on game-level sequences — 1,001 games,
-14,677 plays and 17,159 rush snaps in the full Phase-3 table — not on 70 player constants. Part 2's
-power must be computed on its own terms (snap/game-level information for the load coefficient,
-player-level bootstrap for the model comparison) and is not settled by this entry.
+**What would clear it.** A readable copy of the competition data dictionary.
+Until then, the writeup must say "as defined in the competition data" rather than
+quoting a definition as official.
 
-## B-DL-IDR-01 — 2026-11-04 — "Obvious passing situations" has no definition — **RESOLVED: skipped by decision**
+---
 
-**Status: RESOLVED — skipped by decision (2026-11-04).** Conor's reply to the
-definition request was, verbatim: *"Don't care, skip"*. The obvious-passing
-context control is therefore **not run**. See `notes/decisions.md` D83 for the
-decision entry; the change is reversible (set `enabled: true` plus a rule).
+## B5 — the provided dataset is pre-filtered to 510 Combine attendees  · **OPEN (structural)**
 
-**Original gap (design, not data).** `TASK.md` Phase 5 asks for the interaction
-to be re-estimated excluding *"obvious passing situations"*. No definition
-exists in this repository: `config.yaml` carries no down/distance/score/formation
-rule for it, `notes/prereg.md` never defines it, and no module computes it. The
-other two Phase-5 context controls are fully specified (garbage time: the
-Phase-3 `garbage_time` column / `bdb27_dl.game.garbage_time` margins q4 4 / 21 /
-28; final two minutes: `quarter ∈ {2, 4}` with `game_clock_s ≤ 120`).
+**Blocks:** any estimate of selection effects, and any claim about "NFL defensive
+linemen" as a population.
 
-**Resolution.** `config.yaml` now sets
-`bdb27_dl.validate.context_controls.obvious_passing.enabled: false` with
-`rule: null`. `src/dl/dl_idr_validate.py` reports the row as
-`SKIPPED_BY_DECISION` (reason naming this decision and date) in
-`validation_result.json`, `context_controls.csv`, `check_status.csv` and the
-SUMMARY, so the writeup can state that two of the three context controls ran and
-the third was skipped by decision. The row is never dropped and no threshold is
-invented. The `DEFINITION_UNDEFINED` path remains intact for the reachable state
-`enabled: true` with `rule: null`.
+**Evidence.** `players.csv`, `combine_results.csv` and the `nfl_id` set in
+`player_play.csv` are the same 497–510 players (join is 100% both ways; there are
+zero unmatched rows). Only 1,001 of 1,002 games appear in `player_play`.
 
+**What would clear it.** Nothing, in this dataset. It is a property of the release.
+It must be stated in the writeup as the study population, not buried as a
+limitation.
+
+---
+
+## B6 — prereg is not written  · **OPEN (blocks every full run)**
+
+**Blocks:** `--mode full`. The gate in `src/common.py` refuses to run in full mode
+unless `notes/prereg.md` exists and declares `**Status: FROZEN.**`.
+
+**Evidence.** The file does not exist. The previous prereg belonged to the retired
+intra-drive-regeneration spec and has been archived at
+`archive/legacy-2026-11-05/notes/prereg.md`.
+
+**What would clear it.** Write `notes/prereg.md` fixing, per `TASK.md`: onset
+definition, distance definition, stance handling, variance-decomposition model,
+reliability thresholds, outcome definitions, minimum snaps per player, and the
+smallest effect of interest. Then set `**Status: FROZEN.**`. This is deliberate
+work that must happen **before** the first full-data run and after Q1 is answered.
+
+---
+
+## B7 — no full-data game tracking on this machine  · **OPEN (environmental)**
+
+**Blocks:** every `PENDING_FULL_RUN` item.
+
+**Evidence.** `data/raw` contains `game_tracking_2023_sample.csv` only. The three
+full-season files named in `config.yaml` (`game_tracking_2023.csv`,
+`game_tracking_2024.csv`, `game_tracking_2025.csv`) do not exist; there are no
+Kaggle credentials at `~/.kaggle`.
+
+**What would clear it.** The full tracking files on the larger machine. The code
+path is already shared: `--mode full` selects them by config key and refuses to
+run if they are missing.
+
+**Not a blocker for this run:** Phase 1 is answerable because the Combine data and
+the label file are complete; only tracking-derived checks are limited.

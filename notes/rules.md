@@ -1,95 +1,84 @@
 # Competition rules & limits — NFL Big Data Bowl 2027
 
-**Task:** leverage × ceiling (WR primary, TE replication). Binding internal spec:
-`TASK.md`. This file records what the official competition pages actually served
-on **2026-10-26**, and separates verified facts from claims we cannot check.
+**Binding internal spec:** `TASK.md` (commit `bcfd48b`).
+**Re-verified:** 2026-11-05 on the Raspberry Pi. Previous version of this file
+(2026-10-26) described the retired leverage × ceiling task; it is superseded.
 
-> **Bottom line: the official rules text is not machine-readable from this
-> host.** All three competition pages return HTTP 200 but only a ~6 kB
-> JavaScript shell; the Kaggle API returns 401. Every cap below that is not
-> quoted from a readable official body is marked
-> `UNVERIFIED — official page not machine-readable`. Third-party blog/repo
-> claims are **not** promoted to facts.
+> **Bottom line: the official competition rules are still not machine-readable
+> from this host.** The competition pages return HTTP 200 but serve a ~6 kB
+> JavaScript shell with ~31 characters of extractable text. The Kaggle API
+> returns 401 (no credentials on this machine). Every limit below that is not
+> quoted from a readable official body is marked **UNVERIFIED**, with the exact
+> URL to check in an authenticated browser. Nothing here has been promoted from
+> a third-party blog or repo.
 
-## 1. What was fetched (verbatim evidence)
+---
 
-All requests: `curl -sS -L --max-time 30 -A "Mozilla/5.0 (X11; Linux aarch64)"`,
-2026-10-26, from the gateway host.
+## 1. What was fetched, verbatim evidence
 
-| URL | HTTP | bytes | content-type | readable body after stripping `<script>/<style>/<tags>` | rules text found |
-|---|---|---|---|---|---|
-| `https://www.kaggle.com/competitions/nfl-big-data-bowl-2027/overview` | 200 | 6000 | `text/html; charset=utf-8` | 31 chars: `NFL Big Data Bowl 2027 | Kaggle` | none |
-| `https://www.kaggle.com/competitions/nfl-big-data-bowl-2027/rules` | 200 | 6000 | `text/html; charset=utf-8` | 31 chars: `NFL Big Data Bowl 2027 | Kaggle` | none |
-| `https://www.kaggle.com/competitions/nfl-big-data-bowl-2027/data` | 200 | 5945 | `text/html; charset=utf-8` | 31 chars: `NFL Big Data Bowl 2027 | Kaggle` | none |
-| `https://www.kaggle.com/api/v1/competitions/list?search=big+data+bowl` | **401** | 40 | `application/json` | `{"code":401,"message":"Unauthenticated"}` | n/a |
+Requests made 2026-11-05 from the gateway host with
+`curl -sS -L --max-time 25 -A "Mozilla/5.0 (X11; Linux aarch64)"`.
 
-Search for the usual rule vocabulary in the `/overview` body:
-`2,000` → 0 hits, `words` → 0, `figures` → 0, `tables` → 0, `deadline` → 0,
-`External Data` → 0, `January` → 0. The only machine-readable competition text
-is the meta description:
+| URL | HTTP | bytes | extractable text after stripping tags/script/style | rules content |
+|---|---:|---:|---|---|
+| `https://www.kaggle.com/competitions/nfl-big-data-bowl-2027` | 200 | 5,772 (rules path) / 6,000 (overview) | 31 chars: `NFL Big Data Bowl 2027 | Kaggle` | none |
+| `https://www.kaggle.com/competitions/nfl-big-data-bowl-2027/rules` | 200 | 5,772 | same shell | none |
+| `https://www.kaggle.com/api/v1/competitions/list?search=big+data+bowl` | **401** | 40 | `{"code":401,"message":"Unauthenticated"}` | n/a |
+
+The only machine-readable official sentence available is the page meta
+description:
 
 ```
-<meta name="description" content="Uncover non-obvious linkages between Combine
-sensor tracking and regular-season NFL game performance">
+Uncover non-obvious linkages between Combine sensor tracking and regular-season
+NFL game performance
 ```
 
-A second fetch with Python `urllib` (same UA) returned 200 / 6055, 5945 and 6000
-bytes for overview/rules/data, i.e. the same shell. So this is not a one-off
-truncation: the rules are client-rendered and require an authenticated browser
-or the Kaggle API with credentials.
+That sentence is consistent with this project's question and is the one official
+statement this file can cite. It says nothing about caps.
 
-## 2. Caps and obligations
+**Why this matters.** The spec says "Official competition docs and rules are the
+source of truth". They cannot be read from here, so the safe move is to record
+the gap rather than invent a number. A fabricated writeup cap is worse than an
+unknown one: it silently constrains the deliverable.
 
-Legend: **V** = verified from a machine-readable official body on this date
-(nothing below is V); **U** = `UNVERIFIED — official page not machine-readable`;
-**I** = internal decision in `TASK.md`, binding on us regardless of the official cap.
+## 2. Limit register
 
-| Item | Value we hold | Status | Where it comes from |
+Each row states the limit, where it comes from, and what would settle it.
+
+| # | Limit | Value used in this project | Provenance |
 |---|---|---|---|
-| Writeup word cap | **2,000 words** | U | carried forward from the 2026-era page capture; not re-readable today |
-| Figure/table cap (official) | **fewer than 10** | U | carried forward; not re-readable today |
-| Figure cap (this entry) | **≤ 5 figures** | I | `TASK.md` §6 — stricter than the carried-forward official cap |
-| Public notebook required | **yes, attached public Kaggle notebook** | U | carried forward; corroborated by prior entries but not re-read today |
-| External data | **permitted with obligations** in the 2026-era rules | U | carried forward; exact 2027 wording not readable |
-| Our external-data stance | **none used** | I | `TASK.md` Rules + Phase 3; only the provided 2027 files |
-| Deadline | **2027-01-06 23:59 UTC** | U (official) / I (binding) | `TASK.md` header; official page not readable |
-| Prize pool | ~**$100,000** total (Open + University + grand prize) | U | carried forward from operations.nfl.com / prior captures |
-| Entry limit | one entry per team (our assumption) | U | not re-readable |
-| Scoring rubric | Football 30 / Data Science 30 / Writeup 20 / Visualization 20 | U | secondary mirrors only — do not present as official |
+| L1 | Writeup word cap | Treat **2,000 words** as the working ceiling | **UNVERIFIED for 2027.** Widely reported for earlier Big Data Bowl editions; not readable on the 2027 page. Check `/rules` while signed in. |
+| L2 | Figure cap | **5 figures** | **Binding from `TASK.md`** ("max 5 figures"), not from Kaggle. Safe either way: 5 is at or below every BDB cap in recent memory. |
+| L3 | Notebook requirements | Public Kaggle notebook, runs end to end, committed outputs | **UNVERIFIED as to runtime/CPU/GPU/internet policy.** `TASK.md` requires a *public* notebook. No internet is assumed in the notebook: all inputs come from the competition dataset. |
+| L4 | External data | **Prohibited** | **Binding from `TASK.md`** ("No external data"), and consistent with the standard Kaggle rule. |
+| L5 | Deadline | **2027-01-06 23:59 UTC** | **From `TASK.md`**, supplied by Conor. Not re-verified on Kaggle. |
+| L6 | Team size / submissions | Not used | Unknown; irrelevant to a solo analysis-only entry. |
+| L7 | Data licence / redistribution | Do not redistribute raw data | Kaggle competition data terms are not readable here. The repo gitignores `data/` regardless. |
 
-**Do not launder.** The numbers `2,000`, `<10`, `$100,000` and the rubric split
-appear in older internal notes and in third-party write-ups. They are plausible
-and we plan against them, but none was readable on the official page today.
-At submission time, re-check them in an authenticated browser and update this
-file with the exact quote and the page section.
+## 3. Consequences for this repo
 
-## 3. What this means for the entry
+1. **No external data, ever.** A local `data/raw/external/gtm/` directory
+   survives from the retired task. It is **not read by any script** in this
+   pipeline and must not be. `notes/decisions.md` D86 records it.
+2. **Figures are capped at 5, by spec.** The deliverable plan in `TASK.md`
+   Phase 6 already names exactly five. Do not add a sixth without removing one.
+3. **The notebook must be reproducible from the competition data alone.** That is
+   why every stage reads only `data/raw/*.csv` and writes only
+   `data/interim/` + `outputs/`, and why the notebook is generated from stage
+   outputs rather than from ad-hoc cells.
+4. **The writeup budget is a design constraint.** 2,000 words is the working
+   assumption; the section list in `TASK.md` Phase 6 fits inside it if results
+   are reported as intervals rather than tables of p-values.
 
-1. **We design to the stricter limits anyway.** ≤2,000 words and ≤5 figures are
-   safe under either the carried-forward official caps or a stricter 2027 rule.
-   The five figures are the only committed images (`outputs/figures/*.png`).
-2. **No external data.** The pipeline reads only `data/raw/*.csv`. No external
-   win-probability or expected-points model is used; leverage is derived from
-   the provided `pre_snap_*_win_probability` columns. This satisfies the
-   external-data section under either reading and keeps the audit honest.
-3. **Deliverable shape.** One public Kaggle notebook + writeup, produced from
-   the `src/` scripts rather than ad-hoc cells. Result placeholders stay
-   placeholders until a `--mode full` run with thresholds provenance `FULL`.
-4. **Gates we impose on ourselves** (internal, not claimed as official):
-   scripts 01–05 must run end-to-end in `--mode sample`; every sample artefact
-   says `UNVALIDATED SAMPLE OUTPUT`; no number is reported from sample data.
+## 4. How to close the gap
 
-## 4. Open items to confirm in an authenticated browser (not assumptions)
+Run this on a machine with a Kaggle session cookie (or `~/.kaggle/kaggle.json`):
 
-1. Exact 2027 word cap and whether it counts captions/references.
-2. Exact 2027 figure/table cap and how tables are counted.
-3. Whether an attached **public** notebook is pass/fail, and whether judges
-   re-run it (reproducibility obligation).
-4. External-data section: exact wording, citation duties, and whether derived
-   tracking metrics count as external data.
-5. Deadline/timezone and prize/eligibility rules (travel, team size, tracks).
-6. Any 2027 change to the scoring rubric.
+```bash
+kaggle competitions list --search "big data bowl"      # confirms the slug
+curl -sS -b cookies.txt https://www.kaggle.com/competitions/nfl-big-data-bowl-2027/rules
+```
 
-Until items 1–6 are read from the official page, treat every number in §2
-marked U as provisional. No competition-rule conflict currently forces a stop;
-`notes/blockers.md` records the readable-page gap as an accepted risk.
+Then update rows L1, L3, L6, L7 in place and change the status from UNVERIFIED
+to verified, with the fetch date. Until then, **do not** quote a word cap as an
+official rule in the writeup.

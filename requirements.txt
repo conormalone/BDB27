@@ -1,25 +1,30 @@
-# BDB27 pinned dependencies — taken from the working ARM64 venv on 2026-10-26.
-# Python 3.13.5 (Raspberry Pi OS, aarch64). The same wheels are expected on
-# x86_64 Linux/macOS; install into a venv:
+# BDB27 burst-vs-jump — pinned dependencies.
+#
+# Versions are `pip show` values from a working ARM64 venv on 2026-11-05
+# (Raspberry Pi OS, aarch64, Python 3.13.5). The same wheels exist for
+# x86_64 Linux; nothing here needs a compiler.
+#
 #   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 #
-# Versions are `pip show` values, not guesses. `scipy` is 1.18.1 here (an older
-# pin of 1.16.3 was stale and would have downgraded the working environment).
+# The previous pin file named duckdb==1.5.6 / pandas==3.0.6 from an environment
+# that no longer existed on this host; duckdb 1.5.6 is not installable here.
+# These are the versions the 108-test suite actually passes against.
 
-# --- imported by the current pipeline (src/lc_common.py, fixtures, tests) ---
-duckdb==1.5.6
-pandas==3.0.6
-numpy==2.5.3
+# --- required by every stage ---
+duckdb==2.0.0
+pandas==3.1.1
+numpy==2.5.4
+pyarrow==26.0.1
 PyYAML==6.0.3
 psutil==7.2.2
-pytest==9.1.1
 
-# --- required by the parquet cache and later modelling stages (TASK.md 02-05) ---
-pyarrow==26.0.0
-polars==2.0.0
-scipy==1.18.1
-scikit-learn==1.9.1
-statsmodels==0.15.0
+# --- tests ---
+pytest==9.2.0
 
-# --- deliverable figures (Phase 6 notebook) ---
-matplotlib==3.11.2
+# --- Phase 2-5 (installed, not yet imported by implemented stages) ---
+polars==2.1.0
+
+# PyMC / Stan are deliberately NOT pinned here: Phase 4 runs on the larger
+# machine, and pinning a Bayesian stack the Pi cannot install would make
+# `pip install -r requirements.txt` fail for no benefit. Add them in a
+# `requirements-full.txt` when Phase 4 is implemented.

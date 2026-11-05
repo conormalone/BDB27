@@ -1,82 +1,70 @@
 # BDB27 — NFL Big Data Bowl 2027
 
-**Question:** *Does the Combine ceiling bind on max-effort routes?* For receivers who **reached the NFL**,
-test whether each player's physical **ceiling** (estimated from 10 Hz Combine tracking) predicts the
-**upper tail** of their in-game speed/acceleration on **max-effort routes**, and **how close they get to it**.
-**WR primary; TE replication.**
+**Question.** Split between-player differences in a defensive lineman's **get-off**
+into a **physical** part, measured at the Combine (where there is no snap to react
+to), and a **residual "jump"** — everything the legs do not explain — then test
+whether the residual is a stable trait that matters on the field.
 
-Three questions: (1) is the Combine ceiling a **real bound** in games (exceedance rate)? (2) does the
-Combine→game relationship **strengthen toward the upper tail**? (3) **which Combine features** predict
-closeness on **deep vs. breaking** routes?
+Four questions, in the spec's own order:
 
-**Claim limits (hard).** Claims apply only to players who reached the NFL. We **never** claim Combine
-athleticism predicts NFL success — that angle is saturated (combine tests explain ~2.6% of year-1 game
-performance; Cook et al. 2020). This is a **mechanism / measurement** paper.
+1. **Primary (confirmatory).** What share of between-player variance in
+   `player_get_off` is explained by Combine-predicted physical time versus a
+   residual player effect? With intervals, DL pooled and edge vs. interior.
+2. **Primary (second).** Is the residual reliable across games, and does it agree
+   with a direct measure of reaction latency (snap to first movement)?
+3. **Secondary.** Does the residual predict quick pressure beyond physical burst,
+   in held-out games?
+4. **Exploratory.** Within a player, does get-off improve year to year through the
+   residual while physical time stays flat?
 
-**Competition:** NFL Big Data Bowl 2027, theme **"Combine to NFL Performance"** (first combine-themed
-edition). Final deadline **6 Jan 2027**; judged Football 30 / Data Science 30 / Writeup 20 / Viz 20, with
-pass/fail gates (an explicit Combine→NFL linkage; a public Kaggle notebook + writeup). Limits: ≤2,000 words,
-≤5 figures (stricter than the official "<10"). See `notes/rules.md`.
+**Claim limits (hard).** Claims apply only to players who both attended the
+Combine and recorded an NFL pass-rush rep. "Jump" is a **residual**, not a
+measurement of anticipation or football IQ — it also contains stance, technique,
+alignment and onset-definition differences. Never claim more than the data
+support.
 
-> **Binding spec = `TASK.md`.** The prior combine-fatigue task is archived at git tag
-> `archive/combine-fatigue-v1` (HEAD `fdc794c`). `research/prior-work-scan.md` is the prior-art scan and
-> remains valid for context.
+**Competition.** NFL Big Data Bowl 2027, deadline **2027-01-06 23:59 UTC**.
+Working limits: **≤2,000 words, ≤5 figures** — the figure cap is binding from
+`TASK.md`; the word cap is **unverified** against the 2027 rules page, which is
+not machine-readable from this host (`notes/rules.md`).
 
-## Deliverable model: scripts engine + Kaggle notebook
+> **Binding spec = `TASK.md`** (commit `bcfd48b`). It supersedes the
+> intra-drive-regeneration spec and, before that, the leverage × ceiling task.
+> Both are preserved under `archive/legacy-2026-11-05/` with git history.
 
-`src/` is the **development engine** — small, tested, config-driven stage scripts (`01_audit`,
-`02_combine_envelope`, `00_thresholds`, `03_game_demand`, `04_models`, `05_validate`). The **competition
-deliverable** is a **public Kaggle notebook + writeup** (≤5 figures) that runs the same logic end-to-end on
-a Kaggle kernel and renders the results. Keep heavy logic in `src/`; the notebook imports/calls it.
+## Where things stand
 
-## Data (2027 BDB, Kaggle)
+**Phase 0 + Phase 1 are complete.** Phases 2–5 exist as loud stubs.
 
-Raw data lives on the mounted drive (`data/raw` → `/mnt/project_data/conor_downloads/bdb27/`) — never
-committed here.
+| stage | status |
+|---|---|
+| `01_audit` | complete — items a–i, gate `CONDITIONAL GO`, 2 conditions pending full data |
+| `02_combine_physical_time` | not implemented |
+| `03_game_snaps` | not implemented |
+| `04_models` | not implemented |
+| `05_validate` | not implemented |
 
-- `combine_tracking.csv` — **10 Hz** optical tracking of combine drill attempts (~6,310 attempts). The key
-  Combine asset (`event_id`, `attempt`, ISO-8601 `time`, `drill_type`, `x/y/s/a/dis/dir`).
-- `combine_results.csv` — anthropometrics + electronic splits (10-yd split, 40, vertical, broad, 3-cone,
-  shuttle, bench reps) + NGS scores.
-- `player_play.csv` — in-game per-play context (`route_ran`, `pass_length`, `target`,
-  `separation_at_pass_forward`, coverage fields, …).
-- `game_tracking_{2023,24,25}.csv` — frame-level in-game tracking (**absent on the Pi**; full-run only).
-  A non-representative 2023 **sample** is present for plumbing only.
+Read, in this order:
 
-See `notes/schema.md` for full schemas/sizes.
+1. `notes/phase1-audit.md` — the audit and the gate decision.
+2. `notes/schema.md` — what the data actually contains (and what it does not).
+3. `notes/blockers.md` — B1–B7, and **Q1** on the smallest effect of interest.
+4. `README_RUN.md` — how to run it.
 
-## Run order
+## Deliverable model
 
-```
-01_audit → 02_combine_envelope → 00_thresholds → 03_game_demand → 04_models → 05_validate
-```
-
-Every stage takes `--mode sample|full` and `--force`, with **one code path** for both. All paths/thresholds
-come from `config.yaml` (no magic numbers). Heavy files are converted to Parquet once (checkpointed) and
-queried with DuckDB; **no full CSV is loaded into pandas**. Sample outputs are labelled
-`UNVALIDATED SAMPLE OUTPUT`. **Not yet implemented** — this cycle is Phase 0 (setup) only.
+`src/` is the development engine: small, tested, config-driven stage scripts.
+The competition deliverable is a **public Kaggle notebook + writeup** (≤5
+figures) that runs the same logic end to end and renders results from
+`outputs/`. No ad-hoc analysis cells.
 
 ## Layout
 
-| Dir | Purpose |
-|---|---|
-| `research/` | Prior-work scan, literature notes, method surveys |
-| `src/` | Stage scripts + reusable code (imported by notebooks) |
-| `notebooks/` | The public Kaggle notebook deliverable (+ local-run variant) |
-| `notes/` | Rules, schema, pre-registration, assumptions, limitations, decisions, blockers |
-| `outputs/` | Generated figures, tables, metrics (gitignored) |
-| `data/` | Pointer to the raw data on the mounted drive (gitignored) |
+```
+src/01_audit.py -> 02_combine_physical_time.py -> 03_game_snaps.py
+                -> 04_models.py -> 05_validate.py
+```
 
-## Status (Phase 0)
-
-- [x] Prior-work scan — `research/prior-work-scan.md`
-- [x] **Cycle 0: pivot to the ceiling-binding task — repo restructured, analysis reset, infra kept**
-- [x] Phase 0 setup — `notes/rules.md`, `notes/schema.md`, `notes/prereg.md` (skeleton), `config.yaml`
-- [ ] Phase 1 audit (a–i) — go/no-go gate (matched WR, route snaps, missing fields, ICC)
-- [ ] Phases 2–5
-
-## Local run (Windows / laptop)
-
-Runs on a laptop or desktop as well as the Pi: create a venv, `pip install -r requirements.txt`, point
-`data/raw` at a folder holding the BDB CSVs, then run the stage scripts (or the notebook). Full Windows /
-laptop instructions are in **`README_RUN.md`**.
+`data/raw` and `data/interim` are symlinks to a USB volume and are gitignored.
+`outputs/` is generated and gitignored except the deliverable figures.
+`archive/` holds retired analyses, preserved with history.

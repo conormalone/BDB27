@@ -1,149 +1,192 @@
-# Pending full run — questions only the full data can answer
+# Questions only full data can answer — with the script for each
 
-## Current task — leverage × ceiling (D59/D60, 2026-10-27)
+Each item is a question, the exact command that answers it, and what answer would
+matter. Nothing here is a prediction; these are open.
 
-The sections below describe the retired ceiling-v1 / db-decay / security cycles and are kept for history.
-For the **current** task the open questions are:
-
-| # | Question | Stage | Status |
-|---|---|---|---|
-| L1 | Frame-level matched receivers, games/plays per matched receiver | `01_audit` (c) | Player-level match already evaluated from complete `player_play` (WR 105, TE 38); frame-level count needs `game_tracking_{2023,24,25}.csv`. |
-| L2 | Efforts per receiver per leverage bin; receivers with enough efforts in both extremes | `03_game_efforts` then re-run `01_audit` (g) | `PENDING FULL RUN`; sample tracking has ~1.16 players/play. |
-| L3 | In-game exceedance rate above the shrunken ceiling, by leverage bin | `03`/`04`, reported by `01_audit` (h) | `PENDING FULL RUN`. |
-| L4 | Effort-level leverage/time/load partial correlation | `03`/`05`, reported by `01_audit` (i) | `PENDING FULL RUN`; play-level corr is −0.331. |
-| L5 | Empirical minimum detectable effect from real effort counts | `01_audit` (j) | Analytic check says 88 efforts/player are needed for MDE 0.03 at SD 0.10; actual counts pending. |
-| L6 | Full-data route depth at the break (not total displacement) as a control | `03_game_efforts` / `04_models` | Current shared core records displacement but deliberately does not control for it. |
-
-The sample-mode gate is `GO_PENDING_FULL_RUN` (`outputs/audit/lc/decision.json`). A real `GO` requires L1–L5
-to be evaluated and `notes/prereg.md` to be rewritten and frozen for this task (config status is
-`PENDING_REWRITE_FOR_LC_TASK`).
+Conventions: run from the repo root with the venv active. `--mode full` requires
+the three season tracking files in `data/raw` **and** a frozen `notes/prereg.md`;
+the gate refuses otherwise.
 
 ---
 
-These cannot be answered on this Pi (game tracking here is a non-representative 2²⁰-row sample; the full
-`game_tracking_{2023,24,25}.csv` are **absent**). Each lists the stage that answers it. **Combine-side work
-is NOT pending** — the Combine file is complete, so `02_combine_envelope` runs for real in both modes.
+## S1 — Does memory grow linearly with input size?
 
-| # | Question | Stage | Notes |
-|---|---|---|---|
-| P1 | **Matched Combine→NFL receivers** (audit item c): how many of the 510 prospects appear in in-game tracking, by position (WR/TE focus)? | `01_audit` (c) | Needs `game_tracking_{2023,24,25}.csv`. Sample mode emits a PENDING placeholder. **Preview (audit 2026-10-11)** via the complete `player_play.csv`: **WR 106/107, TE 38/42**; sample *tracking* prefix matched only WR 39/TE 11 (non-representative). |
-| P2 | **Route snaps/player** (audit item c) via `route_ran` — is the median above `audit.min_route_snaps_per_player`? | `01_audit` (c) | The go/no-go gate for the per-player tail. **Preview (audit 2026-10-11)**: median route snaps **WR 261, TE 184** (from complete `player_play.csv`). |
-| P3 | **Audit items c/d/h/i game-side** — route/coverage field behaviour, effort distributions, coverage splits. | `01_audit` (c,d,h,i) | Sample non-representative → full run only. |
-| P4 | **Route-effort thresholds** with provenance `FULL` (high-speed/accel cut-offs). | `00_thresholds` | Never set from the sample; models assert provenance == `FULL` in full mode. **Stage BUILT (D30 2026-10-12)** and exercised on the synthetic fixture; the real `--mode full` derivation is `PENDING FULL RUN`. |
-| P5 | **Per-effort game demand** (Phase 3): route snap counts, top-k efforts, per-effort speed/accel, envelope fraction. | `03_game_demand` | The scale driver — stream per game/player. **Stage BUILT (D30 2026-10-12)** and exercised on the synthetic fixture (planted ceiling: binding 0.109 / null 1.00 exceedance); the real `--mode full` run is `PENDING FULL RUN`. |
-| P6 | **Quantile models** (Phase 4): does the Combine→game link strengthen toward the upper tail? Exceedance rate; utilization `u`. | `04_models` | The core result. **Stage BUILT (D31 2026-10-12)** and exercised on the synthetic fixture (binding exceedance 0.109 / verdict `binding`, u median 0.93; null exceedance 1.00 / `not_binding_use_utilization`, u 1.22); the real `--mode full` run is `PENDING FULL RUN`. |
-| P7 | **Validation** (Phase 5): player-grouped CV vs. controls-only baseline; permutation; measurement-error correction. | `05_validate` | Requires frozen `notes/prereg.md`. **Stage BUILT (D31 2026-10-12)**, exercised on the synthetic fixture (both regimes); real run `PENDING FULL RUN`. |
-| P8 | **Scale/RAM extrapolation** to the three full seasons. | all game-side | Confirm no stage exceeds the big machine's RAM; update `notes/scale.md`. |
-| P9 | **Timezone confirmation** for `time`. | `01_audit` (a) + manual | Assumed UTC. |
-| P10 | **ICC of per-player Combine features** — which features are reliable enough to retain (≤3). | `01_audit` / `02_combine_envelope` | **DONE (Combine-side, D29 2026-10-12).** Threshold frozen (`envelope.icc_min=0.5`). Retained = `peak_speed`, `speed_at_20yd`, `env_vmax`; `env_tau`/`env_a0` and raw timing splits dropped. |
-| P11 | **Competition cap re-verification** at source. | manual | `notes/rules.md` §6. |
+**Why.** The Pi cannot hold full tracking. If any stage is accidental quadratic,
+the big machine will find out at hour four.
 
-**Gate.** A full run must not start until: `notes/prereg.md` is frozen (not skeleton) **and** the audit
-go/no-go gate (P1 matched-WR count, P2 route snaps, missing Combine fields, ICC) passes. Otherwise →
-`notes/blockers.md`. **Status (2026-10-12):** `notes/prereg.md` is **FROZEN** and the freeze gate passes
-(`src/gate.py`), so **Combine-side** `--mode full` runs (`02_combine_envelope`) proceed. **Game-side** stages
-(`01_audit` full items c/d/h/i, `03/04/05`) additionally require the audit go/no-go gate — still `PENDING FULL RUN`.
+**How.** Concatenate the sample 2× and 4× with renamed ids, then run 01 and (once
+it exists) 03 against each:
 
-**Stage status (2026-10-12, D31):** all game-side stages are now **implemented and tested** —
-`00_thresholds`, `03_game_demand` (D30), and `04_models` + `05_validate` (D31) — with the synthetic fixture
-exercising each end-to-end for the planted-ceiling **binding** *and* **null** regimes. Only their real
-`--mode full` execution (P4/P5/P6/P7) remains **data-blocked** by the absent `game_tracking_{2023,24,25}.csv`.
-The full game-side pipeline (`03 → 04 → 05`) is ready to run as soon as the tracking files are mounted.
+```bash
+python - <<'PY'
+import duckdb
+con = duckdb.connect()
+for k in (2, 4):
+    con.execute(f"""
+      COPY (
+        SELECT game_id + {k}0000000 AS game_id, play_id, nfl_id,
+               time, x, y, s, a, dis, o, dir, event
+        FROM read_csv_auto('data/raw/game_tracking_2023_sample.csv', nullstr=['NA'])
+        UNION ALL
+        SELECT game_id, play_id, nfl_id, time, x, y, s, a, dis, o, dir, event
+        FROM read_csv_auto('data/raw/game_tracking_2023_sample.csv', nullstr=['NA'])
+      ) TO 'data/interim/scale_{k}x.parquet' (FORMAT PARQUET, COMPRESSION zstd)
+    """)
+PY
+```
 
-## Cycle 2 — security / incentive-exposure models (D38/D39), all `PENDING FULL RUN`
+then point `files.game_tracking_sample` at each and compare `wall_s` and
+`peak_rss_mb` in `outputs/run_log.csv`. **Expected:** wall ~2× and ~4×, peak
+roughly flat (batching) or ~2×/~4× (whole-file). **Bad:** peak growing faster than
+the input.
 
-| # | Question | Stage | Notes |
-|---|---|---|---|
-| P12 | **Real group counts** — how many WR/TE fall in `moved_down` / `high_secure` under the pre-Combine sort key (trend vs level-fallback stratum, per ε), and are both groups above `min_group_n=15`? | `07_security_models` | The whole two-group contrast is underpowered if a group is thin. Reported in `SUMMARY.json::sort.counts` + `group_assignment.csv`. Synthetic fixture only proves the rule. |
-| P13 | **B (primary)** — does `moved_down` show a **smaller** Combine→game gap (positive `group_coef`) in WR, TE and pooled, with player-clustered SEs and the ICC-attenuation correction? | `07_security_models` (B) | Needs the full game tracking (top-k efforts) + `FULL` thresholds + the EDP board. Both naive and corrected coefficients are emitted; the corrected group SE comes from the player-clustered bootstrap. |
-| P14 | **C** — is there a monotone continuous `log(EDP_pre)` gradient, and what are the fitted gaps at P10/P50/P90 (mean ceiling and within-player)? What is the **overall** top-k exceedance rate (Wilson CI) and by group? | `07_security_models` (C) | Overall exceedance is reported first; >0.25 would trigger the pre-registered utilisation reframe (prereg §6). |
-| P15 | **D/E/F/G** — skipper residual (D), appearance model + IPW vs unweighted (E), falsification panels (F), tail quantile coefficients and utilisation P50/P90/P99 (G). | `07_security_models` (D–G) | D and the E/H1 link stay exploratory unless E supports it. G nulls unstable τ estimates rather than forcing them. |
-| P16 | **Runtime + peak RAM** of `07_security_models` on the full data (3 scopes × 4 specs + C + E logit/IPW + G quantile bootstrap). | `07_security_models` | The Pi cannot measure it (no full game tracking). The G bootstrap is the cost driver; `security_models.g.bootstrap_reps` is config-driven (60 now) and may be raised on the big machine. |
-| P17 | **Analysis-A attenuation appendix on the full board** — already computed (Combine-side complete): `outputs/security/analysis_a_attenuation.csv`. Needs no further full run. | `06_security` | `env_vmax` ICC 0.6425 → corrected speed coef 6.74 (p unchanged, approximate). Kept **appendix-only** by D38. |
+**Blocks:** the first full run. Run this first.
 
-**Stage status (2026-10-17, D39):** `07_security_models` is **implemented and tested** end-to-end on the
-committed game-side fixture for the **planted**, **null** and **selection** regimes; the real `--mode full`
-run (P12–P16) is **data-blocked** by the absent `game_tracking_{2023,24,25}.csv`. Run order:
-`01_audit → 02_combine_envelope → 06_security → 00_thresholds → 03_game_demand → 07_security_models →
-00b_external_proxies → 04_models → 05_validate`.
+## S2 — What is the real rows-per-game and total row count?
 
----
+**Why.** `notes/scale.md` extrapolates 120–170 M rows from a non-representative
+sample. The real number sets every memory budget.
 
-## DB-decay task (2026-10-25 pivot, D51) — `PENDING FULL RUN`
+```bash
+python -c "
+import duckdb, yaml
+cfg=yaml.safe_load(open('config.yaml'))['bdb27']
+con=duckdb.connect(); con.execute('SET threads=1')
+for f in cfg['files']['game_tracking_full']:
+    r=con.execute(f\"select count(*), count(distinct game_id) from read_csv_auto('data/raw/{f}', nullstr=['NA'])\").fetchone()
+    print(f, r)
+"
+```
 
-The active task's game side is blocked by the same absent files; the Combine side is **complete** and already
-run (`outputs/audit/db_decay/`). Commands below are the exact invocations; config keys are the ones that
-change, and "unblocks" is the decision that cannot be made without the answer. All sample-mode outputs are
-stamped `UNVALIDATED SAMPLE OUTPUT` and are **never** reportable (D57).
+**Matters because:** if it is 400 M rows, the Parquet cache needs a bigger disk
+than the 7 GB free here.
 
-| # | Question | Exact command / stage | Config key that changes | Unblocks |
-|---|---|---|---|---|
-| **P18** | **Matched DBs with frame-level tracking** (audit c): how many of the 118 Combine DBs appear in `game_tracking_{2023,24,25}.csv`? (sample: **33**, non-representative) | `python src/01_db_audit.py --mode full --force` → `outputs/audit/db_decay/c_matched_levels.csv`, gate row `matched_dbs_game_tracking` | `db_decay.audit.min_matched_dbs` (40) | The go/no-go gate; whether the study has a population at all |
-| **P19** | **Efforts per DB** (high-intensity episodes/player-game and per season) — above the 20 floor for population models and the 60 floor for slopes? | `01_db_audit --mode full` (i) + `python src/03_game_efforts.py --mode full` → effort summary table | `db_decay.audit.min_efforts_per_db` (20), `min_efforts_per_db_slope` (60) | Whether per-player slopes are reportable at all |
-| **P20** | **Total efforts** across the DB population | same as P19 → `i_power.csv` / gate row `total_efforts` | `db_decay.audit.min_total_efforts` (4000) | Power; whether a null is informative |
-| **P21** | **Per-quarter tracking substitution / survivorship**: does tracking coverage per DB degrade by quarter, and by how much? (audit e; sample `e_tracking` is `PENDING FULL RUN`, and `e_snap_distribution_by_quarter.csv` was unusable until the P27 fix, 2026-10-26) | `01_db_audit --mode full` (e) → `e_tracking_by_quarter.csv`, `e_attrition.csv` | `db_decay.audit.pending_full_run` (drop `e_tracking` once answered) | The Q1-not-Q4 restriction and the inverse-probability weighting in validation |
-| **P22** | **Exceedance rate**: how often does in-game peak speed beat the shrunken ceiling, on max-effort episodes? (sample: 0.0% speed on 2,934 units — diagnostic only) | `01_db_audit --mode full` (h) → `h_exceedance_summary.csv` | `db_decay.audit.exceedance_margin_rel` (0.0; margin grid is a sensitivity) | Whether the ceiling is a bound or a scaling reference — the framing of the whole writeup |
-| **P23** | **MDE recalibration**: smallest detectable load β with the real DB count, efforts/DB, games/DB and **observed load SD** (audit assumed `load_sd_per10 = 2.0`) | `python src/05_validate.py --mode full` → power block | `db_decay.power.assumed_load_sd_per10`, `assumed_efforts_per_db`, `assumed_games_per_db`, `smallest_effect_of_interest` (0.01, fixed) | Whether "no decay" is an informative null or an underpowered shrug |
-| **P24** | **Nearest-receiver / co-location availability**: does full tracking carry opponent rows and the ball on the same play? | `01_db_audit --mode full` (d) → `d_players_per_play.csv`, `d_sample_blocked_paths.csv` | *(no key yet — add `db_decay.game.matchup_covariate` only if the answer is yes)* | Whether matchup demand can be conditioned on, or stays a declared confound (D56) |
-| **P25** | **Is full tracking all-22 or combine-class only?** (sample: 0 plays with 22 tracked, 1.16 players/play) | `01_db_audit --mode full` (d), same outputs as P24 | *(no key)* | The `within 5 yd of the ball carrier` condition in the max-effort subset; lateral alignment derivation (T4) |
-| **P26** | **Thresholds with `FULL` provenance** (effort speed/accel cuts, sustain times, garbage-time margins, min snaps) | `python src/00_thresholds.py --mode full` → `outputs/thresholds.json` | `db_decay.game.effort_*`, `min_effort_duration_s`, `garbage_time_*`, `min_snaps_per_player`; `db_decay.audit.provenance_thresholds` → `FULL` | Stage 03 (it asserts `FULL`); every number downstream |
-| **P27** | ~~**Pre-full-run code fix, not a data question:** `e_snap_distribution_by_quarter.csv` reports `n_db_games = 1` and `snaps_median ≈ 9,592` for CB Q1 — that is a total, not a per-game median, so the per-quarter snap distribution is currently unreadable.~~ **FIXED 2026-10-26 (D58):** the query now groups by (player, game, quarter), so the distribution is over DB-games (CB Q1: 889 DB-games, median 11 snaps, IQR 7–15); covered by `test_snap_distribution_is_per_db_game`. Kept here as a closed item, not a pending question. | `01_db_audit` (e) — no action left | *(none)* | P21's interpretation; any substitution/survivorship claim |
+## S3 — Does the onset threshold behave identically in both settings once calibrated?
 
-**Gate status (2026-10-26).** A DB-decay full run must not start until: (1) `notes/prereg.md` is **FROZEN**
-(it is currently `DRAFT — NOT FROZEN`), (2) the audit go/no-go gate has been re-expressed as "≥1 primary
-Combine feature passes ICC" (D53) and passes on full data, and (3) `00_thresholds` has written `FULL`
-provenance. Otherwise → `notes/blockers.md`.
+**Why.** The audit shows the *definition* is shared, but not that
+`speed_yds = 1.0` is the right value on a game snap, where the rusher may already
+be drifting.
 
----
+**How.** Phase 2 writes `outputs/calibration.json` with global stance/start
+offsets; Phase 1's item (d) check is the diagnostic. Re-run:
 
+```bash
+python src/run.py 02_combine_physical_time --mode full
+python src/run.py 01_audit --mode full          # item (d) now full-data
+```
 
-## DL task (D70–D78) — what stage 04 needs from the full data
+**Look at:** the median signed difference between the tracking-derived crossing
+and `player_get_off`. If it is not stable across the three seasons, the onset
+definition is not transportable.
 
-**Answered 2026-11-02 (D78).** Q1, Q2 and Q5 are **closed as not applicable**:
-the 2027 tracking is a prospect-only product (1.5 players/play full, 1.16
-sample), so no play can carry 20 tracked players and the team-level counts can
-never be derived. Prereg §8 was amended before any full-data result — `blitz`,
-`n_blockers` and `primary_blocker_group` were removed and replaced by team and
-season fixed effects plus play-context controls; `dl_blockers.py` is parked.
-Stage 04 therefore no longer refuses to fit P1 on the sample. With the amended
-list, the full run's open questions are Q3 (snap coverage for the load
-definitions) and Q4 (thresholds provenance). Q6 below is new.
+## S4 — Is mean get-off reliable across games on full data? (gate condition)
 
-*Historical note (pre-D78):* stage 04 used to refuse P1 on the sample because
-the §8 control set was empty there (`blitz`, `n_blockers`,
-`primary_blocker_group`, `pre_snap_depth_yd`), each of which was a full-run
-derivation rather than a missing field:
+**Why.** Provisional value from the complete label file is ICC 0.63 (odd/even
+games). The gate needs the full-data number and a depth-adjusted version.
 
-| # | Question | Stage / command | Config key that decides it | Unblocks |
-|---|---|---|---|---|
-| **Q1** | Are `blitz` (team blitz: rushers > 4), `n_rushers` and `n_blockers` derivable for every DL rush snap from full all-22 tracking? | `python src/dl/stage_03_snaps.py --mode full --force` | `bdb27_dl.game.blitz_rusher_threshold`, `rush_advance_min_yd`, `all22_min_players`, `protector_*` | P1 and P2 (both carry the §8 controls) |
-| **Q2** | Are blocker assignments available for every rush snap (primary blocker group)? | stage 03 (same command) → `snaps.csv` `primary_blocker_group` | `blocker_radius_yds`, `primary_blocker_min_share`, `te_lateral_*`, `interior_lateral_max_yd` | The §8 crossed effect |
-| **Q3** | Is the per-game snap sequence complete enough for the load definitions (snap coverage ≥ `audit.min_snap_coverage_share`)? | `01_audit` (c) then stage 03 | `bdb27_dl.audit.min_snap_coverage_share` (0.90) | Part 2 (dropped, never faked, if it fails; P1 continues) |
-| **Q4** | Does `thresholds.json` carry `FULL` provenance before the model run? | `python src/dl/stage_00_thresholds.py --mode full` | `bdb27_dl.mode.full.provenance` | Every reportable number in stage 04 |
+```bash
+python src/run.py 01_audit --mode full --force
+jq '.conditions[] | select(.id=="get_off_reliability")' outputs/audit/gate.json
+```
 
-**Status after D75 (2026-11-02).** Q1 and Q2 are **implemented and tested**
-(`src/dl/dl_blockers.py`, wired into stage 03; planted-truth recovery exact on
-five synthetic all-22 worlds) and remain **data-blocked**: the full tracking
-files are absent from this host, and the sample carries at most 4 tracked
-players per play, so the all-22 guard rejects every play and all four columns
-are `NA` with `insufficient_tracking`. Running stage 03 in full mode answers
-Q1/Q2 directly: `snaps_summary.json::blockers` reports `n_plays_with_all22`,
-`n_plays_derivable`, the reason counts, the label-source mix and the NA share of
-each column, and stage 04 turns a 100 %-NA or out-of-range distribution into a
-`NO-GO` (`derivation_gate`). New sub-question for the full run:
+**Decision rule from `TASK.md`:** stop if the split-half ICC is below
+`audit.icc_min` (0.5). **Provisional forecast:** 0.63, so likely a pass — but it
+is a forecast, not a result.
 
-| # | Question | Stage / command | Config key that decides it | Unblocks |
-|---|---|---|---|---|
-| **Q5** | Do the distributions land in the frozen bands — mean rushers 3–5, mean protectors 5–7, blitz share 25–35 %, zero NA — and what share of blocker labels comes from roster position rather than alignment geometry? | `python src/dl/stage_04_models.py --mode full` → `model_result.json::derivation` | `bdb27_dl.game.derivation_gate` | Whether the §8 controls 3–6 can be fitted at all, and how much of the crossed effect rests on geometric labels |
+## S5 — Does Combine-predicted physical time relate to mean get-off at the player level? (gate condition)
 
-**Q1, Q2, Q5 — CLOSED (D78):** not applicable on a prospect-only product. The
-gate now reports all five derivation items `NOT_APPLICABLE`; the derivation
-runs only if the probe ever finds a 20-player snap frame.
+**Why.** This is the load-bearing relation for the whole study. If `b` is ~0, there
+is no physical part to decompose and the question is void.
 
-| # | Question | Stage / command | Config key that decides it | Unblocks |
-|---|---|---|---|---|
-| **Q6** | What is the tracking coverage of each rusher's **own** snaps (the share of pass-rush snaps with `pre_snap_depth_yd` present), and does complete-case coverage of `seconds_since_last_snap` leave every rusher above the §9 floor of 100 snaps? | stage 03 → `snaps_summary.json` (per-column NA), stage 04 → `model_result.json::field_availability` | `bdb27_dl.game.*`, `bdb27_dl.models.controls` | Whether `pre_snap_depth_yd` can be promoted from the sensitivity panel, and the final model frame size |
+```bash
+python src/run.py 02_combine_physical_time --mode full
+python src/run.py 03_game_snaps --mode full
+python src/run.py 04_models --mode full
+jq '.b, .b_interval, .variance_share' outputs/models/decomposition.json
+```
 
-The declared **sensitivity panel** (`team_coverage_man_zone`, `offense_formation`,
-`pre_snap_depth_yd`) is carried in `snaps.csv` and must be reported separately
-from P1/P2; it is never the confirmatory specification (§8.5).
+**Decision rule:** stop if there is no relation at the player level. `b` near 1
+supports "the Combine measures the same thing"; `b` far from 1 is a finding about
+setting differences, not an automatic stop.
+
+## S6 — How many rushers clear the snap minimum on full data?
+
+**Why.** The audit's 105 comes from the label file and is already complete, but
+the *tracked* count depends on full game tracking and on how many snaps survive
+onset quality control.
+
+```bash
+python src/run.py 03_game_snaps --mode full
+python -c "
+import duckdb
+q=duckdb.sql(\"select nfl_id, count(*) n from read_parquet('data/interim/snaps/*.parquet') group by 1\")
+print(q.df()['n'].describe())
+print('players >= 50:', q.df().query('n>=50').shape[0])
+"
+```
+
+**Matters because:** it sets the power calculation (S7) on the *analysis* set
+rather than the label set.
+
+## S7 — What is the smallest detectable variance share, and does the design resolve the effect of interest?
+
+**Why.** The audit already says the design cannot resolve a 15% share with 105
+players (smallest detectable ≈ 0.27). If full data yields more players, this
+improves; if not, Q1 must be answered before the prereg is frozen.
+
+```bash
+python -c "
+import sys; sys.path.insert(0,'src')
+import stats as ST
+print(ST.min_detectable_share(<P>))
+"
+```
+
+**Matters because:** it decides whether a null jump result is informative.
+`TASK.md`: "Interpret a small jump share as informative only if the interval
+excludes the smallest effect of interest."
+
+## S8 — Is stance estimable from kinematics, given any labelled subset?
+
+**Why.** Not answerable today: no stance label exists in the provided data.
+
+**How.** Only if the full release adds a stance column. Check:
+
+```bash
+python -c "
+import duckdb
+con=duckdb.connect()
+cols=con.execute(\"describe select * from read_csv_auto('data/raw/player_play.csv', nullstr=['NA'])\").df()
+print([c for c in cols.column_name if 'stance' in c.lower()])
+"
+```
+
+**If empty:** stance stays unadjusted, and the writeup says so.
+
+## S9 — Does the pressure label's provenance become documented?
+
+**Why.** `quick_pressure` is null on 92.2% of DL rows and its provenance is
+inferred (`notes/blockers.md` B1).
+
+**How.** Read the full data dictionary when it is available; check whether null
+means "no pressure". Until then, do not model `quick_pressure` as binary.
+
+## S10 — Season-over-season change for the 2025 class
+
+**Why.** `TASK.md` exploratory Q4 needs ≥2 seasons per player. The 2025 class has
+one.
+
+```bash
+python -c "
+import duckdb
+print(duckdb.sql('''
+  select c.draft_year, g.season, count(distinct p.nfl_id) players
+  from read_parquet(''data/interim/snaps/*.parquet'') p
+  join read_csv_auto(''data/raw/games.csv'') g using(game_id)
+  join read_csv_auto(''data/raw/combine_results.csv'', nullstr=[''NA'']) c using(nfl_id)
+  group by 1,2 order by 1,2''').df())
+"
+```
+
+**Matters because:** it decides whether Q4 is a two-point contrast for one class
+or a real trend.

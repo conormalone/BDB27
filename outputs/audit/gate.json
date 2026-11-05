@@ -1,0 +1,64 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE: UNVALIDATED SAMPLE OUTPUT",
+  "stage": "01_audit",
+  "decision": "CONDITIONAL GO \u2014 no kill condition triggered, 2 pending full data",
+  "failed": [],
+  "pending": [
+    "get_off_reliability",
+    "combine_vs_get_off"
+  ],
+  "conditions": [
+    {
+      "id": "combine_sprint_present",
+      "condition": "A straight-line Combine sprint from a stance exists",
+      "status": "PASS",
+      "evidence": 20
+    },
+    {
+      "id": "depth_derivable",
+      "condition": "Pre-snap depth and the line of scrimmage can be derived",
+      "status": "PASS",
+      "evidence": 1.0
+    },
+    {
+      "id": "onset_consistent",
+      "condition": "Onset can be defined consistently across settings",
+      "status": "PASS",
+      "evidence": "identical 10 Hz grid; threshold equivalence is a calibration question (Phase 2)"
+    },
+    {
+      "id": "get_off_reliability",
+      "condition": "Mean get-off split-half ICC >= 0.5",
+      "status": "PENDING_FULL_RUN",
+      "evidence": 0.634145
+    },
+    {
+      "id": "combine_vs_get_off",
+      "condition": "Combine-predicted time relates to mean get-off at player level",
+      "status": "PENDING_FULL_RUN",
+      "evidence": "requires Phase 2 physical times, which this run does not implement"
+    },
+    {
+      "id": "snaps_per_rusher",
+      "condition": ">= 50 pass-rush reps per rusher",
+      "status": "PASS",
+      "evidence": 105
+    },
+    {
+      "id": "matched_dl",
+      "condition": ">= 40 matched DL",
+      "status": "PASS",
+      "evidence": 196
+    }
+  ],
+  "thresholds": {
+    "min_matched_dl": 40,
+    "min_pass_rush_snaps_per_rusher": 50,
+    "min_games_per_rusher": 3,
+    "icc_min": 0.5,
+    "min_players_for_variance": 30,
+    "comb_dl_min_attempts": 1,
+    "icc_testretest_min": 0.5,
+    "smallest_effect_of_interest": 0.15
+  }
+}

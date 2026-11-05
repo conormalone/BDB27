@@ -42,3 +42,8 @@ fixtures/**/outputs/
 Thumbs.db
 *.swp
 .~*
+
+# --- Phase gate artefact: small, machine-readable, and a deliverable in its own right ---
+!outputs/audit/
+!outputs/audit/*.csv
+!outputs/audit/*.json
