@@ -90,6 +90,7 @@
     "k_sigma2_over_tau2": 6.171195,
     "n0": 206.7746,
     "bootstrap": {
+      "quantity": "k = sigma2/tau2",
       "median": 6.371987,
       "p_lo": 4.798544,
       "p_hi": 8.762238,
@@ -112,6 +113,7 @@
     "share_rep": 0.773126,
     "components_truncated": 0,
     "bootstrap": {
+      "quantity": "share_player = s2u/total",
       "median": 0.131172,
       "p_lo": 0.097772,
       "p_hi": 0.168415,

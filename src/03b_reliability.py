@@ -670,7 +670,7 @@ def main(argv=None) -> int:
                     "tau2_between": round(comp2["tau2"], 8),
                     "k_sigma2_over_tau2": round(comp2["k"], 6),
                     "n0": round(comp2["n0"], 4),
-                    "bootstrap": _boot_block(boot2, "k"),
+                    "bootstrap": _boot_block(boot2, "k", "k = sigma2/tau2"),
                     "reliability_at_median_reps": round(
                         REL.reliability_from_k(
                             float(means["size"].median()), comp2["k"]), 6),
@@ -687,7 +687,7 @@ def main(argv=None) -> int:
                     "share_game": round(comp3["share_game"], 6),
                     "share_rep": round(comp3["share_rep"], 6),
                     "components_truncated": comp3["components_truncated"],
-                    "bootstrap": _boot_block(boot3, "share_player"),
+                    "bootstrap": _boot_block(boot3, "share_player", "share_player = s2u/total"),
                     "reliability_at_median": round(
                         REL.reliability_three_level(
                             float(means["size"].median()),
@@ -780,11 +780,12 @@ def _groups(df):
     return [g["y"].tolist() for _, g in df.groupby("nfl_id")]
 
 
-def _boot_block(boot, key) -> dict:
+def _boot_block(boot, key, label: str | None = None) -> dict:
     if not boot.get("ok"):
         return {"ok": False}
     ci = boot["intervals"].get(key, {})
-    return {"median": _r(ci.get("median")), "p_lo": _r(ci.get("p_lo")),
+    return {"quantity": label or key,
+            "median": _r(ci.get("median")), "p_lo": _r(ci.get("p_lo")),
             "p_hi": _r(ci.get("p_hi")), "n_resamples": ci.get("n")}
 
 
