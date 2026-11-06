@@ -314,6 +314,34 @@ def test_sample_calibration_is_reported_not_refused(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# coverage caveat sits next to the phys share
+# --------------------------------------------------------------------------- #
+def test_coverage_caveat_follows_the_between_player_phys_share(tmp_path):
+    _write_decomposition(tmp_path, _artifact())
+    text = R.render_headline(tmp_path, "sample")
+    assert "10 of 100 reps have NO_CURVE (10.0%)" in text
+    assert "statement about all 100 reps" in text
+    assert "so it is not a" in text
+    assert text.index("phys                 : 0.000") < text.index("have NO_CURVE (10.0%)")
+
+
+def test_missing_interpolation_status_names_itself(tmp_path):
+    payload = _artifact()
+    payload.pop("phys_interpolation_status")
+    _write_decomposition(tmp_path, payload)
+    text = R.render_headline(tmp_path, "sample")
+    assert "NOT RUN — phys_interpolation_status absent" in text
+
+
+def test_interpolation_counter_without_no_curve_names_the_field(tmp_path):
+    payload = _artifact()
+    payload["phys_interpolation_status"] = {"OK": 100}
+    _write_decomposition(tmp_path, payload)
+    text = R.render_headline(tmp_path, "sample")
+    assert "NOT RUN — phys_interpolation_status.NO_CURVE absent" in text
+
+
+# --------------------------------------------------------------------------- #
 # figures
 # --------------------------------------------------------------------------- #
 def test_notebook_calls_the_validation_renderer(notebook):

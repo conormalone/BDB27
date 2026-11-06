@@ -132,7 +132,37 @@ def _banner_lines(messages: list[str], width: int = BANNER_WIDTH) -> list[str]:
 # --------------------------------------------------------------------------- #
 # headline
 # --------------------------------------------------------------------------- #
-def _group_block(label: str, group: dict, qualifier: str) -> list[str]:
+def _coverage_line(interp: Any) -> str:
+    """One line: how many reps carry a Combine curve, and what that limits.
+
+    The counter is written by 04_models for every rep that entered
+    ``attach_physical`` (before it keeps only the ``OK`` reps), so its values sum
+    to the denominator. No value is computed beyond that sum and a share.
+    """
+    if not isinstance(interp, dict) or not interp:
+        return ("  interpolation coverage : "
+                f"{MISSING_PREFIX}phys_interpolation_status absent")
+    counts = {k: v for k, v in interp.items()
+              if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    total = sum(counts.values())
+    if not counts or total <= 0:
+        return ("  interpolation coverage : "
+                f"{MISSING_PREFIX}phys_interpolation_status has no counts")
+    no_curve = counts.get("NO_CURVE")
+    if no_curve is None:
+        return ("  interpolation coverage : "
+                f"{MISSING_PREFIX}phys_interpolation_status.NO_CURVE absent")
+    share = float(no_curve) / float(total)
+    return (f"  interpolation coverage : {int(no_curve):,} of {int(total):,} reps "
+            f"have NO_CURVE ({share:.1%}); the phys share\n"
+            "                           is estimated on reps that carry a curve, "
+            "so it is not a\n"
+            "                           statement about all "
+            f"{int(total):,} reps")
+
+
+def _group_block(label: str, group: dict, qualifier: str,
+                 interp: Any = None) -> list[str]:
     title = GROUP_TITLES.get(label, label.upper())
     lines = [f"{title}{qualifier}"]
 
@@ -166,6 +196,9 @@ def _group_block(label: str, group: dict, qualifier: str) -> list[str]:
         else:
             lines.append(f"    {label_text:<20} : {_num(group.get(field))}  "
                          f"{_ci(boot, field + '_ci95')}")
+
+    # The caveat travels with the headline share, not in a footnote.
+    lines.append(_coverage_line(interp))
 
     lines.append("  total variance split")
     for field, label_text in (("share_phys_total", "phys"),
@@ -405,8 +438,9 @@ def render_headline(outputs_dir: str | Path, mode: str = "sample",
         lines.append(f"  shared error     : {me.get('shared_error_variance', MISSING_PREFIX + 'shared_error_variance absent')}")
     lines.append("")
 
+    interp = art.get("phys_interpolation_status")
     for label in GROUPS:
-        lines.extend(_group_block(label, art.get(label), qualifier))
+        lines.extend(_group_block(label, art.get(label), qualifier, interp))
 
     res = art.get("resolution")
     lines.append("RESOLUTION LIMIT (from the artefact's `resolution` block)")
@@ -430,7 +464,6 @@ def render_headline(outputs_dir: str | Path, mode: str = "sample",
         lines.append("  interest test is applied (Conor 2026-11-05 22:16; frozen prereg).")
     lines.append("")
 
-    interp = art.get("phys_interpolation_status")
     lines.append("PHYS INTERPOLATION (coverage counter — not a result)")
     if not isinstance(interp, dict) or not interp:
         lines.append(f"  {MISSING_PREFIX}phys_interpolation_status absent")
