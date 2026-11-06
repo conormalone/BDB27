@@ -708,55 +708,99 @@ def _fig_skip(name: str, why: str) -> str:
     return f"{name}: SKIPPED — {why}"
 
 
-def _load_snaps(path: Path, columns: list[str]):
+
+class FigureInputMissing(RuntimeError):
+    """A named input is absent, so the figure is skipped — never plotted blank."""
+
+
+def _need(block: Any, key: str, where: str) -> Any:
+    """Fetch a required field or raise with its full name."""
+    if not isinstance(block, dict):
+        raise FigureInputMissing(f"{where} block absent")
+    if key not in block or block[key] is None:
+        raise FigureInputMissing(f"{where}.{key} absent")
+    value = block[key]
+    if isinstance(value, float) and not math.isfinite(value):
+        raise FigureInputMissing(f"{where}.{key} is non-finite")
+    return value
+
+
+def _need_num(block: Any, key: str, where: str) -> float:
+    value = _need(block, key, where)
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise FigureInputMissing(f"{where}.{key} is not a number ({value!r})") from None
+    if not math.isfinite(number):
+        raise FigureInputMissing(f"{where}.{key} is non-finite")
+    return number
+
+
+def _need_ci(block: Any, key: str, where: str) -> tuple[float, float]:
+    value = _need(block, key, where)
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise FigureInputMissing(f"{where}.{key} is not a two-number interval")
+    try:
+        lo, hi = float(value[0]), float(value[1])
+    except (TypeError, ValueError):
+        raise FigureInputMissing(f"{where}.{key} is not a two-number interval") from None
+    if not (math.isfinite(lo) and math.isfinite(hi)):
+        raise FigureInputMissing(f"{where}.{key} is non-finite")
+    return lo, hi
+
+
+def _need_columns(frame, columns: list[str], where: str) -> None:
+    missing = [c for c in columns if c not in frame.columns]
+    if missing:
+        raise FigureInputMissing(f"{where} column(s) absent: {', '.join(missing)}")
+
+
+def _load_snaps(path: Path, columns: list[str], where: str):
     import pandas as pd
 
     if not path.exists():
-        return None
+        raise FigureInputMissing(f"{where} absent")
     try:
         return pd.read_parquet(path, columns=columns)
-    except Exception:
-        return None
+    except Exception as exc:
+        raise FigureInputMissing(
+            f"{where} unreadable ({type(exc).__name__}: {exc})") from None
 
 
-def render_figures(outputs_dir: str | Path, figures_dir: str | Path,
-                   mode: str = "sample", dpi: int = 150) -> dict[str, Any]:
-    """Render the four deliverable figures from FULL-provenance artefacts only.
+def _render_figures_impl(outputs: Path, figures: Path,
+                         dpi: int) -> dict[str, Any]:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
 
-    Returns ``{"messages": [...], "paths": [...]}``. Every skip is named, and no
-    figure is ever built from placeholder data. The caller displays the saved
-    PNGs; this function does not assume an interactive backend.
-    """
-    outputs = Path(outputs_dir)
-    figures = Path(figures_dir)
     messages: list[str] = []
     paths: list[str] = []
-
-    art = read_json(outputs / "phase4" / "decomposition.json")
-    if art is None:
-        return {"messages": [_fig_skip("all figures",
-                                       "outputs/phase4/decomposition.json absent")],
-                "paths": []}
-    if mode != "full" or provenance_kind(art) != "FULL":
-        why = (f"MODE={mode!r} and provenance "
-               f"{str(art.get('provenance', 'absent'))!r}; a plot of sample output "
-               "would not be a finding")
-        return {"messages": [f"figure {i}: SKIPPED — {why}" for i in (1, 2, 3, 4)],
-                "paths": []}
-
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        import numpy as np
-        import pandas as pd
-    except Exception as exc:                                   # pragma: no cover
-        return {"messages": [_fig_skip("all figures",
-                                       f"matplotlib/pandas unavailable "
-                                       f"({type(exc).__name__}: {exc})")],
-                "paths": []}
+    records: list[dict[str, Any]] = []
 
     figures.mkdir(parents=True, exist_ok=True)
+    art = read_json(outputs / "phase4" / "decomposition.json")
+    if art is None:
+        raise FigureInputMissing("outputs/phase4/decomposition.json absent")
+
+    def save(name: str, fig, ax) -> Path:
+        """Save, record finite limits and pixel dimensions, close."""
+        xlim = tuple(float(v) for v in ax.get_xlim())
+        ylim = tuple(float(v) for v in ax.get_ylim())
+        if not all(math.isfinite(v) for v in xlim + ylim):
+            raise FigureInputMissing(f"{name} produced non-finite axis limits {xlim} {ylim}")
+        width_px, height_px = (int(round(v * dpi)) for v in fig.get_size_inches())
+        out = figures / f"{name}.png"
+        fig.tight_layout()
+        fig.savefig(out, dpi=dpi)
+        plt.close(fig)
+        records.append({"name": name, "path": str(out), "dpi": dpi,
+                        "width_px": width_px, "height_px": height_px,
+                        "xlim": list(xlim), "ylim": list(ylim)})
+        paths.append(str(out))
+        messages.append(f"figure {len(records)}: wrote {out}")
+        return out
 
     # ---- Figure 1: variance split with intervals, edge vs interior ----------
     try:
@@ -769,54 +813,67 @@ def render_figures(outputs_dir: str | Path, figures_dir: str | Path,
         for offset, (field, name, colour) in zip((-width / 2, width / 2), comps):
             vals, los, his = [], [], []
             for label in labels:
-                grp = art.get(label) or {}
-                boot = grp.get("bootstrap") or {}
-                val = grp.get(field)
-                ci = boot.get(field + "_ci95") or [None, None]
-                vals.append(float(val) if not _is_missing(val) else np.nan)
-                los.append(float(ci[0]) if not _is_missing(ci[0]) else np.nan)
-                his.append(float(ci[1]) if not _is_missing(ci[1]) else np.nan)
+                grp = art.get(label)
+                if not isinstance(grp, dict):
+                    raise FigureInputMissing(f"decomposition[{label!r}] block absent")
+                boot = grp.get("bootstrap")
+                vals.append(_need_num(grp, field, label))
+                lo, hi = _need_ci(boot, field + "_ci95", f"{label}.bootstrap")
+                los.append(lo)
+                his.append(hi)
             vals = np.asarray(vals)
             err = np.vstack([vals - np.asarray(los), np.asarray(his) - vals])
             ax.bar(x + offset, vals, width, label=name, color=colour,
-                   yerr=np.nan_to_num(err), capsize=4)
+                   yerr=err, capsize=4)
         ax.set_xticks(x, [l.title() for l in labels])
         ax.set_ylabel("share of between-player variance")
         ax.set_ylim(0, 1.05)
         ax.set_title("Between-player get-off variance: phys vs jump, 95% intervals")
         ax.legend(frameon=False)
         ax.spines[["top", "right"]].set_visible(False)
-        fig.tight_layout()
-        out = figures / "fig1_variance_split.png"
-        fig.savefig(out, dpi=dpi)
-        plt.close(fig)
-        paths.append(str(out))
-        messages.append(f"figure 1: wrote {out}")
+        save("fig1_variance_split", fig, ax)
     except Exception as exc:
         messages.append(_fig_skip("figure 1", f"{type(exc).__name__}: {exc}"))
 
-    # ---- shared inputs for figures 2 and 4 ---------------------------------
-    snaps = _load_snaps(outputs / "phase3" / "snaps.parquet",
-                        ["nfl_id", "depth_yd", "cross_time_s", "analysis_ready",
-                         "in_primary_set", "provenance"])
-    phys = None
-    phys_path = outputs / "phase2" / "physical_time_by_player.csv"
-    if phys_path.exists():
+    # ---- player-level inputs, loaded once and named on failure -------------
+    cache: dict[str, Any] = {}
+
+    def player_inputs():
+        if "value" in cache:
+            value = cache["value"]
+            if isinstance(value, Exception):
+                raise value
+            return value
         try:
+            snaps = _load_snaps(outputs / "phase3" / "snaps.parquet",
+                                ["nfl_id", "depth_yd", "cross_time_s",
+                                 "analysis_ready", "in_primary_set", "provenance"],
+                                "phase3/snaps.parquet")
+            _need_columns(snaps, ["nfl_id", "depth_yd", "cross_time_s",
+                                  "analysis_ready", "in_primary_set", "provenance"],
+                          "snaps.parquet")
+            phys_path = outputs / "phase2" / "physical_time_by_player.csv"
+            if not phys_path.exists():
+                raise FigureInputMissing("phase2/physical_time_by_player.csv absent")
             phys = pd.read_csv(phys_path)
-        except Exception:
-            phys = None
-    phys_full = (phys is not None and "provenance" in phys.columns
-                 and set(phys["provenance"].astype(str).unique()) == {"FULL"})
-    snaps_full = (snaps is not None and "provenance" in snaps.columns
-                  and set(snaps["provenance"].astype(str).unique()) == {"FULL"})
+            _need_columns(phys, ["nfl_id", "display_name", "distance_yd",
+                                 "posterior_mean_s", "provenance"],
+                          "physical_time_by_player.csv")
+            for frame, where in ((snaps, "snaps.parquet"),
+                                 (phys, "physical_time_by_player.csv")):
+                stamps = sorted(set(frame["provenance"].astype(str).unique()))
+                if stamps != ["FULL"]:
+                    raise FigureInputMissing(
+                        f"{where} is not FULL provenance (found {stamps})")
+        except Exception as exc:
+            cache["value"] = exc
+            raise
+        cache["value"] = (snaps, phys)
+        return cache["value"]
 
     # ---- Figure 2: phys time vs observed get-off, named off-diagonal --------
     try:
-        if snaps is None or phys is None:
-            raise RuntimeError("snaps.parquet or physical_time_by_player.csv absent")
-        if not (snaps_full and phys_full):
-            raise RuntimeError("inputs are not FULL provenance")
+        snaps, phys = player_inputs()
         work = snaps[(snaps["in_primary_set"] == True) &               # noqa: E712
                      (snaps["analysis_ready"] == True) &               # noqa: E712
                      snaps["cross_time_s"].notna() &
@@ -840,9 +897,12 @@ def render_figures(outputs_dir: str | Path, figures_dir: str | Path,
             preds.append((row["nfl_id"], float(np.interp(row["depth_yd"], grid, vals)),
                           float(row["observed_s"]), int(row["n"])))
         pred = pd.DataFrame(preds, columns=["nfl_id", "predicted_s", "observed_s", "n"])
+        if pred.empty:
+            raise FigureInputMissing("no player has both a curve covering his mean "
+                                     "depth and >=20 analysis-ready reps")
         pred = pred.merge(names, on="nfl_id", how="left")
         if len(pred) < 3:
-            raise RuntimeError(f"only {len(pred)} players with both quantities")
+            raise FigureInputMissing(f"only {len(pred)} players with both quantities")
         pred["resid"] = pred["observed_s"] - pred["predicted_s"]
         fig, ax = plt.subplots(figsize=(8, 4.6))
         ax.scatter(pred["predicted_s"], pred["observed_s"], s=22, alpha=0.75,
@@ -861,12 +921,7 @@ def render_figures(outputs_dir: str | Path, figures_dir: str | Path,
         ax.set_title("Physical prediction vs observed get-off — named players off the diagonal")
         ax.legend(frameon=False, loc="upper left")
         ax.spines[["top", "right"]].set_visible(False)
-        fig.tight_layout()
-        out = figures / "fig2_phys_vs_observed.png"
-        fig.savefig(out, dpi=dpi)
-        plt.close(fig)
-        paths.append(str(out))
-        messages.append(f"figure 2: wrote {out}")
+        save("fig2_phys_vs_observed", fig, ax)
     except Exception as exc:
         messages.append(_fig_skip("figure 2", f"{type(exc).__name__}: {exc}"))
 
@@ -875,23 +930,19 @@ def render_figures(outputs_dir: str | Path, figures_dir: str | Path,
         labels = ["pooled", "edge", "interior"]
         rel_sb, rel_mb, agr_u, agr_p = [], [], [], []
         for label in labels:
-            grp = art.get(label) or {}
-            rel = grp.get("reliability") or {}
-            agr = grp.get("agreement") or {}
-            rel_sb.append(float((rel.get("split_half") or {}).get("spearman_brown")
-                                if not _is_missing((rel.get("split_half") or {}).get("spearman_brown"))
-                                else np.nan))
-            rel_mb.append(float((rel.get("model_based") or {}).get("reliability")
-                                if not _is_missing((rel.get("model_based") or {}).get("reliability"))
-                                else np.nan))
-            agr_u.append(float((agr.get("u_vs_onset_latency") or {}).get("r")
-                               if not _is_missing((agr.get("u_vs_onset_latency") or {}).get("r"))
-                               else np.nan))
-            agr_p.append(float((agr.get("phys_vs_onset_to_cross") or {}).get("r")
-                               if not _is_missing((agr.get("phys_vs_onset_to_cross") or {}).get("r"))
-                               else np.nan))
-        if all(np.all(np.isnan(v)) for v in (rel_sb, rel_mb, agr_u, agr_p)):
-            raise RuntimeError("reliability and agreement blocks absent")
+            grp = art.get(label)
+            if not isinstance(grp, dict):
+                raise FigureInputMissing(f"decomposition[{label!r}] block absent")
+            rel = grp.get("reliability")
+            agr = grp.get("agreement")
+            rel_sb.append(_need_num(rel.get("split_half") if isinstance(rel, dict) else None,
+                                    "spearman_brown", f"{label}.reliability.split_half"))
+            rel_mb.append(_need_num(rel.get("model_based") if isinstance(rel, dict) else None,
+                                    "reliability", f"{label}.reliability.model_based"))
+            agr_u.append(_need_num(agr.get("u_vs_onset_latency") if isinstance(agr, dict) else None,
+                                   "r", f"{label}.agreement.u_vs_onset_latency"))
+            agr_p.append(_need_num(agr.get("phys_vs_onset_to_cross") if isinstance(agr, dict) else None,
+                                   "r", f"{label}.agreement.phys_vs_onset_to_cross"))
         x = np.arange(len(labels))
         w = 0.2
         fig, ax = plt.subplots(figsize=(8, 4.2))
@@ -905,39 +956,34 @@ def render_figures(outputs_dir: str | Path, figures_dir: str | Path,
         ax.set_title("Reliability and latency agreement of the jump")
         ax.legend(frameon=False, fontsize=8, ncol=2)
         ax.spines[["top", "right"]].set_visible(False)
-        fig.tight_layout()
-        out = figures / "fig3_reliability_agreement.png"
-        fig.savefig(out, dpi=dpi)
-        plt.close(fig)
-        paths.append(str(out))
-        messages.append(f"figure 3: wrote {out}")
+        save("fig3_reliability_agreement", fig, ax)
     except Exception as exc:
         messages.append(_fig_skip("figure 3", f"{type(exc).__name__}: {exc}"))
 
     # ---- Figure 4: one rusher's rep-level story ----------------------------
     try:
-        if snaps is None or phys is None:
-            raise RuntimeError("snaps.parquet or physical_time_by_player.csv absent")
-        if not (snaps_full and phys_full):
-            raise RuntimeError("inputs are not FULL provenance")
+        snaps, phys = player_inputs()
         work = snaps[(snaps["in_primary_set"] == True) &               # noqa: E712
                      (snaps["analysis_ready"] == True) &               # noqa: E712
                      snaps["cross_time_s"].notna() & snaps["depth_yd"].notna()]
         counts = work.groupby("nfl_id").size().sort_values(ascending=False)
         if counts.empty:
-            raise RuntimeError("no analysis-ready reps")
+            raise FigureInputMissing("no analysis-ready reps")
         player = counts.index[0]
         reps = work[work["nfl_id"] == player]
         curve = phys[phys["nfl_id"] == player].sort_values("distance_yd")
         name = (str(curve["display_name"].iloc[0]) if not curve.empty
                 else f"nfl_id {player}")
-        effects = outputs / "phase4" / "player_effects.csv"
         u_text = ""
+        effects = outputs / "phase4" / "player_effects.csv"
         if effects.exists():
-            eff = pd.read_csv(effects)
-            row = eff[eff["player_id"] == player]
-            if len(row) and not _is_missing(row.iloc[0].get("u_s")):
-                u_text = f" · u = {float(row.iloc[0]['u_s']):+.3f} s"
+            try:
+                eff = pd.read_csv(effects)
+                row = eff[eff["player_id"] == player]
+                if len(row) and "u_s" in eff.columns and not _is_missing(row.iloc[0].get("u_s")):
+                    u_text = f" · u = {float(row.iloc[0]['u_s']):+.3f} s"
+            except Exception:
+                u_text = ""
         fig, ax = plt.subplots(figsize=(8, 4.6))
         ax.scatter(reps["depth_yd"], reps["cross_time_s"], s=12, alpha=0.45,
                    color="#4c72b0", label="reps (tracked LOS crossing)")
@@ -949,13 +995,41 @@ def render_figures(outputs_dir: str | Path, figures_dir: str | Path,
         ax.set_title(f"{name}: {len(reps)} reps against his own physical curve{u_text}")
         ax.legend(frameon=False, fontsize=8)
         ax.spines[["top", "right"]].set_visible(False)
-        fig.tight_layout()
-        out = figures / "fig4_one_rusher_reps.png"
-        fig.savefig(out, dpi=dpi)
-        plt.close(fig)
-        paths.append(str(out))
-        messages.append(f"figure 4: wrote {out}")
+        save("fig4_one_rusher_reps", fig, ax)
     except Exception as exc:
         messages.append(_fig_skip("figure 4", f"{type(exc).__name__}: {exc}"))
 
-    return {"messages": messages, "paths": paths}
+    return {"messages": messages, "paths": paths, "figures": records}
+
+
+def render_figures(outputs_dir: str | Path, figures_dir: str | Path,
+                   mode: str = "sample", dpi: int = 150) -> dict[str, Any]:
+    """Render the four deliverable figures from FULL-provenance artefacts only.
+
+    Returns ``{"messages": [...], "paths": [...], "figures": [...]}``. Every skip
+    is named — a missing field names itself rather than being plotted as an empty
+    axis — and no figure is ever built from placeholder data. ``figures`` carries
+    each PNG's pixel dimensions and axis limits so a caller can prove the axes
+    are finite without opening the image.
+    """
+    outputs = Path(outputs_dir)
+    figures = Path(figures_dir)
+
+    art = read_json(outputs / "phase4" / "decomposition.json")
+    if art is None:
+        return {"messages": [_fig_skip("all figures",
+                                       "outputs/phase4/decomposition.json absent")],
+                "paths": [], "figures": []}
+    if mode != "full" or provenance_kind(art) != "FULL":
+        why = (f"MODE={mode!r} and provenance "
+               f"{str(art.get('provenance', 'absent'))!r}; a plot of sample output "
+               "would not be a finding")
+        return {"messages": [f"figure {i}: SKIPPED — {why}" for i in (1, 2, 3, 4)],
+                "paths": [], "figures": []}
+
+    try:
+        return _render_figures_impl(outputs, figures, dpi)
+    except Exception as exc:                                       # pragma: no cover
+        return {"messages": [_fig_skip("all figures",
+                                       f"{type(exc).__name__}: {exc}")],
+                "paths": [], "figures": []}
