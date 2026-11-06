@@ -270,6 +270,8 @@ definitional differences alongside anything cognitive.
 
 ---
 
+<!-- END OF WRITEUP BODY -->
+
 **Word count:** 1,954 words of prose, counting each placeholder token as one
 word (i.e. the projected final count). Final ceiling 2,000 words (`TASK.md` §6
 and `notes/rules.md` L1 — the cap itself is `UNVERIFIED` for 2027).

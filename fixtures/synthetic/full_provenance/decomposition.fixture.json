@@ -1,0 +1,309 @@
+{
+  "provenance": "FULL",
+  "fixture": true,
+  "fixture_note": "SYNTHETIC FIXTURE \u2014 smoke test for the renderers. Not a BDB27 result; no full-data run produced these values.",
+  "stage": "04_models",
+  "mode": "full",
+  "pooled": {
+    "status": "OK",
+    "label": "pooled",
+    "n_reps": 188,
+    "n_players": 6,
+    "n_team_games": 42,
+    "b": 1.082,
+    "b_fit": 1.082,
+    "share_phys": 0.318,
+    "share_u": 0.682,
+    "share_phys_total": 0.0493,
+    "share_u_total": 0.1057,
+    "within_player_remainder_total": 0.845,
+    "jump_sd_s": 0.0487,
+    "jump_sd_ms": 48.7,
+    "rung_used": 0,
+    "min_reps_per_player": 20,
+    "converged": true,
+    "boundary": {
+      "sigma_u_zero": false,
+      "between_phys_var_zero": false,
+      "note": "FIXTURE values; not an estimate."
+    },
+    "bootstrap": {
+      "n_requested": 200,
+      "n_ok": 200,
+      "status": "OK",
+      "b_ci95": [
+        0.912,
+        1.262
+      ],
+      "share_phys_ci95": [
+        0.118,
+        0.528
+      ],
+      "share_u_ci95": [
+        0.472,
+        0.882
+      ],
+      "within_player_remainder_total_ci95": [
+        0.795,
+        0.895
+      ]
+    },
+    "ladder": {
+      "rung_0_regression_calibration": {
+        "status": "OK",
+        "share_phys": 0.318,
+        "share_u": 0.682,
+        "b": 1.082
+      },
+      "rung_1_no_me_correction": {
+        "status": "OK",
+        "share_phys": 0.378,
+        "share_u": 0.622,
+        "b": 1.082
+      },
+      "rung_2_empirical_bayes": {
+        "status": "OK",
+        "share_phys": 0.338,
+        "share_u": 0.662,
+        "b": 1.082
+      },
+      "rung_3_random_intercept_only": {
+        "status": "NOT_NEEDED"
+      }
+    },
+    "reliability": {
+      "split_half": {
+        "n_players": 6,
+        "r_half": 0.712,
+        "spearman_brown": 0.792
+      },
+      "model_based": {
+        "reliability": 0.731,
+        "n_players": 6
+      }
+    },
+    "agreement": {
+      "u_vs_onset_latency": {
+        "r": 0.463,
+        "n_players": 6
+      },
+      "phys_vs_onset_to_cross": {
+        "r": 0.604,
+        "n_players": 6
+      },
+      "note": "FIXTURE values. Disagreement is a finding, not a failure."
+    },
+    "year_to_year": {
+      "status": "INSUFFICIENT_SEASONS",
+      "n_pairs": 0
+    }
+  },
+  "edge": {
+    "status": "OK",
+    "label": "edge",
+    "n_reps": 91,
+    "n_players": 3,
+    "n_team_games": 24,
+    "b": 1.114,
+    "b_fit": 1.114,
+    "share_phys": 0.271,
+    "share_u": 0.729,
+    "share_phys_total": 0.0374,
+    "share_u_total": 0.1006,
+    "within_player_remainder_total": 0.862,
+    "jump_sd_s": 0.0432,
+    "jump_sd_ms": 43.2,
+    "rung_used": 0,
+    "min_reps_per_player": 20,
+    "converged": true,
+    "boundary": {
+      "sigma_u_zero": false,
+      "between_phys_var_zero": false,
+      "note": "FIXTURE values; not an estimate."
+    },
+    "bootstrap": {
+      "n_requested": 200,
+      "n_ok": 200,
+      "status": "OK",
+      "b_ci95": [
+        0.944,
+        1.294
+      ],
+      "share_phys_ci95": [
+        0.071,
+        0.481
+      ],
+      "share_u_ci95": [
+        0.519,
+        0.929
+      ],
+      "within_player_remainder_total_ci95": [
+        0.812,
+        0.912
+      ]
+    },
+    "ladder": {
+      "rung_0_regression_calibration": {
+        "status": "OK",
+        "share_phys": 0.271,
+        "share_u": 0.729,
+        "b": 1.114
+      },
+      "rung_1_no_me_correction": {
+        "status": "OK",
+        "share_phys": 0.331,
+        "share_u": 0.669,
+        "b": 1.114
+      },
+      "rung_2_empirical_bayes": {
+        "status": "OK",
+        "share_phys": 0.291,
+        "share_u": 0.709,
+        "b": 1.114
+      },
+      "rung_3_random_intercept_only": {
+        "status": "NOT_NEEDED"
+      }
+    },
+    "reliability": {
+      "split_half": {
+        "n_players": 3,
+        "r_half": 0.661,
+        "spearman_brown": 0.741
+      },
+      "model_based": {
+        "reliability": 0.688,
+        "n_players": 3
+      }
+    },
+    "agreement": {
+      "u_vs_onset_latency": {
+        "r": 0.412,
+        "n_players": 3
+      },
+      "phys_vs_onset_to_cross": {
+        "r": 0.566,
+        "n_players": 3
+      },
+      "note": "FIXTURE values. Disagreement is a finding, not a failure."
+    },
+    "year_to_year": {
+      "status": "INSUFFICIENT_SEASONS",
+      "n_pairs": 0
+    }
+  },
+  "interior": {
+    "status": "OK",
+    "label": "interior",
+    "n_reps": 97,
+    "n_players": 3,
+    "n_team_games": 26,
+    "b": 1.041,
+    "b_fit": 1.041,
+    "share_phys": 0.356,
+    "share_u": 0.644,
+    "share_phys_total": 0.0609,
+    "share_u_total": 0.1101,
+    "within_player_remainder_total": 0.829,
+    "jump_sd_s": 0.0529,
+    "jump_sd_ms": 52.9,
+    "rung_used": 0,
+    "min_reps_per_player": 20,
+    "converged": true,
+    "boundary": {
+      "sigma_u_zero": false,
+      "between_phys_var_zero": false,
+      "note": "FIXTURE values; not an estimate."
+    },
+    "bootstrap": {
+      "n_requested": 200,
+      "n_ok": 200,
+      "status": "OK",
+      "b_ci95": [
+        0.871,
+        1.221
+      ],
+      "share_phys_ci95": [
+        0.156,
+        0.566
+      ],
+      "share_u_ci95": [
+        0.434,
+        0.844
+      ],
+      "within_player_remainder_total_ci95": [
+        0.779,
+        0.879
+      ]
+    },
+    "ladder": {
+      "rung_0_regression_calibration": {
+        "status": "OK",
+        "share_phys": 0.356,
+        "share_u": 0.644,
+        "b": 1.041
+      },
+      "rung_1_no_me_correction": {
+        "status": "OK",
+        "share_phys": 0.416,
+        "share_u": 0.584,
+        "b": 1.041
+      },
+      "rung_2_empirical_bayes": {
+        "status": "OK",
+        "share_phys": 0.376,
+        "share_u": 0.624,
+        "b": 1.041
+      },
+      "rung_3_random_intercept_only": {
+        "status": "NOT_NEEDED"
+      }
+    },
+    "reliability": {
+      "split_half": {
+        "n_players": 3,
+        "r_half": 0.733,
+        "spearman_brown": 0.813
+      },
+      "model_based": {
+        "reliability": 0.759,
+        "n_players": 3
+      }
+    },
+    "agreement": {
+      "u_vs_onset_latency": {
+        "r": 0.508,
+        "n_players": 3
+      },
+      "phys_vs_onset_to_cross": {
+        "r": 0.638,
+        "n_players": 3
+      },
+      "note": "FIXTURE values. Disagreement is a finding, not a failure."
+    },
+    "year_to_year": {
+      "status": "INSUFFICIENT_SEASONS",
+      "n_pairs": 0
+    }
+  },
+  "model_form": "FIXTURE. y = a + b*phys + alignment + depth + u_i + v_g + e_ij.",
+  "estimator": {
+    "name": "FIXTURE \u2014 no estimator was run",
+    "measurement_error": "regression calibration",
+    "intervals": "player-cluster bootstrap"
+  },
+  "min_reps_per_player": 20,
+  "phys_interpolation_status": {
+    "OK": 188
+  },
+  "resolution": {
+    "source": "FIXTURE (copied shape of outputs/prereg/power.json)",
+    "provenance": "FULL",
+    "smallest_detectable_jump_sd_ms_at_20_reps": 54.4,
+    "smallest_detectable_jump_sd_ms_best_case": 51.8,
+    "statement": "FIXTURE values. A resolution statement is not a threshold."
+  },
+  "no_pressure_outcome": true,
+  "no_blocker_term": true,
+  "stance_term": "absent (no stance label; absorbed in u and e)"
+}

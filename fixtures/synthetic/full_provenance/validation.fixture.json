@@ -1,0 +1,136 @@
+{
+  "provenance": "FULL",
+  "fixture": true,
+  "fixture_note": "SYNTHETIC FIXTURE \u2014 smoke test for the renderers. Not a BDB27 result; no full-data run produced these values.",
+  "stage": "05_validate",
+  "mode": "full",
+  "min_reps_per_player": 20,
+  "sample": {
+    "n_reps": 188,
+    "n_players": 6,
+    "n_team_games": 42
+  },
+  "base": {
+    "b": 1.082,
+    "share_phys": 0.318,
+    "share_u": 0.682
+  },
+  "constraints": {
+    "pressure_fields_read": [],
+    "blocker_term": false,
+    "stance_term": false,
+    "plane_offset_hardcoded": false,
+    "player_get_off_used": false
+  },
+  "checks": {
+    "permutation": {
+      "status": "OK",
+      "n_requested": 200,
+      "n_ok": 200,
+      "observed_share_phys_percentile": 98.5,
+      "one_sided_monte_carlo_p": 0.015,
+      "permutation_share_phys": {
+        "mean": 0.031,
+        "p97_5": 0.212
+      },
+      "reading": "FIXTURE: the observed share lies above the permutation distribution. Smoke test only."
+    },
+    "placebo": {
+      "status": "OK",
+      "real": {
+        "share_phys": 0.318,
+        "b": 1.082,
+        "n_players": 6
+      },
+      "placebo": {
+        "share_phys": 0.104,
+        "b": 1.021,
+        "n_players": 6
+      },
+      "reading": "FIXTURE: height/weight carry less of the share than physical time. Smoke test only."
+    },
+    "mechanical": {
+      "status": "OK",
+      "base": {
+        "b": 1.082,
+        "share_phys": 0.318,
+        "share_u": 0.682
+      },
+      "depth_removed": {
+        "b": 1.104,
+        "share_phys": 0.301,
+        "share_u": 0.699
+      },
+      "alignment_removed": {
+        "b": 1.071,
+        "share_phys": 0.329,
+        "share_u": 0.671
+      },
+      "both_removed": {
+        "b": 1.095,
+        "share_phys": 0.312,
+        "share_u": 0.688
+      },
+      "onset": {
+        "grid": [
+          0.75,
+          1.0,
+          1.25,
+          1.5
+        ],
+        "share_phys": [
+          0.288,
+          0.318,
+          0.334,
+          0.341
+        ]
+      },
+      "stance": "NOT POSSIBLE (B8: no stance label)",
+      "reading": "FIXTURE values. Smoke test only."
+    },
+    "snap_quality": {
+      "status": "OK",
+      "fitted_set": {
+        "n_reps": 188,
+        "n_clean": 175,
+        "n_dropped": 13,
+        "share_dropped": 0.069149
+      },
+      "base": {
+        "share_phys": 0.318
+      },
+      "clean": {
+        "share_phys": 0.326
+      },
+      "reading": "FIXTURE values. Smoke test only."
+    },
+    "selection": {
+      "status": "OK",
+      "unweighted": {
+        "share_phys": 0.318
+      },
+      "equal_snap_weighted": {
+        "share_phys": 0.334
+      },
+      "draftee_selection": "CANNOT BE TESTED on this release (B5)",
+      "reading": "FIXTURE values. Smoke test only."
+    }
+  },
+  "resolution": {
+    "status": "OK",
+    "kind": "resolution_statement",
+    "final_sample": {
+      "n_reps": 188,
+      "n_players": 6,
+      "n_team_games": 42,
+      "min_reps_per_player": 20
+    },
+    "between_player_sd_s": 0.0487,
+    "p_eff_realised": 5.42,
+    "floor_share_realised": 0.6547,
+    "smallest_detectable_jump_sd_ms_realised": 61.2,
+    "statement": "FIXTURE value: reported as a resolution statement, not a threshold."
+  },
+  "synthetic_can_fail": {},
+  "status": "OK"
+}

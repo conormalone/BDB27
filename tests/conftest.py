@@ -94,3 +94,27 @@ def audit_run(cfg, real_data):
     mod = load_stage("01_audit")
     assert mod.main(["--mode", "sample", "--force"]) == 0
     return C.paths(cfg, "sample")["outputs"] / "audit"
+
+
+# --------------------------------------------------------------------------- #
+# FULL-provenance synthetic fixture (smoke test for the renderers)
+# --------------------------------------------------------------------------- #
+FIXTURE_DIR = ROOT / "fixtures" / "synthetic" / "full_provenance"
+
+
+@pytest.fixture(scope="session")
+def full_fixture():
+    """The fixture module itself (build + materialise)."""
+    import importlib.util
+    path = FIXTURE_DIR / "fixture.py"
+    assert path.exists(), f"full-provenance fixture missing: {path}"
+    spec = importlib.util.spec_from_file_location("bdb27_full_fixture", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.fixture()
+def full_outputs(full_fixture, tmp_path):
+    """A temp ``outputs/`` tree stamped FULL, clearly a fixture."""
+    return full_fixture.materialise(tmp_path / "outputs")
