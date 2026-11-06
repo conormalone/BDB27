@@ -8,7 +8,7 @@
 #
 # The previous pin file named duckdb==1.5.6 / pandas==3.0.6 from an environment
 # that no longer existed on this host; duckdb 1.5.6 is not installable here.
-# These are the versions the 108-test suite actually passes against.
+# These are the versions the 231-test suite actually passes against.
 
 # --- required by every stage ---
 duckdb==2.0.0
