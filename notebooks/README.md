@@ -80,6 +80,20 @@ field prints `NOT RUN — <field> absent`; in sample mode the whole block is und
 3. reliability and latency agreement of jump;
 4. one rusher's rep-level story against that player's own physical curve.
 
+**Writeup (§7).** The last content cell calls `../src/writeup_render.py` on
+`../notes/writeup-draft.md`, filling its named `{{PENDING_FULL_RUN: ...}}` tokens from
+`decomposition.json` and `validation.json`. It prints the renderer's status, the rendered word
+count, and every unresolved token. The renderer's refusal is kept intact: on non-`FULL`
+provenance it prints the refusal and writes nothing, and the write is strict, so an `UNRESOLVED`
+render is reported but not written. Only an `OK` render writes
+`../outputs/writeup/writeup_rendered.md`.
+
+**Headline integrity.** §4's integrity block names every stage that failed or refused in the run
+and the calibration record's status, provenance and blocker. When calibration is not `ESTIMATED`
+from a `FULL` record it states plainly that the physical times carry **no calibration offset** and
+that the numbers are produced without one — and that a `FULL` stamp records the data mode, not a
+sign-off. It reports; it does not gate.
+
 **No baked outputs.** The committed `.ipynb` has zero `execution_count`s and zero outputs. It
 imports and sets paths at the top and runs top-to-bottom with no hidden state.
 
@@ -116,5 +130,6 @@ are preserved with git history and are not run.
 The notebook is exercised end-to-end by `nbconvert` in sample mode (zero error outputs) and the
 contract is covered by `tests/test_notebook_contract.py`: stage order, zero baked outputs, the
 reload-from-disk path, `05_validate` in the executed chain, `NOT RUN` on a missing
-`decomposition.json` or `validation.json`, the validation block's detector table, and the sample
-banner. `python -m pytest -q` is the suite.
+`decomposition.json` or `validation.json`, the integrity block's taint line, the coverage caveat
+next to the phys share, the writeup cell's position and its sample-provenance refusal, the
+validation block's detector table, and the sample banner. `python -m pytest -q` is the suite.

@@ -102,11 +102,18 @@ network access was used or needed.
   synthetic **can-this-check-fail** table with one `detector_fired` row per detector;
 - in `MODE="full"`, reports the stages needing `game_tracking_{2023,2024,2025}.csv` as
   `PENDING FULL RUN` with the missing filenames, and continues — it never falls back to the sample;
-- prints the headline from `outputs/phase4/decomposition.json` with the provenance banner, the
-  pooled/edge/interior shares and intervals, reliability, agreement, the rung used, boundary flags,
-  and the resolution limit stated as a limit (not a threshold);
+- prints the headline from `outputs/phase4/decomposition.json` with the provenance banner, an
+  **integrity block** (which stages failed or refused, the calibration record's status and blocker,
+  and — when calibration is not `ESTIMATED` — that the physical times carry no calibration offset
+  and the numbers are produced without one), the pooled/edge/interior shares and intervals, the
+  **coverage caveat** next to the phys share (reps with no Combine curve, and that the share is not
+  a statement about all reps), reliability, agreement, the rung used, boundary flags, and the
+  resolution limit stated as a limit (not a threshold);
 - renders the four deliverable figures only from `FULL` artefacts; in sample mode it names why each
   is skipped;
+- **renders the writeup** from `notes/writeup-draft.md` in the final content cell: it prints the
+  renderer's status, rendered word count and any unresolved tokens, prints the refusal and writes
+  nothing on non-`FULL` provenance, and writes `outputs/writeup/writeup_rendered.md` only on `OK`;
 - commits no outputs: the `.ipynb` has zero execution counts and zero outputs.
 
 `CLEAN=True` is inert unless `CLEAN_CONFIRM="DELETE"`; when armed it deletes this chain's stage
@@ -207,7 +214,9 @@ The suite also covers the notebook contract (`tests/test_notebook_contract.py`):
 `.ipynb` has zero baked outputs, the stage order is exactly the spec's, stages are reloaded from
 disk, `05_validate` is inside the executed chain, an unimplemented stage would still be reported as
 `NOT BUILT`, a missing `decomposition.json` or `validation.json` prints `NOT RUN`, the validation
-block prints every `detector_fired` row, and sample numbers are printed only under the `NOT A
+block prints every `detector_fired` row, the integrity block prints the calibration taint, the
+coverage caveat sits next to the phys share, the writeup cell renders after the figures and refuses
+sample provenance, and sample numbers are printed only under the `NOT A
 RESULT` banner.
 
 The suite covers: schema/dtype/unit mismatches (each must **raise**), the tracking

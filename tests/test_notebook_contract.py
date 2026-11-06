@@ -342,6 +342,39 @@ def test_interpolation_counter_without_no_curve_names_the_field(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# writeup cell
+# --------------------------------------------------------------------------- #
+def test_writeup_cell_follows_the_figures_cell(notebook):
+    """The writeup is rendered in the notebook, after the figures, not by hand."""
+    sources = ["".join(c["source"]) for c in code_cells(notebook)]
+    figures = next(i for i, s in enumerate(sources) if "render_figures(" in s)
+    writeup = next(i for i, s in enumerate(sources) if "writeup_render.render(" in s)
+    assert writeup > figures
+    cell = sources[writeup]
+    assert 'writeup_render = load_stage("writeup_render")' in cell
+    assert "writeup_render.report(writeup)" in cell
+    assert "strict=True" in cell          # an UNRESOLVED render writes nothing
+
+
+def test_sample_provenance_writeup_render_refuses_and_writes_nothing(tmp_path):
+    import writeup_render as W
+
+    out = tmp_path / "outputs"
+    (out / "phase4").mkdir(parents=True)
+    (out / "phase4" / "decomposition.json").write_text(
+        json.dumps(_artifact()), encoding="utf-8")
+    draft = tmp_path / "draft.md"
+    draft.write_text("# draft\n\nShare {{PENDING_FULL_RUN: decomposition.pooled.share_phys}}\n",
+                     encoding="utf-8")
+    result = W.render(draft, out)
+    assert result["status"] == W.REFUSED
+    assert result["text"] is None
+    target = tmp_path / "rendered.md"
+    assert W.write(result, target, strict=True) is None
+    assert not target.exists()
+
+
+# --------------------------------------------------------------------------- #
 # figures
 # --------------------------------------------------------------------------- #
 def test_notebook_calls_the_validation_renderer(notebook):
