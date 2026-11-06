@@ -409,3 +409,37 @@ stage touches is **B8** (stance): `05_validate` reports stance-specific subsets 
 artefact and in the notebook, rather than dropping the check silently. B5 (draftee selection) is
 likewise reported `CANNOT BE TESTED` in the selection check, not approximated. Both remain open as
 stated above.
+
+---
+
+## B11 — a full run stamps `FULL` while an upstream stage refused · **OPEN (needs Conor, D120 §3/B1)**
+
+**Status update (2026-11-06).** A full-data run produced a FULL-stamped
+`outputs/phase4/decomposition.json` (24,123 reps, 90 players, 1,280 team-games,
+b = 1.318 [1.157, 1.457], between-player phys share 0.000 [0, 0], jump 9.1% of total
+variance, jump SD 45.4 ms) while `02_combine_physical_time` had written its tables and then raised
+`GateRefused`: calibration is never `ESTIMATED`, because no stance label exists (B8). Phase 2
+writes at `src/02_combine_physical_time.py:857-873`, refuses at `:897`, and never checkpoints
+(`:904`). `04_models` never calls `require_calibration_full`, so it consumed those tables and
+stamped `FULL`.
+
+**What is blocked.** Nothing is stopped — the numbers are real full-data numbers and are the only
+ones that exist. What is blocked is **sign-off**: the artefact set cannot be called FULL end to end
+while a stage upstream of it refused to complete.
+
+**Interim guard (D121).** The headline now prints an integrity block that names every stage that
+failed or refused, the calibration record's status/provenance/blocker/reason, and — because
+calibration is not `ESTIMATED` — the plain consequence that the physical times carry **no
+calibration offset** and the numbers are produced without one. It reports and does not gate, so
+the run is not blocked and Conor keeps his result. The same block also states that a `FULL` stamp
+records the data mode, not a sign-off.
+
+**What would clear it.** Conor's decision on D120 §3/B1, one of:
+
+* **(a) estimate the global offset** — needs a stance label or a Conor-approved inference rule,
+  and Phase 3's in-game onset-to-cross times; then `02` completes, `calibration.json` becomes
+  `FULL`/`ESTIMATED`, and the integrity block prints the clean line; or
+* **(b) withdraw the calibration requirement** — `02`'s `:897` gate and
+  `require_calibration_full` are amended by Conor's decision, and no offset is claimed anywhere.
+
+Until then the taint stays printed, and the full-run numbers stay **unsigned**.

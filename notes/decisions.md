@@ -4946,3 +4946,72 @@ calibration recorded as not-estimable.
 no data or stage output committed. The writeup is still a skeleton and every number in it is a
 named field, not a value. `notes/rules.md` L2's figure count (5) is stale against the §6
 amendment (4) and is now cross-referenced from the Kaggle note rather than silently edited.
+
+---
+
+## D121 — A refused upstream stage is reported, not silent; coverage sits next to the phys share · 2026-11-06
+
+**Status: BUILT (reporting only).** A full-data run on Conor's machine exposed two things the
+deliverable did not say out loud. Neither is fixed here, because both turn on a decision this cycle
+does not own. What changed is that the notebook now prints them.
+
+**1. The chain can stamp FULL while an upstream stage refused.** `02_combine_physical_time` writes
+all its tables (`combine_attempts.csv`, `combine_attempt_times.csv`, `combine_attempt_curves.csv`,
+`physical_time_by_player.csv`, `hierarchical_fit.csv`, `position_conflicts.csv`,
+`calibration.json`, `phase2_summary.json`) at `src/02_combine_physical_time.py:857-873`, then at
+`:897` raises `GateRefused` when `mode == "full"` and calibration status is not `ESTIMATED`, so
+`C.mark_done` at `:904` is never reached. `04_models` does not call
+`common.require_calibration_full` — it only checks that `physical_time_by_player.csv` and
+`phase3/snaps.parquet` exist — so it runs on those tables and stamps its decomposition `FULL`.
+Consequence: a `FULL` stamp records the **data mode**, not that every upstream stage completed.
+The numbers are real full-data numbers; they are not a sign-off, and the deliverable said nothing
+about the refused stage.
+
+**Why this is not gated away.** Conor has not yet chosen between estimating the global offset and
+dropping the calibration requirement (D120 §3 / B1). Blocking the run now would remove his only
+full-data result. So the headline gained an **integrity block** between the provenance banner and
+the model block. It prints:
+
+* the stages that failed or refused in this run, taken from the stage table the notebook already
+  built (`render_headline(..., stage_results)`), not inferred;
+* the calibration record's `status`, `provenance`, `blocker` and `reason`, verbatim;
+* when calibration is not `ESTIMATED` from a `FULL` record: that the physical times carry **no
+  calibration offset**, that the decomposition is produced without one, and the record's own
+  reason (stance unlabelled, B8);
+* that a `FULL` stamp is a data-mode stamp, so the numbers are computed and not signed off.
+
+A missing `outputs/calibration.json` prints `NOT RUN — outputs/calibration.json absent`. The block
+**reports and does not gate**: the run is not blocked, `02`'s gate is untouched, and `04`'s inputs
+are untouched. This is the interim guard while D120 §3/B1 is open.
+
+**2. The coverage caveat was a footnote.** 6,381 of 30,652 reps in that run carried no Combine
+curve (`phys_interpolation_status.NO_CURVE`), and only 90 players were fittable. The phys share of
+0.000 is partly a statement about how few reps carry a curve. The headline printed the counter
+only at the bottom. The between-player split now ends with a coverage line: `NO_CURVE` reps, their
+share of the counter's total, and the consequence — the phys share is estimated on the reps that
+carry a curve, so it is not a statement about all 30,652 reps. No threshold, no verdict, no new
+statistic. The denominator is the counter's own sum (every rep that entered `attach_physical`,
+before it keeps only `OK` reps), not a computed estimate.
+
+**3. The notebook can now produce the writeup.** §7 calls the existing `src/writeup_render.py` on
+`notes/writeup-draft.md` and prints the status, the rendered word count and every unresolved
+token. The renderer's refusal is kept intact: on non-`FULL` provenance it prints the refusal and
+writes nothing, and the write is strict, so an `UNRESOLVED` render is reported and not written.
+Nothing in the renderer, the draft, or the token grammar changed.
+
+**The full-run numbers exist and are NOT signed off by this cycle.** They were produced on Conor's
+machine and reported to me; they are not committed as an artefact here, and the local `outputs/`
+are stale **SAMPLE** artefacts. For the record, what that run printed:
+24,123 reps, 90 players, 1,280 team-games, b = 1.318 [1.157, 1.457], between-player phys share
+0.000 [0, 0], jump 9.1% of total variance, jump SD 45.4 ms, `NO_CURVE` 6,381 of 30,652 reps. They
+are quoted here as the trigger for this work, not as a result. Sign-off needs Conor's calibration
+decision and a run whose artefact set is FULL end to end.
+
+**Verification.** Suite green; the notebook executed in sample mode with all six stages forced —
+all ran, zero error outputs, 4m06s. Against the local sample artefacts the integrity block prints
+`status PLACEHOLDER`, `blocker B8`, and the no-offset consequence, and the writeup cell prints
+`REFUSED (decomposition=SAMPLE, validation=SAMPLE)` and writes nothing.
+
+**Not done here.** No analysis, estimator or model semantics changed; no new statistical claim; no
+gate changed; no data or stage output committed; no prereg edit. Estimating the offset and dropping
+the calibration requirement both remain open for Conor (D120 §3 / B1).
