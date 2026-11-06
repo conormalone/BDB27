@@ -1,7 +1,7 @@
 # README_RUN — how to run the BDB27 burst-vs-jump pipeline
 
-Binding spec: `TASK.md` (commit `bcfd48b`). This file is the run book; the
-analysis notes are in `notes/`.
+Binding spec: `TASK.md` (commit `a57bd7c`); the prereg is frozen at commit
+`ca8e2a7`. This file is the run book; the analysis notes are in `notes/`.
 
 ---
 
@@ -26,7 +26,7 @@ Run order (fixed, strictly sequential):
 | `02_combine_physical_time` | **complete (sample)** | Phase 2: onset, model-free time-at-distance, hierarchical pooling, calibration placeholder |
 | `03_game_snaps` | **complete** | Phase 3: one row per DL pass-rush snap (label side complete; tracking columns sample-only) |
 | `03b_reliability` | **complete (full evidence)** | Phase 3b: per-player reliability and the Phase 4 selection rule; reads complete files only, so its outputs are stamped `FULL` |
-| `04_models` | **stub** — exits 3 | Phase 4; needs 02 and 03 |
+| `04_models` | **complete (sample)** | Phase 4: EM mixed-model variance decomposition, regression calibration, reliability/agreement and the fallback ladder; needs 02 and 03 |
 | `05_validate` | **stub** — exits 3 | Phase 5; needs 04 |
 
 A stub **exits non-zero and writes nothing**, so a layout-only run can never be
@@ -84,6 +84,9 @@ python src/run.py 01_audit --mode sample       # ~43 s, ~440 MB peak
 python src/run.py 01_audit --mode sample --force
 python src/run.py 02_combine_physical_time --mode sample          # ~10 s, ~300 MB
 python src/run.py 02_combine_physical_time --mode sample --force
+python src/run.py 03_game_snaps --mode sample                     # ~19 s cold, ~350 MB
+python src/run.py 03b_reliability --mode sample                   # ~25 s, no tracking read
+python src/run.py 04_models --mode sample                         # ~47 s, 3 fits + bootstrap
 python src/crossing_diagnostic.py --mode sample   # ~34 s; NOT a stage, not in run.py
 python src/power_calc.py --mode sample            # <1 s; writes outputs/prereg/power.json
 ```
@@ -91,10 +94,11 @@ python src/power_calc.py --mode sample            # <1 s; writes outputs/prereg/
 `--mode sample|full` and `--force` are defined once, in `src/common.py`; every
 stage takes the same three flags (`--mode`, `--force`, `--config`).
 
-`--mode full` **will refuse to run here**, by design, for three independent
-reasons it reports explicitly: the three season files are missing; the row count
-does not exceed the sample cap; `notes/prereg.md` is DRAFT and does not declare
-`FROZEN`.
+`--mode full` **will refuse to run here**, by design, because the three season
+files are missing and the row count cannot exceed the sample cap. The prereg gate
+now **passes**: `notes/prereg.md` declares `**Status: FROZEN.**` (commit
+`ca8e2a7`). The refusal message names the missing tracking files, not the
+prereg.
 
 ### What runs on the Pi
 
@@ -106,7 +110,7 @@ does not exceed the sample cap; `notes/prereg.md` is DRAFT and does not declare
 | `03b_reliability` | **yes** | 25 s, 4,000-replicate bootstrap over 158 players; no tracking read |
 | `crossing_diagnostic` (not a stage) | **yes** | 34 s, 206 MB; why the tracked crossing leads `player_get_off` |
 | `power_calc` (not a stage) | **yes** | <1 s; design power for the 50 ms jump SD, pure arithmetic on Phase 3b artefacts |
-| `04_models` | **no** | PyMC/Stan belongs on the bigger machine |
+| `04_models` | **sample only** | 47 s, 1,121 sample reps / 35 players; full tracking and the Bayesian refit belong on the bigger machine |
 | `05_validate` | sample only | refits the model |
 
 ## 5. Outputs
@@ -133,6 +137,11 @@ does not exceed the sample cap; `notes/prereg.md` is DRAFT and does not declare
 | `outputs/phase3b/rule_membership.csv` | long format: which rule admits which player id |
 | `outputs/phase3b/split_half_curve.csv` | observed vs model-predicted half-half correlation by minimum half size |
 | `outputs/phase3b/phase3b_summary.json` | components, bootstrap intervals, split-half, Phase 1 reproduction, provenance basis |
+| `outputs/phase4/decomposition.json` | **Phase 4 deliverable**: model form, estimator, pooled/edge/interior shares with intervals, reliability, agreement, year-to-year, resolution statement |
+| `outputs/phase4/variance_components.csv` | one row per fit and ladder rung: b, components, shares, intervals, convergence |
+| `outputs/phase4/player_effects.csv` | per-player reps, games, depth-netted physical deviation mean/SE, u and its SE |
+| `outputs/phase4/reliability_agreement.json` | split-half and model-based reliability, latency agreement, exploratory year-to-year, ladder |
+| `outputs/phase4/model_form.json` | the exact model and estimator, convergence diagnostics, constraints (no pressure/blocker/stance) |
 | `outputs/crossing_diagnostic/summary.json` | the gap diagnosis: headline numbers, verdicts, the LOS/line checks |
 | `outputs/crossing_diagnostic/definitions.csv` | candidate crossing definitions scored against the label |
 | `outputs/crossing_diagnostic/rep_diagnostic.csv` | one row per rep: depth, label, crossing, implied distance `d_star`, plane offset |
@@ -149,7 +158,7 @@ provenance basis is written to `outputs/phase3b/input_provenance.csv`.
 ## 6. Tests
 
 ```bash
-python -m pytest -q          # ~5 min on the Pi, 217 tests
+python -m pytest -q          # ~5 min on the Pi, 231 tests
 python -m pytest -q -k "not audit_stage_is_byte_identical"
 ```
 
@@ -170,12 +179,12 @@ with a reason rather than silently passing.
 | `notes/schema.md` | every file, column, type, unit; sample provenance; mismatch log |
 | `notes/rules.md` | competition limits, with provenance and what is unverified |
 | `notes/blockers.md` | B1–B10: what is blocked and what would clear it |
-| `notes/prereg.md` | **DRAFT** pre-registration: onset, distance, stance, model, reliability, outcomes, minimum snaps, SOI |
+| `notes/prereg.md` | **FROZEN** pre-registration: onset, distance, stance, model, reliability, outcomes, minimum snaps, resolution statement (no confirmatory SOI threshold) |
 | `notes/limitations.md` | the threat/mitigation list |
 | `notes/assumptions.md` | unverified beliefs about full data + their runtime assertions |
 | `notes/scale.md` | measured memory/time and the full-data extrapolation |
 | `notes/pending_full_run.md` | questions only full data can answer, with the command for each |
-| `notes/decisions.md` | D84–D109 for this cycle (append-only) |
+| `notes/decisions.md` | D84–D117 for this cycle (append-only) |
 | `notes/crossing-diagnostic.md` | why the tracked crossing leads `player_get_off`, and what Phase 4 must do about it |
 
 ## 8. Repo layout

@@ -21,10 +21,9 @@ psutil==7.2.2
 # --- tests ---
 pytest==9.2.0
 
-# --- Phase 2-5 (installed, not yet imported by implemented stages) ---
+# --- Phase 2-5 optional acceleration (not imported by the current stages) ---
 polars==2.1.0
 
-# PyMC / Stan are deliberately NOT pinned here: Phase 4 runs on the larger
-# machine, and pinning a Bayesian stack the Pi cannot install would make
-# `pip install -r requirements.txt` fail for no benefit. Add them in a
-# `requirements-full.txt` when Phase 4 is implemented.
+# PyMC / Stan are deliberately NOT pinned here. Phase 4 is implemented with the
+# dependency-free EM estimator in src/models.py; the Bayesian refit is deferred
+# to the larger machine. Add a Bayesian stack in `requirements-full.txt` there.

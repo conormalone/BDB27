@@ -4685,3 +4685,67 @@ Phase 4 as a threshold.
 `python src/run.py 01_audit --mode full` now passes the prereg gate and is
 refused only by the missing full tracking files (the expected full-mode gate on
 this Pi).
+
+---
+
+## D116 — Phase 4 estimator: EM mixed model, regression calibration, basic bootstrap · 2026-11-05
+
+**Status: DECIDED (implementation choice inside the frozen prereg).**
+
+**Estimator.** The Phase 4 model is fitted as a linear mixed model with **two
+crossed random intercepts** — player `u_i` and team-game `v_g` — plus fixed
+alignment and depth effects, by **EM on Henderson's mixed model equations**
+(`src/models.py::fit_lmm`). This is a method-of-moments / maximum-likelihood
+hybrid, not a Bayesian posterior. PyMC and Stan are both absent on this host
+(checked 2026-11-05), so the Bayesian fit is deferred to the bigger machine; no
+posterior is faked. The stage labels the estimator in every artefact.
+
+**Measurement error.** `phys` is treated as latent with the Phase 2 posterior
+SD. The **shared** player-level part is handled by **regression calibration**:
+`s2_i = (mean_j se_ij)^2`, then
+`sigma_u^2_cal = max(0, sigma_u^2_fit - b^2 * mean s2_i)` and
+`Var(b*phys) = b^2 * max(0, V_phys - mean s2_i)`, where `V_phys` is the
+between-player variance of physical time **net of the population depth curve**
+(a pooled cubic). Netting depth is necessary because the model has its own depth
+term; without it the physical share would double-count depth. The uncorrected
+fit is reported side by side as the ladder's rung 1.
+
+**Interval method.** 95% intervals are **player-cluster basic (pivotal)
+bootstrap** intervals: `[2*hat - q97.5, 2*hat - q2.5]`, with variances/shares
+truncated at zero. A percentile interval would not cover zero in a null world;
+the basic interval does, which is exactly what the null-world test requires.
+Percentile intervals are also written for transparency.
+
+**Fallback ladder.** Rung 0 is the corrected fit. If it is not usable
+(non-convergence beyond `models.accept_delta` or non-estimable), rung 1 is the
+uncorrected fixed-covariate fit; if that is unusable, rung 2 is empirical-Bayes
+per-player shrinkage; rung 3 is random-intercept-only. The rung actually used is
+written to `outputs/phase4/decomposition.json` and `variance_components.csv`.
+On the sample cycle all three fits reached rung 0 (`models.max_iter = 400`
+lets the interior EM converge at 366 iterations; the pooled fit converges at
+110 and edge at 71). The sample numbers are not interpreted.
+
+**What is not in the model.** No pressure field (D112), no blocker term (D98),
+no stance term (B8; absorbed into `u` and `e`), no `player_get_off` (D110), no
+0.86 yd plane offset (never a constant), no external data.
+
+**Determinism.** The EM has no random initialisation; the bootstrap is seeded
+from `bdb27.models.bootstrap_seed`. Two runs at the same seed produce identical
+numbers. The phase-4 tests include a byte-equality-style determinism check on
+the selected quantities and bootstrap intervals.
+
+## D117 — Phase 4 outputs and the freeze boundary · 2026-11-05
+
+**Status: RECORD (process).**
+
+The freeze commit is `ca8e2a7` (`FREEZE: prereg frozen with interval reporting
+and no confirmatory SOI threshold`). The Phase 4 implementation commit follows
+it, so the git history shows the prereg was frozen before any Phase 4 model code
+existed. `notes/prereg.md` is not edited by the Phase 4 commit.
+
+Phase 4 writes `outputs/phase4/decomposition.json`,
+`variance_components.csv`, `player_effects.csv`,
+`reliability_agreement.json` and `model_form.json`. In sample mode every one is
+stamped `UNVALIDATED SAMPLE OUTPUT`; no sample number is interpreted in the
+notes or the writeup. The resolution statement is read from the FULL
+`outputs/prereg/power.json` and is labelled as FULL evidence.

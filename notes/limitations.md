@@ -230,7 +230,10 @@ interest was raised to 0.25 by Conor (Q1), but 0.25 remains below the floor of
 the design that can actually be fitted. This is surfaced in `D96` as a number
 needing Conor's confirmation, not silently retuned. Mitigation: report intervals,
 not point estimates, and interpret a small jump share as informative only if the
-interval excludes the smallest effect of interest.
+interval excludes the smallest effect of interest. **Superseded (D115,
+2026-11-05):** the smallest-effect-of-interest gate is withdrawn; the frozen
+prereg reports the interval and the design resolution limit as a resolution
+statement, not a pass/fail test.
 
 ### 13. Development on a non-random sample
 
@@ -424,3 +427,58 @@ line error; it is a diagnostic, not the primary outcome.
 **Residual.** Realised attenuation is unknown until the full tracking data are
 available. It can only make the smallest detectable jump SD larger, never
 smaller.
+
+---
+
+## 22. Phase 4: what the residual contains, and what the estimator cannot do
+
+**Stance is inside the residual.** No stance or start-type label exists (B8).
+The model has no stance term. Three-point vs stand-up, first-step technique and
+start type all sit in `u_i` and `e_ij`, so "jump" is **not** a pure reaction
+measure and the writeup must not call it anticipation or football IQ.
+
+**The label is validation-only.** `player_get_off` is never an outcome and never
+a model input (D110). The Phase 4 outcome is the tracked LOS crossing
+(`cross_time_s`), and `phys` is evaluated at the same pre-snap depth. The
+published label times a plane ≈0.86 yd past the line (sample median,
+`UNVALIDATED SAMPLE OUTPUT`); that number is not a constant, not an offset and
+not hard-coded.
+
+**No pressure outcome.** No pressure field enters any Phase 4 model, and no
+pressure missingness assumption is made (D112). The score is a variance
+decomposition plus reliability/agreement, not a pressure-value test.
+
+**Shared baseline error and regression calibration.** The correction assumes
+that the Phase 2 posterior SD is the shared player-level error, and that the
+error is common across a player's reps. If the true error is rep-specific, the
+correction is conservative (it subtracts too much); if it is larger than
+reported, the correction is insufficient. The uncorrected fit is always reported
+so the reader can see the difference. This is a **calibration assumption**, not
+a posterior.
+
+**Sparse team-game cells in the sample.** The 2023 tracking sample contains only
+1–4 of 22 players per play, so most team-game cells in Phase 4 have one tracked
+DL. The mixed model still estimates `sigma_v^2`, but in the sample it is weakly
+separated from `u_i`; full tracking will have more players per team-game and a
+better-identified team-game variance. The sample result is unvalidated and not
+interpreted.
+
+**No Bayesian posterior.** PyMC/Stan are absent here. The intervals are
+player-cluster bootstrap intervals from an EM fit, not posterior credible
+intervals. The Bayesian fit is deferred to the bigger machine; the estimator is
+named in every output. A posterior could change the interval width, especially
+at variance-component boundaries.
+
+**Edge/interior fits are smaller.** Edge and interior are fitted separately with
+the same specification and no alignment term (it is constant within the subset).
+Their player counts are smaller, their intervals wider, and a boundary estimate
+is reported as a boundary, never replaced by a small positive number.
+
+**Physical-time interpolation.** `phys_i(d)` is linearly interpolated on the
+Phase 2 distance grid, with a `(0, 0)` anchor. Depths beyond the last grid point
+are flagged `BEYOND_CURVE` and excluded from the primary fit. The population
+depth curve is a pooled cubic used only to net depth out of the player-level
+physical deviation; it is not the model's depth effect.
+
+**Year-to-year is exploratory.** Weight and role changes are not adjusted; the
+analysis is labelled exploratory and cannot confirm the primary.

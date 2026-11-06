@@ -151,7 +151,10 @@ excludes the smallest effect of interest."
 `outputs/phase2/phase2_summary.json`: 0.271 at the audit's 105, 0.273 at the 103
 primary-DL players, and **0.310 at the 80 players who have both >=50 DL reps and
 a Combine 40-yard attempt**. The third is the design Phase 4 can actually fit and
-is flagged for Conor.
+is flagged for Conor. **Superseded (D115, 2026-11-05):** the 0.25 / 0.30
+smallest-effect-of-interest gate is withdrawn. The frozen prereg reports the
+jump share with a 95% interval and the design resolution limit (~52–54 ms) as a
+resolution statement; do not use this old floor as a pass/fail rule.
 
 ## S8 — Is stance estimable from kinematics, given any labelled subset?
 
@@ -416,3 +419,56 @@ distribution. **Decision rule:** if `NOT_DETECTED` or `CROSSED_BEFORE_ONSET`
 exceeds ~15% of tracked primary snaps, say so in the writeup and report the
 reaction measure on the clean subset only (it never enters the primary estimand,
 but it is the agreement check).
+
+### S19 — Phase 4: what only full tracking can answer
+
+**Why.** The 2023 tracking sample covers 1–4 of 22 players per play; Phase 4's
+team-game random effect, edge/interior split and measurement-error correction are
+weakly identified on it. No sample number is interpreted.
+
+**Run.**
+
+```bash
+python src/run.py 02_combine_physical_time --mode full
+python src/run.py 03_game_snaps --mode full
+python src/run.py 04_models --mode full
+python - <<'PY'
+import json
+d = json.load(open('outputs/phase4/decomposition.json'))
+print(json.dumps({k: d[k] for k in ('pooled','edge','interior')}, indent=1))
+print(json.dumps(d['resolution'], indent=1))
+print(json.dumps(json.load(open('outputs/phase4/model_form.json'))['convergence'], indent=1))
+PY
+```
+
+**Questions.** (1) Does the pooled `b` sit near 1, and what is its interval?
+(2) How much between-player variance is physical vs jump, pooled and by
+alignment? (3) Is the jump share's interval narrow enough to be useful, given the
+~52–54 ms design resolution? (4) Do the edge and interior fits agree? (5) Does
+the team-game variance separate from the player variance once more players per
+game are tracked? (6) Does the EM converge at `models.max_iter` for all three
+fits, or does the ladder trigger? (7) Does the split-half reliability of `u`
+agree with the model-based reliability? (8) Do `u` and onset latency agree, and
+do `phys` and onset-to-cross agree?
+
+**Do not** interpret a small jump share as a null: there is no confirmatory
+threshold (Conor 2026-11-05 22:16; frozen prereg §10). Report the interval and
+the resolution limit.
+
+### S20 — Phase 4 convergence and boundary audit
+
+**Why.** The EM is a fixed-point iteration. A boundary variance component
+(`sigma_u^2 = 0` or `sigma_v^2 = 0`) is a legitimate estimate but changes the
+interval behaviour.
+
+**Check.** `outputs/phase4/model_form.json` records `converged`, `iters`,
+`delta`, and `outputs/phase4/decomposition.json` records `boundary`. If a full
+fit hits the acceptance guard, inspect the variance components and consider a
+larger `models.max_iter` or the random-intercept-only rung, and log the choice in
+`notes/decisions.md` before interpreting. Do not silently increase iterations
+after seeing the shares.
+
+**Bayesian fit.** On a machine with PyMC or Stan, refit the same model with
+weakly informative priors from the frozen prereg §7 and compare the posterior
+intervals with the bootstrap intervals. The comparison is a validation of the
+estimator, not a license to switch the reported result.

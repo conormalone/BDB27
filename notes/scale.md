@@ -48,7 +48,7 @@ should do is replace it with the real numbers in `outputs/run_log.csv`.
 | `01_audit` | CSV scans + 25-game pandas batches | 0.4–1.5 GB | **low** — bounded by the batch, not the file |
 | `02_combine_physical_time` | Combine only (463 k rows, 84 MB) | 0.5 GB | **low** — fits in RAM on the Pi today |
 | `03_game_snaps` | per-game streaming → one row per snap | 0.5–1.0 GB (measured 0.35 GB at sample scale) | **low-medium** — see below |
-| `04_models` | reads the per-snap summary only | 1–3 GB | **low** on a bigger machine; PyMC/Stan is the real cost |
+| `04_models` | reads the per-snap summary only | ~1–3 GB | **low** on a bigger machine; the sample ran in 47 s / ~0.4 GB. The EM is O((p+players+team-games)^3) per iteration, so full tracking with ~1,000 team-games is the cost, not RAM; the Bayesian refit is deferred |
 | `05_validate` | re-reads summaries + refits | 1–3 GB | **low** |
 
 ### `03_game_snaps` is the RAM risk

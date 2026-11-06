@@ -262,3 +262,48 @@ numbers that are not the release.
 **Not assumed.** That the release is a random sample of NFL defensive linemen —
 it is pre-filtered to 510 Combine attendees (B5), stated as the study
 population, not a limitation to be corrected.
+
+## A20 — Phase 4 physical curve covers every admitted rep depth · **LIVE (Phase 4)**
+
+**Assumption.** Phase 2's per-player distance grid spans the pre-snap depths of
+the Phase 4 reps, and linear interpolation between grid points is adequate. The
+`(0, 0)` anchor is exact (zero distance costs zero time from onset).
+
+**Assertion.** `04_models.attach_physical` labels every rep
+`OK`/`NO_CURVE`/`NONPOSITIVE_DEPTH`/`BEYOND_CURVE`; only `OK` enters the fit.
+The counts are written to `decomposition.json.phys_interpolation_status` and the
+run log. `BEYOND_CURVE` and `NONPOSITIVE_DEPTH` are excluded, not extrapolated.
+
+**Why it matters.** A silent extrapolation would put a fabricated physical time
+into the predictor. A silent drop would change the fittable sample without a
+count.
+
+## A21 — Phase 2 posterior SD is the shared player-level phys error · **LIVE (Phase 4)**
+
+**Assumption.** The Phase 2 posterior SD for `phys_i(d)` is the measurement
+error of the player's physical curve, and its shared (player-level) part is
+common across that player's reps. Regression calibration subtracts
+`(mean_j se_ij)^2` from both `sigma_u^2` and the between-player phys variance.
+
+**Assertion.** `04_models` writes `shared_me_var` and the observed between-player
+phys variance for every fit; a correction that would make either component
+negative is recorded as a boundary (`boundary` block), not silently clipped to a
+positive number.
+
+**Why it matters.** This is the assumption that makes the shared-error test
+meaningful. If Phase 2's SE were rep-specific rather than shared, the correction
+would be conservative; the uncorrected fit is reported alongside so the
+difference is visible.
+
+## A22 — The tracked crossing and the pre-snap depth are the same event · **LIVE (Phase 4)**
+
+**Assumption.** `cross_time_s` and `depth_yd` refer to the same line crossing
+(D110), so `phys_i(depth)` and the outcome are on the same distance scale.
+
+**Assertion.** Phase 3's `analysis_ready` requires a computable crossing and a
+derivable depth; `04_models.load_snaps` reads only those rows and re-checks
+finiteness. No offset, no `player_get_off`, and no 0.86 yd constant are used.
+
+**Why it matters.** Using the published label with `phys(depth)` would compare
+different distances and misreport `b` as a stance difference (limitation 20,
+D110).

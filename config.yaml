@@ -24,6 +24,7 @@ bdb27:
     outputs: outputs
     phase2: outputs/phase2
     phase3b: outputs/phase3b
+    phase4: outputs/phase4
     prereg_outputs: outputs/prereg
     calibration: outputs/calibration.json
     figures: outputs/figures
@@ -273,14 +274,16 @@ bdb27:
     los_systematic_bound_yd: 0.30
 
   # ---------------------------------------------------------------------------
-  # Design power for the locked smallest effect of interest (Conor 2026-11-05).
+  # Design resolution (Conor 2026-11-05; frozen prereg 2026-11-05 22:16).
   #
-  # The SOI is a 50 ms jump SD, expressed as a share of BETWEEN-PLAYER variance
-  # (denominator B), not of total get-off variance. The between-player SD and
-  # the reliability evidence are read from outputs/phase3b/ (provenance FULL);
-  # only the design constants below live here. The estimator is the Phase 1(i) /
+  # There is NO confirmatory smallest-effect-of-interest threshold. This block
+  # computes the design RESOLUTION LIMIT: a 50 ms jump SD is carried only as a
+  # reference point for what the design can resolve, expressed as a share of
+  # BETWEEN-PLAYER variance (denominator B). The between-player SD and the
+  # reliability evidence are read from outputs/phase3b/ (provenance FULL); only
+  # the design constants below live here. The estimator is the Phase 1(i) /
   # Phase 3b floor z*sqrt(2/P_eff), extended with the variance-share-to-SD
-  # inversion in src/stats.py. No threshold is chosen by this block.
+  # inversion in src/stats.py. No threshold is chosen or applied.
   # ---------------------------------------------------------------------------
   power:
     z: 1.96                    # 95% normal floor; same z as stats.min_detectable_share
@@ -289,6 +292,28 @@ bdb27:
     min_reps_candidates: [20, 25, 30, 40, 50, 60]
     reliability_table: reliability_by_player.csv   # relative to paths.phase3b
     summary_table: phase3b_summary.json            # relative to paths.phase3b
+
+  # ---------------------------------------------------------------------------
+  # Phase 4 variance decomposition.
+  #
+  # The prereg (notes/prereg.md, FROZEN 2026-11-05) fixes the model, the
+  # 20-rep minimum and the interval-reporting policy. The values here are
+  # implementation choices, not estimates:
+  #   * population_curve_degree: degree of the pooled phys-on-depth curve used
+  #     only to net depth out of the player-level physical deviation.
+  #   * max_iter/tol: EM stopping rule for the two-random-intercept fit.
+  #   * bootstrap_resamples: player-cluster bootstrap draws for 95% intervals.
+  # ---------------------------------------------------------------------------
+  models:
+    min_reps_per_player: 20
+    min_players: 2
+    population_curve_degree: 3
+    max_iter: 400
+    tol: 1.0e-6
+    accept_delta: 1.0e-4       # near-convergence guard for the rung choice
+    bootstrap_resamples: 200
+    bootstrap_seed: 20270110
+    min_bootstrap_ok_share: 0.5
 
   # ---------------------------------------------------------------------------
   # Schema / unit sanity bounds. These are VALIDATION bounds, not analysis

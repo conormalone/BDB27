@@ -17,8 +17,9 @@ EXPECTED_ORDER = ["01_audit", "02_combine_physical_time", "03_game_snaps",
                   "03b_reliability", "04_models", "05_validate"]
 
 # Stages that exist only as layout stubs. 03b is an added evidence stage that
-# sits between Phase 3 and Phase 4 (decisions.md D107); it is not a stub.
-STUBS = ["04_models", "05_validate"]
+# sits between Phase 3 and Phase 4 (decisions.md D107); 04_models was
+# implemented in the 2026-11-05 Phase 4 cycle. 05_validate remains a stub.
+STUBS = ["05_validate"]
 
 
 def test_run_order_matches_the_spec():
@@ -69,6 +70,15 @@ def test_phase2_is_no_longer_a_stub():
     assert callable(mod.main)
     assert hasattr(mod, "measure_attempt")
     assert hasattr(mod, "pool_players")
+
+
+def test_phase4_is_no_longer_a_stub():
+    mod = load_stage("04_models")
+    assert mod.STAGE == "04_models"
+    assert callable(mod.main)
+    assert hasattr(mod, "attach_physical")
+    assert hasattr(mod, "variance_rows")
+    assert hasattr(mod, "SNAP_COLUMNS")
 
 
 @pytest.mark.parametrize("stage", EXPECTED_ORDER[1:])
