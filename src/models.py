@@ -89,7 +89,7 @@ def _pct(values: Sequence[float], q: float) -> float:
 # Linear mixed model: two crossed random intercepts, EM on Henderson equations
 # --------------------------------------------------------------------------- #
 def fit_lmm(y, X, player_codes, team_game_codes, *, max_iter: int = 100,
-            tol: float = 1e-6) -> dict:
+            tol: float = 1e-6, weights: np.ndarray | None = None) -> dict:
     """Fit ``y = X beta + Z1 u + Z2 v + e`` by EM.
 
     ``X`` includes the intercept. ``player_codes`` and ``team_game_codes`` are
@@ -99,6 +99,14 @@ def fit_lmm(y, X, player_codes, team_game_codes, *, max_iter: int = 100,
 
     This is the estimator named in the module docstring. It is deterministic: no
     random initialisation, no sampler.
+
+    ``weights`` (optional) are known positive per-row weights, normalised to a
+    mean of 1. Supplying them whitens every row of the model by ``sqrt(w)`` and
+    then runs the identical EM, so the estimator is the same estimator applied
+    to weighted data; the variance components are on that weighted scale. Phase
+    4 never passes weights (the default ``None`` is byte-for-byte the previous
+    behaviour). Phase 5 uses it for the equal-snap-count sensitivity only, and
+    says so in its artefact.
     """
     y = np.asarray(y, dtype=float)
     X = np.asarray(X, dtype=float)
@@ -108,6 +116,17 @@ def fit_lmm(y, X, player_codes, team_game_codes, *, max_iter: int = 100,
     g1 = np.asarray(player_codes, dtype=np.int64)
     g2 = np.asarray(team_game_codes, dtype=np.int64)
     Z1, Z2 = _onehot(g1), _onehot(g2)
+    if weights is not None:
+        w = np.asarray(weights, dtype=float)
+        if w.shape != (n,):
+            raise ValueError(f"weights must have shape ({n},), got {w.shape}")
+        if not np.isfinite(w).all() or (w <= 0).any():
+            raise ValueError("weights must be finite and strictly positive")
+        scale = np.sqrt(w / float(np.mean(w)))
+        y = y * scale
+        X = X * scale[:, None]
+        Z1 = Z1 * scale[:, None]
+        Z2 = Z2 * scale[:, None]
     q1, q2 = Z1.shape[1], Z2.shape[1]
     if q1 < 2:
         raise ValueError("fit_lmm needs at least two players")
@@ -234,12 +253,17 @@ def population_phys_curve(depth: np.ndarray, phys: np.ndarray,
     return X @ beta
 
 
-def build_design(df: pd.DataFrame) -> tuple[np.ndarray, int]:
+def build_design(df: pd.DataFrame, *, include_depth: bool = True,
+                 include_alignment: bool = True) -> tuple[np.ndarray, int]:
     """Fixed-effect design: intercept, depth, phys, edge indicator if present.
 
     Columns are dropped if they are constant. ``phys`` is mandatory; if the
     remaining design is rank-deficient the caller receives an error rather than
     a silent reparameterisation.
+
+    ``include_depth`` / ``include_alignment`` exist for Phase 5's mechanical
+    check (``TASK.md`` Phase 5: "re-run with depth and alignment effects
+    removed"). Both default to ``True``, which is the Phase 4 design.
     """
     cols = [np.ones(len(df), dtype=float)]
     names = ["intercept"]
@@ -250,11 +274,12 @@ def build_design(df: pd.DataFrame) -> tuple[np.ndarray, int]:
             cols.append(v)
             names.append(name)
 
-    add(df["depth_yd"].to_numpy(), "depth")
+    if include_depth:
+        add(df["depth_yd"].to_numpy(), "depth")
     phys_idx = len(cols)
     cols.append(np.asarray(df["phys_s"], dtype=float))
     names.append("phys")
-    if df["alignment_class"].nunique(dropna=True) > 1:
+    if include_alignment and df["alignment_class"].nunique(dropna=True) > 1:
         edge = (df["alignment_class"].astype(str).str.upper() == "EDGE")
         add(edge.astype(float).to_numpy(), "edge")
     X = np.column_stack(cols)
@@ -268,7 +293,9 @@ def build_design(df: pd.DataFrame) -> tuple[np.ndarray, int]:
 # --------------------------------------------------------------------------- #
 def decompose(df: pd.DataFrame, *, correct_measurement_error: bool,
               population_degree: int = 3, max_iter: int = 100,
-              tol: float = 1e-6) -> dict:
+              tol: float = 1e-6, include_depth: bool = True,
+              include_alignment: bool = True,
+              weighting: str | None = None) -> dict:
     """Fit the Phase 4 mixed model and return the variance decomposition.
 
     ``df`` must contain: ``player``, ``team_game``, ``y`` (tracked crossing),
@@ -278,6 +305,12 @@ def decompose(df: pd.DataFrame, *, correct_measurement_error: bool,
     same model with phys as an ordinary fixed covariate and no measurement-error
     correction. Both are returned by the stage; the primary is the corrected
     fit.
+
+    ``include_depth`` / ``include_alignment`` and ``weighting`` are Phase 5
+    mechanical-check switches (``TASK.md`` Phase 5). Their defaults reproduce
+    the Phase 4 fit exactly. ``weighting='equal_snaps'`` gives every rep of a
+    player weight ``1/n_i`` (normalised to mean 1), so each player carries the
+    same total weight regardless of how many snaps he played.
     """
     need = {"player", "team_game", "y", "phys_s", "phys_se_s", "depth_yd",
             "alignment_class"}
@@ -292,11 +325,21 @@ def decompose(df: pd.DataFrame, *, correct_measurement_error: bool,
     if d["player"].nunique() < 2:
         return {"status": "INSUFFICIENT_PLAYERS", "n_players": int(d["player"].nunique())}
 
-    X, phys_idx = build_design(d)
+    X, phys_idx = build_design(d, include_depth=include_depth,
+                               include_alignment=include_alignment)
     y = d["y"].to_numpy(dtype=float)
     pcode, _ = pd.factorize(d["player"], sort=True)
     gcode, _ = pd.factorize(d["team_game"], sort=True)
-    fit = fit_lmm(y, X, pcode, gcode, max_iter=max_iter, tol=tol)
+    weights = None
+    if weighting is None:
+        pass
+    elif weighting == "equal_snaps":
+        counts = d.groupby("player").size().astype(float)
+        weights = d["player"].map(1.0 / counts).to_numpy(dtype=float)
+    else:
+        raise ValueError(f"unknown weighting {weighting!r}")
+    fit = fit_lmm(y, X, pcode, gcode, max_iter=max_iter, tol=tol,
+                  weights=weights)
     b = float(fit["beta"][phys_idx])
 
     # Population depth curve, then the player-level physical deviation.
@@ -354,6 +397,9 @@ def decompose(df: pd.DataFrame, *, correct_measurement_error: bool,
         "n_singleton_team_games": int((d.groupby("team_game").size() == 1).sum()),
         "b": b,
         "b_fit": b,
+        "weighting": weighting,
+        "include_depth": bool(include_depth),
+        "include_alignment": bool(include_alignment),
         "sigma_u2": su2,
         "sigma_u2_fit": float(fit["sigma_u2"]),
         "sigma_v2": sv2,
@@ -386,6 +432,7 @@ def bootstrap_decomposition(df: pd.DataFrame, *, correct_measurement_error: bool
                             resamples: int, seed: int, population_degree: int = 3,
                             max_iter: int = 100, tol: float = 1e-6,
                             min_ok_share: float = 0.5,
+                            weighting: str | None = None,
                             point: Mapping | None = None) -> dict:
     """Player-cluster bootstrap for b, the shares and the variance components.
 
@@ -407,7 +454,7 @@ def bootstrap_decomposition(df: pd.DataFrame, *, correct_measurement_error: bool
     if point is None:
         point = decompose(df, correct_measurement_error=correct_measurement_error,
                           population_degree=population_degree,
-                          max_iter=max_iter, tol=tol)
+                          max_iter=max_iter, tol=tol, weighting=weighting)
     n_ok = 0
     for _ in range(int(resamples)):
         pick = rng.choice(players, size=k, replace=True)
@@ -424,7 +471,7 @@ def bootstrap_decomposition(df: pd.DataFrame, *, correct_measurement_error: bool
         try:
             r = decompose(boot, correct_measurement_error=correct_measurement_error,
                           population_degree=population_degree,
-                          max_iter=max_iter, tol=tol)
+                          max_iter=max_iter, tol=tol, weighting=weighting)
         except (ValueError, np.linalg.LinAlgError):
             continue
         if r.get("status") != "OK":

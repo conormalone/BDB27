@@ -336,3 +336,31 @@ bdb27:
   permutation:
     n_permutations: 1000
     seed: 20270109
+
+  # ---------------------------------------------------------------------------
+  # Phase 5 validation (TASK.md §5).
+  #
+  # Every number here is a DESIGN/RUNTIME choice, not an estimate:
+  #   * permutation_resamples: 200 refits of the full decomposition. The generic
+  #     `permutation.n_permutations: 1000` above is the Phase 1/3 design number;
+  #     200 is what a single-sample diagnostic needs to place an observed value
+  #     in a distribution (smallest reportable one-sided p = 1/201), and it keeps
+  #     the stage inside the Pi's runtime budget. The count is reported in the
+  #     artefact and is never presented as a p-value threshold.
+  #   * synthetic_permutation_resamples: 30, for the "can this check fail" world
+  #     only. The synthetic world is a detector test, not an inference.
+  #   * onset_speed_grid_yds: the onset-threshold sweep. 1.0 is the frozen
+  #     definition (D87); the others bracket it by +/-0.25 yd/s so the sweep can
+  #     see a material sensitivity rather than only rounding noise.
+  #   * equal_snap_bootstrap_resamples: 100 player-cluster draws for the
+  #     equal-snap sensitivity's interval only. The primary Phase 4 interval is
+  #     unaffected.
+  #   * synthetic_seed: independent of the permutation seed so the two sets of
+  #     draws cannot coincide.
+  # ---------------------------------------------------------------------------
+  validation:
+    permutation_resamples: 200
+    synthetic_permutation_resamples: 30
+    onset_speed_grid_yds: [0.75, 1.0, 1.25, 1.5]
+    equal_snap_bootstrap_resamples: 100
+    synthetic_seed: 20270111

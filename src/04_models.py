@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Sequence
 
 import numpy as np
 import pandas as pd
@@ -86,12 +87,21 @@ def load_physical_curves(path: Path) -> dict[int, dict]:
     return curves
 
 
-def load_snaps(con, cfg, mode: str) -> pd.DataFrame:
+def load_snaps(con, cfg, mode: str,
+               extra_columns: Sequence[str] = ()) -> pd.DataFrame:
+    """Load the analysis-ready Phase 3 snap table.
+
+    ``extra_columns`` appends columns to the projection. Phase 4 passes nothing,
+    so its query and its frame are unchanged. Phase 5 passes ``play_id`` because
+    the label-side QC merge needs a per-rep key; that changes the query, never
+    the model, which reads only the named columns.
+    """
     path = C.paths(cfg, mode)["outputs"] / "phase3" / "snaps.parquet"
     if not path.exists():
         raise C.GateRefused(
             f"{STAGE}: {path} does not exist. Run 03_game_snaps first.")
-    cols = ", ".join(SNAP_COLUMNS)
+    cols = ", ".join(list(SNAP_COLUMNS) + [c for c in extra_columns
+                                           if c not in SNAP_COLUMNS])
     df = con.execute(
         f"SELECT {cols} FROM '{path.as_posix()}' "
         "WHERE analysis_ready AND cross_time_s IS NOT NULL "
