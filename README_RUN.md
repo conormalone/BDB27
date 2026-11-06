@@ -24,7 +24,7 @@ Run order (fixed, strictly sequential):
           -> 04_models -> 05_validate
 ```
 
-**Status of each stage on 2026-11-05:**
+**Status of each stage on 2026-11-06:**
 
 | stage | status | what it does |
 |---|---|---|
@@ -33,12 +33,13 @@ Run order (fixed, strictly sequential):
 | `03_game_snaps` | **complete** | Phase 3: one row per DL pass-rush snap (label side complete; tracking columns sample-only) |
 | `03b_reliability` | **complete (full evidence)** | Phase 3b: per-player reliability and the Phase 4 selection rule; reads complete files only, so its outputs are stamped `FULL` |
 | `04_models` | **complete (sample)** | Phase 4: EM mixed-model variance decomposition, regression calibration, reliability/agreement and the fallback ladder; needs 02 and 03 |
-| `05_validate` | **stub** — exits 3 | Phase 5; needs 04 |
+| `05_validate` | **complete (sample)** | Phase 5: permutation, placebo, mechanical, snap-quality and selection checks on the Phase 4 fit, each with a synthetic world in which it must fire; needs 04 |
 
-A stub **exits non-zero and writes nothing**, so a layout-only run can never be
-mistaken for a finished one. "Complete (sample)" means the stage is implemented
-and tested, and runs on the complete Combine file; `--mode full` still refuses
-without a frozen prereg and cannot complete without a `FULL` calibration.
+Every stage in the chain is implemented and tested; an unimplemented stage would
+exit non-zero and write nothing, so a layout-only run can never be mistaken for a
+finished one. "Complete (sample)" means the stage runs on the sample data and
+stamps its artefacts `PLACEHOLDER_SAMPLE`; `--mode full` still refuses without
+the three full tracking files and cannot complete without a `FULL` calibration.
 
 ## 2. Clone and set up
 
@@ -88,12 +89,17 @@ network access was used or needed.
 
 `notebooks/bdb27_full_run.ipynb` is the deliverable interface for the current chain. It:
 
-- runs `01_audit -> 02_combine_physical_time -> 03_game_snaps -> 03b_reliability -> 04_models`,
+- runs `01_audit -> 02_combine_physical_time -> 03_game_snaps -> 03b_reliability -> 04_models
+  -> 05_validate`,
   each through its own `main()`, reloading the stage module and its `src/` helpers from disk before
   every call (so `git pull` cannot leave stale code in the kernel);
 - has one editable cell: `MODE`, `DATA_DIR`, `FORCE_STAGES`, `CLEAN`, `CLEAN_CONFIRM`;
-- prints a per-stage **exit code and elapsed time** table, and reports `05_validate` as
-  `NOT BUILT (stub, exits 3)` — never as a pass;
+- prints a per-stage **exit code and elapsed time** table;
+- prints the **Phase 5 validation block** from `outputs/validation/validation.json`: permutation
+  (with the one-sided Monte-Carlo p, or a plain statement that the check is uninformative when the
+  observed share sits at the zero boundary), placebo, the mechanical variants and onset sweep, the
+  stance line (not possible, B8), snap quality, selection, the resolution statement, and the
+  synthetic **can-this-check-fail** table with one `detector_fired` row per detector;
 - in `MODE="full"`, reports the stages needing `game_tracking_{2023,2024,2025}.csv` as
   `PENDING FULL RUN` with the missing filenames, and continues — it never falls back to the sample;
 - prints the headline from `outputs/phase4/decomposition.json` with the provenance banner, the
@@ -117,6 +123,7 @@ python src/run.py 02_combine_physical_time --mode sample --force
 python src/run.py 03_game_snaps --mode sample                     # ~19 s cold, ~350 MB
 python src/run.py 03b_reliability --mode sample                   # ~25 s, no tracking read
 python src/run.py 04_models --mode sample                         # ~47 s, 3 fits + bootstrap
+python src/run.py 05_validate --mode sample                       # permutation + placebo + mechanical + synthetic worlds
 python src/crossing_diagnostic.py --mode sample   # ~34 s; NOT a stage, not in run.py
 python src/power_calc.py --mode sample            # <1 s; writes outputs/prereg/power.json
 ```
@@ -141,7 +148,7 @@ prereg.
 | `crossing_diagnostic` (not a stage) | **yes** | 34 s, 206 MB; why the tracked crossing leads `player_get_off` |
 | `power_calc` (not a stage) | **yes** | <1 s; design power for the 50 ms jump SD, pure arithmetic on Phase 3b artefacts |
 | `04_models` | **sample only** | 47 s, 1,121 sample reps / 35 players; full tracking and the Bayesian refit belong on the bigger machine |
-| `05_validate` | sample only | refits the model |
+| `05_validate` | **sample only** | refits the model under each check; the synthetic can-fail worlds add cost |
 
 ## 5. Outputs
 
@@ -172,6 +179,9 @@ prereg.
 | `outputs/phase4/player_effects.csv` | per-player reps, games, depth-netted physical deviation mean/SE, u and its SE |
 | `outputs/phase4/reliability_agreement.json` | split-half and model-based reliability, latency agreement, exploratory year-to-year, ladder |
 | `outputs/phase4/model_form.json` | the exact model and estimator, convergence diagnostics, constraints (no pressure/blocker/stance) |
+| `outputs/validation/validation.json` | **Phase 5 deliverable**: the five checks, their readings, the resolution statement and the synthetic can-fail worlds with per-detector `detector_fired` |
+| `outputs/validation/validation_onset_grid.csv` | the onset-threshold sweep: per threshold, reps, `b`, shares, jump SD and the reproduction check |
+| `outputs/validation/validation_snap_counts.csv` | per-player snap counts, share of reps and equal-snap weight |
 | `outputs/crossing_diagnostic/summary.json` | the gap diagnosis: headline numbers, verdicts, the LOS/line checks |
 | `outputs/crossing_diagnostic/definitions.csv` | candidate crossing definitions scored against the label |
 | `outputs/crossing_diagnostic/rep_diagnostic.csv` | one row per rep: depth, label, crossing, implied distance `d_star`, plane offset |
@@ -188,14 +198,16 @@ provenance basis is written to `outputs/phase3b/input_provenance.csv`.
 ## 6. Tests
 
 ```bash
-python -m pytest -q          # ~5 min on the Pi, 249 tests
+python -m pytest -q          # ~5 min on the Pi, 258 tests (257 passed, 1 skipped)
 python -m pytest -q -k "not audit_stage_is_byte_identical"
 ```
 
 The suite also covers the notebook contract (`tests/test_notebook_contract.py`): the committed
 `.ipynb` has zero baked outputs, the stage order is exactly the spec's, stages are reloaded from
-disk, `05_validate` is reported as not built, a missing `decomposition.json` prints `NOT RUN`, and
-sample numbers are printed only under the `NOT A RESULT` banner.
+disk, `05_validate` is inside the executed chain, an unimplemented stage would still be reported as
+`NOT BUILT`, a missing `decomposition.json` or `validation.json` prints `NOT RUN`, the validation
+block prints every `detector_fired` row, and sample numbers are printed only under the `NOT A
+RESULT` banner.
 
 The suite covers: schema/dtype/unit mismatches (each must **raise**), the tracking
 contract, provenance stamping, the full-run gates, onset/crossing primitives
@@ -219,7 +231,7 @@ with a reason rather than silently passing.
 | `notes/assumptions.md` | unverified beliefs about full data + their runtime assertions |
 | `notes/scale.md` | measured memory/time and the full-data extrapolation |
 | `notes/pending_full_run.md` | questions only full data can answer, with the command for each |
-| `notes/decisions.md` | D84–D117 for this cycle (append-only) |
+| `notes/decisions.md` | D84–D119 for this cycle (append-only) |
 | `notes/crossing-diagnostic.md` | why the tracked crossing leads `player_get_off`, and what Phase 4 must do about it |
 
 ## 8. Repo layout

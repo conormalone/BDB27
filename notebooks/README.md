@@ -25,6 +25,7 @@ editing:
 
 ```
 01_audit -> 02_combine_physical_time -> 03_game_snaps -> 03b_reliability -> 04_models
+          -> 05_validate
 ```
 
 Each stage is invoked through **its own `main()`**, with the stage module and its `src/` helpers
@@ -32,8 +33,9 @@ Each stage is invoked through **its own `main()`**, with the stage module and it
 before every call — including purging the cached bytecode. A `git pull` cannot leave stale code in
 a long-lived kernel. The notebook holds no analysis logic; the engine stays in `src/`.
 
-`05_validate` is a **stub that exits 3**. The notebook runs it after the chain and reports
-`NOT BUILT (stub, exits 3)`. It never counts the stub as a pass and never claims Phase 5 ran.
+`05_validate` is part of the chain. It re-fits the Phase 4 model under each `TASK.md` §5 check and
+prints the validation block in §5 of the notebook; a stage that exits 3 would still be reported
+`NOT BUILT` and never counted as a pass.
 
 **Provenance.**
 
@@ -48,10 +50,10 @@ a long-lived kernel. The notebook holds no analysis logic; the engine stays in `
 
 **Full-mode degradation.** If `game_tracking_{2023,2024,2025}.csv` are absent, `01_audit` and
 `03_game_snaps` are reported `PENDING FULL RUN` with the missing filenames; `03b_reliability` and
-`04_models` are `PENDING FULL RUN` because their upstream table cannot exist. The shared full-mode
-gate (`common.require_full_tracking`) is applied to every stage, so `02_combine_physical_time` is
-attempted and its `REFUSED (gate)` exit code is reported. The run continues throughout and **never
-falls back to the sample**.
+`04_models` are `PENDING FULL RUN` because their upstream table cannot exist (and `05_validate`
+with them). The shared full-mode gate (`common.require_full_tracking`) is applied to every stage,
+so `02_combine_physical_time` is attempted and its `REFUSED (gate)` exit code is reported. The run
+continues throughout and **never falls back to the sample**.
 
 **Headline.** Reads only `../outputs/phase4/decomposition.json`. In order: the provenance banner
 from the artefact itself; the estimator and measurement-error treatment; pooled, edge and interior
@@ -59,6 +61,16 @@ separately (between-player phys/jump split, total-variance split, 95% intervals,
 interval, jump SD in ms, reliability, latency agreement, rung used, boundary flags); the
 **resolution limit** (smallest detectable jump SD ≈ 52–54 ms) stated as a resolution limit, not a
 pass/fail threshold; and the physical-interpolation coverage counter.
+
+**Validation (§5).** Reads only `../outputs/validation/validation.json` and prints, with the
+provenance banner taken from the artefact: the permutation check (observed share, permutation
+distribution, one-sided Monte-Carlo p and resample count, and the artefact's reading — with an
+explicit *uninformative on this data* note when the observed share is at the zero boundary);
+placebo real vs height/weight share; base / depth removed / alignment removed / both removed; the
+onset sweep; the stance line (not possible, B8); snap quality (share dropped and the clean-subset
+shares); selection (snap-count spread, unweighted vs equal-snap); the resolution statement; and the
+synthetic **can-this-check-fail** table, one row per detector with `detector_fired`. A missing
+field prints `NOT RUN — <field> absent`; in sample mode the whole block is under the sample banner.
 
 **Figures (max 4 — `TASK.md` line 115).** Rendered only from `FULL` outputs, saved to
 `../outputs/figures/` and shown inline:
@@ -103,5 +115,6 @@ are preserved with git history and are not run.
 
 The notebook is exercised end-to-end by `nbconvert` in sample mode (zero error outputs) and the
 contract is covered by `tests/test_notebook_contract.py`: stage order, zero baked outputs, the
-reload-from-disk path, `05_validate` reported as not built, `NOT RUN` on a missing
-`decomposition.json`, and the sample banner. `python -m pytest -q` is the suite.
+reload-from-disk path, `05_validate` in the executed chain, `NOT RUN` on a missing
+`decomposition.json` or `validation.json`, the validation block's detector table, and the sample
+banner. `python -m pytest -q` is the suite.
