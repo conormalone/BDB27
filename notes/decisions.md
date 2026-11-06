@@ -4793,3 +4793,73 @@ tests, exit 0. The committed notebook has zero execution counts and zero outputs
 
 **Not done here.** No engine or model semantics changed; no data or stage outputs are committed;
 `05_validate` remains a stub.
+
+## D119 — Phase 5 validation built · 2026-11-06
+
+**Status: BUILT (sample).** Implements `TASK.md` §5 ("Validation", lines 107-113) as
+`src/05_validate.py`, wired into `run.py`, the CLI and the notebook. Nothing in the Phase 4
+estimator changes: `models.decompose` gains optional `weights`, `include_depth` and
+`include_alignment` switches whose defaults reproduce the Phase 4 fit exactly, and `04_models`
+gains `load_snaps(extra_columns=())` so the label-side QC columns can be carried without
+changing the default query.
+
+**What it does.** Five checks, each reading the same fitted set:
+
+1. **Permutation** — Combine physical time is shuffled across players *within position* (EDGE /
+   INTERIOR_LINE), 200 refits of the full decomposition. The observed physical share is placed
+   in that distribution and reported with a one-sided Monte-Carlo p and the resample count.
+2. **Placebo** — the same decomposition with a height/weight pseudo-phys, against the real
+   physical share, with the same depth control.
+3. **Mechanical** — base / depth removed / alignment removed / both removed, an onset-threshold
+   sweep over `[0.75, 1.0, 1.25, 1.5]` yd/s (1.0 frozen, D87; the others bracket it), plus the
+   reproduction check against the committed Phase 2 curves. Stance subsets are reported
+   `NOT POSSIBLE` (B8): no stance label exists, and none is imputed.
+4. **Snap quality** — restrict to snaps with clean onset detection; the share dropped is reported
+   at the tracked level and inside the fitted set.
+5. **Selection** — per-player snap counts and the decomposition re-fitted with equal total weight
+   per player (`weights = 1/n_i`, normalised to mean 1) with a player-cluster bootstrap interval.
+   Draftee selection is reported `CANNOT BE TESTED` on this release (B5).
+
+**Why 200 permutation resamples.** The Phase 1/3 design number (`permutation.n_permutations:
+1000`) is unchanged and still applies there. For a single-sample diagnostic, 200 refits place the
+observed value in a distribution with a smallest reportable one-sided p of 1/201, and keep the
+stage inside the Pi's runtime budget (about 96 s in sample mode). The count travels in the
+artefact and is printed beside the p; it is never presented as a threshold.
+
+**The synthetic-detector requirement.** Every check carries a synthetic world in which it *must*
+fire, built from the same code path and written to `synthetic_can_fail` with a per-detector
+`detector_fired` boolean. A check that cannot fail manufactures confidence, so the artefact
+records the evidence that the check can fail, and the notebook prints the whole table rather than
+summarising it. All six synthetic detectors fired: permutation 0.347 observed against a 0.024
+permutation mean; placebo 0.272 with height/weight carrying the signal against 0.002 in the null
+control; depth/alignment removal moving `b`; the onset sweep spanning 0.116 in share; snap quality
+moving the share after a planted onset error; equal-snap weighting moving `share_phys` from 0.086
+to 0.134.
+
+**Honesty rules enforced in code.** Any quantity that cannot be computed is `INSUFFICIENT_DATA`
+with a reason, never a zero placeholder. A missing input raises `GateRefused` *before* an output
+directory is created, so a refusal cannot leave a file that looks like a result. The artefact is
+stamped by `common.write_json` and carries its own provenance field, which the notebook reads. In
+sample mode the observed physical share is at the zero boundary; the permutation block therefore
+says the check is **uninformative on this data**, not that it passed.
+
+**The sample run is a placeholder.** `outputs/validation/*` is `PLACEHOLDER_SAMPLE: UNVALIDATED
+SAMPLE OUTPUT` (18 players, 978 fitted reps). It demonstrates that the machinery runs and that
+each check can fail; it validates nothing about the real data. No number from it is quoted as a
+finding.
+
+**Interface.** `05_validate` is in `run.py`'s stage order and in the notebook's `STAGE_ORDER`;
+`tests/test_run_order.py` no longer lists it as a stub. The notebook prints the block from
+`src/notebook_report.render_validation`, which reads only `outputs/validation/validation.json`
+and prints `NOT RUN — <field> absent` for anything missing.
+
+**Verification.** Suite 258 collected, 257 passed, 1 skipped, exit 0. `05_validate --mode sample
+--force` completes, stamps the artefact and writes `validation.json`,
+`validation_onset_grid.csv` and `validation_snap_counts.csv`. `nbconvert` in sample mode (with
+`05_validate` forced) produced zero error outputs and rendered the validation section; stage
+elapsed times `01` 0.1 s (checkpoint), `02` 11.9 s, `03` 7.2 s, `03b` 27.7 s, `04` 46.8 s,
+`05` 96.1 s, all exit 0.
+
+**Not done here.** No data or stage outputs are committed; no pressure field (D112), blocker term
+(D98), stance term (B8) or offset (D110) enters the validation; `player_get_off` is not read. The
+synthetic worlds are detector tests, not inference.

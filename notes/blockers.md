@@ -398,3 +398,14 @@ limitation §21 and is carried in the prereg's power caveat.
 **Not a TASK.md stop-list item.** The line and the depth *can* be derived; this
 is a definitional gap, so the pipeline is not stopped — but the prereg cannot be
 frozen, because "distance definition" is one of the items it must fix.
+
+---
+
+## Phase 5 note · 2026-11-06
+
+No blocker was cleared by building Phase 5, and none was created. The one blocker the validation
+stage touches is **B8** (stance): `05_validate` reports stance-specific subsets as
+`NOT POSSIBLE — no stance label exists in any released file (B8)`, with that reason in the
+artefact and in the notebook, rather than dropping the check silently. B5 (draftee selection) is
+likewise reported `CANNOT BE TESTED` in the selection check, not approximated. Both remain open as
+stated above.
