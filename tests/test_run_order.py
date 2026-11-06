@@ -4,6 +4,7 @@ silently succeeds.
 
 from __future__ import annotations
 
+import inspect
 import json
 
 import pytest
@@ -18,8 +19,10 @@ EXPECTED_ORDER = ["01_audit", "02_combine_physical_time", "03_game_snaps",
 
 # Stages that exist only as layout stubs. 03b is an added evidence stage that
 # sits between Phase 3 and Phase 4 (decisions.md D107); 04_models was
-# implemented in the 2026-11-05 Phase 4 cycle. 05_validate remains a stub.
-STUBS = ["05_validate"]
+# implemented in the 2026-11-05 Phase 4 cycle; 05_validate was implemented in
+# the 2026-11-06 Phase 5 cycle (D119). Nothing is a stub today, but the
+# parametrised test below stays so that a future stub still trips it.
+STUBS: list[str] = []
 
 
 def test_run_order_matches_the_spec():
@@ -79,6 +82,16 @@ def test_phase4_is_no_longer_a_stub():
     assert hasattr(mod, "attach_physical")
     assert hasattr(mod, "variance_rows")
     assert hasattr(mod, "SNAP_COLUMNS")
+
+
+def test_phase5_is_no_longer_a_stub():
+    mod = load_stage("05_validate")
+    assert mod.STAGE == "05_validate"
+    assert callable(mod.main)
+    assert hasattr(mod, "run_checks")
+    assert hasattr(mod, "load_frames")
+    # It must not be routed through the not-implemented helper.
+    assert "fail_not_implemented" not in inspect.getsource(mod.main)
 
 
 @pytest.mark.parametrize("stage", EXPECTED_ORDER[1:])
