@@ -39,6 +39,8 @@ env/
 !fixtures/**/*.json
 # ...but never generated stage output inside a fixture world
 fixtures/**/outputs/
+# ...nor bytecode: the `!fixtures/**` re-include above would otherwise catch it
+fixtures/**/__pycache__/
 
 # --- OS / editor ---
 .DS_Store
