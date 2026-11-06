@@ -247,6 +247,73 @@ def test_resolution_is_not_a_pass_fail_threshold(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# integrity block: a refused upstream stage is reported, never silent
+# --------------------------------------------------------------------------- #
+def _write_decomposition(tmp_path, payload) -> Path:
+    path = tmp_path / "phase4"
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "decomposition.json").write_text(json.dumps(payload), encoding="utf-8")
+    return tmp_path
+
+
+def _write_calibration(tmp_path, *, status, provenance="FULL", **extra) -> Path:
+    payload = {"status": status, "provenance": provenance, "estimated": False,
+               "reason": ("Stance (three-point vs stand-up) and Combine start type are "
+                          "not labelled in any provided file."),
+               "blocker": "B8"}
+    payload.update(extra)
+    (tmp_path / "calibration.json").write_text(json.dumps(payload), encoding="utf-8")
+    return tmp_path
+
+
+def _stage_results(overrides=None) -> list[dict]:
+    rows = [{"stage": s, "status": "OK", "rc": 0}
+            for s in EXPECTED_STAGE_ORDER]
+    for stage, status, rc in (overrides or []):
+        for row in rows:
+            if row["stage"] == stage:
+                row["status"], row["rc"] = status, rc
+    return rows
+
+
+def test_full_artifact_with_unestimated_calibration_prints_the_taint(tmp_path):
+    _write_decomposition(tmp_path, _artifact(provenance="FULL"))
+    _write_calibration(tmp_path, status="NOT_ESTIMABLE")
+    text = R.render_headline(
+        tmp_path, "full",
+        _stage_results([("02_combine_physical_time", "REFUSED (gate)", 4)]))
+    assert R.TAINT_NO_CALIBRATION in text
+    assert "the decomposition is produced without one" in text
+    assert "02_combine_physical_time (REFUSED (gate), exit 4)" in text
+    assert "NOT a sign-off" in text
+    assert "B8" in text
+
+
+def test_estimated_full_calibration_does_not_print_the_taint(tmp_path):
+    _write_decomposition(tmp_path, _artifact(provenance="FULL"))
+    _write_calibration(tmp_path, status="ESTIMATED", estimated=True)
+    text = R.render_headline(tmp_path, "full", _stage_results())
+    assert R.TAINT_NO_CALIBRATION not in text
+    assert "no upstream stage failed or refused" in text
+    assert "Calibration was ESTIMATED on full data" in text
+
+
+def test_missing_calibration_file_names_itself(tmp_path):
+    _write_decomposition(tmp_path, _artifact(provenance="FULL"))
+    text = R.render_headline(tmp_path, "full", _stage_results())
+    assert "NOT RUN — outputs/calibration.json absent" in text
+
+
+def test_sample_calibration_is_reported_not_refused(tmp_path):
+    """Sample mode still renders: reporting must not become a gate."""
+    _write_decomposition(tmp_path, _artifact())
+    _write_calibration(tmp_path, status="PLACEHOLDER", provenance=SAMPLE_STAMP)
+    text = R.render_headline(tmp_path, "sample", _stage_results())
+    assert R.TAINT_NO_CALIBRATION in text
+    assert "POOLED" in text                      # the numbers still print
+
+
+# --------------------------------------------------------------------------- #
 # figures
 # --------------------------------------------------------------------------- #
 def test_notebook_calls_the_validation_renderer(notebook):

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import math
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +102,22 @@ def _ci(payload: dict, key: str) -> str:
     if _is_missing(lo) or _is_missing(hi):
         return f"(95% CI {MISSING_PREFIX}{key} absent)"
     return f"95% CI [{float(lo):.3f}, {float(hi):.3f}]"
+
+
+#: Calibration statuses that count as "estimated on full data".
+CALIBRATION_OK_STATUSES = ("ESTIMATED",)
+
+#: Integrity strings. Tests pin these; prose elsewhere quotes them.
+INTEGRITY_CLEAN = "no upstream stage failed or refused"
+TAINT_NO_CALIBRATION = "the physical times carry NO calibration offset"
+
+
+def _calibration_ok(cal: dict | None) -> bool:
+    """True only when calibration was estimated from a FULL-mode record."""
+    if not isinstance(cal, dict):
+        return False
+    return (str(cal.get("status") or "") in CALIBRATION_OK_STATUSES
+            and provenance_kind(cal) == "FULL")
 
 
 def _banner_lines(messages: list[str], width: int = BANNER_WIDTH) -> list[str]:
@@ -228,7 +245,93 @@ def _group_block(label: str, group: dict, qualifier: str) -> list[str]:
     return lines
 
 
-def render_headline(outputs_dir: str | Path, mode: str = "sample") -> str:
+def _integrity_lines(outputs: Path, art: dict | None, mode: str,
+                     stage_results: Any) -> list[str]:
+    """Report what the chain did upstream, and what that means for the number.
+
+    This block reports, it does not gate. A refused upstream stage is named and
+    its consequence stated; the run is not blocked and no gate is changed.
+    """
+    lines = ["INTEGRITY — the chain that produced the number below",
+             "-" * BANNER_WIDTH]
+
+    if isinstance(stage_results, (list, tuple)):
+        rows = [r for r in stage_results if isinstance(r, dict)]
+        bad = [r for r in rows
+               if str(r.get("status", "")) not in ("OK", "", "PENDING FULL RUN")]
+        if bad:
+            rendered = []
+            for row in bad:
+                rc = row.get("rc")
+                rendered.append(f"{row.get('stage', 'unknown stage')} "
+                                f"({row.get('status')}"
+                                + ("," if rc is not None else "")
+                                + (f" exit {rc}" if rc is not None else "")
+                                + ")")
+            lines.append("  stages that failed or refused : " + "; ".join(rendered))
+        else:
+            lines.append(f"  stages that failed or refused : {INTEGRITY_CLEAN} "
+                         f"— all {len(rows)} stages reported OK")
+    else:
+        lines.append("  stages that failed or refused : stage results not supplied "
+                     "to this call;\n"
+                     "                                 the calibration record "
+                     "below is the evidence")
+
+    lines.append("  calibration record          : outputs/calibration.json")
+    cal = read_json(outputs / "calibration.json")
+    if cal is None:
+        lines.append(f"    {MISSING_PREFIX}outputs/calibration.json absent")
+        lines.append("    No calibration record exists, so Phase 2 has not run on this")
+        lines.append("    data and no physical time has been built.")
+        lines.append("")
+        return lines
+
+    status = str(cal.get("status") or "")
+    lines.append(f"    status                   : "
+                 f"{status or MISSING_PREFIX + 'status absent'}"
+                 f" (estimated={cal.get('estimated', MISSING_PREFIX + 'estimated absent')})")
+    lines.append("    provenance               : "
+                 + str(cal.get("provenance") or MISSING_PREFIX + "provenance absent"))
+    if not _is_missing(cal.get("blocker")):
+        lines.append(f"    blocker                  : {cal['blocker']}")
+
+    if _calibration_ok(cal):
+        lines.append("")
+        lines.append("  Calibration was ESTIMATED on full data: the physical times")
+        lines.append("  carry a global calibration offset, and the number below is")
+        lines.append("  produced with it.")
+        lines.append("")
+        return lines
+
+    lines.append("")
+    lines.append("  WHAT THIS MEANS FOR THE NUMBER BELOW")
+    lines.append(f"    - {TAINT_NO_CALIBRATION};")
+    lines.append("    - the decomposition is produced without one;")
+    reason = cal.get("reason")
+    if _is_missing(reason):
+        lines.append(f"    - why: {MISSING_PREFIX}calibration.reason absent")
+    else:
+        lines.append("    - why (from the calibration record):")
+        for chunk in textwrap.wrap(str(reason), width=BANNER_WIDTH - 8):
+            lines.append("        " + chunk)
+    if mode == "full":
+        lines.append("")
+        lines.append("    Phase 2 writes its per-attempt tables, then refuses to complete")
+        lines.append("    while this record is not ESTIMATED, and does not checkpoint.")
+        lines.append("    Downstream stages that do not read calibration can therefore")
+        lines.append("    still run on those tables.")
+    if art is not None and provenance_kind(art) == "FULL":
+        lines.append("")
+        lines.append("    The decomposition is stamped FULL. That stamp records the data")
+        lines.append("    mode, not that every upstream stage completed: the numbers above")
+        lines.append("    are computed on the data that was present, and are NOT a sign-off.")
+    lines.append("")
+    return lines
+
+
+def render_headline(outputs_dir: str | Path, mode: str = "sample",
+                    stage_results: Any = None) -> str:
     """Render the headline block from ``outputs/phase4/decomposition.json``.
 
     Never raises for a missing or malformed artefact: the absence is the report.
@@ -285,6 +388,7 @@ def render_headline(outputs_dir: str | Path, mode: str = "sample") -> str:
         ]))
         qualifier = " — PROVENANCE NOT RECOGNISED, NOT A RESULT"
     lines.append("")
+    lines.extend(_integrity_lines(outputs, art, mode, stage_results))
 
     est = art.get("estimator")
     lines.append("MODEL (from the artefact)")
