@@ -126,6 +126,7 @@ python src/run.py 04_models --mode sample                         # ~47 s, 3 fit
 python src/run.py 05_validate --mode sample                       # permutation + placebo + mechanical + synthetic worlds
 python src/crossing_diagnostic.py --mode sample   # ~34 s; NOT a stage, not in run.py
 python src/power_calc.py --mode sample            # <1 s; writes outputs/prereg/power.json
+python src/writeup_render.py --draft notes/writeup-draft.md --outputs outputs   # refuses sample provenance
 ```
 
 `--mode sample|full` and `--force` are defined once, in `src/common.py`; every
@@ -198,7 +199,7 @@ provenance basis is written to `outputs/phase3b/input_provenance.csv`.
 ## 6. Tests
 
 ```bash
-python -m pytest -q          # ~5 min on the Pi, 258 tests (257 passed, 1 skipped)
+python -m pytest -q          # ~5 min on the Pi, 279 tests (278 passed, 1 skipped)
 python -m pytest -q -k "not audit_stage_is_byte_identical"
 ```
 

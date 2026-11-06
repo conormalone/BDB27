@@ -4863,3 +4863,86 @@ elapsed times `01` 0.1 s (checkpoint), `02` 11.9 s, `03` 7.2 s, `03b` 27.7 s, `0
 **Not done here.** No data or stage outputs are committed; no pressure field (D112), blocker term
 (D98), stance term (B8) or offset (D110) enters the validation; `player_get_off` is not read. The
 synthetic worlds are detector tests, not inference.
+
+## D120 — Writeup skeleton, writeup renderer, and the figures proven to draw · 2026-11-06
+
+**Status: BUILT (scaffolding + smoke test).** `TASK.md` §6 (line 115) asks for a public
+notebook and writeup within the official limits, max four figures. Phases 0–5 exist; the writeup
+and any proof that a figure draws did not. This entry records what was added, and — more
+importantly — what it refuses to do.
+
+**1. The writeup skeleton (`notes/writeup-draft.md`).** Seven sections matching §6 exactly:
+question, data audit, physical-time construction, decomposition, reliability, label validation,
+limitations. Prose-only sections are real draft prose; the results-bearing ones are frames. Two
+kinds of numbers appear and nothing in between: frozen design constants (onset 1.0 yd/s, 10 Hz,
+20-rep minimum, 2,000-word and four-figure caps) cited to `prereg.md` (`ca8e2a7`) or `TASK.md`,
+and result fields written only as `{{PENDING_FULL_RUN: <artefact>.<path>}}` naming an exact path
+in `decomposition.json` or `validation.json`. No result value is typed, rounded or described as
+"approximately". The draft states the design as frozen: no smallest-effect-of-interest gate, no
+confirmatory threshold, a share with a 95% interval, and the resolution limit reported beside it
+as a statement, not a bar. Rendered count **1,941 words** against the 2,000 ceiling, measured by the
+renderer on the FULL fixture; the cap itself remains `UNVERIFIED` for 2027 (L1).
+
+**2. The writeup renderer (`src/writeup_render.py`).** Presentation only. Three rules enforced in
+code, because prose rules do not survive a deadline:
+
+- **It refuses sample provenance.** If a present artefact's stamp is not `FULL`, the render
+  returns `REFUSED` with no text, writes no file, and names the artefact and the stamp it carried.
+  Absent artefacts are *not* refusals: their fields are unresolved and named. This distinction is
+  deliberate — a missing full run should produce a visibly incomplete document, while a sample
+  run must produce nothing that could be mistaken for a result.
+- **It names what it cannot fill.** A missing, null, non-finite or unprintable field becomes
+  `[[UNRESOLVED: <path>]]` and appears in the result's `unresolved` list. A token whose artefact
+  prefix is unknown is `malformed` and named. No `{{...}}` and no blank space ever stands in for
+  a value; a test asserts that on the real draft.
+- **It does not reformat a result.** Floats print at three decimals, a two-element list as
+  `[low, high]`; nothing else is touched.
+
+Draft apparatus after `<!-- END OF WRITEUP BODY -->` (the word-count line and the "what still has
+to be filled" checklist) is not rendered and not counted, so the cap test measures the writeup and
+not its scaffolding.
+
+**3. The four figures are now proven to draw.** `render_figures` had only ever exercised its skip
+path, so "the renderer works" was an untested claim. `fixtures/synthetic/full_provenance/` is a
+FULL-stamped, `fixture: true` synthetic artefact set (six fictional rushers, 188 reps, planted
+curves and jumps). On it all four figures render to non-empty PNGs with finite axis limits, and
+`render_figures` now returns each figure's pixel dimensions and `xlim`/`ylim` so a caller can check
+that without opening the image. **This is a smoke test of the renderer, not a result**: the
+variance shares in the fixture are illustrative constants, not recovered from the generated reps,
+and the fixture says so in its own `fixture_note`.
+
+**4. Missing fields name themselves.** Every required field is fetched through `_need` /
+`_need_num` / `_need_ci`, so a missing share, interval or reliability block produces
+`figure 1: SKIPPED — edge.share_u absent` instead of an empty axis or an exception out of the
+renderer. The existing rule is unchanged and still tested: sample provenance, sample mode or a
+missing input skips all four with an explicit reason and writes no PNG.
+
+**Why the fixture is stamped FULL.** Both renderers refuse anything else by design, so the fill
+and draw paths cannot be exercised on a refusal. The stamp is paired with `fixture: true` and a
+note in every JSON; `writeup_render.report()` prints a warning when it sees the flag. No stage
+writes a `fixture` key, so a real artefact cannot acquire one by accident.
+
+**Interface.** `render_figures` keeps `messages` and `paths` and adds `figures` (per-figure
+metadata). `notebooks/bdb27_full_run.ipynb` is unchanged — §6 already calls `render_figures` and
+prints the messages, which are now richer, not different. `tests/conftest.py` gains `full_fixture`
+and `full_outputs`, which materialise the fixture into `tmp_path` (the parquet is built there and
+never committed).
+
+**Verification.** Suite **279 collected: 278 passed, 1 skipped, exit 0** (was 258/257 in D119).
+The 21 new tests are `tests/test_writeup_render.py` (12) and
+`tests/test_figures_full_fixture.py` (9). Figures rendered at dpi=100 to a temp dir:
+800×420, 800×460, 800×420, 800×460, all finite axes, all non-blank (pixel SD > 0). Rendering the
+real draft against the real `outputs/` prints `status: REFUSED — decomposition=SAMPLE,
+validation=SAMPLE` and writes nothing.
+
+**Kaggle packaging.** `notes/kaggle-submission.md` lists what the public notebook needs, the caps,
+the artefacts that must be FULL, and every item that cannot be checked here as
+`UNVERIFIED ON THIS HOST` with the reason. It records one blocking item, not a code defect:
+`outputs/calibration.json` must be `FULL` for a full run, but stance is unlabelled (B8), so the
+artefact cannot become `FULL` — Conor has to decide whether a full run may proceed with
+calibration recorded as not-estimable.
+
+**Not done here.** No analysis, estimator or model semantics changed; no new statistical claim;
+no data or stage output committed. The writeup is still a skeleton and every number in it is a
+named field, not a value. `notes/rules.md` L2's figure count (5) is stale against the §6
+amendment (4) and is now cross-referenced from the Kaggle note rather than silently edited.

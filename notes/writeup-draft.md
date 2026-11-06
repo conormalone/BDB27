@@ -57,8 +57,8 @@ players whose in-game `lined_up_position` is edge or interior line, on pass
 plays. The blitz exclusion is deliberately **not** applied: the release has no
 blitz-call field and the only candidate flag behaves like a participation flag,
 so the primary set is all DL pass-rush reps and the writeup never claims a
-non-blitz sample. Non-DL players are excluded, including cornerbacks who
-rushed; that exclusion is counted and reversible.
+non-blitz sample. Non-DL players are excluded; that exclusion is
+counted and reversible.
 
 Rusher–blocker assignments do not exist in the release. No assignment is
 inferred from tracking geometry, and no blocker term enters any model, so the
@@ -112,10 +112,9 @@ and the posterior mean **and** standard error are carried forward; no player is
 represented by his best attempt.
 
 The construction is judged by a coefficient, not a match. If the two settings
-were identical, the coefficient on physical time in Section 4 would sit near one.
-It is reported with its interval, and a value away from one is read as evidence
-about setting differences — stance, start type, surfaces, the presence of an
-opponent — rather than smoothed away.
+were identical the coefficient on physical time in Section 4 would sit near one;
+it is reported with its interval, and a value away from one is read as evidence
+about setting differences, not smoothed away.
 
 ## 4. Decomposition
 
@@ -191,16 +190,16 @@ with mean snap-to-onset latency across players
 physical time is correlated with mean onset-to-crossing time
 (`{{PENDING_FULL_RUN: decomposition.pooled.agreement.phys_vs_onset_to_cross.r}}`).
 Agreement supports reading the residual as reaction; disagreement is reported as
-a finding, not treated as a failure. Neither correlation identifies anticipation:
-the latency measure shares the onset definition, the sampling rate and the
-tracking quality with the outcome.
+a finding, not treated as a failure. Neither correlation identifies anticipation: the
+latency measure shares the onset definition and tracking quality with the
+outcome.
 
 ## 6. Label validation
 
 The published `player_get_off` column is not the outcome and is never a model
 input. It is checked against the tracked crossing because the two should describe
-the same football event, and the check is what tells the reader how far the
-release's own label sits from the constructed one.
+the same event, and the check shows how far the release's label sits from the
+constructed one.
 
 The check is definitional, not a correction. On the sample the label behaves as
 the crossing of a plane beyond the derived line rather than at it — an
@@ -235,8 +234,7 @@ the difference.
 **Alignment, role and opponent.** Alignment is labelled coarsely and enters the
 model, but shade and assignment do not. Rotation is unmodelled: a specialist's
 reps are a selected subset of situations, so a stable residual can be a stable
-role. With no rusher–blocker assignments the split is also unadjusted for
-opponent quality and double-teams.
+role. With no assignments the split is also unadjusted for opponent quality.
 
 **Resolution in the first second.** At 10 Hz one frame is a tenth of a second — a material
 fraction of a typical get-off. Interpolation recovers sub-frame timing
@@ -261,8 +259,7 @@ general. The 2025 class has at most one NFL season, so the year-to-year question
 is answerable for the 2023 and 2024 classes only.
 
 **Estimator.** The intervals come from a bootstrap, not a posterior; a Bayesian
-fit could widen or narrow them, especially near a variance boundary. Edge and
-interior fits are smaller and their intervals wider.
+fit could widen or narrow them, especially near a variance boundary.
 
 **What "jump" is not.** It is not a measurement of anticipation, reaction time or
 football intelligence, and it contains stance, technique, alignment, opponent and
@@ -272,9 +269,10 @@ definitional differences alongside anything cognitive.
 
 <!-- END OF WRITEUP BODY -->
 
-**Word count:** 1,954 words of prose, counting each placeholder token as one
-word (i.e. the projected final count). Final ceiling 2,000 words (`TASK.md` §6
-and `notes/rules.md` L1 — the cap itself is `UNVERIFIED` for 2027).
+**Word count:** 1,941 words as rendered against the FULL fixture
+(`src/writeup_render.py` computes it; the fixture's numbers have the same
+word-shape as real ones). Ceiling 2,000 words (`TASK.md` §6 and
+`notes/rules.md` L1 — the cap itself is `UNVERIFIED` for 2027).
 
 ## What still has to be filled
 
