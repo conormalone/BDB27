@@ -3,6 +3,12 @@
 Binding spec: `TASK.md` (commit `a57bd7c`); the prereg is frozen at commit
 `ca8e2a7`. This file is the run book; the analysis notes are in `notes/`.
 
+**Primary interface: `notebooks/bdb27_full_run.ipynb`.** Open it, set `MODE` (`sample` | `full`)
+and, only if the data is not in the usual place, `DATA_DIR`, then **Run All**. No terminal is
+needed and none of the command-line steps below are required for a normal run. The **CLI in §4b**
+is the secondary path for maintainers and CI: it runs the same stages, and the notebook invokes
+each stage through the same `main()`.
+
 ---
 
 ## 1. What this pipeline is
@@ -77,6 +83,30 @@ The download step of `TASK.md` Phase 0 is satisfied by the local files above; no
 network access was used or needed.
 
 ## 4. Run
+
+### 4a. Notebook — the primary interface (no terminal)
+
+`notebooks/bdb27_full_run.ipynb` is the deliverable interface for the current chain. It:
+
+- runs `01_audit -> 02_combine_physical_time -> 03_game_snaps -> 03b_reliability -> 04_models`,
+  each through its own `main()`, reloading the stage module and its `src/` helpers from disk before
+  every call (so `git pull` cannot leave stale code in the kernel);
+- has one editable cell: `MODE`, `DATA_DIR`, `FORCE_STAGES`, `CLEAN`, `CLEAN_CONFIRM`;
+- prints a per-stage **exit code and elapsed time** table, and reports `05_validate` as
+  `NOT BUILT (stub, exits 3)` — never as a pass;
+- in `MODE="full"`, reports the stages needing `game_tracking_{2023,2024,2025}.csv` as
+  `PENDING FULL RUN` with the missing filenames, and continues — it never falls back to the sample;
+- prints the headline from `outputs/phase4/decomposition.json` with the provenance banner, the
+  pooled/edge/interior shares and intervals, reliability, agreement, the rung used, boundary flags,
+  and the resolution limit stated as a limit (not a threshold);
+- renders the four deliverable figures only from `FULL` artefacts; in sample mode it names why each
+  is skipped;
+- commits no outputs: the `.ipynb` has zero execution counts and zero outputs.
+
+`CLEAN=True` is inert unless `CLEAN_CONFIRM="DELETE"`; when armed it deletes this chain's stage
+outputs and mode-matched checkpoints, never `data/raw`.
+
+### 4b. CLI — secondary (maintainers and CI)
 
 ```bash
 python src/run.py --list                       # stages and order
@@ -158,9 +188,14 @@ provenance basis is written to `outputs/phase3b/input_provenance.csv`.
 ## 6. Tests
 
 ```bash
-python -m pytest -q          # ~5 min on the Pi, 231 tests
+python -m pytest -q          # ~5 min on the Pi, 249 tests
 python -m pytest -q -k "not audit_stage_is_byte_identical"
 ```
+
+The suite also covers the notebook contract (`tests/test_notebook_contract.py`): the committed
+`.ipynb` has zero baked outputs, the stage order is exactly the spec's, stages are reloaded from
+disk, `05_validate` is reported as not built, a missing `decomposition.json` prints `NOT RUN`, and
+sample numbers are printed only under the `NOT A RESULT` banner.
 
 The suite covers: schema/dtype/unit mismatches (each must **raise**), the tracking
 contract, provenance stamping, the full-run gates, onset/crossing primitives
@@ -199,6 +234,8 @@ src/stats.py    ICC, split-half, power approximation
 src/synthetic.py schema-compliant fixtures with planted burst and jump
 src/01_audit.py ... 05_validate.py
 src/run.py      dispatcher
+src/notebook_report.py  presentation helpers for the deliverable notebook (no analysis)
+notebooks/      bdb27_full_run.ipynb — the primary interface (no terminal)
 tests/          pytest suite (testpaths = tests)
 notes/          analysis notes
 outputs/        generated artefacts (gitignored except figures/)

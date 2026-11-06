@@ -4749,3 +4749,47 @@ Phase 4 writes `outputs/phase4/decomposition.json`,
 stamped `UNVALIDATED SAMPLE OUTPUT`; no sample number is interpreted in the
 notes or the writeup. The resolution statement is read from the FULL
 `outputs/prereg/power.json` and is labelled as FULL evidence.
+
+## D118 — Deliverable notebook rebuilt for the burst-vs-jump chain · 2026-11-06
+
+**Status: RECORD (interface).** Implements `TASK.md` line 115 ("Deliverables … max 4 figures")
+and the `/notebooks` line of the layout.
+
+**Decision.** `notebooks/bdb27_full_run.ipynb` is the single deliverable interface for the
+current chain. The two previous notebooks (leverage × ceiling, and the DL acceleration ceiling)
+were archived on 2026-11-05 under `archive/legacy-2026-11-05/notebooks/`; `notebooks/README.md`
+kept describing them as live, which was a defect in the repo's description of its own interface.
+That README now describes only the notebook that exists, and `README_RUN.md` names the notebook
+as the primary interface with the CLI labelled secondary.
+
+**Shape.** One editable cell: `MODE`, `DATA_DIR`, `FORCE_STAGES`, `CLEAN`, `CLEAN_CONFIRM`. The
+notebook runs `01_audit -> 02_combine_physical_time -> 03_game_snaps -> 03b_reliability ->
+04_models`, each through its own `main()`. `src/stage_runner.py` was archived with the old chain,
+so the notebook carries the minimal equivalent: before every call it reloads the helper modules
+already in `sys.modules`, purges the cached bytecode, and imports the stage with
+`spec_from_file_location` as a fresh module object. The D46 failure — a kernel quietly executing
+pre-pull code — is therefore impossible here. Presentation lives in `src/notebook_report.py`
+(headline formatting, figure rendering); the cells contain no analysis.
+
+**Provenance and honesty rules, enforced in code.** The headline banner is derived from the
+artefact's own `provenance` key: `PLACEHOLDER_SAMPLE` prints a loud `UNVALIDATED SAMPLE OUTPUT —
+NOT A RESULT` banner and repeats the qualifier on every group; `FULL` prints `PROVENANCE: FULL`.
+A missing file or field prints `NOT RUN — <field> absent`; a zero variance share stays zero and
+is never replaced by the naive rung. In full mode, missing `game_tracking_{2023,2024,2025}.csv`
+marks `01_audit`/`03_game_snaps` `PENDING FULL RUN` with the filenames and the downstream
+`03b`/`04` stages likewise; the run continues and never substitutes the sample.
+`05_validate` is run and reported `NOT BUILT (stub, exits 3)`.
+
+**Figures.** Four, per the D112 amendment: variance split with intervals; phys vs observed with
+named off-diagonal players; reliability and latency agreement; one rusher's rep-level story.
+Rendered only from `FULL` artefacts; every skip is printed with its reason.
+
+**Verification.** `nbconvert` executed the committed notebook end-to-end in sample mode: zero
+error outputs, every stage exit reported, stub reported at exit 3. A forced copy rebuilt all five
+stages (`01` 41.7 s, `02` 10.8 s, `03` 34.8 s, `03b` 28.0 s, `04` 47.8 s, all exit 0). A
+full-mode copy with the tracking files absent printed the PENDING rows and the gate refusal, and
+continued. `tests/test_notebook_contract.py` (18 tests) pins the contract; the suite is 249
+tests, exit 0. The committed notebook has zero execution counts and zero outputs.
+
+**Not done here.** No engine or model semantics changed; no data or stage outputs are committed;
+`05_validate` remains a stub.
