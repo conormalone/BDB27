@@ -9,14 +9,20 @@ data/*
 # --- Generated outputs ---
 outputs/*
 !outputs/.gitkeep
-
-# --- Phase 2 calibration contract (small, placeholder in sample mode) ---
-!outputs/calibration.json
-
-# --- Writeup figures: the ≤5 deliverable figures are committed (small, deterministic PNGs; no data) ---
 !outputs/figures/
-!outputs/figures/*.png
 !outputs/figures/.gitkeep
+
+# --- Phase-gate evidence: small, machine-readable, and the artefact the audit
+# note cites. Committed deliberately; the per-turn parquet stays ignored. ---
+!outputs/audit/
+!outputs/audit/*.csv
+!outputs/audit/*.json
+
+# Thresholds contract: small, and its provenance field is the gate on stages 02-06.
+!outputs/thresholds.json
+
+# Stage timing / peak-RAM log. Small, and part of the handoff evidence.
+!outputs/run_log.csv
 
 # --- Python ---
 __pycache__/
@@ -33,7 +39,6 @@ env/
 *.zip
 
 # --- Synthetic fixtures (SMALL, schema-compliant, committed) ---
-# TASK.md: commit only code/configs/notes/synthetic fixtures. Re-include the fixture dirs.
 !fixtures/**
 !fixtures/**/*.csv
 !fixtures/**/*.json
@@ -42,42 +47,12 @@ fixtures/**/outputs/
 # ...nor bytecode: the `!fixtures/**` re-include above would otherwise catch it
 fixtures/**/__pycache__/
 
+# --- Archived legacy pipelines: code + notes are committed, local run artefacts are not ---
+archive/**/outputs_local/
+archive/**/*.parquet
+
 # --- OS / editor ---
 .DS_Store
 Thumbs.db
 *.swp
 .~*
-
-# --- Phase gate artefacts: small, machine-readable, and deliverables in their own right ---
-!outputs/audit/
-!outputs/audit/*.csv
-!outputs/audit/*.json
-
-# Phase 3 evidence: counts, null provenance, exclusion counts, summary. The
-# per-snap table itself (snaps.parquet, ~1.5 MB at sample scale and much larger
-# on full data) is regenerable and stays ignored.
-!outputs/phase3/
-!outputs/phase3/*.csv
-!outputs/phase3/*.json
-
-# Phase 3b evidence: the selection-rule tables and per-player reliability are
-# the numbers the prereg decision is made on, so they are committed (small,
-# deterministic, and their provenance basis is carried inside them). The
-# regenerable parquet stays ignored.
-!outputs/phase3b/
-!outputs/phase3b/*.csv
-!outputs/phase3b/*.json
-
-# Crossing diagnostic (2026-11-05): the tables the note cites. Small,
-# deterministic, and stamped with the mode provenance. The per-rep table is
-# regenerable; the summary and verdicts are the deliverable evidence.
-!outputs/crossing_diagnostic/
-!outputs/crossing_diagnostic/*.csv
-!outputs/crossing_diagnostic/*.json
-
-# Prereg evidence (2026-11-05): the design-power artefact and its short table
-# are the numbers the DRAFT prereg cites, so they are committed. Both are pure
-# arithmetic on the complete-file Phase 3b artefacts (provenance FULL).
-!outputs/prereg/
-!outputs/prereg/*.json
-!outputs/prereg/*.md

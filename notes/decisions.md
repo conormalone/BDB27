@@ -4,6 +4,13 @@ Append-only. Each entry: what was decided, why, and the evidence/constraint behi
 `TASK.md`. **Prior (combine-fatigue) decisions D1–D25 are archived at git tag
 `archive/combine-fatigue-v1`** (HEAD `fdc794c`); this log restarts fresh for the ceiling-binding task.
 
+> **SCOPE NOTE (2026-11-06).** The binding spec is now **Turn Coverage and the Cut Card**
+> (`TASK.md`, commit `52015cd`). Entries **D26–D121 below belong to three superseded tasks** —
+> ceiling-binding (D26–…), intra-drive regeneration, and burst-vs-jump (get-off decomposition).
+> They are kept as the audit trail and are **not** decisions of the current task. The current task's
+> decisions begin at **D122**. Files that those entries describe at `src/`, `tests/`, `notebooks/`,
+> `fixtures/` and `notes/` were moved verbatim to `archive/legacy-2026-11-06/`.
+
 ---
 
 ## D26 — Cycle 0: pivot to the ceiling-binding task; reset analysis, keep infra · 2026-10-11
@@ -5018,3 +5025,32 @@ all ran, zero error outputs, 4m06s. Against the local sample artefacts the integ
 **Not done here.** No analysis, estimator or model semantics changed; no new statistical claim; no
 gate changed; no data or stage output committed; no prereg edit. Estimating the offset and dropping
 the calibration requirement both remain open for Conor (D120 §3 / B1).
+
+---
+
+## D122 — Pivot to Turn Coverage and the Cut Card; burst-vs-jump pipeline archived · 2026-11-06
+**Decision.** Adopt the new binding spec `TASK.md` at `52015cd` ("Turn Coverage and the Cut Card:
+can this player run the turns his job requires, at game speed?"). It **supersedes the burst-vs-jump
+(get-off decomposition) task in full**, including its prereg, writeup draft and figure set. Move the
+whole prior pipeline to `archive/legacy-2026-11-06/` with `git mv` and **no history rewrite**.
+**Moved (git mv, history follows).** `src/*.py` (01_audit, 02_combine_physical_time, 03_game_snaps,
+03b_reliability, 04_models, 05_validate, common, crossing_diagnostic, models, notebook_report,
+physical, power, power_calc, reliability, run, schema, stats, synthetic, writeup_render), `tests/`,
+`notebooks/bdb27_full_run.ipynb`, all of `fixtures/synthetic/`, the 37 tracked files under `outputs/`
+(including the old `outputs/audit/` gate artefacts), and the task-specific notes (`prereg.md`,
+`writeup-draft.md`, `crossing-diagnostic.md`, `selection-rule.md`, `phase1-audit.md`,
+`kaggle-submission.md`, `pending_full_run.md`, `assumptions.md`, `limitations.md`, `scale.md`).
+`config.yaml` -> `archive/.../config.legacy.yaml`; `README_RUN.md` -> `archive/.../README_RUN.legacy.md`;
+`README.md` copied to `archive/.../README.legacy.md` before being rewritten.
+**Stale artefacts not committed.** The untracked sample outputs under `outputs/` (phase2, phase3,
+phase3b, phase4, validation, prereg, crossing_diagnostic, figures, `run_log.csv`) were moved to
+`archive/legacy-2026-11-06/outputs_local/`, which is gitignored. `outputs/` now contains only
+`.gitkeep` and `figures/.gitkeep`, so nothing under it can be mistaken for this task's output.
+**Kept as living documents.** `notes/decisions.md` (this log, append-only), `notes/blockers.md`,
+`notes/schema.md`, `notes/rules.md` — each carries a scope banner marking the old entries as belonging
+to the superseded task. `notes/archive-tasks/` untouched.
+**Why.** The new task needs a different pipeline (`00_thresholds -> 01_audit -> 02_turns ->
+03_envelope -> 04_demand_coverage -> 05_validate -> 06_figures`). Leaving the old scripts in `src/`
+would imply stages that do not exist and would collide on filenames (`01_audit.py`, `run.py`).
+**Evidence.** `TASK.md` at `52015cd`; `archive/legacy-2026-11-05/` already holds the two earlier
+superseded pipelines, so this keeps one directory per superseded task.
