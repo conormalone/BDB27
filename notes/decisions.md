@@ -5007,7 +5007,10 @@ are stale **SAMPLE** artefacts. For the record, what that run printed:
 are quoted here as the trigger for this work, not as a result. Sign-off needs Conor's calibration
 decision and a run whose artefact set is FULL end to end.
 
-**Verification.** Suite green; the notebook executed in sample mode with all six stages forced —
+**Verification.** Suite **288 collected: 287 passed, 1 skipped, exit 0** (was 279/278 at D120).
+The 9 new tests are 4 for the integrity block, 3 for the coverage caveat and 2 for the writeup
+cell, all in `tests/test_notebook_contract.py`. The notebook executed in sample mode with all six
+stages forced —
 all ran, zero error outputs, 4m06s. Against the local sample artefacts the integrity block prints
 `status PLACEHOLDER`, `blocker B8`, and the no-offset consequence, and the writeup cell prints
 `REFUSED (decomposition=SAMPLE, validation=SAMPLE)` and writes nothing.
