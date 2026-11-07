@@ -75,6 +75,9 @@ def test_stage_runs_and_writes_the_turn_table(stage):
     assert set(stage["manifest"]["geometry_models_reported"]) == {"point", "line"}
     assert (stage["dir"] / "sanity.csv").exists()
     assert (stage["dir"] / "smoother_counts.csv").exists()
+    geo = pd.read_csv(stage["dir"] / "geometry_recovery.csv")
+    for col in ("matched_point", "matched_line", "precision_point", "precision_line"):
+        assert col in geo.columns
 
 
 def test_context_columns_are_populated(stage):
@@ -192,6 +195,26 @@ def test_straight_line_has_no_turns():
     assert turns == []
     assert att["turns_primary"] == 0
     assert att["null_detections"] >= 0
+
+
+def test_single_turn_player_is_recovered():
+    """A player with exactly one turn must yield exactly one row, not zero or two."""
+    dt = 0.1
+    t = np.arange(0, 6.0, dt)
+    x, y = [], []
+    px = py = 0.0
+    for ti in t:
+        hd = 0.0 if ti < 3.0 else min(90.0, (ti - 3.0) * 300.0)
+        px += 5.0 * np.sin(np.radians(hd)) * dt
+        py += 5.0 * np.cos(np.radians(hd)) * dt
+        x.append(px); y.append(py)
+    e = _engine()
+    _, turns = e.analyse(t * 1000, np.array(x), np.array(y),
+                         {"drill_name": "ONE", "event_id": "one", "attempt": 1,
+                          "nfl_id": 6, "game_id": None, "play_id": None,
+                          "position_group": "DL", "snap_type": None})
+    assert len(turns) == 1
+    assert 60.0 < abs(turns[0]["turn_angle"]) < 120.0
 
 
 def test_stop_mid_drill_does_not_crash_or_invent_a_giant_turn():

@@ -116,6 +116,7 @@ def score_geometry(turns: pd.DataFrame, cfg) -> pd.DataFrame:
     drills = list(cfg.get("geometry.cone_count"))
     cols = ["drill_name", "turn_target_model", "cones_expected", "cones_found",
             "min_cone_separation_yd", "turns_estimate", "turns_eval",
+            "matched_point", "matched_line",
             "precision_point", "recall_point", "precision_line", "recall_line",
             "precision", "recall", "angle_median_abs_error_deg", "angle_n",
             "expected_turns_per_attempt", "frac_detections_off_cone"]
@@ -141,6 +142,7 @@ def score_geometry(turns: pd.DataFrame, cfg) -> pd.DataFrame:
             rows.append({"drill_name": drill, "turn_target_model": gate_model,
                          "cones_expected": k, "cones_found": len(cones),
                          "turns_estimate": int(len(est)), "turns_eval": int(len(ev)),
+                         "matched_point": 0, "matched_line": 0,
                          "precision_point": 0.0, "recall_point": 0.0,
                          "precision_line": 0.0, "recall_line": 0.0,
                          "precision": 0.0, "recall": 0.0})
@@ -160,6 +162,7 @@ def score_geometry(turns: pd.DataFrame, cfg) -> pd.DataFrame:
             rec = float(np.minimum(per_att, expected).sum() / (expected * len(per_att))) if expected else 0.0
             out[f"precision_{model}"] = round(prec, 3)
             out[f"recall_{model}"] = round(rec, 3)
+            out[f"matched_{model}"] = int(near.sum())
             if model == gate_model:
                 out["precision"] = round(prec, 3)
                 out["recall"] = round(rec, 3)
