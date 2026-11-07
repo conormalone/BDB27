@@ -1,0 +1,279 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE",
+  "label": "UNVALIDATED SAMPLE OUTPUT",
+  "config_sha": "70e4288d0fb70fa8",
+  "generated_utc": "2026-11-07T00:44:37Z",
+  "combine": {
+    "profile": [
+      {
+        "column": "draft_year",
+        "dtype": "BIGINT",
+        "n_null": 0.0,
+        "vmin": "2023",
+        "vmax": "2025",
+        "n_distinct": 3
+      },
+      {
+        "column": "event_id",
+        "dtype": "VARCHAR",
+        "n_null": 0.0,
+        "vmin": "20240229100000_1709237434916_000",
+        "vmax": "6414e6d3e3d8e72dcdcd0487-2023",
+        "n_distinct": 6310
+      },
+      {
+        "column": "nfl_id",
+        "dtype": "BIGINT",
+        "n_null": 0.0,
+        "vmin": "55867",
+        "vmax": "59278",
+        "n_distinct": 510
+      },
+      {
+        "column": "entity_type",
+        "dtype": "VARCHAR",
+        "n_null": 0.0,
+        "vmin": "BALL",
+        "vmax": "PLAYER",
+        "n_distinct": 2
+      },
+      {
+        "column": "time",
+        "dtype": "TIMESTAMP",
+        "n_null": 0.0,
+        "vmin": "2023-03-02 20:09:33.9",
+        "vmax": "2025-03-02 21:22:17.6",
+        "n_distinct": 429596
+      },
+      {
+        "column": "drill_type",
+        "dtype": "VARCHAR",
+        "n_null": 0.0,
+        "vmin": "FORTY_YARD_DASH",
+        "vmax": "THREE_CONE_DRILL",
+        "n_distinct": 9
+      },
+      {
+        "column": "drill_name",
+        "dtype": "VARCHAR",
+        "n_null": 0.0,
+        "vmin": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+        "vmax": "W_DRILL",
+        "n_distinct": 56
+      },
+      {
+        "column": "attempt",
+        "dtype": "BIGINT",
+        "n_null": 0.0,
+        "vmin": "1",
+        "vmax": "17",
+        "n_distinct": 17
+      },
+      {
+        "column": "x",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "1.3",
+        "vmax": "103.9",
+        "n_distinct": 178985
+      },
+      {
+        "column": "y",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "-11.45979945",
+        "vmax": "66.28283691",
+        "n_distinct": 179841
+      },
+      {
+        "column": "s",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "0.0",
+        "vmax": "25.79415639",
+        "n_distinct": 182182
+      },
+      {
+        "column": "a",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "0.0",
+        "vmax": "44.60728273",
+        "n_distinct": 371251
+      },
+      {
+        "column": "dis",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "0.0",
+        "vmax": "45.28531701",
+        "n_distinct": 179472
+      },
+      {
+        "column": "dir",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "0.0",
+        "vmax": "359.9996895",
+        "n_distinct": 429809
+      }
+    ],
+    "meta": {
+      "entity_types": [
+        {
+          "entity_type": "PLAYER",
+          "n": 431094,
+          "players": 510
+        },
+        {
+          "entity_type": "BALL",
+          "n": 32095,
+          "players": 54
+        }
+      ],
+      "attempts": {
+        "n_attempts": 6310,
+        "frames": "[ 41.  63. 113.]",
+        "min_frames": 10,
+        "max_frames": 209
+      },
+      "attempt_duration_s": {
+        "span_s": "[ 4.          6.20000005 11.20000005]"
+      }
+    },
+    "heading_convention": {
+      "n_frames": 3445,
+      "offset_deg": 0.0005837831783978227,
+      "circular_sd_deg": 0.16813381266289762,
+      "share_within_5deg": 1.0,
+      "share_within_15deg": 1.0
+    }
+  },
+  "game": {
+    "profile": [
+      {
+        "column": "game_id",
+        "dtype": "BIGINT",
+        "n_null": 0.0,
+        "vmin": "2023080351",
+        "vmax": "2024021100",
+        "n_distinct": 333
+      },
+      {
+        "column": "play_id",
+        "dtype": "BIGINT",
+        "n_null": 0.0,
+        "vmin": "54",
+        "vmax": "5196",
+        "n_distinct": 4228
+      },
+      {
+        "column": "nfl_id",
+        "dtype": "BIGINT",
+        "n_null": 0.0,
+        "vmin": "55867",
+        "vmax": "56662",
+        "n_distinct": 154
+      },
+      {
+        "column": "time",
+        "dtype": "TIMESTAMP",
+        "n_null": 0.0,
+        "vmin": "2023-08-04 00:14:24.4",
+        "vmax": "2024-02-12 03:39:43.8",
+        "n_distinct": 865631
+      },
+      {
+        "column": "x",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "-5.89",
+        "vmax": "123.29",
+        "n_distinct": 12098
+      },
+      {
+        "column": "y",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "-6.07",
+        "vmax": "60.72",
+        "n_distinct": 6196
+      },
+      {
+        "column": "s",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "0.0",
+        "vmax": "12.63",
+        "n_distinct": 1058
+      },
+      {
+        "column": "a",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "0.0",
+        "vmax": "13.52",
+        "n_distinct": 880
+      },
+      {
+        "column": "dis",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "0.0",
+        "vmax": "3.44",
+        "n_distinct": 144
+      },
+      {
+        "column": "o",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "0.0",
+        "vmax": "360.0",
+        "n_distinct": 36001
+      },
+      {
+        "column": "dir",
+        "dtype": "DOUBLE",
+        "n_null": 0.0,
+        "vmin": "0.0",
+        "vmax": "360.0",
+        "n_distinct": 36001
+      },
+      {
+        "column": "event",
+        "dtype": "VARCHAR",
+        "n_null": 978670.0,
+        "vmin": "autoevent_passinterrupted",
+        "vmax": "two_point_conversion",
+        "n_distinct": 44
+      }
+    ],
+    "meta": {
+      "n_rows": 1048575,
+      "games": 333,
+      "plays": 4228,
+      "players": 154,
+      "t0": "2023-08-04 00:14:24.400000",
+      "t1": "2024-02-12 03:39:43.800000",
+      "play_player_pairs": 14612
+    }
+  },
+  "timing": {
+    "combine": {
+      "n": 424784,
+      "q": "[0.1 0.1 0.1 0.1 0.1]",
+      "n_exact_0p1": 424784.0,
+      "n_off_grid": 0.0,
+      "n_gaps_over_0p2": 0.0
+    },
+    "game": {
+      "n": 1033963,
+      "q": "[0.1 0.1 0.1 0.1 0.1]",
+      "n_exact_0p1": 1033962.0,
+      "n_off_grid": 1.0,
+      "n_gaps_over_0p2": 0.0
+    },
+    "duplicate_frames_game": 0,
+    "duplicate_frames_combine": 32095
+  }
+}

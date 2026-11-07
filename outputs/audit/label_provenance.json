@@ -1,0 +1,12 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE",
+  "label": "UNVALIDATED SAMPLE OUTPUT",
+  "config_sha": "70e4288d0fb70fa8",
+  "generated_utc": "2026-11-07T00:46:22Z",
+  "get_off_vs_tracking": {
+    "n_matched": 1960,
+    "median_diff_s": -0.75299997329712,
+    "share_within_0p15s": 0.0,
+    "interpretation": "player_get_off is consistent with a tracking-derived onset if share_within_0p15s is high; that would make at least one outcome input depend on the player's own tracking."
+  }
+}

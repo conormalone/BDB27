@@ -1,0 +1,217 @@
+# config.yaml — BDB27 "Turn Coverage and the Cut Card"
+#
+# ONE active block: `turn_coverage:`. The superseded burst-vs-jump config is
+# preserved at archive/legacy-2026-11-06/config.legacy.yaml.
+#
+# Rule from TASK.md: "Paths, thresholds and sizes live in config.yaml; no magic
+# numbers." Every number below is a DESIGN CHOICE, not an estimate from data.
+# Each is logged in notes/decisions.md; the ones that affect a confirmatory
+# result must be copied into notes/prereg.md and frozen before the first
+# full-data run.
+
+turn_coverage:
+  project: BDB27-turn-coverage
+  spec_commit: 52015cd          # TASK.md revision this config implements
+  seed: 20270106
+  pipeline_version: 1
+
+  resources:
+    # The Pi has limited RAM. DuckDB spills; pandas loads stay small by design.
+    duckdb_memory_limit: 1200MB
+    duckdb_threads: 2
+    csv_sniff_rows: 200000
+    # Game tracking is processed per group of games, never all at once.
+    game_chunk_games: 12
+    # Row cap for the sample-mode game file read (None = whole file).
+    sample_max_rows: null
+
+  paths:
+    raw: data/raw
+    interim: data/interim
+    parquet: data/interim/parquet
+    checkpoints: data/interim/checkpoints
+    tmp: data/interim/tmp
+    outputs: outputs
+    audit: outputs/audit
+    figures: outputs/figures
+    notes: notes
+    fixtures: fixtures
+    run_log: outputs/run_log.csv
+    thresholds: outputs/thresholds.json
+    prereg: notes/prereg.md
+
+  files:
+    # Filenames relative to paths.raw. THE FULL GAME TRACKING FILE IS NOT ON THIS
+    # HOST: its absence is what makes `--mode full` refuse loudly here.
+    combine_tracking: combine_tracking.csv
+    combine_results: combine_results.csv
+    players: players.csv
+    games: games.csv
+    player_play: player_play.csv
+    player_career_successes: player_career_successes.csv
+    game_tracking: game_tracking.csv
+
+  sample_files:
+    # A ~100 MB row-sampled slice of 2023 tracking: 333 games, 4,228 plays,
+    # 14,612 play-player pairs, 154 players. See notes/schema.md §sample.
+    game_tracking: game_tracking_2023_sample.csv
+
+  columns:
+    # Explicit column selection for every Parquet conversion (never `SELECT *`).
+    combine_tracking: [draft_year, event_id, nfl_id, entity_type, time, drill_type,
+                       drill_name, attempt, x, y, s, a, dis, dir]
+    combine_results: [draft_year, nfl_id, combine_position, combine_height,
+                      combine_weight, ten_yd_split, forty, vertical, broad_jump,
+                      three_cone, short_shuttle, bench_reps]
+    players: [nfl_id, display_name, draft_year, nfl_position, draft_round,
+              draft_overall_pick]
+    games: [game_id, season, season_type, week, home_team_abbr, visitor_team_abbr]
+    player_play: [game_id, play_id, team_abbr, nfl_id, lined_up_position, down,
+                  yards_to_go, play_direction, route_ran, dropback_duration,
+                  pass_result, pressure_allowed, sack_allowed,
+                  time_to_pressure_allowed, time_to_pressure, quick_pressure, unblocked_pressure,
+                  blitzing, player_get_off, coverage_assignment, target,
+                  pass_rushers_encountered]
+    player_career_successes: [nfl_id, career_offensive_snaps, career_defensive_snaps,
+                              career_games_active]
+    game_tracking: [game_id, play_id, nfl_id, time, x, y, s, a, dis, o, dir, event]
+
+  sampling:
+    rate_hz: 10.0
+    dt_s: 0.1
+    # A frame gap larger than this inside a turn window invalidates the turn.
+    max_gap_s: 0.5
+    # Duplicate (player, time) rows are dropped; recorded in the audit.
+    drop_duplicate_frames: true
+
+  smoothing:
+    # PRIMARY is a recommendation produced by the audit's smoothing diagnostics
+    # (TASK.md Phase 1e) and is FROZEN IN PREREG before any full run. It is never
+    # chosen by downstream results. Until prereg exists, every artefact is
+    # PLACEHOLDER_SAMPLE.
+    primary: savgol_g7_p3
+    candidates:
+      - {name: savgol_g5_p2,  kind: savgol, window: 5,  polyorder: 2}
+      - {name: savgol_g7_p3,  kind: savgol, window: 7,  polyorder: 3}
+      - {name: savgol_g9_p3,  kind: savgol, window: 9,  polyorder: 3}
+      - {name: savgol_g11_p3, kind: savgol, window: 11, polyorder: 3}
+      - {name: kalman_cv,     kind: kalman, q: 0.5, r: 0.05}
+      - {name: spline_cubic,  kind: spline, smoothing_yards: 0.15}
+    # Diagnostics on straight-line sprints (Phase 1e).
+    accel_cap_yd_s2: 15.0            # physical plausibility cap, design choice
+    accel_cap_exceed_share_max: 0.02 # a smoother must not exceed this share
+    monotonic_min_share: 0.90        # speed must rise in the accel phase
+    agreement_tolerance_yd_s: 0.25   # cross-smoother speed RMS, design choice
+    accel_phase_end_frac: 0.6        # fraction of the run treated as accel phase
+
+  detector:
+    window_s: 0.5                    # heading change measured across 5 frames
+    min_turn_angle_deg: 30.0         # minimum turn, design choice
+    speed_floor_combine: 2.5         # yd/s; below this heading is unreliable
+    speed_floor_game: 2.0
+    nms_min_separation_s: 0.3
+    # A turn is measured from its start to its end: from the peak angular rate,
+    # grow the window while heading keeps moving in the same direction above this
+    # rate, capped at max_turn_duration_s. Design choice; the trigger window
+    # (0.5 s) only decides *whether* a turn exists.
+    min_angular_rate_deg_s: 15.0
+    max_turn_duration_s: 2.0
+    # Walking back/forward from the speed minimum to the approach and exit speed
+    # maxima tolerates this much speed noise (yd/s) without stopping.
+    speed_walk_tolerance: 0.2
+    # A separate, stricter angle used only to describe a drill as containing
+    # "real" direction changes (item a), not to detect turns.
+    drill_angle_deg: 60.0
+    drill_min_players: 10            # a drill needs this many players to count
+    drill_min_share_attempts: 0.50   # share of attempts that must contain a turn
+
+  validation:
+    # Design thresholds the audit verdict is made against (TASK.md go/no-go).
+    detector_precision_min: 0.80
+    detector_recall_min: 0.70
+    cone_radius_yd: 1.5
+    heading_mae_max_deg: 15.0
+    speed_mae_max_frac: 0.15
+    kinematics_min_speed_band: 2.0   # lowest band used for agreement statistics
+    entry_speed_overlap_min: 0.50    # share of game turns inside Combine range
+    reliability_min: 0.50            # ICC of the capacity parameter
+    min_turns_per_setting: 10        # a player needs this many in EACH setting
+
+  geometry:
+    # Drill geometry is a documented/designed input, not inferred from data.
+    # THREE_CONE_DRILL = 3 cones in an L (5-5-5 yd); SHORT_SHUTTLE = 2 cones,
+    # 5 yd apart, 10 yd total. Cone POSITIONS are estimated from detection
+    # density; only the COUNT is fixed here.
+    cone_count: {THREE_CONE_DRILL: 3, SHORT_SHUTTLE: 2}
+    # The turning constraint differs by drill. The 3-cone drill is run AROUND
+    # cones, so the turn target is a point (2-D distance). The short shuttle
+    # requires touching a LINE 5 yd from the start, so the athlete's lateral
+    # position at the turn is unconstrained: the target is 1-D (distance along
+    # the drill axis). Both models are reported, the model-appropriate one
+    # decides the gate.
+    drill_model: {THREE_CONE_DRILL: point, SHORT_SHUTTLE: line}
+    line_axis: {SHORT_SHUTTLE: x}
+    # A reversal drill's geometric turn angle is 180 deg by construction.
+    angle_reference_deg: {SHORT_SHUTTLE: 180.0}
+    grid_resolution_yd: 0.25
+    min_separation_yd: 1.5
+    # Fraction of attempts (hashed) used to estimate cones; the rest evaluate.
+    estimate_fraction: 0.5
+    hash_modulus: 2
+
+  plant:
+    # plant = apex speed below (1 - delta) * entry speed (TASK.md Phase 2)
+    retention_delta: 0.80
+
+  bins:
+    entry_speed: [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
+    turn_angle: [0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0]
+    speed_band: [0.0, 2.0, 4.0, 6.0, 8.0, 12.0]
+
+  orientation:
+    # Game data only (item i). Never part of the turn definition.
+    divergence_deg: 60.0
+    steady_speed_min: 4.0
+
+  snap_types:
+    # player_play has no explicit snap-type column; these flags are the mapping,
+    # applied in priority order. DESIGN CHOICE, recorded in notes/schema.md.
+    # Verified against the files 2026-11-06: route_ran is a route NAME
+    # (VARCHAR: GO/HITCH/CROSS/...), not a boolean; coverage_assignment uses the
+    # sentinel 'NO_ASSIGNMENT'. Both are recorded in notes/schema.md.
+    rules:
+      - {name: ROUTE,     column: route_ran,           test: notnull}
+      - {name: PASS_RUSH, column: player_get_off,      test: notnull}
+      - {name: COVERAGE,  column: coverage_assignment, test: notnull_excluding, exclude: [NO_ASSIGNMENT]}
+      - {name: OTHER,     column: null,                test: always}
+
+  positions:
+    primary_group: DL
+    alternative_primary: [WR, TE]
+    exploratory: [OL, DB]
+    # How Combine `combine_position` maps to the game `nfl_position` families.
+    game_families:
+      DL: [DE, DT, NT, EDGE]
+      OL: [T, G, C, OT, OG, OL]
+      DB: [CB, SS, FS, S, DB]
+      WR: [WR]
+      TE: [TE]
+
+  power:
+    alpha: 0.05
+    power: 0.80
+    # n is NOT taken from the sample; the smallest detectable effect is reported
+    # over a grid so it can be read off at the full-data n when it is known.
+    n_grid: [20, 30, 40, 60, 80, 120, 200, 300, 500]
+    events_per_player_grid: [1, 2, 4, 8]
+    baseline_auc: 0.65
+    auc_se_scale: 1.0
+
+  audit:
+    # Items whose game side cannot be answered on the sample.
+    pending_full_run_items: [f, g_game, i, j, k_counts]
+    min_matched_players_for_corr: 20
+
+  config_thresholds_note: >-
+    Every threshold in validation.*, detector.*, smoothing.* and bins.* is a
+    DESIGN CHOICE made before seeing any result, not an estimate from the sample.

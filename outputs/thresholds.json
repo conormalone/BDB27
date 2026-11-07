@@ -1,0 +1,78 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE",
+  "label": "UNVALIDATED SAMPLE OUTPUT",
+  "config_sha": "3ad72d486593d207",
+  "generated_utc": "2026-11-06T23:50:36Z",
+  "spec_commit": "52015cd",
+  "git_rev": "febec60",
+  "mode": "sample",
+  "frozen": false,
+  "note": "Thresholds are design choices from config.yaml, NOT estimates. PLACEHOLDER_SAMPLE until prereg fixes them; never tune on sample results.",
+  "smoothing": {
+    "primary": "savgol_g7_p3",
+    "primary_params": {
+      "name": "savgol_g7_p3",
+      "kind": "savgol",
+      "window": 7,
+      "polyorder": 3
+    },
+    "alternatives": [
+      "savgol_g5_p2",
+      "savgol_g9_p3",
+      "savgol_g11_p3",
+      "kalman_cv",
+      "spline_cubic"
+    ],
+    "accel_cap_yd_s2": 15.0
+  },
+  "detector": {
+    "window_s": 0.5,
+    "min_turn_angle_deg": 30.0,
+    "speed_floor": 2.5,
+    "speed_floor_combine": 2.5,
+    "speed_floor_game": 2.0,
+    "nms_min_separation_s": 0.3
+  },
+  "plant": {
+    "retention_delta": 0.8
+  },
+  "bins": {
+    "entry_speed": [
+      0.0,
+      2.0,
+      4.0,
+      6.0,
+      8.0,
+      10.0,
+      12.0
+    ],
+    "turn_angle": [
+      0.0,
+      30.0,
+      60.0,
+      90.0,
+      120.0,
+      150.0,
+      180.0
+    ],
+    "speed_band": [
+      0.0,
+      2.0,
+      4.0,
+      6.0,
+      8.0,
+      12.0
+    ]
+  },
+  "validation_thresholds": {
+    "detector_precision_min": 0.8,
+    "detector_recall_min": 0.7,
+    "cone_radius_yd": 1.5,
+    "heading_mae_max_deg": 15.0,
+    "speed_mae_max_frac": 0.15,
+    "kinematics_min_speed_band": 2.0,
+    "entry_speed_overlap_min": 0.5,
+    "reliability_min": 0.5,
+    "min_turns_per_setting": 10
+  }
+}

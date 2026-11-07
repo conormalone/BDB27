@@ -1,0 +1,33 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE",
+  "label": "UNVALIDATED SAMPLE OUTPUT",
+  "config_sha": "70e4288d0fb70fa8",
+  "generated_utc": "2026-11-07T00:46:22Z",
+  "player_play_columns": [
+    "game_id",
+    "play_id",
+    "team_abbr",
+    "nfl_id",
+    "lined_up_position",
+    "down",
+    "yards_to_go",
+    "play_direction",
+    "route_ran",
+    "dropback_duration",
+    "pass_result",
+    "pressure_allowed",
+    "sack_allowed",
+    "time_to_pressure_allowed",
+    "time_to_pressure",
+    "quick_pressure",
+    "unblocked_pressure",
+    "blitzing",
+    "player_get_off",
+    "coverage_assignment",
+    "target",
+    "pass_rushers_encountered"
+  ],
+  "opponent_or_blocker_columns": [
+    "pass_rushers_encountered"
+  ]
+}

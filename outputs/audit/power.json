@@ -1,0 +1,10 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE",
+  "label": "UNVALIDATED SAMPLE OUTPUT",
+  "config_sha": "70e4288d0fb70fa8",
+  "generated_utc": "2026-11-07T00:46:22Z",
+  "alpha": 0.05,
+  "power": 0.8,
+  "baseline_auc": 0.65,
+  "note": "Design calculation, not a result. n is a grid, not the sample size: read the row off at the full-data n once it exists."
+}

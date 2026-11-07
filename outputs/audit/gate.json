@@ -1,0 +1,138 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE",
+  "label": "UNVALIDATED SAMPLE OUTPUT",
+  "config_sha": "70e4288d0fb70fa8",
+  "generated_utc": "2026-11-07T00:46:22Z",
+  "verdict": "CONDITIONAL GO",
+  "because": "No stop condition fired on the data available here. Pending full data: G4, G5, G6, G9. Conditions: full run only after notes/prereg.md fixes the smoother (savgol_g9_p3), definitions, bin edges and thresholds; reliability, entry-speed overlap and turns-per-player must be re-checked on full game tracking; outcome null semantics (B1) and the missing opponent ID (L1) must be resolved or dropped and stated.",
+  "primary_group": "DL",
+  "recommended_smoother": "savgol_g9_p3",
+  "conditions": [
+    {
+      "id": "G1",
+      "condition": "a Combine drill contains usable direction changes for the primary group",
+      "status": "PASS",
+      "value": 13,
+      "threshold": 0.5,
+      "detail": "primary group = DL; DL have 13 drills with usable direction changes (PASS_RUSH_DRILL, FOUR_BAG_AGILITY_DRILL, FRONT_START_WAVE_DRILL_AND_LATERAL_REACTION, RUN_AND_CLUB_DRILL, BODY_CONTROL_DRILL); 118 DL players in Combine tracking. Primary group stays DL."
+    },
+    {
+      "id": "G2",
+      "condition": "detector precision and recall against drill geometry meet config thresholds",
+      "status": "PASS",
+      "value": 0.935,
+      "threshold": 0.8,
+      "detail": "SHORT_SHUTTLE: precision 0.991 (min 0.8), recall 0.959 (min 0.7), 2/2 cones with minimum separation 7.34 yd, 2 turns/attempt, angle error 2.6 deg (n=211); THREE_CONE_DRILL: precision 0.935 (min 0.8), recall 0.938 (min 0.7), 3/3 cones with minimum separation 1.88 yd, 3 turns/attempt, angle error 46.0 deg (n=65). Cones are estimated from one half of the attempts (event_id hash) and evaluated on the other half, so the precision figure is not circular."
+    },
+    {
+      "id": "G3",
+      "condition": "derived heading and speed agree with provided fields within config tolerance",
+      "status": "PASS",
+      "value": 0.023,
+      "threshold": 0.15,
+      "detail": "Combine cross-check vs provided fields: speed MAE [0.0,2.0):0.091, [2.0,4.0):0.068, [4.0,6.0):0.049, [6.0,8.0):0.035, [8.0,12.0):0.029 yd/s (worst relative error 0.023 vs tolerance 0.15); heading MAE up to 1.13 deg (tolerance 15.0); derived speed lags provided s by 0 frame(s). `dis` is NOT a distance in yards: 30*sqrt(dis) is an integer in 47.5% of attempts, i.e. dis = (whole_yards/30)^2; recovered distance is 1.36x the path inside the dis window. Tested, not assumed \u2014 the 'dis under-counts' claim cannot be confirmed or refuted until the field's definition is documented."
+    },
+    {
+      "id": "G4",
+      "condition": "capacity reliability >= config threshold in both settings (prereg smoother)",
+      "status": "PENDING FULL RUN",
+      "value": null,
+      "threshold": null,
+      "detail": "Needs the per-player capacity parameters (Phase 3) on full game tracking; cannot be computed from a one-season row sample."
+    },
+    {
+      "id": "G5",
+      "condition": "Combine and game entry-speed ranges overlap",
+      "status": "PENDING FULL RUN",
+      "value": null,
+      "threshold": null,
+      "detail": "Turn counts and entry speeds computed on the sample game data \u2014 SAMPLE DIAGNOSTIC, not a finding. Combine side is complete: DB 1204 turns/122 players, DL 2073 turns/118 players, OL 965 turns/120 players, TE 293 turns/42 players, WR 1045 turns/107 players. Sample histogram overlap (min 0.725 vs threshold 0.5) is reported but NOT used for a verdict: the game side is a row sample of one season."
+    },
+    {
+      "id": "G6",
+      "condition": "turns per player meet the config minimum in both settings",
+      "status": "PENDING FULL RUN",
+      "value": null,
+      "threshold": null,
+      "detail": "Kill-test statistics are scripted and run only on data that can answer them. Combine (complete file): combine: 5580 turns, 509 players, median 10.0 turns/player, ICC(split-half lateral accel) -0.17; game_sample: 7234 turns, 154 players, median 33.0 turns/player, ICC(split-half lateral accel) 0.27. The game side is a row sample, so the Combine-game correlation, the noise ceiling and the reliability verdict are PENDING FULL RUN. Smoother sensitivity of the turn count is in smoother_sensitivity.csv."
+    },
+    {
+      "id": "G7",
+      "condition": "outcome labels exist for the primary group with documented null semantics",
+      "status": "PARTIAL",
+      "value": null,
+      "threshold": null,
+      "detail": "Outcome labels exist for DL: quick_pressure true on 405 of 23604 DL rows, null on 0.943; unblocked_pressure and time_to_pressure share the same event-record pattern. Null semantics are UNDOCUMENTED \u2014 treating null as false manufactures negatives (blockers.md B1). player_get_off vs tracking-derived onset: 1960 matched reps, 0.0% within 0.15 s. Pressure-label provenance is not documented; a tracking-derived get-off means at least one label input uses the player's own chips. Null semantics undocumented -> blocker B1."
+    },
+    {
+      "id": "G8",
+      "condition": "opponent IDs available for random effects",
+      "status": "FAIL",
+      "value": null,
+      "threshold": null,
+      "detail": "No opponent/blocker assignment column exists in player_play. Columns whose names suggest one: ['pass_rushers_encountered']. `pass_rushers_encountered` is a count, not an ID. Random effects for 'assigned opponent' therefore have no data; the term must be dropped or replaced with team-game only. Logged in blockers.md."
+    },
+    {
+      "id": "G9",
+      "condition": "prereg.md exists and fixes smoothing/definitions/thresholds",
+      "status": "PENDING",
+      "value": null,
+      "threshold": null,
+      "detail": "Deliberately not written this cycle: it must fix the audit's diagnostics first. A full run is refused until it exists."
+    }
+  ],
+  "items": {
+    "a": {
+      "status": "PASS",
+      "finding": "DL have 13 drills with usable direction changes (PASS_RUSH_DRILL, FOUR_BAG_AGILITY_DRILL, FRONT_START_WAVE_DRILL_AND_LATERAL_REACTION, RUN_AND_CLUB_DRILL, BODY_CONTROL_DRILL); 118 DL players in Combine tracking. Primary group stays DL."
+    },
+    "b": {
+      "status": "FAIL",
+      "finding": "Combine: 424,784 frame steps, 424,784.0 exactly 0.1 s, 0.0 off-grid; 32095 duplicate frames. Game: 1,033,963 steps, 1.0 off-grid, 0 duplicates, 0.0 gaps > 0.2 s. dir zero reference verified: offset 0.00 deg vs velocity heading (100.0% within 15 deg). Forbidden-field check: Combine has s=True, a=True \u2014 the spec's claim that they are absent is REFUTED (see schema_verified.json); they remain cross-checks only."
+    },
+    "c": {
+      "status": "PASS",
+      "finding": "Combine cross-check vs provided fields: speed MAE [0.0,2.0):0.091, [2.0,4.0):0.068, [4.0,6.0):0.049, [6.0,8.0):0.035, [8.0,12.0):0.029 yd/s (worst relative error 0.023 vs tolerance 0.15); heading MAE up to 1.13 deg (tolerance 15.0); derived speed lags provided s by 0 frame(s). `dis` is NOT a distance in yards: 30*sqrt(dis) is an integer in 47.5% of attempts, i.e. dis = (whole_yards/30)^2; recovered distance is 1.36x the path inside the dis window. Tested, not assumed \u2014 the 'dis under-counts' claim cannot be confirmed or refuted until the field's definition is documented."
+    },
+    "d": {
+      "status": "PASS",
+      "finding": "SHORT_SHUTTLE: precision 0.991 (min 0.8), recall 0.959 (min 0.7), 2/2 cones with minimum separation 7.34 yd, 2 turns/attempt, angle error 2.6 deg (n=211); THREE_CONE_DRILL: precision 0.935 (min 0.8), recall 0.938 (min 0.7), 3/3 cones with minimum separation 1.88 yd, 3 turns/attempt, angle error 46.0 deg (n=65). Cones are estimated from one half of the attempts (event_id hash) and evaluated on the other half, so the precision figure is not circular."
+    },
+    "e": {
+      "status": "PASS",
+      "finding": "Primary smoother by diagnostics: savgol_g9_p3 (config placeholder was savgol_g7_p3). Accel-cap exceedance savgol_g5_p2=0.0, savgol_g7_p3=0.0, savgol_g9_p3=0.0, savgol_g11_p3=0.0, kalman_cv=0.0, spline_cubic=0.0; monotonicity savgol_g5_p2=0.9869, savgol_g7_p3=0.9916, savgol_g9_p3=0.9938, savgol_g11_p3=0.9936, kalman_cv=0.9487, spline_cubic=0.9933; cross-smoother speed RMS savgol_g5_p2=0.032, savgol_g7_p3=0.02, savgol_g9_p3=0.017, savgol_g11_p3=0.022, kalman_cv=0.263, spline_cubic=0.387. Chosen on diagnostics only, to be frozen in prereg."
+    },
+    "f": {
+      "status": "PASS",
+      "finding": "Combine players by position: DB=122, DL=118, OL=121, TE=42, WR=107. Matched to the NFL players file: DB=300, DL=312, OL=132, TE=42, WR=107. Game tracking present here for 269 of them (sample mode). Snap counts are season-wide from player_play; the per-player, per-snap-type and per-game table is PENDING FULL RUN for the full dataset (games file seasons: [2023, 2024, 2025])."
+    },
+    "g": {
+      "status": "PENDING FULL RUN",
+      "finding": "Turn counts and entry speeds computed on the sample game data \u2014 SAMPLE DIAGNOSTIC, not a finding. Combine side is complete: DB 1204 turns/122 players, DL 2073 turns/118 players, OL 965 turns/120 players, TE 293 turns/42 players, WR 1045 turns/107 players. Sample histogram overlap (min 0.725 vs threshold 0.5) is reported but NOT used for a verdict: the game side is a row sample of one season."
+    },
+    "h": {
+      "status": "PASS",
+      "finding": "A detected turn spans 20 frames (p05 10, p95 20) at 10 Hz. Window sensitivity and heading-noise-by-speed are in frame_resolution.csv; the configured speed floor is 2.5 yd/s."
+    },
+    "i": {
+      "status": "PENDING FULL RUN",
+      "finding": "`o` exists in game tracking (0-360, continuous). At steady running (> 4.0 yd/s) the offset o-dir is 3.98 deg (zero reference shared with dir). Share of frames with |o-dir| > 60.0 deg: DB=0.2502, DL=0.0629, OL=0.1073, OTHER=0.073, TE=0.1967, WR=0.1673, COVERAGE=0.2971, OTHER=0.1567, PASS_RUSH=0.0578, ROUTE=0.171, UNMATCHED=0.1733. Sample diagnostic only \u2014 contamination shares are PENDING FULL RUN."
+    },
+    "j": {
+      "status": "PENDING FULL RUN",
+      "finding": "Kill-test statistics are scripted and run only on data that can answer them. Combine (complete file): combine: 5580 turns, 509 players, median 10.0 turns/player, ICC(split-half lateral accel) -0.17; game_sample: 7234 turns, 154 players, median 33.0 turns/player, ICC(split-half lateral accel) 0.27. The game side is a row sample, so the Combine-game correlation, the noise ceiling and the reliability verdict are PENDING FULL RUN. Smoother sensitivity of the turn count is in smoother_sensitivity.csv."
+    },
+    "k": {
+      "status": "PASS",
+      "finding": "Outcome labels exist for DL: quick_pressure true on 405 of 23604 DL rows, null on 0.943; unblocked_pressure and time_to_pressure share the same event-record pattern. Null semantics are UNDOCUMENTED \u2014 treating null as false manufactures negatives (blockers.md B1). player_get_off vs tracking-derived onset: 1960 matched reps, 0.0% within 0.15 s. Pressure-label provenance is not documented; a tracking-derived get-off means at least one label input uses the player's own chips."
+    },
+    "l": {
+      "status": "FAIL",
+      "finding": "No opponent/blocker assignment column exists in player_play. Columns whose names suggest one: ['pass_rushers_encountered']. `pass_rushers_encountered` is a count, not an ID. Random effects for 'assigned opponent' therefore have no data; the term must be dropped or replaced with team-game only. Logged in blockers.md."
+    },
+    "m": {
+      "status": "PASS",
+      "finding": "Smallest detectable transfer correlation (alpha 0.05, power 0.8): n=20: r=0.591, n=30: r=0.492, n=40: r=0.431, n=60: r=0.355, n=80: r=0.309, n=120: r=0.253. Smallest detectable held-out AUC gain (baseline AUC 0.65, single-arm Hanley-McNeil approximation) is in power.csv over an events-per-player grid. Both are design calculations on an n grid, never on the sample."
+    }
+  }
+}
