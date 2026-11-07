@@ -1,30 +1,59 @@
 # Notebooks
 
-**There is no notebook for this task yet.** The click-through interface described in
-`TASK.md` (a public Kaggle notebook that runs the pipeline end to end and renders the
-five figures and the writeup) **does not exist**. Nothing here should be read as one.
+`bdb27_full_run.ipynb` **is the interface for this task.** Conor never uses a terminal:
+open the notebook, set `MODE` in §1, press **Run All**.
 
-The previous task's notebook (`bdb27_full_run.ipynb`) was moved with the rest of that
-pipeline to `archive/legacy-2026-11-06/notebooks/`. It ran a different analysis and
-must not be reused.
+## What it does
 
-## What will be built (next cycle, after Phases 2–6 exist)
+1. **§1 Configuration** — the only cell to edit: `MODE`, `DATA_DIR`, `FORCE_STAGES`,
+   `CLEAN`/`CLEAN_CONFIRM`, `ONLY_STAGES`. Nothing below it needs editing.
+2. **§2 Bootstrap** — finds the repo, resolves the data directory, and prints a
+   present/absent row for every input the current mode reads. A missing file is always
+   named.
+3. **§3–§4 The chain** — runs the seven stages in the order `TASK.md` fixes
+   (`00_thresholds → 01_audit → 02_turns → 03_envelope → 04_demand_coverage →
+   05_validate → 06_figures`), each through its own `main()`, reloading the stage module
+   and every `bdb27/` helper from disk first. One row per stage: exit code, wall time,
+   status.
+4. **§5 Headline** — reads **only** `outputs/audit/gate.json` and
+   `outputs/audit/audit_items.csv`: the provenance banner taken from the artefact, the
+   verdict and why, the primary group, the recommended smoother, conditions G1–G9
+   (status/value/threshold/detail) and items a–m (status + key value). No number is typed
+   into the notebook; anything absent prints `NOT RUN — <field> absent`.
+5. **§6 Figures** — displays what exists in `outputs/figures/`, and when nothing does,
+   says why using the `06_figures` row from §4.
 
-A single notebook, `bdb27_turn_coverage.ipynb`, that:
+## Status vocabulary (the notebook prints these)
 
-1. runs `python src/run.py --mode full` (with `sample` as a smoke option), showing each
-   stage's exit status, wall time and peak RAM from `outputs/run_log.csv`;
-2. refuses to render results unless every stage's provenance is `FULL`;
-3. draws the five deliverable figures from committed stage outputs — Cut Card, demand
-   map with the feasible region, transfer scatter with the noise ceiling, feasibility
-   by speed range, held-out outcome comparison;
-4. renders the writeup (≤2,000 words working limit, **UNVERIFIED** — see
-   `notes/rules.md`) from the artefacts, printing every unresolved token.
+| status | meaning |
+|---|---|
+| `OK — ran, artefacts written` | pass |
+| `OK — checkpoint reused, nothing rebuilt` | pass; existing artefacts reused |
+| `NOT IMPLEMENTED (stub, exit 2)` | loud stub: wrote nothing, **never counted as a pass** |
+| `REFUSED (exit 2)` | declined honestly (missing input / wrong provenance); reason printed |
+| `FAILED (exit n)` | real failure; captured output printed |
+| `PENDING FULL RUN` | `MODE="full"` with the full game tracking absent; nothing is run and **no sample file is substituted** |
 
-Every figure and claim in it must come from a stage output, never from a cell that
-computes its own numbers.
+## Provenance
 
-## Until then
+* `MODE="sample"`: every artefact is `PLACEHOLDER_SAMPLE` / `UNVALIDATED SAMPLE OUTPUT`,
+  and the headline prints `UNVALIDATED SAMPLE OUTPUT — NOT A RESULT`.
+* `MODE="full"`: artefacts are `FULL`; only then is a number a result.
+* The notebook contains **zero baked outputs** — it is committed unexecuted, and
+  `tests/test_notebook_contract.py` enforces that.
 
-Run the pipeline from the shell: see `README_RUN.md`. In sample mode every artefact is
-stamped `UNVALIDATED SAMPLE OUTPUT` and is for exercising code paths only.
+## The contract is tested
+
+`tests/test_notebook_contract.py` holds the notebook to four promises: stage order is the
+spec's order (and matches `src/run.py`), the committed notebook carries no outputs, a
+missing `gate.json` renders `NOT RUN` rather than a blank, and a stub is never a pass;
+plus the full-mode preflight names every missing tracking file and blocks the run.
+
+## Shell fallback
+
+The same chain runs from the shell — see `README_RUN.md`. The notebook adds nothing to the
+pipeline: it calls the same stage `main()` functions, in the same order, with the same
+config.
+
+`archive/legacy-*/notebooks/` holds the superseded pipeline's notebooks. They ran a
+different analysis and must not be reused.

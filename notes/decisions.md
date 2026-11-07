@@ -5192,3 +5192,38 @@ kill test not a verdict on sample data).
 package depending on `sys.path` order; a name collision in the loader path is not worth
 living with.
 **Evidence.** `tests/`, `pytest -q`.
+
+---
+
+## D131 — The notebook is the interface: seven stages, artefact-only headline, contract tests · 2026-11-07
+**Decision.** `notebooks/bdb27_full_run.ipynb` is Conor's only interface. It has **one**
+configuration cell (`MODE`, `DATA_DIR`, `FORCE_STAGES`, `CLEAN`/`CLEAN_CONFIRM`,
+`ONLY_STAGES`); nothing below it needs editing. It runs the seven stages in the order
+`TASK.md` fixes, each through the stage's own `main()`, and **reloads the stage module and
+every `bdb27/` helper from disk before each call**, so an edit in `src/` takes effect on the
+next run without restarting the kernel. Per stage it prints exit code, wall time and status;
+`NOT IMPLEMENTED (stub, exit 2)` is a distinct status and never a pass, and checkpoint reuse
+is labelled from the stage's own message / unchanged artefact mtimes.
+**Headline.** Reads only `outputs/audit/gate.json` and `outputs/audit/audit_items.csv`:
+the banner comes from the artefact's `provenance` (`PLACEHOLDER_SAMPLE` →
+`UNVALIDATED SAMPLE OUTPUT — NOT A RESULT`), then verdict, why, primary group, recommended
+smoother, G1–G9 (status/value/threshold/detail) and items a–m (status + key value or the
+evidence file). Nothing is typed in; absent fields print `NOT RUN — <field> absent`.
+**Full mode.** If the configured full game tracking is absent the notebook prints
+`PENDING FULL RUN`, names `game_tracking.csv` and the three season files with present/MISSING
+beside each, runs no stage, and never substitutes the sample. It does **not** concatenate the
+season files itself: inventing a data layout the config does not describe would be a silent
+method change. `DATA_DIR` writes a scratch config under `data/interim/tmp/` with absolutised
+paths, so its `config_sha` differs from the committed evidence — documented in the notebook.
+**No baked outputs.** The committed notebook is unexecuted (no outputs, no execution counts);
+`tests/test_notebook_contract.py` (5 tests) enforces stage order == `TASK.md` == `src/run.py`,
+zero outputs, missing `gate.json` → `NOT RUN` including all nine conditions and every item,
+stub ≠ pass, and the full-mode preflight naming every missing file. Suite: **41 tests green**.
+**Why the notebook rather than a report module.** The legacy pipeline moved its rendering into
+`src/notebook_report.py`; that hid the interface behind code Conor could not see. Here the
+rendering is in the notebook cells, readable and diffable, and the contract tests pin its
+behaviour.
+**Evidence.** `notebooks/bdb27_full_run.ipynb`, `notebooks/README.md`, `README_RUN.md`,
+`tests/test_notebook_contract.py`, `pytest -q` (41 passed), and a full `nbconvert --execute`
+sample run: zero error outputs, `00_thresholds`/`01_audit` exit 0, `02`–`06` exit 2,
+headline `CONDITIONAL GO` with G1–G9.

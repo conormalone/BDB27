@@ -1,8 +1,8 @@
 # README_RUN — how to run BDB27 Turn Coverage
 
-**Status: Phase 0 + Phase 1 implemented. Phases 2–6 are loud stubs.**
-The Kaggle notebook click-through interface **does not exist yet** — see
-`notebooks/README.md`.
+**Status: the notebook is the interface. `notebooks/bdb27_full_run.ipynb` runs the seven
+stages in spec order and renders the headline from the audit artefacts.**
+Phase 0 + Phase 1 are implemented; Phases 2–6 (stages 02–06) are still loud stubs.
 
 ## 1. Environment
 
@@ -12,7 +12,8 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt        # pinned, ARM64 + x86_64 wheels
 ```
 
-Python 3.13 is what this repo is tested on; nothing needs a compiler.
+Python 3.13 is what this repo is tested on; nothing needs a compiler. `requirements.txt`
+includes `nbformat`, `nbconvert` and `ipykernel` for the notebook.
 
 ## 2. Data
 
@@ -31,9 +32,36 @@ Required files in `data/raw/` (see `notes/schema.md` for sizes and columns):
 | mode | game-tracking file | present here? |
 |---|---|---|
 | `--mode sample` | `game_tracking_2023_sample.csv` (~94 MB, 333 games, row sample) | yes |
-| `--mode full` | `game_tracking.csv` (full tracking) | **no** — full mode refuses and names it |
+| `--mode full` | `game_tracking.csv` (full tracking; Kaggle ships it per season as `game_tracking_{2023,2024,2025}.csv`) | **no** — the notebook reports `PENDING FULL RUN` and names every missing file |
 
-## 3. Run order
+## 3. Run it — the notebook (primary interface)
+
+```bash
+jupyter notebook notebooks/bdb27_full_run.ipynb     # then Run All
+# or, headless:
+jupyter nbconvert --to notebook --execute notebooks/bdb27_full_run.ipynb \
+    --output /tmp/bdb27_run.ipynb --ExecutePreprocessor.timeout=1800
+```
+
+Set `MODE` in §1; nothing below that cell needs editing.
+
+* `MODE="sample"` exercises every implemented code path on the sample and stamps every
+  artefact `UNVALIDATED SAMPLE OUTPUT`. No figure is produced and nothing is interpreted.
+* `MODE="full"` is the final run. If the full game tracking is absent the notebook prints
+  `PENDING FULL RUN`, **names the configured file and all three season files**, and runs
+  nothing — it never falls back to the sample.
+* `DATA_DIR` points the run at another data directory (a scratch config is written under
+  `data/interim/tmp/`; its `config_sha` will differ from the committed evidence).
+* `FORCE_STAGES` rebuilds named stages; `ONLY_STAGES` runs a subset; `CLEAN=True` with
+  `CLEAN_CONFIRM="DELETE"` *moves* this chain's outputs and checkpoints to
+  `data/interim/tmp/cleaned-<utc>/` (recoverable; `data/raw` is never touched).
+
+The notebook prints one row per stage — exit code, wall time, status — then the headline
+(gate verdict, why, primary group, recommended smoother, G1–G9, items a–m) read only from
+`outputs/audit/`. A stub reads `NOT IMPLEMENTED (stub, exit 2)` and is never counted as a
+pass. The committed notebook carries **zero baked outputs**.
+
+## 4. Run it from the shell (fallback — same stages, same order)
 
 ```bash
 python src/run.py 00_thresholds --mode sample     # writes outputs/thresholds.json
@@ -49,7 +77,10 @@ python src/01_audit.py --mode sample --force
 python src/run.py 01_audit --mode sample --force --config /path/to/config.yaml
 ```
 
-## 4. What exists
+The shell runner stops at the first non-zero stage; the notebook does not — it reports every
+stage so the headline can show what exists.
+
+## 5. What exists
 
 | stage | file | status | writes |
 |---|---|---|---|
@@ -64,48 +95,52 @@ python src/run.py 01_audit --mode sample --force --config /path/to/config.yaml
 A stub prints `STAGE NOT IMPLEMENTED`, exits 2, writes no artefact and creates no
 checkpoint — a layout-only run can never look finished.
 
-## 5. Expected runtime and memory (this host: Raspberry Pi, 8 GB)
-
-Measured on the 2026-11-06 sample run:
+## 6. Expected runtime and memory (this host: Raspberry Pi, 8 GB)
 
 | stage | wall time | peak RSS | notes |
 |---|---:|---:|---|
-| 00_thresholds | < 1 s | < 100 MB | pure config |
+| 00_thresholds | < 1 s | < 100 MB | pure config; skips if the file exists |
 | 01_audit | **~2 min 45 s** | **~1.1 GB** | first run also converts CSVs to Parquet (~1 min extra) |
 | 02–06 | instant | — | stubs |
+| whole notebook | **~3–4 min** | — | same work as the shell chain |
 
 The audit converts each raw CSV to Parquet once under
 `data/interim/parquet/<mode>/`; later runs skip the conversion. Game tracking is
 processed in chunks of `resources.game_chunk_games` (12) games — nothing loads a
 full game file into pandas.
 
-## 6. Provenance rules (do not break these)
+## 7. Provenance rules (do not break these)
 
 * `--mode sample` stamps every artefact `UNVALIDATED SAMPLE OUTPUT` and sets
   thresholds provenance to `PLACEHOLDER_SAMPLE`.
 * `--mode full` writes `FULL` **only after** the full inputs exist, and stages 02–06
   assert `FULL` before doing anything.
 * Nothing in this repo may be interpreted, reported or tuned against sample results.
+* The notebook takes its banner from the artefact itself, not from the `MODE` variable.
 * `notes/prereg.md` does not exist yet **on purpose**: it must fix the smoother,
   definitions, bin edges, envelope form, coverage formula and thresholds first, and
   a full run is refused until it does.
 
-## 7. Tests
+## 8. Tests
 
 ```bash
-pytest -q          # 36 tests, no network, no full data needed
+pytest -q          # 41 tests, no network, no full data needed
 ```
 
 Covers: schema assertions on the real files (including that the spec's "no `s`/`a` in
 Combine" claim is refuted), the synthetic fixture round-tripping through the real
 loader, planted-turn recovery, stub behaviour, honest full-mode refusal, thresholds
-provenance, dispatcher order, determinism, and a contract on the gate artefacts.
+provenance, dispatcher order, determinism, a contract on the gate artefacts, and the
+**notebook contract** (`tests/test_notebook_contract.py`: stage order matches the spec and
+`src/run.py`, zero baked outputs, missing `gate.json` → `NOT RUN`, a stub is never a pass,
+and the full-mode preflight names every missing tracking file).
 
-## 8. Layout
+## 9. Layout
 
 ```
 data/raw  data/interim   inputs (symlinked, gitignored)
 src/                     stages 00–06 + bdb27/ shared package
+notebooks/               bdb27_full_run.ipynb — the interface (committed unexecuted)
 fixtures/synthetic/      committed generator + planted fixture
 tests/                   pytest suite
 notes/                   rules, schema, decisions, blockers, phase1-audit
