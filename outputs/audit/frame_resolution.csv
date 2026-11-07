@@ -1,0 +1,13 @@
+provenance,label,config_sha,measure,median,p05,p95,note
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,frames_per_turn_window,20.0,10.0,20.0,detector window expressed in 10 Hz frames
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,turns_window_0.3s,287.0,,,count over cone+shuttle attempts
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,turns_window_0.4s,771.0,,,count over cone+shuttle attempts
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,turns_window_0.5s,1047.0,,,count over cone+shuttle attempts
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,turns_window_0.6s,1124.0,,,count over cone+shuttle attempts
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,turns_window_0.7s,1162.0,,,count over cone+shuttle attempts
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,heading_sd_speed_0_1,21.68,,,"deg, straight-line dash"
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,heading_sd_speed_1_2,5.2,,,"deg, straight-line dash"
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,heading_sd_speed_2_3,9.34,,,"deg, straight-line dash"
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,heading_sd_speed_3_4,,,,"deg, straight-line dash"
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,heading_sd_speed_4_6,0.41,,,"deg, straight-line dash"
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,heading_sd_speed_6_9,0.35,,,"deg, straight-line dash"

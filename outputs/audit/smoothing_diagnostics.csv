@@ -1,0 +1,7 @@
+provenance,label,config_sha,smoother,attempts,accel_cap_exceed_share,monotonic_share_accel_phase,median_peak_speed_yd_s,median_time_to_peak_s,median_heading_sd_deg,rms_vs_ensemble_yd_s,eligible,recommended
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,savgol_g5_p2,793,0.0,0.9869,10.638,4.6,1.77,0.032,True,False
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,savgol_g7_p3,793,0.0,0.9916,10.604,4.7,1.76,0.02,True,False
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,savgol_g9_p3,793,0.0,0.9938,10.603,4.7,1.76,0.017,True,True
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,savgol_g11_p3,793,0.0,0.9936,10.592,4.7,1.75,0.022,True,False
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,kalman_cv,793,0.0,0.9487,10.57,4.6,1.87,0.263,True,False
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,spline_cubic,793,0.0,0.9933,10.518,3.9,1.7,0.387,True,False

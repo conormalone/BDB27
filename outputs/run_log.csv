@@ -1,0 +1,28 @@
+utc,stage,mode,provenance,status,wall_s,peak_rss_mb,rows,detail
+2026-11-06T23:50:36Z,00_thresholds,sample,PLACEHOLDER_SAMPLE,OK,1.43,113.8,1,
+2026-11-06T23:51:37Z,01_audit,sample,PLACEHOLDER_SAMPLE,ERROR,34.995,534.2,438594,"Binder Error: column ""draft_year"" must appear in the GROUP BY clause or must be part of an aggregate function.
+Either add it to the GROUP BY list, or use ANY_VALUE(""draft_year"") if the exact value of ""draft_year"" is not important.
+
+LINE 1: SELECT 'draft_year' AS column, typeof(draft_year) AS dtype, sum(CASE WHEN draft_year IS NULL THEN...
+                                              ^^^^^^^^^^"
+2026-11-06T23:54:05Z,01_audit,sample,PLACEHOLDER_SAMPLE,ERROR,127.711,1305.2,438594,"Conversion Error: Could not convert string 'NA' to BOOL when casting from source column route_ran
+
+LINE 2:                    CASE WHEN route_ran THEN 'ROUTE'
+                                                  ^^^^^^^^^"
+2026-11-06T23:56:50Z,01_audit,sample,PLACEHOLDER_SAMPLE,ERROR,107.279,1379.1,438594,"Conversion Error: Could not convert string 'SCREEN' to BOOL when casting from source column route_ran
+
+LINE 2:                    CASE WHEN route_ran THEN 'ROUTE'
+                                                  ^^^^^^^^^"
+2026-11-07T00:01:20Z,01_audit,sample,PLACEHOLDER_SAMPLE,ERROR,154.82,1364.2,442101,'DataFrameGroupBy' object has no attribute 'lateral_accel_yd_s2'
+2026-11-07T00:04:22Z,01_audit,sample,PLACEHOLDER_SAMPLE,ERROR,159.851,1350.1,442101,'Column not found: lateral_accel_yd_s2'
+2026-11-07T00:07:34Z,01_audit,sample,PLACEHOLDER_SAMPLE,ERROR,159.443,1346.9,442101,"Binder Error: Table ""pp"" does not have a column named ""time_to_pressure""
+
+Candidate bindings: : ""time_to_pressure_allowed""
+
+LINE 4:                    sum(CASE WHEN pp.time_to_pressure IS NULL THEN 1 ELSE 0 END) ttp_null,
+                                                      ^^^^^^^^^^^^^^^^^^^"
+2026-11-07T00:10:43Z,01_audit,sample,PLACEHOLDER_SAMPLE,OK,163.959,1367.0,442101,
+2026-11-07T00:17:44Z,01_audit,sample,PLACEHOLDER_SAMPLE,OK,161.301,1348.1,442101,
+2026-11-07T00:35:48Z,01_audit,sample,PLACEHOLDER_SAMPLE,OK,165.166,1368.7,438328,
+2026-11-07T00:41:03Z,01_audit,sample,PLACEHOLDER_SAMPLE,OK,162.133,1346.7,438328,
+2026-11-07T00:46:23Z,01_audit,sample,PLACEHOLDER_SAMPLE,OK,164.668,1376.5,438328,
