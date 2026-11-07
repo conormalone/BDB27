@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "8df1ad93c268b61f",
-  "generated_utc": "2026-11-07T01:42:11Z",
+  "config_sha": "591ef87e3909777e",
+  "generated_utc": "2026-11-07T04:35:26Z",
   "alpha": 0.05,
   "power": 0.8,
   "baseline_auc": 0.65,

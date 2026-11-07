@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "8df1ad93c268b61f",
-  "generated_utc": "2026-11-07T01:42:11Z",
+  "config_sha": "591ef87e3909777e",
+  "generated_utc": "2026-11-07T04:35:28Z",
   "verdict": "CONDITIONAL GO",
   "because": "No stop condition fired on the data available here. Pending full data: G4, G5, G6, G9. Conditions: full run only after notes/prereg.md fixes the smoother (savgol_g9_p3), definitions, bin edges and thresholds; reliability, entry-speed overlap and turns-per-player must be re-checked on full game tracking; outcome null semantics (B1) and the missing opponent ID (L1) must be resolved or dropped and stated.",
   "primary_group": "DL",
@@ -38,7 +38,7 @@
       "status": "PENDING FULL RUN",
       "value": null,
       "threshold": null,
-      "detail": "Needs the per-player capacity parameters (Phase 3) on full game tracking; cannot be computed from a one-season row sample. WARNING from the audit's provisional proxy: split-half ICC of peak lateral acceleration is combine: 5536 turns, 508 players, median 10.0 turns/player, ICC(split-half lateral accel) -0.183 on 484 players with two turns in the same drill; game_sample: 7143 turns, 153 players, median 32.0 turns/player, ICC(split-half lateral accel) 0.354 on 147 players with two turns in the same drill. A negative Combine value for this proxy is a red flag for the Phase 3 parameter, not a verdict on it."
+      "detail": "Needs the per-player capacity parameters (Phase 3) on full game tracking; cannot be computed from a one-season row sample. WARNING from the audit's provisional proxy: split-half ICC of peak lateral acceleration is combine: 5536 turns, 508 players, median 10.0 turns/player, ICC(split-half lateral accel) -0.183 on 484 players with two turns in the same drill; game_sample: 6901 turns, 152 players, median 32.0 turns/player, ICC(split-half lateral accel) 0.23 on 146 players with two turns in the same drill. A negative Combine value for this proxy is a red flag for the Phase 3 parameter, not a verdict on it."
     },
     {
       "id": "G5",
@@ -46,7 +46,7 @@
       "status": "PENDING FULL RUN",
       "value": null,
       "threshold": null,
-      "detail": "Turn counts and entry speeds computed on the sample game data \u2014 SAMPLE DIAGNOSTIC, not a finding. Combine side is complete: DB 1179 turns/122 players, DL 2067 turns/118 players, OL 952 turns/120 players, TE 294 turns/41 players, WR 1044 turns/107 players. Sample histogram overlap (min 0.726 vs threshold 0.5) is reported but NOT used for a verdict: the game side is a row sample of one season."
+      "detail": "Turn counts and entry speeds computed on the sample game data \u2014 SAMPLE DIAGNOSTIC, not a finding. Combine side is complete: DB 1179 turns/122 players, DL 2067 turns/118 players, OL 952 turns/120 players, TE 294 turns/41 players, WR 1044 turns/107 players. Sample histogram overlap (min 0.727 vs threshold 0.5) is reported but NOT used for a verdict: the game side is a row sample of one season."
     },
     {
       "id": "G6",
@@ -54,7 +54,7 @@
       "status": "PENDING FULL RUN",
       "value": null,
       "threshold": null,
-      "detail": "Kill-test statistics are scripted and run only on data that can answer them. Combine (complete file): combine: 5536 turns, 508 players, median 10.0 turns/player, ICC(split-half lateral accel) -0.183 on 484 players with two turns in the same drill; game_sample: 7143 turns, 153 players, median 32.0 turns/player, ICC(split-half lateral accel) 0.354 on 147 players with two turns in the same drill. The game side is a row sample, so the Combine-game correlation, the noise ceiling and the reliability verdict are PENDING FULL RUN. Smoother sensitivity of the turn count is in smoother_sensitivity.csv."
+      "detail": "Kill-test statistics are scripted and run only on data that can answer them. Combine (complete file): combine: 5536 turns, 508 players, median 10.0 turns/player, ICC(split-half lateral accel) -0.183 on 484 players with two turns in the same drill; game_sample: 6901 turns, 152 players, median 32.0 turns/player, ICC(split-half lateral accel) 0.23 on 146 players with two turns in the same drill. The game side is a row sample, so the Combine-game correlation, the noise ceiling and the reliability verdict are PENDING FULL RUN. Smoother sensitivity of the turn count is in smoother_sensitivity.csv."
     },
     {
       "id": "G7",
@@ -108,7 +108,7 @@
     },
     "g": {
       "status": "PENDING FULL RUN",
-      "finding": "Turn counts and entry speeds computed on the sample game data \u2014 SAMPLE DIAGNOSTIC, not a finding. Combine side is complete: DB 1179 turns/122 players, DL 2067 turns/118 players, OL 952 turns/120 players, TE 294 turns/41 players, WR 1044 turns/107 players. Sample histogram overlap (min 0.726 vs threshold 0.5) is reported but NOT used for a verdict: the game side is a row sample of one season."
+      "finding": "Turn counts and entry speeds computed on the sample game data \u2014 SAMPLE DIAGNOSTIC, not a finding. Combine side is complete: DB 1179 turns/122 players, DL 2067 turns/118 players, OL 952 turns/120 players, TE 294 turns/41 players, WR 1044 turns/107 players. Sample histogram overlap (min 0.727 vs threshold 0.5) is reported but NOT used for a verdict: the game side is a row sample of one season."
     },
     "h": {
       "status": "PASS",
@@ -120,7 +120,7 @@
     },
     "j": {
       "status": "PENDING FULL RUN",
-      "finding": "Kill-test statistics are scripted and run only on data that can answer them. Combine (complete file): combine: 5536 turns, 508 players, median 10.0 turns/player, ICC(split-half lateral accel) -0.183 on 484 players with two turns in the same drill; game_sample: 7143 turns, 153 players, median 32.0 turns/player, ICC(split-half lateral accel) 0.354 on 147 players with two turns in the same drill. The game side is a row sample, so the Combine-game correlation, the noise ceiling and the reliability verdict are PENDING FULL RUN. Smoother sensitivity of the turn count is in smoother_sensitivity.csv."
+      "finding": "Kill-test statistics are scripted and run only on data that can answer them. Combine (complete file): combine: 5536 turns, 508 players, median 10.0 turns/player, ICC(split-half lateral accel) -0.183 on 484 players with two turns in the same drill; game_sample: 6901 turns, 152 players, median 32.0 turns/player, ICC(split-half lateral accel) 0.23 on 146 players with two turns in the same drill. The game side is a row sample, so the Combine-game correlation, the noise ceiling and the reliability verdict are PENDING FULL RUN. Smoother sensitivity of the turn count is in smoother_sensitivity.csv."
     },
     "k": {
       "status": "PASS",

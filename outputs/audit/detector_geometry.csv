@@ -1,3 +1,3 @@
 provenance,label,config_sha,drill_name,cones_expected,cones_found,min_cone_separation_yd,turns_estimate,turns_eval,turn_target_model,precision,recall,precision_point_model,expected_turns_per_attempt,angle_median_abs_error_deg,angle_n,frac_detections_off_cone
-PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,8df1ad93c268b61f,SHORT_SHUTTLE,2,2,7.32,208,211,line,0.991,0.959,0.711,2,2.6,211,0.009
-PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,8df1ad93c268b61f,THREE_CONE_DRILL,3,3,1.81,321,307,point,0.915,0.931,0.915,3,49.4,66,0.085
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,591ef87e3909777e,SHORT_SHUTTLE,2,2,7.32,208,211,line,0.991,0.959,0.711,2,2.6,211,0.009
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,591ef87e3909777e,THREE_CONE_DRILL,3,3,1.81,321,307,point,0.915,0.931,0.915,3,49.4,66,0.085
