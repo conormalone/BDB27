@@ -281,6 +281,49 @@ def test_single_turn_player_is_excluded_counted_and_flagged(tmp_path):
     assert "insufficient_turns" in str(one["flags"].iloc[0])
 
 
+def test_insufficient_players_component_is_strict_json(tmp_path):
+    """One contributing player: null SE/CI, strict-valid manifest, no `nan`.
+
+    A group with two players where one has fewer than ``tau2_min_turns_per_player``
+    usable turns leaves a single contributing player, so the moment estimate has
+    no SE or CI (``INSUFFICIENT_PLAYERS``). Those missing numbers must be JSON
+    ``null`` — never ``NaN``, which a strict parser rejects — and the headline
+    must say ``n/a`` rather than ``[nan,nan]``.
+    """
+    speeds = np.linspace(2.0, 7.0, 12)
+    rows = [
+        _turn_row(nfl_id=4000, name="P0", group="WR", apex=float(v),
+                  demand=7.0 + 0.4 * (v - 4.0))
+        for v in speeds
+    ]
+    rows.append(_turn_row(nfl_id=4001, name="ONE", group="WR", apex=4.5,
+                          demand=8.0))
+    stage = run_world(tmp_path, pd.DataFrame(rows))
+
+    manifest_path = stage["dir"] / "manifest.json"
+    text = manifest_path.read_text(encoding="utf-8")
+    assert "NaN" not in text
+    assert "Infinity" not in text
+    # Strict parse: json.loads alone accepts NaN, so also parse with a hook
+    # that rejects the non-JSON constants.
+    parsed = json.loads(text, parse_constant=lambda c: pytest.fail(
+        f"manifest contains non-JSON constant {c!r}"))
+
+    components = [c for c in parsed["variance"]["components"]
+                  if c["measure"] == "arc_capacity"]
+    assert len(components) == 1
+    component = components[0]
+    assert component["tau2_status"] == "INSUFFICIENT_PLAYERS"
+    assert component["n_players"] == 1
+    assert component["tau2_se"] is None
+    assert component["tau2_p05"] is None
+    assert component["tau2_p95"] is None
+    assert component["tau2"] is not None
+
+    assert "nan" not in stage["stdout"].lower()
+    assert "n/a" in stage["stdout"]
+
+
 def test_no_plant_turns_warns_and_still_exits_zero(tmp_path):
     speeds = np.linspace(2.0, 7.0, 5)
     rows = []

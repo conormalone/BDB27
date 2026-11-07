@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import resource
 import subprocess
@@ -241,6 +242,24 @@ def write_csv(df: pd.DataFrame, path: Path, mode: str, cfg: Config,
     return path
 
 
+def _json_safe(obj: Any) -> Any:
+    """Recursively map non-finite floats to ``None`` for strict JSON output.
+
+    ``json.dumps`` writes ``NaN``/``Infinity`` by default, which are not JSON
+    and make the artefact unreadable to strict parsers. A non-finite number
+    means "not estimable" here, i.e. exactly JSON ``null``. Finite values and
+    every other type pass through untouched (``default=str`` still handles
+    them as before).
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    return obj
+
+
 def write_json(obj: dict, path: Path, mode: str, cfg: Config) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -250,7 +269,12 @@ def write_json(obj: dict, path: Path, mode: str, cfg: Config) -> Path:
         "generated_utc": utc_now(),
         **obj,
     }
-    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    # ``allow_nan=False`` is the guarantee: even if a caller misses a field,
+    # the sanitiser has already turned every non-finite float into ``null``, so
+    # this either writes strict-valid JSON or raises instead of shipping NaN.
+    path.write_text(
+        json.dumps(_json_safe(payload), indent=2, default=str, allow_nan=False),
+        encoding="utf-8")
     return path
 
 

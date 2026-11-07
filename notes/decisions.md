@@ -5614,7 +5614,7 @@ on a grid of candidate `tau^2` that always contains 0, the moment estimate, and
 `tau2_grid_sd_fractions × tau2_grid_scale_sd^2` (`[0, 0.25, 0.5, 0.75, 1, 1.5, 2] × 1.5^2`).
 Scoring is player-grouped K-fold CV (`tau2_heldout_folds` = 5, folds = `min(5, n_players)`,
 assignment by sorted player id modulo K): fit on the training players at that fixed `tau^2`,
-predict held-out players with `u = 0` (fixed effects only), loss = mean weighted check loss
+predict held-out players with `u = 0` (fixed effects only), loss = mean check loss
 at the fit quantile. The argmin is `tau2_heldout_optimal` (ties to the smallest `tau^2`) and
 the full `grid`/`loss_curve` are stored. **Production always uses the moment estimate.** The
 routes are said to agree when `|sqrt(moment) - sqrt(held-out optimum)| <=

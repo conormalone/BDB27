@@ -94,6 +94,19 @@ def _write_artefacts(result: envelope.EnvelopeResult, cfg: common.Config,
     common.write_json(manifest, outdir / "manifest.json", mode, cfg)
 
 
+def _fmt_num(x, spec: str = ".4g") -> str:
+    """Format a number, or ``n/a`` when it is missing / non-finite.
+
+    An ``INSUFFICIENT_PLAYERS`` component has no SE or CI; printing
+    ``[nan,nan]`` would read as a number. The header says ``n/a`` instead.
+    """
+    try:
+        value = float(x)
+    except (TypeError, ValueError):
+        return "n/a"
+    return format(value, spec) if np.isfinite(value) else "n/a"
+
+
 def _headline(result: envelope.EnvelopeResult, mode: str, outdir) -> None:
     man = result.manifest
     counts = man["counts"]
@@ -123,14 +136,14 @@ def _headline(result: envelope.EnvelopeResult, mode: str, outdir) -> None:
             agree = ("null" if pd.isna(row["routes_agree"])
                      else str(bool(row["routes_agree"])))
             print(f"  tau2            : {row['setting']:<8} {row['position_group']:<6} "
-                  f"{row['measure']:<16} tau2={float(row['tau2']):.4g} "
-                  f"[{float(row['tau2_p05']):.3g},{float(row['tau2_p95']):.3g}] "
+                  f"{row['measure']:<16} tau2={_fmt_num(row['tau2'])} "
+                  f"[{_fmt_num(row['tau2_p05'], '.3g')},{_fmt_num(row['tau2_p95'], '.3g')}] "
                   f"status={row['tau2_status']:<19} "
                   f"heldout_optimal={heldout} routes_agree={agree}")
             if row["routes_agree"] is False:
                 print(f"  DISAGREEMENT    : {row['setting']}/{row['position_group']}/"
-                      f"{row['measure']} moment_tau2={float(row['tau2']):.4g} vs "
-                      f"heldout_optimal={float(row['tau2_heldout_optimal']):.4g} "
+                      f"{row['measure']} moment_tau2={_fmt_num(row['tau2'])} vs "
+                      f"heldout_optimal={_fmt_num(row['tau2_heldout_optimal'])} "
                       "— both reported; production uses the moment estimate")
     if n_fits:
         bad = fit[~fit["converged"].astype(bool)]

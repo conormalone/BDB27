@@ -112,6 +112,22 @@ DEMAND_COLUMNS = {"peak_lateral_accel": "peak_lateral_accel_yd_s2"}
 
 SETTINGS = ("combine", "game", "combined")
 
+
+def _finite_or_none(x) -> float | None:
+    """``float(x)`` when it is finite, else ``None``.
+
+    Manifest/CSV fields must be strict JSON: a NaN or +/-inf is written as a
+    JSON ``null`` instead of shipping a token strict parsers reject. A missing
+    value is exactly what it means — the quantity was not estimable (e.g. an
+    ``INSUFFICIENT_PLAYERS`` component has no SE or CI).
+    """
+    try:
+        value = float(x)
+    except (TypeError, ValueError):
+        return None
+    return value if np.isfinite(value) else None
+
+
 #: The three production variance components (D148). ``measure`` is the label
 #: carried into ``variance_components.csv`` and the manifest.
 TAU2_MEASURES = ("arc_capacity", "plant_retention", "plant_regain")
@@ -529,15 +545,14 @@ class VarianceComponent:
             "measure": self.measure,
             "n_players": int(self.n_players),
             "n_players_excluded": int(self.n_players_excluded),
-            "tau2": float(self.tau2),
-            "tau2_se": float(self.tau2_se),
-            "tau2_p05": float(self.tau2_p05),
-            "tau2_p95": float(self.tau2_p95),
+            "tau2": _finite_or_none(self.tau2),
+            "tau2_se": _finite_or_none(self.tau2_se),
+            "tau2_p05": _finite_or_none(self.tau2_p05),
+            "tau2_p95": _finite_or_none(self.tau2_p95),
             "tau2_status": str(self.status),
             "tau2_route": str(self.route),
-            "tau2_heldout_optimal": (None if self.tau2_heldout_optimal is None
-                                     else float(self.tau2_heldout_optimal)),
-            "heldout_loss": None if self.heldout_loss is None else float(self.heldout_loss),
+            "tau2_heldout_optimal": _finite_or_none(self.tau2_heldout_optimal),
+            "heldout_loss": _finite_or_none(self.heldout_loss),
             "routes_agree": self.routes_agree,
             "grid": json.dumps([float(x) for x in self.grid]),
             "loss_curve": json.dumps([
@@ -1864,7 +1879,9 @@ class Envelope:
                     "iterations": int(row["irls_iterations"]),
                     "n_obs": int(row["n_obs"]),
                     "n_players": int(row["n_players"]),
-                    "objective_gain_last": float(row["obj_gain_last"]),
+                    "objective_gain_last": _finite_or_none(row["obj_gain_last"]),
+                    "stability_last": _finite_or_none(row["stability_last"]),
+                    "objective": _finite_or_none(row["objective"]),
                 })
         n_components = len(self.variance_rows)
         n_at_boundary = int(sum(1 for r in self.variance_rows

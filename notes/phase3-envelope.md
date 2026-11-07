@@ -96,7 +96,7 @@ moment estimate, and `tau2_grid_sd_fractions × tau2_grid_scale_sd²` (default 1
 [0, 0.25, 0.5, 0.75, 1, 1.5, 2]). Folds are `min(tau2_heldout_folds, n_players)` assigned by
 sorted player id modulo K. Each candidate is fitted on the training players at that fixed
 `tau2` and scored on the held-out players with `u = 0` (fixed effects only) by the mean
-weighted check loss at the fit quantile. The argmin is reported as
+check loss at the fit quantile. The argmin is reported as
 `tau2_heldout_optimal`; ties go to the smallest `tau2`. **The production value is always the
 moment estimate.** The cross-check never selects, never averages, and is never swapped in
 when it looks better. The two routes are said to agree when
