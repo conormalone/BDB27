@@ -1,5 +1,5 @@
-game_id,play_id,nfl_id,route_ran,player_get_off,coverage_assignment
-2023999000,100,900001,OUT,,
-2023999001,101,900002,OUT,,
-2023999002,102,900003,OUT,,
-2023999003,103,900004,OUT,,
+game_id,play_id,team_abbr,nfl_id,lined_up_position,down,yards_to_go,play_direction,route_ran,dropback_duration,pass_result,pressure_allowed,sack_allowed,time_to_pressure_allowed,time_to_pressure,quick_pressure,unblocked_pressure,blitzing,player_get_off,coverage_assignment,target,pass_rushers_encountered
+2023999000,100,AAA,900001,DE,1,10,right,OUT,,INCOMPLETE,False,False,,,False,False,False,,NO_ASSIGNMENT,False,1
+2023999001,101,AAA,900002,DE,1,10,right,OUT,,INCOMPLETE,False,False,,,False,False,False,,NO_ASSIGNMENT,False,1
+2023999002,102,AAA,900003,DE,1,10,right,OUT,,INCOMPLETE,False,False,,,False,False,False,,NO_ASSIGNMENT,False,1
+2023999003,103,AAA,900004,DE,1,10,right,OUT,,INCOMPLETE,False,False,,,False,False,False,,NO_ASSIGNMENT,False,1

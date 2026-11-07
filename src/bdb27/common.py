@@ -250,6 +250,84 @@ def write_json(obj: dict, path: Path, mode: str, cfg: Config) -> Path:
     return path
 
 
+# -------------------------------------------------------------- parquet output
+def _arrow_metadata(mode: str, cfg: Config) -> dict[bytes, bytes]:
+    """File-level metadata for an evidence Parquet file.
+
+    No timestamp: the turn table itself must be byte-identical when the same
+    inputs and seed are re-run, so the volatile fields live in the JSON manifest.
+    """
+    return {
+        b"provenance": provenance(mode).encode(),
+        b"label": stamp(mode).encode(),
+        b"config_sha": config_fingerprint(cfg).encode(),
+    }
+
+
+def _arrow_array(column, typ):
+    """Build a typed Arrow array from a pandas column with nulls."""
+    import pyarrow as pa
+
+    values = column.tolist()
+    if pa.types.is_boolean(typ):
+        clean = []
+        for v in values:
+            if v is None or v is pd.NA:
+                clean.append(None)
+            elif isinstance(v, float) and pd.isna(v):
+                clean.append(None)
+            else:
+                clean.append(bool(v))
+        return pa.array(clean, type=typ)
+    if pa.types.is_string(typ):
+        return pa.array([None if v is None or v is pd.NA else str(v) for v in values], type=typ)
+    return pa.array(values, type=typ, from_pandas=True)
+
+
+class ParquetSink:
+    """Stream row groups to one Parquet file with a fixed schema.
+
+    Game tracking is processed in chunks and never all at once, so the turn table
+    is written incrementally instead of concatenating every chunk in RAM. The
+    schema is fixed up front: every chunk is cast to it, so chunk order cannot
+    change the file's columns.
+    """
+
+    def __init__(self, path: Path, schema, mode: str, cfg: Config):
+        import pyarrow.parquet as pq
+
+        self.path = path
+        self.rows = 0
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.schema = schema.with_metadata(_arrow_metadata(mode, cfg))
+        self._writer = pq.ParquetWriter(str(path), self.schema, compression="zstd")
+
+    def write(self, df: pd.DataFrame) -> None:
+        import pyarrow as pa
+
+        arrays = [_arrow_array(df[f.name], f.type) for f in self.schema]
+        self._writer.write_table(pa.Table.from_arrays(arrays, schema=self.schema))
+        self.rows += len(df)
+
+    def close(self) -> None:
+        self._writer.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
+
+def write_parquet(df: pd.DataFrame, path: Path, schema, mode: str, cfg: Config) -> Path:
+    """Write a small table with the same stamped, deterministic schema as the sink."""
+    with ParquetSink(path, schema, mode, cfg) as sink:
+        if len(df):
+            sink.write(df)
+    return path
+
+
 def git_rev(repo: Path | None = None) -> str:
     try:
         return subprocess.check_output(

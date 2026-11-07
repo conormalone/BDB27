@@ -131,6 +131,32 @@ def derivatives(t: np.ndarray, xs: np.ndarray, ys: np.ndarray) -> dict[str, np.n
     }
 
 
+def hold_heading_below_floor(heading_deg_arr: np.ndarray, speed: np.ndarray,
+                             floor: float) -> np.ndarray:
+    """Forward-fill heading wherever speed is below ``floor``.
+
+    Heading is undefined when the athlete is not moving: at a plant the velocity
+    vector swings through zero and the instantaneous atan2 heading is noise. Left
+    alone, that noise accumulates into the unwrapped heading and turns a clean
+    180-degree plant into an arbitrary angle (and a full stop into a random walk).
+    Holding the last reliable heading through the low-speed span means the heading
+    change is measured between the two *valid* sides of the turn, which is what
+    TASK.md asks the segmentation to do.
+
+    This never changes what counts as a turn (the trigger, angle, floors and
+    separation rules are untouched); it only stops low-speed noise entering the
+    heading integral.
+    """
+    h = np.asarray(heading_deg_arr, float).copy()
+    last = np.nan
+    for i in range(len(h)):
+        if speed[i] >= floor or not np.isfinite(last):
+            last = h[i]
+        else:
+            h[i] = last
+    return h
+
+
 # --------------------------------------------------------------------- detector
 
 
@@ -143,9 +169,17 @@ class DetectorParams:
     min_rate_deg_s: float = 15.0
     max_duration_s: float = 2.0
     speed_walk_tolerance: float = 0.2
+    #: named segmentation rule: ``speed_maxima`` (audit choice, D124 — OPEN with
+    #: Conor) or ``fixed_window`` (the alternative, kept for sensitivity).
+    segmentation: str = "speed_maxima"
+    #: forward-fill heading below the speed floor (see hold_heading_below_floor).
+    low_speed_heading_hold: bool = True
 
     @classmethod
     def from_config(cls, det: dict, speed_floor: float) -> "DetectorParams":
+        seg = str(det.get("segmentation", "speed_maxima"))
+        if seg not in ("speed_maxima", "fixed_window"):
+            raise ValueError(f"unknown detector.segmentation {seg!r}")
         return cls(
             window_s=float(det["window_s"]),
             min_turn_angle_deg=float(det["min_turn_angle_deg"]),
@@ -154,12 +188,15 @@ class DetectorParams:
             min_rate_deg_s=float(det.get("min_angular_rate_deg_s", 15.0)),
             max_duration_s=float(det.get("max_turn_duration_s", 2.0)),
             speed_walk_tolerance=float(det.get("speed_walk_tolerance", 0.2)),
+            segmentation=seg,
+            low_speed_heading_hold=bool(det.get("low_speed_heading_hold", True)),
         )
 
 
 def detect_turns(t: np.ndarray, xs: np.ndarray, ys: np.ndarray,
-                 params: DetectorParams) -> list[dict]:
-    """Provisional turn detector (plant-aware segmentation).
+                 params: DetectorParams,
+                 derivatives: dict[str, np.ndarray] | None = None) -> list[dict]:
+    """Turn detector (plant-aware segmentation by default).
 
     Three steps, each with a config parameter and no data-tuned numbers:
 
@@ -185,8 +222,15 @@ def detect_turns(t: np.ndarray, xs: np.ndarray, ys: np.ndarray,
     w = max(2, int(round(params.window_s / dt)))
     if n < w + 2:
         return []
-    d = derivatives(t, xs, ys)
-    speed, unwrapped = d["speed"], d["heading_unwrapped"]
+    d = derivatives if derivatives is not None else _derivatives_fn(t, xs, ys)
+    speed = d["speed"]
+    if params.low_speed_heading_hold:
+        held = hold_heading_below_floor(d["heading"], speed, params.speed_floor)
+        unwrapped = np.degrees(np.unwrap(np.radians(held)))
+        omega_all = np.gradient(unwrapped, t)
+    else:
+        unwrapped = d["heading_unwrapped"]
+        omega_all = d["omega_deg_s"]
     span = unwrapped[w:] - unwrapped[:-w]
     start = np.arange(len(span))
     # a trigger needs movement somewhere in the window; the speed floor is then
@@ -214,16 +258,22 @@ def detect_turns(t: np.ndarray, xs: np.ndarray, ys: np.ndarray,
     for c in kept:
         seg = np.arange(c, min(n - 1, c + w) + 1)
         apex = int(seg[np.argmin(speed[seg])])
-        # walk out to the approach and exit speed maxima. A cone/serpentine drill
-        # can turn twice in the SAME rotational sense with only a brief
-        # re-acceleration between them, so the speed maximum — not a heading
-        # inflection — is what separates one turn from the next.
-        lo = apex
-        while lo - 1 >= 0 and (apex - (lo - 1)) <= max_half and speed[lo - 1] >= speed[lo] - tol:
-            lo -= 1
-        hi = apex
-        while hi + 1 < n and ((hi + 1) - apex) <= max_half and speed[hi + 1] >= speed[hi] - tol:
-            hi += 1
+        if params.segmentation == "fixed_window":
+            # Alternative rule: measure the angle inside the trigger window only.
+            # Kept so the segmentation choice can be varied in Phase 6; it is the
+            # rule the audit found records a 180-degree plant as ~30 degrees.
+            lo, hi = int(c), int(min(n - 1, c + w))
+        else:
+            # walk out to the approach and exit speed maxima. A cone/serpentine
+            # drill can turn twice in the SAME rotational sense with only a brief
+            # re-acceleration between them, so the speed maximum — not a heading
+            # inflection — is what separates one turn from the next.
+            lo = apex
+            while lo - 1 >= 0 and (apex - (lo - 1)) <= max_half and speed[lo - 1] >= speed[lo] - tol:
+                lo -= 1
+            hi = apex
+            while hi + 1 < n and ((hi + 1) - apex) <= max_half and speed[hi + 1] >= speed[hi] - tol:
+                hi += 1
         angle = float(unwrapped[hi] - unwrapped[lo])
         if abs(angle) < params.min_turn_angle_deg:
             continue
@@ -233,7 +283,7 @@ def detect_turns(t: np.ndarray, xs: np.ndarray, ys: np.ndarray,
             continue
         covered.append((lo, hi))
         entry, exit_v = float(speed[lo]), float(speed[hi])
-        om = float(np.max(np.abs(d["omega_deg_s"][lo:hi + 1])))
+        om = float(np.max(np.abs(omega_all[lo:hi + 1])))
         turns.append({
             "frame_start": int(lo),
             "frame_centre": int(apex),
@@ -262,3 +312,8 @@ def frames_per_turn(entry_speed: float, turn_angle_deg: float,
     if entry_speed <= 0:
         return np.nan
     return window_s / dt
+
+
+# Alias so ``detect_turns`` can accept a precomputed derivative dict without shadowing
+# the module-level function of the same name.
+_derivatives_fn = derivatives

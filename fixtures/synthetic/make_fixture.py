@@ -173,8 +173,12 @@ def build_results():
 
 
 def build_players():
+    # Game positions use the NFL vocabulary (`players.csv`), not the Combine
+    # family label; the config's game_families maps them back.
+    game_pos = {"DL": "DE", "WR": "WR", "TE": "TE"}
     return pd.DataFrame([{"nfl_id": n, "display_name": f"Fixture {n}", "draft_year": 2025,
-                          "nfl_position": p, "draft_round": 3, "draft_overall_pick": 80}
+                          "nfl_position": game_pos.get(p, p),
+                          "draft_round": 3, "draft_overall_pick": 80}
                          for n, p, *_ in PLAYERS])
 
 
@@ -209,9 +213,19 @@ def main():
     build_results().to_csv(OUT / "combine_results.csv", index=False)
     build_players().to_csv(OUT / "players.csv", index=False)
     game.to_csv(OUT / "game_tracking.csv", index=False, float_format="%.6f")
-    pd.DataFrame([{"game_id": 2023999000 + k, "play_id": 100 + k, "nfl_id": PLAYERS[k][0],
-                   "route_ran": "OUT", "player_get_off": np.nan, "coverage_assignment": np.nan}
-                  for k in range(4)]).to_csv(OUT / "player_play.csv", index=False)
+    # player_play must carry every column the pipeline selects, exactly as the
+    # real file does; the fixture is schema-compliant rather than a subset.
+    pd.DataFrame([{
+        "game_id": 2023999000 + k, "play_id": 100 + k, "team_abbr": "AAA",
+        "nfl_id": PLAYERS[k][0], "lined_up_position": "DE", "down": 1,
+        "yards_to_go": 10, "play_direction": "right", "route_ran": "OUT",
+        "dropback_duration": np.nan, "pass_result": "INCOMPLETE",
+        "pressure_allowed": False, "sack_allowed": False,
+        "time_to_pressure_allowed": np.nan, "time_to_pressure": np.nan,
+        "quick_pressure": False, "unblocked_pressure": False, "blitzing": False,
+        "player_get_off": np.nan, "coverage_assignment": "NO_ASSIGNMENT",
+        "target": False, "pass_rushers_encountered": 1,
+    } for k in range(4)]).to_csv(OUT / "player_play.csv", index=False)
     pd.DataFrame([{"game_id": 2023999000 + k, "season": 2023, "season_type": "REG",
                    "week": 1, "home_team_abbr": "AAA", "visitor_team_abbr": "BBB"}
                   for k in range(4)]).to_csv(OUT / "games.csv", index=False)

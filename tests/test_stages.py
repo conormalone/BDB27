@@ -19,7 +19,7 @@ def run(stage: str, *args, cwd=ROOT):
                           capture_output=True, text=True, cwd=str(cwd))
 
 
-@pytest.mark.parametrize("stage", ["02_turns", "03_envelope", "04_demand_coverage",
+@pytest.mark.parametrize("stage", ["03_envelope", "04_demand_coverage",
                                    "05_validate", "06_figures"])
 def test_stub_is_loud_and_writes_nothing(stage, tmp_path):
     before = set((ROOT / "outputs").rglob("*"))

@@ -1,7 +1,7 @@
 nfl_id,display_name,draft_year,nfl_position,draft_round,draft_overall_pick
-900001,Fixture 900001,2025,DL,3,80
-900002,Fixture 900002,2025,DL,3,80
-900003,Fixture 900003,2025,DL,3,80
+900001,Fixture 900001,2025,DE,3,80
+900002,Fixture 900002,2025,DE,3,80
+900003,Fixture 900003,2025,DE,3,80
 900004,Fixture 900004,2025,WR,3,80
 900005,Fixture 900005,2025,WR,3,80
 900006,Fixture 900006,2025,TE,3,80

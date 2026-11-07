@@ -33,6 +33,7 @@ turn_coverage:
     tmp: data/interim/tmp
     outputs: outputs
     audit: outputs/audit
+    turns: outputs/turns
     figures: outputs/figures
     notes: notes
     fixtures: fixtures
@@ -106,6 +107,10 @@ turn_coverage:
     monotonic_min_share: 0.90        # speed must rise in the accel phase
     agreement_tolerance_yd_s: 0.25   # cross-smoother speed RMS, design choice
     accel_phase_end_frac: 0.6        # fraction of the run treated as accel phase
+    # A turn found by an alternative smoother is matched to the primary turn
+    # when its centre falls within this many seconds. DESIGN CHOICE: at 10 Hz a
+    # 0.5 s tolerance is five frames, i.e. the trigger window itself.
+    match_tolerance_s: 0.5
 
   detector:
     window_s: 0.5                    # heading change measured across 5 frames
@@ -127,6 +132,25 @@ turn_coverage:
     drill_angle_deg: 60.0
     drill_min_players: 10            # a drill needs this many players to count
     drill_min_share_attempts: 0.50   # share of attempts that must contain a turn
+    # Segmentation is a NAMED OPTION, not a constant. `speed_maxima` is the
+    # audit's choice (D124) and remains OPEN with Conor; `fixed_window` is kept
+    # so Phase 6 can vary the rule and report whether conclusions depend on it.
+    segmentation: speed_maxima
+    segmentation_options: [speed_maxima, fixed_window]
+    # Heading is undefined below the speed floor. Holding the last reliable
+    # heading through a low-speed span is kept as an OPTION for stops, but is
+    # OFF by default: on real 3-cone/shuttle data it clips the plant signature
+    # and lowers validated shuttle recall (0.959 -> 0.883), so the default must
+    # reproduce the detector the audit validated. DESIGN CHOICE, measured
+    # against drill geometry only.
+    low_speed_heading_hold: false
+    # How far past the exit "time to regain entry speed" is searched. DESIGN
+    # CHOICE: three seconds covers a plant-and-re-accelerate at 10 Hz.
+    regain_horizon_s: 3.0
+    # Circle-fit residual is REPORTED, never thresholded as a turn rule. This
+    # value only labels whether the geometric radius is usable for the v^2/r
+    # cross-check. DESIGN CHOICE (normalised RMS residual, fraction of radius).
+    circle_fit_ok_residual_frac: 0.25
 
   validation:
     # Design thresholds the audit verdict is made against (TASK.md go/no-go).
@@ -139,6 +163,10 @@ turn_coverage:
     entry_speed_overlap_min: 0.50    # share of game turns inside Combine range
     reliability_min: 0.50            # ICC of the capacity parameter
     min_turns_per_setting: 10        # a player needs this many in EACH setting
+    # Synthetic-recovery tolerance for a detected turn angle against the planted
+    # drill geometry. DESIGN CHOICE: 25 deg covers a 10 Hz sample plus the
+    # configured 9-frame smoother without accepting a wrong turn.
+    recovery_angle_mae_max_deg: 25.0
 
   geometry:
     # Drill geometry is a documented/designed input, not inferred from data.
@@ -161,10 +189,17 @@ turn_coverage:
     # Fraction of attempts (hashed) used to estimate cones; the rest evaluate.
     estimate_fraction: 0.5
     hash_modulus: 2
+    # Both models are scored and reported; `drill_model` decides which one is the
+    # gate. Keeping both in the report is what makes the D125 choice visible.
+    report_models: [point, line]
 
   plant:
     # plant = apex speed below (1 - delta) * entry speed (TASK.md Phase 2)
     retention_delta: 0.80
+    # "with re-acceleration": the exit must beat the apex by at least this much
+    # for a low-apex turn to be a plant rather than a decelerating arc.
+    # DESIGN CHOICE (yd/s).
+    reaccel_min_yd_s: 0.2
 
   bins:
     entry_speed: [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
@@ -175,6 +210,22 @@ turn_coverage:
     # Game data only (item i). Never part of the turn definition.
     divergence_deg: 60.0
     steady_speed_min: 4.0
+    # A candidate is orientation-flagged when at least this share of its
+    # above-floor frames show |o - dir| > divergence_deg -- i.e. the divergence
+    # is sustained, not a single noisy frame. Used for contamination reporting
+    # and a game-side sensitivity only, never in the turn definition.
+    sustain_share: 0.5
+
+  sanity:
+    # TASK.md Phase 2 sanity counters. The speed cap is the physical plausibility
+    # bound the task names (12 yd/s); the acceleration cap reuses
+    # smoothing.accel_cap_yd_s2. DESIGN CHOICE.
+    speed_cap_yd_s: 12.0
+    # Detections per 1,000 frames are compared with a shuffled-heading null.
+    # One shuffle per attempt: the aggregate over thousands of attempts is
+    # stable, and the cost is one extra detection pass.
+    null_shuffle_reps: 1
+    null_seed_offset: 7717
 
   snap_types:
     # player_play has no explicit snap-type column; these flags are the mapping,
