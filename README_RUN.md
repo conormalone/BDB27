@@ -2,8 +2,9 @@
 
 **Status: the notebook is the interface. `notebooks/bdb27_full_run.ipynb` runs the seven
 stages in spec order and renders the headline from the audit artefacts.**
-Phases 0–3 are implemented (stage 02 is the kinematics/turn table, stage 03 the turn
-envelope); phases 4–6 (stages 04–06) are still loud stubs.
+Phases 0–4 are implemented (stage 02 is the kinematics/turn table, stage 03 the turn
+envelope, stage 04 the game demand map and the supply-vs-demand table); phases 5–6
+(stages 05–06) are still loud stubs.
 
 ## 1. Environment
 
@@ -68,7 +69,7 @@ pass. The committed notebook carries **zero baked outputs**.
 python src/run.py 00_thresholds --mode sample     # writes outputs/thresholds.json
 python src/run.py 01_audit       --mode sample     # writes outputs/audit/*
 python src/run.py 02_turns       --mode sample     # writes outputs/turns/*
-python src/run.py --mode sample                    # the whole chain; stops at 03
+python src/run.py --mode sample                    # the whole chain; stops at 05
 ```
 
 Individual stages, with `--force` to overwrite and `--config` for another file:
@@ -89,7 +90,7 @@ stage so the headline can show what exists.
 | 01 audit | `src/01_audit.py` | implemented (items a–m) | `outputs/audit/{audit_items.csv,gate.json,schema_*.json,…}` |
 | 02 turns | `src/02_turns.py` | implemented (Phase 2) | `outputs/turns/{turns,attempts,summary}.parquet`, `sanity.csv`, `smoother_counts.csv`, `segmentation_sensitivity.csv`, `geometry_recovery.csv`, `manifest.json` |
 | 03 envelope | `src/03_envelope.py` | implemented (Phase 3) | `outputs/envelope/{envelope_players,feasible_region}.parquet`, `envelope_fit.csv`, `variance_components.csv`, `envelope_modelfree.csv`, `feasible_region_summary.csv`, `manifest.json` |
-| 04 demand + coverage | `src/04_demand_coverage.py` | **loud stub** | nothing |
+| 04 demand + coverage | `src/04_demand_coverage.py` | implemented (Phase 4) | `outputs/demand_coverage/{demand_map.csv,coverage_players.parquet,coverage_position_ranking.csv,cut_gaps_players.csv,cut_gaps_position.csv,cut_card_cells.parquet,cut_card_players.csv,manifest.json}` |
 | 05 validate | `src/05_validate.py` | **loud stub** | nothing |
 | 06 figures | `src/06_figures.py` | **loud stub** | nothing |
 
@@ -104,7 +105,8 @@ checkpoint — a layout-only run can never look finished.
 | 01_audit | **~2 min 45 s** | **~1.1 GB** | first run also converts CSVs to Parquet (~1 min extra) |
 | 02_turns | **~7 min** | **~400 MB** | six smoothers on every attempt/snap plus the shuffled null; Combine points are held in memory, game tracking is chunked |
 | 03_envelope | **~2 min 24 s** | **~206 MB** | fixed-`tau2` penalised quantile fits plus 200 player-weighted bootstrap replicates per group and the player-grouped held-out cross-check; no EM cycle (was ~9 min 48 s) |
-| 04–06 | instant | — | stubs |
+| 04_demand_coverage | **~3 s** | **~234 MB** | reads the turn table and the Stage 03 artefacts; 200 player-bootstrap reps per group and 2,000 marginal coverage draws per region; the `player_play` Parquet is reused if present |
+| 05–06 | instant | — | stubs |
 | whole notebook | **~10 min** | — | same work as the shell chain |
 
 The audit converts each raw CSV to Parquet once under
@@ -127,7 +129,7 @@ full game file into pandas.
 ## 8. Tests
 
 ```bash
-pytest -q          # 56 tests, no network, no full data needed
+pytest -q          # 89 tests, no network, no full data needed
 ```
 
 Covers: schema assertions on the real files (including that the spec's "no `s`/`a` in
@@ -140,7 +142,13 @@ and the full-mode preflight names every missing tracking file). Phase 2 adds
 `tests/test_turns_stage.py`: the stage end to end on the fixture, planted-cone
 precision/recall and angle recovery, sub-maximal and dropped-frame handling, stop/no-turn
 edge cases, every smoother reproducing known speed and heading, cross-smoother spread,
-byte-identical determinism, and the full-mode provenance refusal.
+byte-identical determinism, and the full-mode provenance refusal. Phase 4 adds
+`tests/test_demand_coverage_stage.py`: the real stage on synthetic Stage-02/03
+worlds — binning sum, snap-type filter, the three weight modes, absent labels
+(`NOT_ESTIMABLE`), boundary-group identity with no fabricated spread, the
+observed/extrapolated split, byte-identical determinism, the missing-column
+refusal, the full-mode refusal, the CSV/Parquet/manifest contract, cut-gap
+ordering, the deferred-rendering Cut Card, and the config bin grid.
 
 ## 9. Layout
 

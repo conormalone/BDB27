@@ -219,3 +219,94 @@ def test_envelope_headline_cell_has_no_baked_outputs(notebook):
             assert cell.get("execution_count") is None
             return
     raise AssertionError("the envelope headline code cell is absent")
+
+
+# ------------------------------------------------ phase 4 demand/coverage
+
+def test_demand_coverage_headline_absent_renders_not_run(notebook, tmp_path):
+    source = source_of(notebook, "def render_demand_coverage_headline")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        namespace = exec_cell(source, Path=Path, OUTPUTS_DIR=tmp_path)
+        namespace["render_demand_coverage_headline"](
+            tmp_path / "manifest.json", tmp_path / "coverage_players.parquet",
+            tmp_path / "coverage_position_ranking.csv")
+    text = out.getvalue()
+
+    assert "NOT RUN — demand/coverage manifest absent" in text
+    for field in ("provenance", "positions_covered", "demand_mass",
+                  "coverage_distribution", "boundary_share", "cut_gaps",
+                  "outcome_status", "cut_cards"):
+        assert f"NOT RUN — {field} absent" in text, f"{field} did not render NOT RUN"
+    assert "NOT A RESULT" not in text
+
+
+def test_demand_coverage_headline_prints_mass_boundary_and_cards(notebook, tmp_path):
+    import pandas as pd
+
+    manifest = {
+        "provenance": "PLACEHOLDER_SAMPLE",
+        "artefact_version": 1,
+        "positions": ["DL", "WR"],
+        "demand_counts": {
+            "turns_in": 100, "eligible": 60, "total_demand_mass": 60.0,
+            "per_group": {"DL": 25, "WR": 35},
+        },
+        "coverage": {
+            "n_players": 8, "n_shared_players": 8,
+            "n_groups": 2, "n_groups_with_players": 2, "n_shared_groups": 2,
+            "all_group_level": True,
+            "interval_method": "marginal_bernoulli_over_stage03_inside_share",
+            "joint_bootstrap_draws": False,
+            "boundary": {"n_components_at_boundary": 2, "n_components": 2},
+            "distribution": {
+                "combined": {"mean": 0.81, "min": 0.70, "max": 0.91,
+                             "p05": 0.70, "p95": 0.91, "n": 8},
+                "observed": {"mean": 0.75, "min": 0.60, "max": 0.88,
+                             "p05": 0.60, "p95": 0.88, "n": 8},
+                "extrapolated": {"mean": 0.95, "min": 0.90, "max": 1.0,
+                                 "p05": 0.90, "p95": 1.0, "n": 8},
+            },
+        },
+        "cut_gaps": {"n_players_with_gaps": 5, "n_player_cell_rows": 12,
+                     "top_n": 5, "mean_gap_score": 0.021},
+        "outcome_weighting": {
+            "status": "NOT_ESTIMABLE", "reason": "label_file_absent",
+            "positions": ["DL"], "counts": {"qualifying_turns_in_scope": 0},
+        },
+        "cut_cards": {"n_cards": 2, "selection": "median_coverage",
+                      "rendering": "deferred_to_stage_06_figures"},
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    pd.DataFrame({
+        "nfl_id": [1, 2, 3], "position_group": ["DL", "WR", "WR"],
+    }).to_parquet(tmp_path / "coverage_players.parquet", index=False)
+    (tmp_path / "coverage_position_ranking.csv").write_text(
+        "position_group,role,n_players,mean_combined,rank_coverage_combined\n"
+        "WR,all,3,0.72,1\n"
+        "DL,all,3,0.88,2\n", encoding="utf-8")
+
+    source = source_of(notebook, "def render_demand_coverage_headline")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        namespace = exec_cell(source, Path=Path, OUTPUTS_DIR=tmp_path)
+        namespace["render_demand_coverage_headline"](
+            manifest_path, tmp_path / "coverage_players.parquet",
+            tmp_path / "coverage_position_ranking.csv")
+    text = out.getvalue()
+
+    assert "UNVALIDATED SAMPLE OUTPUT" in text
+    assert "positions covered" in text and "DL=25" in text and "WR=35" in text
+    assert "demand mass" in text and "60 weighted turns" in text
+    for scope in ("combined", "observed", "extrapolated"):
+        assert f"coverage {scope:<13}" in text
+    assert "mean=0.810" in text and "min=0.700" in text and "max=0.910" in text
+    assert "8/8 players in a shared group" in text
+    assert "2/2 components AT_BOUNDARY" in text
+    assert "cut gaps" in text and "12 player-cell row(s)" in text
+    assert "NOT_ESTIMABLE" in text and "label_file_absent" in text
+    assert "2 selected" in text and "rendering deferred to stage 06" in text
+    assert "3 Combine player(s)" in text
+    assert "lowest coverage WR/all" in text

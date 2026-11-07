@@ -64,3 +64,19 @@ LINE 4:                    sum(CASE WHEN pp.time_to_pressure IS NULL THEN 1 ELSE
 2026-11-07T15:12:06Z,03_envelope,sample,PLACEHOLDER_SAMPLE,OK,143.476,206.3,8425,settings=3 players=1170
 2026-11-07T16:57:31Z,03_envelope,sample,PLACEHOLDER_SAMPLE,OK,145.509,207.0,8425,settings=3 players=1170
 2026-11-07T17:11:51Z,03_envelope,sample,PLACEHOLDER_SAMPLE,OK,145.919,206.9,8425,settings=3 players=1170
+2026-11-07T18:40:21Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,ERROR,1.19,231.4,0,"The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all()."
+2026-11-07T18:40:33Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,ERROR,1.186,230.8,0,"The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all()."
+2026-11-07T18:41:01Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,1.391,230.3,4615,groups=5 players=508 cards=3
+2026-11-07T18:45:03Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,2.117,230.8,4615,groups=5 players=508 cards=3
+2026-11-07T18:45:51Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,1.375,231.2,4615,groups=5 players=508 cards=3
+2026-11-07T18:45:56Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,2.136,233.7,4615,groups=5 players=508 cards=3
+2026-11-07T18:54:51Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,0.0,261.6,0,"checkpoint reused, nothing rebuilt"
+2026-11-07T19:07:23Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,1.386,234.8,4615,groups=5 players=508 cards=3
+2026-11-07T19:14:57Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,2.504,233.7,4615,groups=5 players=508 cards=3
+2026-11-07T19:18:10Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,2.863,233.4,4615,groups=5 players=508 cards=3
+2026-11-07T21:55:36Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,1.774,234.3,4615,groups=5 players=508 cards=3
+2026-11-07T22:07:15Z,01_audit,sample,PLACEHOLDER_SAMPLE,OK,210.49,1360.2,437995,
+2026-11-07T22:14:15Z,02_turns,sample,PLACEHOLDER_SAMPLE,OK,414.853,1360.2,1492348,
+2026-11-07T22:16:45Z,03_envelope,sample,PLACEHOLDER_SAMPLE,OK,149.182,1360.2,8425,settings=3 players=1170
+2026-11-07T22:16:45Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,0.0,1360.2,0,"checkpoint reused, nothing rebuilt"
+2026-11-07T22:17:46Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,2.168,255.4,4615,groups=5 players=508 cards=3

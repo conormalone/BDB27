@@ -35,6 +35,7 @@ turn_coverage:
     audit: outputs/audit
     turns: outputs/turns
     envelope: outputs/envelope
+    demand_coverage: outputs/demand_coverage
     figures: outputs/figures
     notes: notes
     fixtures: fixtures
@@ -328,6 +329,41 @@ turn_coverage:
     entry_speed: [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
     turn_angle: [0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0]
     speed_band: [0.0, 2.0, 4.0, 6.0, 8.0, 12.0]
+
+  demand:
+    # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
+    # scope is the mapping already used by 02_turns (snap_types.rules).
+    positions: [DL, WR, TE, DB, OL]
+    snap_types:
+      DL: [PASS_RUSH]
+      WR: [ROUTE]
+      TE: [ROUTE]
+      DB: [COVERAGE]      # exploratory; coverage snaps are the DB analogue
+      OL: [OTHER]         # exploratory; no PASS_PRO label exists
+    exploratory_positions: [DB, OL]
+    weight_modes: [frequency, outcome_quick_pressure,
+                   outcome_quick_pressure_excl_unblocked]
+    outcome_weight_positions: [DL]
+    # D101: quick_pressure null -> false on a *present* player_play row.
+    # "short time to pressure" = time_to_pressure <= this value (2.5 s covers
+    # every observed quick_pressure=True row and excludes every observed False).
+    short_time_to_pressure_s: 2.5
+    bootstrap_reps: 200
+    bootstrap_seed_offset: 40404
+    bootstrap_min_players: 2
+    coverage_draws: 2000
+    coverage_seed_offset: 40405
+    coverage_interval: [0.05, 0.95]
+    cut_gap_top_n: 5
+    # Cut gap = high-demand cell with inside_share < feasibility.inside_share_min.
+    card_groups: [DL, WR, TE]
+    card_players_per_group: 1
+    card_selection: median_coverage
+    roles:
+      DL: {EDGE: edge, INTERIOR_LINE: interior}
+      DB: {CB: outside, SLOT_CB: slot}
+      WR: {WR: outside, SLOT_WR: slot}
+      TE: {TE: outside, SLOT_WR: slot}
 
   orientation:
     # Game data only (item i). Never part of the turn definition.

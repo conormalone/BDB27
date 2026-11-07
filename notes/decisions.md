@@ -5635,3 +5635,203 @@ averaging them, would make the variance route unfalsifiable.
 `_grid`; `tests/test_envelope_stage.py::test_disagreement_world_reports_both_values_and_flags`
 (planted spread 1.3: moment `tau^2 > 1`, held-out optimum 0, both printed, flag set);
 sample `variance_components.csv` (18 of 51 PLACEHOLDER components disagree).
+
+---
+
+## D151 — Demand-map eligibility is one ordered exclusion chain; angles above 180° are excluded, never clamped · 2026-11-07
+**Decision.** Game turns pass through exactly one ordered chain: `invalid` →
+`position_not_mapped` → `snap_type_not_relevant` → `nonfinite_geometry` →
+`entry_outside_bins` → `angle_outside_bins` → eligible. A turn matching an earlier
+reason is not counted again later, so the counts sum to `turns_in`. An
+`abs_turn_angle` outside the last configured edge (180°) is **excluded and
+counted**, never clamped to 180° and never given a fabricated 181°+ bin.
+**Why.** The demand map must be a partition of the input, not a set of
+overlapping filters; and a 220° heading turn is a wrap/data-quality artefact, not
+a real 220° cut. Clamping it into the 150–180° cell would put invented mass in
+the highest-angle bin and inflate the demand the coverage score is built on.
+**Evidence.** `src/bdb27/demand_coverage.py::_prepare_eligibility`,
+`_assert_cell_grid`; `tests/test_demand_coverage_stage.py::
+test_demand_bins_sum_to_eligible_turn_counts` (sample: 6 invalid, 749 unmapped,
+1,377 wrong snap type, 396 angle-out, sum 4,615 of 7,143).
+
+## D152 — Snap-type scope per position, with DB=COVERAGE and OL=OTHER as explicit exploratory proxies · 2026-11-07
+**Decision.** The demand map uses the snap types each position actually plays,
+taken from the same mapping `02_turns` uses: DL `PASS_RUSH`, WR/TE `ROUTE`, DB
+`COVERAGE`, OL `OTHER`. DB and OL are marked `exploratory` in every demand row,
+the ranking and the manifest.
+**Why.** TASK.md §4 names DL pass-rush and WR/TE route snaps and makes DB/OL
+exploratory. There is no `PASS_PRO` label in the vendor mapping, so `OTHER` is the
+closest OL proxy and must be labelled as one rather than silently treated as
+pass protection. Writing the scope into config keeps it freezable in prereg.
+**Evidence.** `config.yaml: turn_coverage.demand.snap_types`;
+`tests/test_demand_coverage_stage.py::test_snap_type_restriction_actually_filters`.
+
+## D153 — Outcome weighting is DL-only; a missing label row is excluded, a present null is false (D101) · 2026-11-07
+**Decision.** `outcome_quick_pressure` and
+`outcome_quick_pressure_excl_unblocked` are built for DL only. A turn is
+qualifying when its rep is present in `player_play` **and**
+(`quick_pressure IS TRUE` or `time_to_pressure <= 2.5 s`). On a *present* row a
+null `quick_pressure` is false and the count is recorded. On a **missing** row the
+turn is excluded from outcome weighting entirely — never set to false — and
+`n_reps_missing_label` is recorded. The unblocked sensitivity sets weight 0 for
+`unblocked_pressure IS TRUE`. A missing label file makes the outcome map
+`NOT_ESTIMABLE` with a named reason while the frequency map is still delivered.
+**Why.** Treating unknown reps as non-pressure would bias the demand map toward
+zero exactly on the snaps with incomplete participation, which is the opposite of
+an honest denominator. TASK.md §4 asks for the unblocked exclusion as a
+sensitivity; it is not a second production map.
+**Evidence.** `src/bdb27/demand_coverage.py::_prepare_labels`, `_demand_group`;
+tests `test_weight_modes_differ_only_where_specified` and
+`test_outcome_weight_not_estimable_when_labels_absent` (sample DL: 799 eligible,
+0 missing labels, 728 null `quick_pressure`, 17 qualifying, 16 after excluding
+unblocked).
+
+## D154 — The bootstrap resamples players, not turns · 2026-11-07
+**Decision.** Bin intervals for the demand map come from resampling **players**
+with replacement within a position group, summing each drawn player's whole
+player × cell weight row and normalising. The seed is
+`SeedSequence([seed, bootstrap_seed_offset, group_index])`, so every weight mode
+of a group shares its draws and the result is deterministic.
+**Why.** Turns inside one player are not independent: a player with many snaps
+would otherwise dominate a turn-level bootstrap and understate the interval.
+Resampling the player is the unit the claim is about.
+**Evidence.** `demand_coverage.DemandCoverage._bootstrap_shares`;
+`test_bootstrap_intervals_deterministic_under_fixed_seed` asserts byte-identical
+CSV/Parquet data across a forced rebuild and `bootstrap_unit == "player"`.
+
+## D155 — Turn Coverage is the demand-weighted inside-point share of the group's *frequency* demand · 2026-11-07
+**Decision.** For each player, the group's frequency demand vector `w` is used:
+`coverage = Σ w·1[inside_point] / Σ w`, computed separately for observed cells,
+extrapolated cells and combined. A transparent `coverage_expected_*` =
+`Σ w·inside_share / Σ w` is reported beside it. A scope with zero demand mass is
+`NO_DEMAND_MASS` with a null value; a player with no region is
+`NO_FEASIBLE_REGION`.
+**Why.** TASK.md §5 defines coverage as the demand-weighted share of cells inside
+the feasible region and requires observed and extrapolated to be reported
+separately. Frequency is the default demand weight (D153's outcome map is a
+descriptive DL view, not the coverage denominator); using an outcome-weighted
+denominator would silently change the estimand. `inside_share` is reported beside
+the point indicator so the reader can see the uncertainty the point score hides.
+**Evidence.** `_coverage_for_region`; `test_observed_and_extrapolated_split_is_honoured`
+(3 inside observed + 1 outside observed + 2 outside extrapolated ⇒ combined
+3/6, observed 3/4, extrapolated 0/2).
+
+## D156 — Coverage intervals are a marginal Bernoulli draw over persisted `inside_share`, and are labelled as an approximation · 2026-11-07
+**Decision.** For each distinct region and scope, draw `coverage_draws` independent
+Bernoulli(`inside_share_c`) per cell with `w_c > 0`, compute the weighted coverage
+of each draw, and report the configured percentile interval plus the replicate SD.
+The manifest records
+`interval_method="marginal_bernoulli_over_stage03_inside_share"` and
+`joint_bootstrap_draws=false`. These are not posterior draws.
+**Why.** Stage 03 persists a per-cell share, not the joint bootstrap draw matrix,
+so the true joint dependence cannot be recovered without rerunning Stage 03 —
+which this stage is forbidden to do. Marginals are the honest best available
+approximation, and saying so is part of the artefact contract. Presenting the
+result as a joint interval would overstate what the stored evidence supports.
+**Evidence.** `_coverage_for_region`; manifest `coverage.interval_method`;
+`test_boundary_group_coverage_equals_group_value`.
+
+## D157 — Coverage is computed once per distinct feasible region and shared; no player spread is fabricated · 2026-11-07
+**Decision.** Players are grouped by the exact signature of their persisted region
+(`inside_share` rounded to 12 dp + `inside_point`). Coverage and intervals are
+computed once per signature and assigned identically to every player in it.
+`coverage_shared_group = (n_distinct_regions_in_group == 1)`, `shared_reason` is
+`tau2_at_boundary` when the Stage 03 `plant_retention` component is `AT_BOUNDARY`
+(or `identical_feasible_region` otherwise), and the manifest records
+`all_group_level` with a plain-language note.
+**Why.** All five Combine groups are `AT_BOUNDARY` on the sample: `tau2 = 0`, the
+random intercept is 0, and the feasible region is identical within a group.
+Reporting different coverage or different intervals for two such players would be
+a fabricated player-to-player difference. A shared value is a finding about what
+the data can support, not a failure to compute.
+**Evidence.** `_build_coverage`; `test_boundary_group_coverage_equals_group_value`
+asserts identical values/intervals across two players, `n_distinct_regions == 1`
+and zero range; sample manifest: 508/508 players shared, 5/5 groups, 5/5 retention
+components `AT_BOUNDARY`.
+
+## D158 — Cut gap = high demand + low feasibility, ranked by demand weight then feasibility · 2026-11-07
+**Decision.** A cut gap is a cell with `w > 0` and
+`inside_share < feasibility.inside_share_min` (0.50). Candidates are ranked by
+`weight_share` descending, then `inside_share` ascending, then cell index, and the
+top `demand.cut_gap_top_n` (5) are written per player. `gap_score =
+weight_share × (1 − inside_share)`. A position × role aggregate reports the most
+common gap cells with counts and means.
+**Why.** TASK.md §5 asks for the highest-weight cells with a low probability of
+being feasible. Ranking by weight first keeps the card about what the player's job
+actually demands; the score makes severity comparable across players without
+inventing a threshold.
+**Evidence.** `_cut_gaps`, `_position_gaps`;
+`test_cut_gaps_rank_high_demand_low_feasibility` (5 turns at share 0.1 outranks 1
+turn at share 0.2; a feasible high-demand cell is not a gap).
+
+## D159 — Role is the modal alignment over relevant game turns · 2026-11-07
+**Decision.** A player's role is the mode of `alignment` over his `setting=="game"`
+turns in the relevant snap types (all his game turns if none are in scope), mapped
+through `demand.roles[group]`; unmapped → `other`, no game turns → `unknown`.
+`role_source` and `n_role_turns` are recorded. Roles affect only the position ×
+role tables, never the demand map or the coverage formula.
+**Why.** TASK.md §5 asks for edge vs interior and slot vs outside rankings. A mode
+is deterministic and does not invent a multi-role model the sample cannot
+support; recording the turn count makes a thin role visible.
+**Evidence.** `_roles`; `coverage_players.parquet` columns `role`,
+`role_source`, `n_role_turns`.
+
+## D160 — Stage 04 writes Cut Card data only; rendering is deferred to Stage 06 · 2026-11-07
+**Decision.** One player per configured group is selected by `median_coverage`
+(known role, `OK` coverage, sorted by coverage then `nfl_id`, middle). The full
+36-cell playback data and the card metadata are written with
+`rendering="deferred_to_stage_06_figures"`. No figure is produced by this stage.
+**Why.** The figure belongs to the deliverable stage with the other four figures
+and the notebook's figure cell. Drawing here would duplicate layout code, write an
+image the notebook does not display, and blur which stage owns the deliverable.
+Median coverage is illustrative, not best/worst, so the card cannot be read as a
+selection of extremes.
+**Evidence.** `_cut_cards`;
+`test_cut_card_data_is_small_and_rendering_deferred` (≤ configured cards, every
+row says deferred, no image file in the output directory).
+
+## D161 — Outcome-weighted demand rows exist only for the outcome positions · 2026-11-07
+**Decision.** The demand table carries the frequency map for all five positions,
+and the two outcome maps for `demand.outcome_weight_positions` (DL) only. It does
+not write 36 all-zero outcome rows for WR/TE/DB/OL.
+**Why.** TASK.md §4 defines outcome weighting for DL. All-zero rows for other
+positions would look like a measured zero rather than an undefined comparison, and
+would invite exactly the misreading the outcome map is meant to avoid.
+**Evidence.** `_demand_group` (mode skip); sample `demand_map.csv`: 5 × 36
+frequency rows + 2 × 36 DL outcome rows = 252.
+
+## D162 — Stage 04 mirrors Stage 03's full-mode gate and checkpoint semantics · 2026-11-07
+**Decision.** `--mode full` refuses (exit 2, `REFUSED`) unless
+`outputs/thresholds.json` provenance is `FULL` **and** `notes/prereg.md` exists,
+naming every missing precondition. The checkpoint is reused only when
+`config_sha`, `mode`, `provenance` and `artefact_version` all match; `--force`
+rebuilds. Run time and peak RSS go to `outputs/run_log.csv` via `common.StageTimer`
+with `rows = eligible turns`.
+**Why.** One code path for both modes and one refusal contract across stages: a
+placeholder thresholds file or a missing prereg cannot be the basis of a coverage
+result, and a stale artefact must not be silently reused after the engine changes.
+**Evidence.** `src/04_demand_coverage.py::check_provenance`, `checkpoint_ok`;
+`test_full_mode_refuses_without_prereg_and_full_thresholds`.
+
+## D163 — The case's DB demand denominator is all DB game turns; the snap-classified subset is a sensitivity · 2026-11-07
+**Decision.** For the supply-vs-demand case the DB denominator is **all valid DB
+game turns** (sample: 2,262), not the snap-classified subset. The classified
+subset (DB `COVERAGE`, sample: 1,111 turns) is reported beside it as a
+sensitivity. Wherever DB coverage is quoted, the share of DB turns snapped
+`OTHER` is quoted too (sample: 1,121 / 2,262 = 49.6%), because that half of the
+universe is what the classified map leaves out. This **amends D152** for the DB
+denominator; D152 still governs the per-position `snap_type_scope` column in the
+stage artefact. Band edges for the case are 30–45° and 45–60°, separate and
+left-closed, with the drill targeting 40°; they are reporting bands over the turn
+table, not new demand-bin edges (the 30° demand bins stay shared with Stage 03).
+**Why.** The question in CURRENT FOCUS (`TASK.md` @ `f8ff492`) is what the NFL
+asks DBs to do, not what the vendor's `COVERAGE` label captured; restricting to
+that label would drop half the turns and bias the demand the case is built on.
+Reporting the classified subset alongside keeps the stage's reproducible
+artefact honest about what it did, and stating the `OTHER` share prevents a
+reader from mistaking the subset for the universe.
+**Evidence.** Turn table (sample): DB game turns 2,262, `OTHER` 1,121,
+`COVERAGE` 1,111, `PASS_RUSH` 30; 2,077 of 2,262 fall inside the angle bins;
+30–45° = 97 and 45–60° = 229 over all DB game turns, matching the table at the
+top of `TASK.md`. `notes/phase4-demand-coverage.md` §Turn universe;
+`outputs/demand_coverage/demand_map.csv` carries `snap_type_scope` per row.
