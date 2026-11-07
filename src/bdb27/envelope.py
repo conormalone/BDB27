@@ -13,7 +13,10 @@ What is estimated
   time-to-regain, both linear-interaction surfaces in (entry speed, |turn angle|).
 * **Feasible region** — the (entry speed x turn angle) cells whose predicted speed
   retention is at least ``feasibility.retention_tolerance``, with an observed /
-  extrapolated split against the Combine entry-speed range.
+  extrapolated split against the Combine entry-speed range. Uncertainty is a
+  bootstrap **share** (``inside_share``), never a posterior probability: it is the
+  share of player-weighted bootstrap replicates whose predicted retention is at
+  least the tolerance.
 * **Model-free cross-check** — per-bin upper quantiles and top-k means beside the
   model. Never used to fit, never used to choose anything.
 
@@ -153,6 +156,8 @@ ENVELOPE_PLAYER_SCHEMA = pa.schema([
 ])
 
 FEASIBLE_SCHEMA = pa.schema([
+    # inside_share is the share of player-weighted bootstrap replicates with
+    # predicted retention >= tolerance; it is NOT a posterior probability.
     ("setting", pa.string()),
     ("nfl_id", pa.int64()),
     ("player_name", pa.string()),
@@ -169,9 +174,9 @@ FEASIBLE_SCHEMA = pa.schema([
     ("retention_pred", pa.float64()),
     ("retention_p05", pa.float64()),
     ("retention_p95", pa.float64()),
-    ("p_inside", pa.float64()),
-    ("inside", pa.bool_()),
-    ("inside_prob", pa.bool_()),
+    ("inside_share", pa.float64()),
+    ("inside_point", pa.bool_()),
+    ("inside_share_ge_min", pa.bool_()),
     ("n_turns_cell", pa.int32()),
     ("n_turns_cell_player", pa.int32()),
 ])
@@ -281,8 +286,16 @@ def _group_sums(X: np.ndarray, y: np.ndarray, gidx: np.ndarray, J: int,
 
 def _solve_re_irls(X: np.ndarray, y: np.ndarray, gidx: np.ndarray, J: int, *,
                    tau: float, tau2: float, base_w: np.ndarray, max_iter: int,
-                   tol: float, eps: float) -> tuple[np.ndarray, np.ndarray, int, bool]:
-    """One IRLS solve at a fixed ``tau2``. Returns (beta, u, iterations, converged)."""
+                   tol: float, obj_tol: float, eps: float
+                   ) -> tuple[np.ndarray, np.ndarray, int, bool]:
+    """One IRLS solve at a fixed ``tau2``. Returns (beta, u, iterations, converged).
+
+    Convergence is judged on the relative gain of the objective
+    ``sum(base_w * rho_tau(r)) + ||u||^2 / (2 tau2)`` after at least five
+    iterations. A coefficient delta remains only as a secondary safety stop: the
+    old delta rule (``tol`` = 1e-6) never fired on a converged fit and ran
+    thousands of iterations. ``converged`` is reported from the objective rule.
+    """
     p = X.shape[1]
     lam = 1.0 / max(tau2, 1e-12)
     # start from the pooled weighted least squares fit
@@ -298,6 +311,8 @@ def _solve_re_irls(X: np.ndarray, y: np.ndarray, gidx: np.ndarray, J: int, *,
         beta = np.zeros(p)
     u = np.zeros(J)
     converged = False
+    obj_prev: float | None = None
+    min_iter = 5
     it = 0
     for it in range(1, max_iter + 1):
         r = y - X @ beta - u[gidx]
@@ -323,17 +338,33 @@ def _solve_re_irls(X: np.ndarray, y: np.ndarray, gidx: np.ndarray, J: int, *,
         delta = max(float(np.max(np.abs(beta_new - beta), initial=0.0)),
                     float(np.max(np.abs(u_new - u), initial=0.0)))
         beta, u = beta_new, u_new
-        if delta < tol:
-            converged = True
+        r = y - X @ beta - u[gidx]
+        loss = np.where(r > 0, tau * r, (tau - 1.0) * r)
+        obj = float(np.sum(base_w * loss)
+                    + 0.5 * np.sum(u * u) / max(tau2, 1e-12))
+        if not np.isfinite(obj):
             break
+        if it >= min_iter and obj_prev is not None:
+            gain = (obj_prev - obj) / max(1.0, abs(obj))
+            if gain < obj_tol:
+                converged = True
+                break
+            if delta < tol:  # secondary safety: coefficients stopped moving
+                break
+        obj_prev = obj
     return beta, u, it, converged
 
 
 def fit_re_quantile(X: np.ndarray, y: np.ndarray, player_ids: np.ndarray, *,
-                    tau: float, prior_sd: float, max_iter: int, tol: float,
-                    eps: float, base_w: np.ndarray | None = None,
+                    tau: float, prior_sd: float, em_max_iter: int,
+                    irls_max_iter: int, tol: float, obj_tol: float, eps: float,
+                    base_w: np.ndarray | None = None,
                     tau_floor_frac: float = 0.25) -> REFit:
-    """Random-effects quantile regression with an EM update for ``tau^2``."""
+    """Random-effects quantile regression with an EM update for ``tau^2``.
+
+    ``em_max_iter`` caps the outer tau^2 cycle; ``irls_max_iter`` and ``obj_tol``
+    are the inner solve's iteration cap and relative-objective tolerance.
+    """
     player_ids = np.asarray(player_ids, dtype=np.int64)
     uniq, gidx = np.unique(player_ids, return_inverse=True)
     J = len(uniq)
@@ -349,10 +380,10 @@ def fit_re_quantile(X: np.ndarray, y: np.ndarray, player_ids: np.ndarray, *,
     converged = False
     beta = np.zeros(X.shape[1])
     u = np.zeros(J)
-    for _ in range(int(max_iter)):
+    for _ in range(int(em_max_iter)):
         beta, u, it, conv = _solve_re_irls(
             X, y, gidx, J, tau=tau, tau2=tau2, base_w=base_w,
-            max_iter=int(max_iter), tol=tol, eps=eps)
+            max_iter=int(irls_max_iter), tol=tol, obj_tol=obj_tol, eps=eps)
         it_total += it
         converged = conv
         # summed weight mass per player at the solution (for shrinkage / EM)
@@ -372,9 +403,9 @@ def fit_re_quantile(X: np.ndarray, y: np.ndarray, player_ids: np.ndarray, *,
     # final pass at the settled variance so beta/u and A agree
     beta, u, it, conv = _solve_re_irls(
         X, y, gidx, J, tau=tau, tau2=tau2, base_w=base_w,
-        max_iter=int(max_iter), tol=tol, eps=eps)
+        max_iter=int(irls_max_iter), tol=tol, obj_tol=obj_tol, eps=eps)
     it_total += it
-    converged = converged or conv
+    converged = conv
     r = y - X @ beta - u[gidx]
     w = np.where(r > 0, tau, 1.0 - tau) / np.maximum(np.abs(r), eps) * base_w
     A = np.bincount(gidx, weights=w, minlength=J)
@@ -455,14 +486,18 @@ def _capacity_mask(frame: pd.DataFrame, cfg: common.Config, demand: np.ndarray
     invalid = ~valid
     nonfinite = valid & ~finite
     below = valid & finite & (apex < floor)
-    out_range = valid & finite & (apex >= floor) & ((demand <= 0) | (demand > cap))
+    # Rows with a non-positive demand are unusable; rows above the physical cap
+    # are KEPT and winsorised by the caller. They are mutually exclusive here,
+    # and neither may appear in the excluded dict as `winsorised`.
+    nonpositive = valid & finite & (apex >= floor) & (demand <= 0)
+    winsorised = valid & finite & (apex >= floor) & (demand > cap)
     kept = valid & finite & (apex >= floor) & (demand > 0)
     counts = {
         "invalid": int(invalid.sum()),
         "below_apex_floor": int(below.sum()),
         "nonfinite": int(nonfinite.sum()),
-        "out_of_range": int(out_range.sum()),
-        "winsorised": int(((demand > cap) & kept).sum()),
+        "nonpositive_demand": int(nonpositive.sum()),
+        "winsorised": int(winsorised.sum()),
     }
     return kept, counts
 
@@ -515,6 +550,7 @@ class Envelope:
                  quantile: float | None = None, with_bootstrap: bool = True,
                  seed_extra: int = 0, settings: Iterable[str] = SETTINGS):
         self.cfg = cfg
+        self._validate_config()
         self.with_bootstrap = with_bootstrap
         self.quantile = float(quantile if quantile is not None
                               else cfg.get("envelope.quantile"))
@@ -545,6 +581,25 @@ class Envelope:
         self._feature_cache: dict[str, dict] = {}
 
     # -- helpers ---------------------------------------------------------------
+    def _validate_config(self) -> None:
+        """Refuse config values this engine would otherwise silently ignore."""
+        fixed = [
+            ("envelope.capacity_form", "linear_centred"),
+            ("envelope.random_effects", "intercept"),
+            ("envelope.bootstrap_kind", "player_weighted"),
+        ]
+        for key, expected in fixed:
+            value = self.cfg.get(key)
+            if str(value) != expected:
+                raise common.StageRefused(
+                    f"{STAGE}: unsupported {key}={value!r}; the only supported "
+                    f"value is {expected!r}")
+        demand = str(self.cfg.get("envelope.capacity_demand"))
+        if demand not in DEMAND_COLUMNS:
+            raise common.StageRefused(
+                f"{STAGE}: unsupported envelope.capacity_demand={demand!r}; "
+                f"supported values: {', '.join(sorted(DEMAND_COLUMNS))}")
+
     def _sub(self, setting: str) -> pd.DataFrame:
         return self.players_frames[setting]
 
@@ -570,15 +625,17 @@ class Envelope:
         fit = fit_re_quantile(
             X, y, players,
             tau=tau, prior_sd=self._tau2_prior(),
-            max_iter=int(self.cfg.get("envelope.em_max_iter")),
+            em_max_iter=int(self.cfg.get("envelope.em_max_iter")),
+            irls_max_iter=int(self.cfg.get("envelope.irls_max_iter")),
             tol=float(self.cfg.get("envelope.em_tol")),
+            obj_tol=float(self.cfg.get("envelope.irls_obj_tol")),
             eps=float(self.cfg.get("envelope.irls_eps")))
         return GroupFit(label=label, player_ids=fit.player_ids, fit=fit)
 
     def _bootstrap_group(self, label: str, X: np.ndarray, y: np.ndarray,
                          players: np.ndarray, setting: str, model: str, tau: float,
-                         draw_lo: np.ndarray | None, draw_hi: np.ndarray | None,
-                         tau2_hint: float) -> tuple[np.ndarray, np.ndarray]:
+                         draw_lo: np.ndarray | None, draw_hi: np.ndarray | None
+                         ) -> tuple[np.ndarray, np.ndarray]:
         reps = int(self.cfg.get("envelope.bootstrap_reps"))
         rng = np.random.default_rng(_seed(
             f"{setting}|{model}|{label}|{self.seed_extra}",
@@ -589,6 +646,9 @@ class Envelope:
         J = len(uniq)
         betas = np.empty((reps, X.shape[1]))
         us = np.empty((reps, J))
+        # Bootstrap draws need the same estimand, not the last decimal: cap the
+        # inner solve at 40 iterations and relax the objective tolerance to 1e-6.
+        irls_cap = min(int(self.cfg.get("envelope.irls_max_iter")), 40)
         for r in range(reps):
             player_w = rng.exponential(1.0, J)
             base_w = player_w[gidx]
@@ -596,16 +656,32 @@ class Envelope:
             fit = fit_re_quantile(
                 X, y_draw, players,
                 tau=tau, prior_sd=self._tau2_prior(),
-                max_iter=int(self.cfg.get("envelope.em_max_iter")),
+                em_max_iter=int(self.cfg.get("envelope.em_max_iter")),
+                irls_max_iter=irls_cap,
                 tol=max(float(self.cfg.get("envelope.em_tol")), 1e-5),
+                obj_tol=1e-6,
                 eps=float(self.cfg.get("envelope.irls_eps")), base_w=base_w)
+            # fit.u is indexed by np.unique(players); a silent reorder would
+            # corrupt every SE downstream, so verify it rather than assume it.
+            if not np.array_equal(fit.player_ids, uniq) or len(fit.u) != J:
+                raise common.StageRefused(
+                    f"{STAGE}: bootstrap player order mismatch in group {label!r} "
+                    f"({setting}/{model})")
             betas[r] = fit.beta
-            # align on this group's player order
             us[r] = fit.u
         return betas, us
 
     # -- run -------------------------------------------------------------------
     def run(self) -> EnvelopeResult:
+        # A stage that fits nothing must not exit 0 (F4): count usability once
+        # over the whole input and name every reason.
+        kept_all, all_counts = _capacity_mask(
+            self.turns, self.cfg, _demand(self.turns, self.cfg, "lateral_at_apex"))
+        if int(kept_all.sum()) == 0:
+            reasons = ", ".join(f"{k}={v}" for k, v in all_counts.items())
+            raise common.StageRefused(
+                f"{STAGE}: no usable capacity observations across any setting "
+                f"({reasons})")
         player_rows: list[dict] = []
         fit_rows: list[dict] = []
         modelfree_rows: list[dict] = []
@@ -678,8 +754,7 @@ class Envelope:
                 y = y_form[mask]
                 pl = nfl[mask]
                 gf = self._fit_group(group, X, y, pl, setting, f"capacity:{form}",
-                                     quantile if form == primary_form else
-                                     float(sensitivity[-1]))
+                                     quantile)
                 capacity_models[form][group] = gf
                 if self.with_bootstrap and form == primary_form:
                     lo = _num(frame, "peak_lateral_accel_smoother_min") if self.smoother_spread else None
@@ -688,7 +763,7 @@ class Envelope:
                         group, X, np.clip(y_form[mask], 0, cap), pl, setting,
                         f"capacity:{form}", quantile,
                         None if lo is None else lo[mask],
-                        None if hi is None else hi[mask], gf.fit.tau2)
+                        None if hi is None else hi[mask])
                     self._check_recovery_frame(gf)
         self.capacity[setting] = capacity_models
 
@@ -732,7 +807,7 @@ class Envelope:
                     gf.beta_reps, gf.u_reps = self._bootstrap_group(
                         group, X, ret[mask], nfl[mask], setting, "retention",
                         quantile, None if lo is None else lo[mask],
-                        None if hi is None else hi[mask], gf.fit.tau2)
+                        None if hi is None else hi[mask])
                 retention_models[group] = gf
         self.retention[setting] = retention_models
 
@@ -757,7 +832,7 @@ class Envelope:
                 if self.with_bootstrap:
                     gf.beta_reps, gf.u_reps = self._bootstrap_group(
                         group, X, -reg[mask], nfl[mask], setting, "regain",
-                        1.0 - rq, None, None, gf.fit.tau2)
+                        1.0 - rq, None, None)
                 regain_models[group] = gf
         self.regain[setting] = regain_models
 
@@ -777,12 +852,13 @@ class Envelope:
         fit_rows.extend(self._fit_rows(
             setting, frame, kept, ret_mask, reg_mask, capacity_models,
             retention_models, regain_models, player_group, ret_group,
-            sensitivity, quantile, nfl, apex))
+            quantile, nfl, apex))
 
         # ---- feasible region -------------------------------------------------
         feasible_rows.extend(self._feasible_rows(
             setting, frame, nfl, player_group, ret_group, retention_models,
-            planar_angle, kept, int(cfg.get("feasibility.probability_inside_min"))))
+            planar_angle, kept,
+            float(cfg.get("feasibility.inside_share_min"))))
 
     # -- helpers for one setting ----------------------------------------------
     def _combine_range(self) -> None:
@@ -1034,7 +1110,7 @@ class Envelope:
 
     def _fit_rows(self, setting, frame, kept, ret_mask, reg_mask, capacity_models,
                   retention_models, regain_models, player_group, ret_group,
-                  sensitivity, quantile, nfl, apex) -> list[dict]:
+                  quantile, nfl, apex) -> list[dict]:
         rows: list[dict] = []
         cap_group_of_row = np.array([player_group.get(int(p), "ALL") for p in nfl])
         ret_group_of_row = np.array([ret_group.get(int(p), "ALL") for p in nfl])
@@ -1047,7 +1123,7 @@ class Envelope:
                         setting, group, "capacity", "lateral_at_apex", q, gf,
                         mask & (cap_group_of_row == group), apex))
                 continue
-            q = quantile if form == "lateral_at_apex" else float(sensitivity[-1])
+            q = quantile
             for group, gf in models.items():
                 rows.append(self._fit_row(
                     setting, group, "capacity", form, q, gf,
@@ -1084,7 +1160,6 @@ class Envelope:
                                   if gf.beta_reps is not None and i < gf.beta_reps.shape[1]
                                   else float("nan"))
         if model == "capacity" and form == "lateral_at_apex" and abs(quantile - self.quantile) < 1e-12:
-            ref = float(self.cfg.get("envelope.capacity_reference_speed"))
             vals = [float(gf.fit.beta[0] + gf.fit.u[j]) for j in range(len(gf.fit.u))]
             row["capacity_at_4_median"] = _pct(np.array(vals), 50)
             row["capacity_at_4_p05"] = _pct(np.array(vals), 5)
@@ -1114,7 +1189,7 @@ class Envelope:
         return bool(cell["entry_lo"] >= lo and cell["entry_hi"] <= hi)
 
     def _feasible_rows(self, setting, frame, nfl, player_group, ret_group,
-                       retention_models, angle, kept, prob_min) -> list[dict]:
+                       retention_models, angle, kept, share_min) -> list[dict]:
         if not retention_models:
             self.warnings.append(
                 f"{setting}: no plant turns -> no retention model -> no feasible region")
@@ -1154,12 +1229,13 @@ class Envelope:
             if j is None:
                 continue
             point = Xc @ gf.fit.beta + gf.fit.u[j]
-            p05 = p95 = p_inside = None
+            p05 = p95 = inside_share = None
             if gf.beta_reps is not None and gf.u_reps is not None:
                 preds = gf.beta_reps @ Xc.T + gf.u_reps[:, j][:, None]
                 p05 = np.percentile(preds, 5, axis=0)
                 p95 = np.percentile(preds, 95, axis=0)
-                p_inside = (preds >= tol).mean(axis=0)
+                # Share of bootstrap replicates with retention >= tolerance.
+                inside_share = (preds >= tol).mean(axis=0)
             player_counts = np.bincount(
                 cell_of[(nfl == nid) & valid & (cell_of >= 0)], minlength=len(cells))
             for c in cells:
@@ -1179,9 +1255,11 @@ class Envelope:
                     "retention_pred": float(point[i]),
                     "retention_p05": float(p05[i]) if p05 is not None else float("nan"),
                     "retention_p95": float(p95[i]) if p95 is not None else float("nan"),
-                    "p_inside": float(p_inside[i]) if p_inside is not None else float("nan"),
-                    "inside": bool(point[i] >= tol),
-                    "inside_prob": bool(p_inside[i] >= prob_min) if p_inside is not None else False,
+                    "inside_share": (float(inside_share[i])
+                                     if inside_share is not None else float("nan")),
+                    "inside_point": bool(point[i] >= tol),
+                    "inside_share_ge_min": (bool(inside_share[i] >= share_min)
+                                            if inside_share is not None else False),
                     "n_turns_cell": int(setting_counts[i]),
                     "n_turns_cell_player": int(player_counts[i]),
                 })
@@ -1204,6 +1282,15 @@ class Envelope:
             if c not in df.columns:
                 df[c] = np.nan
         df = df[cols]
+        # A null in an integer/boolean count column is a producer bug, not data:
+        # it would be written as null and quietly break every consumer.
+        bad = [f.name for f in ENVELOPE_PLAYER_SCHEMA
+               if (pa.types.is_integer(f.type) or pa.types.is_boolean(f.type))
+               and bool(df[f.name].isna().any())]
+        if bad:
+            raise common.StageRefused(
+                f"{STAGE}: integer/boolean column(s) contain nulls: "
+                + ", ".join(bad) + " — a null count column is a producer bug")
         df = df.sort_values(["setting", "position_group", "nfl_id"],
                             kind="stable").reset_index(drop=True)
         return df
@@ -1211,9 +1298,10 @@ class Envelope:
     def _feasible_summary(self, feasible: pd.DataFrame) -> pd.DataFrame:
         cols = ["setting", "position_group", "cell_scope", "n_cells",
                 "n_player_cells", "n_cells_point_feasible",
-                "share_player_cells_point_feasible", "n_cells_prob_feasible",
-                "share_player_cells_prob_feasible", "n_turns_in_scope",
-                "share_turns_in_prob_feasible_cells"]
+                "share_player_cells_point_feasible",
+                "n_cells_inside_share_ge_min",
+                "share_player_cells_inside_share_ge_min", "n_turns_in_scope",
+                "share_turns_in_inside_share_ge_min_cells"]
         if len(feasible) == 0:
             return pd.DataFrame(columns=cols)
         rows = []
@@ -1230,14 +1318,15 @@ class Envelope:
                         "n_cells": int(cells),
                         "n_player_cells": int(n_pc),
                         "n_cells_point_feasible": int(
-                            sub.groupby("cell_index").inside.any().sum()) if n_pc else 0,
-                        "share_player_cells_point_feasible": float(sub.inside.mean()) if n_pc else float("nan"),
-                        "n_cells_prob_feasible": int(
-                            sub.groupby("cell_index").inside_prob.any().sum()) if n_pc else 0,
-                        "share_player_cells_prob_feasible": float(sub.inside_prob.mean()) if n_pc else float("nan"),
+                            sub.groupby("cell_index").inside_point.any().sum()) if n_pc else 0,
+                        "share_player_cells_point_feasible": float(sub.inside_point.mean()) if n_pc else float("nan"),
+                        "n_cells_inside_share_ge_min": int(
+                            sub.groupby("cell_index").inside_share_ge_min.any().sum()) if n_pc else 0,
+                        "share_player_cells_inside_share_ge_min": (
+                            float(sub.inside_share_ge_min.mean()) if n_pc else float("nan")),
                         "n_turns_in_scope": int(sub.groupby("cell_index").n_turns_cell.first().sum()) if n_pc else 0,
-                        "share_turns_in_prob_feasible_cells": (
-                            float(sub[sub.inside_prob].groupby("cell_index").n_turns_cell.first().sum()
+                        "share_turns_in_inside_share_ge_min_cells": (
+                            float(sub[sub.inside_share_ge_min].groupby("cell_index").n_turns_cell.first().sum()
                                   / max(sub.groupby("cell_index").n_turns_cell.first().sum(), 1))
                             if n_pc else float("nan")),
                     })
@@ -1262,16 +1351,17 @@ class Envelope:
             for scope, suffix in (("observed", "observed"), ("extrapolated", "extrapolated")):
                 hit = sub[sub.cell_scope == scope]
                 if len(hit):
-                    fit.at[i, f"feasible_cells_{suffix}"] = int(hit.n_cells_prob_feasible.iloc[0])
+                    fit.at[i, f"feasible_cells_{suffix}"] = int(
+                        hit.n_cells_inside_share_ge_min.iloc[0])
                     fit.at[i, f"share_players_inside_{suffix}"] = float(
-                        hit.share_player_cells_prob_feasible.iloc[0])
+                        hit.share_player_cells_inside_share_ge_min.iloc[0])
 
     # -- manifest --------------------------------------------------------------
     def _manifest(self, turns_in: int) -> dict:
         cfg = self.cfg
         used = 0
         excl_total = {"invalid": 0, "below_apex_floor": 0, "nonfinite": 0,
-                      "out_of_range": 0}
+                      "nonpositive_demand": 0}
         # count over the raw input once (not once per setting)
         valid = _bool(self.turns, "valid")
         kept, counts = _capacity_mask(self.turns, cfg,
@@ -1292,6 +1382,14 @@ class Envelope:
             "label": None,
             "gap": "not_applicable",
             "spec_commit": cfg.get("spec_commit"),
+            "retention_quantile": float(self.quantile),
+            "regain_quantile": float(cfg.get("envelope.regain_quantile")),
+            "min_turns_reliable": int(cfg.get("envelope.min_turns_reliable")),
+            "fully_pooled_shrinkage_max": float(
+                cfg.get("envelope.fully_pooled_shrinkage_max")),
+            "inside_share_min": float(cfg.get("feasibility.inside_share_min")),
+            "uncertainty_kind": "bootstrap_share_not_posterior",
+            "friction_circle_quantile": float(self.quantile),
             "estimator": {
                 "name": str(cfg.get("envelope.estimator")),
                 "quantile": float(self.quantile),

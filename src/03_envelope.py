@@ -88,7 +88,6 @@ def _write_artefacts(result: envelope.EnvelopeResult, cfg: common.Config,
         "provenance": common.provenance(mode),
         "label": common.stamp(mode),
         "git_rev": common.git_rev(),
-        "config_git_rev": common.git_rev(),
     })
     common.write_json(manifest, outdir / "manifest.json", mode, cfg)
 
@@ -103,10 +102,11 @@ def _headline(result: envelope.EnvelopeResult, mode: str, outdir) -> None:
     ex = counts["excluded"]
     print(f"  turns           : in={counts['turns_in']} used={counts['turns_used']} "
           f"excluded(invalid={ex['invalid']}, below_apex_floor={ex['below_apex_floor']}, "
-          f"nonfinite={ex['nonfinite']}, out_of_range={ex['out_of_range']})")
+          f"nonfinite={ex['nonfinite']}, nonpositive_demand={ex['nonpositive_demand']}) "
+          f"winsorised(kept)={counts['winsorised_demand']}")
     fit = result.fit
     primary = fit[(fit.model == "capacity") & (fit.form == "lateral_at_apex")
-                  & (np.isclose(fit.quantile, man["estimator"]["quantile"]))]
+                  & (np.isclose(fit["quantile"], man["estimator"]["quantile"]))]
     for _, row in primary.sort_values(["setting", "position_group"]).iterrows():
         print(f"  capacity@4 yd/s  : {row['setting']:<8} {row['position_group']:<6} "
               f"median={row['capacity_at_4_median']:.2f} "
@@ -116,9 +116,10 @@ def _headline(result: envelope.EnvelopeResult, mode: str, outdir) -> None:
     if len(summary):
         for _, row in summary.iterrows():
             print(f"  feasible cells  : {row['setting']:<8} {row['position_group']:<6} "
-                  f"{row['cell_scope']:<12} prob-feasible={int(row['n_cells_prob_feasible'])}"
+                  f"{row['cell_scope']:<12} "
+                  f"share>=min={int(row['n_cells_inside_share_ge_min'])}"
                   f"/{int(row['n_cells'])} "
-                  f"share-players={row['share_player_cells_prob_feasible']:.2f}")
+                  f"share-players={row['share_player_cells_inside_share_ge_min']:.2f}")
     else:
         print("  feasible cells  : none computed (no plant turns)")
     print(f"  primary measure : {man['primary_measure']}")

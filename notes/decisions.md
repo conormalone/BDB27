@@ -5368,3 +5368,136 @@ the real schema cannot exercise the same loader. The alternative (special-casing
 fixture in the stage) would create a second code path, which TASK.md forbids.
 **Evidence.** `fixtures/synthetic/make_fixture.py`, `fixtures/synthetic/player_play.csv`,
 `tests/test_fixture_recovery.py::test_fixture_is_deterministic`.
+
+---
+
+## D140 — Envelope estimator: random-effects quantile regression at 0.75, objective-based convergence · 2026-11-07
+**Decision.** Arc capacity is the conditional **upper quantile** of lateral demand given apex
+speed, fitted as a random-intercept quantile regression: per position group a fixed intercept and
+speed slope `a_max(v) = a0 + a1(v − v_ref)`, one Gaussian player intercept (partial pooling), EM
+for the between-player variance. The primary quantile is **0.75**, with **0.90 fitted and reported
+beside it** on the same data. The IRLS solve stops on the **relative change of the penalised
+quantile objective** (`envelope.irls_obj_tol`, 1e-7), not on a coefficient delta.
+**Why 0.75.** Count-driven, not outcome-driven: the sample audit gives a median of 10 usable turns
+per player (Combine) and 32 (game); a 0.90 quantile is roughly one turn per player, i.e. an
+order statistic, and it moves with a single measurement. 0.90 is still reported so the reader can
+see the envelope's sensitivity to the choice.
+**Why not a censored likelihood.** The spec allows "a high-quantile or censored-style likelihood,
+or top-k turns per speed bin". A censored model needs a model of how far below capacity a
+sub-maximal turn was; with 10–32 turns per player that model would be unidentified. The high
+quantile is estimable and the model-free top-k cross-check covers the alternative.
+**Why objective-based convergence.** Measured on the inherited solver: an absolute coefficient
+delta of 1e-6 ran ~2,800 iterations per fit, 0.56 s, and still reported `converged=False`, because
+the IRLS weight `1/|r|` makes the coefficient path approach the optimum very slowly. The
+objective is converged by iteration ~60 (1293.530 vs 1293.528 at 400 iterations). The stopping
+rule changed; the estimator, the loss and the EM moment did not.
+**Evidence.** `src/bdb27/envelope.py::_solve_re_irls`, `fit_re_quantile`;
+`tests/test_envelope.py` (recovery against planted capacities, objective-vs-reference check).
+
+---
+
+## D141 — Apex speed is the capacity conditioning variable; apex floor 1.5 yd/s · 2026-11-07
+**Decision.** Lateral demand is `peak_lateral_accel_yd_s2` (v·ω at the apex of |ω|) and the
+speed variable is **apex speed**. Turns whose apex speed is below
+`envelope.apex_speed_floor` (1.5 yd/s) are excluded from the capacity fit; the count is reported
+by reason (`below_apex_floor`).
+**Why the apex.** At the apex the tangential acceleration is ~0, so the friction-circle total
+demand `sqrt(a_tan² + a_lat²)` collapses to its lateral component: the apex is the one point where
+the lateral measurement is also the total-demand measurement, without needing a model of how the
+player distributed demand between the two. The total-demand form is still fitted as a sensitivity
+(`form=friction_circle_upper`) so the reduction can be checked, never assumed.
+**Why the floor.** Below 1.5 yd/s the derived v·ω is dominated by discrete 10 Hz heading steps and
+by near-180° reversals in a shuttle, not by lateral acceleration. This is a measurement-validity
+rule, not a tuning knob: it removes observations that do not measure the quantity the model needs.
+**Evidence.** `config.yaml` (`envelope.capacity_speed_variable`, `apex_speed_floor`),
+`outputs/envelope/manifest.json` (`counts.excluded.below_apex_floor`).
+
+---
+
+## D142 — Uncertainty is a player-weighted bootstrap; "observed" is the valid Combine entry-speed range · 2026-11-07
+**Decision.** Uncertainty comes from **200 player-weighted bootstrap replicates**: each replicate
+draws one Exp(1) weight per player, applies it to all of that player's turns, redraws each turn's
+demand/retention uniformly inside its smoother min/max where those columns exist, and refits the
+whole model. SEs are replicate SDs, p05/p95 replicate percentiles. A feasibility cell is
+`observed` when its **entry-speed interval lies fully inside the range of valid Combine turns'
+entry speeds** measured from the input; everything else is `extrapolated`. Both scopes are stored
+per cell and are summarised and quoted separately, never pooled into one number.
+**Why player-weighted.** Turns are not independent draws: a player with 40 turns is not four
+players. Resampling players (not rows) keeps the between-player variance in the interval and
+does not shrink it by the turn count. The smoother redraw propagates the stage-02 smoothing
+uncertainty into the envelope instead of silently using one smoother as truth.
+**Why this is not a posterior.** No sampler and no prior on the capacity curve are used. The
+manifest records `"uncertainty": "player_weighted_bootstrap"`, `"posterior": false`,
+`"uncertainty_kind": "bootstrap_share_not_posterior"`; the feasible-region column is
+`inside_share` (share of replicates clearing the tolerance), and no label calls it a probability.
+**Evidence.** `src/bdb27/envelope.py::_bootstrap_group`, `_feasible_rows`, `_manifest`;
+`tests/test_envelope.py` (SEs shrink as turns per player grow; determinism at a fixed seed).
+
+---
+
+## D143 — Configuration that is not implemented is refused, not ignored; the friction circle is a sensitivity · 2026-11-07
+**Decision.** Stage 03 validates its own configuration block at construction time and **refuses**
+(`StageRefused`) on any value it does not implement: `capacity_form` must be `linear_centred`,
+`capacity_demand` must name a column the engine knows, `random_effects` must be `intercept`,
+`bootstrap_kind` must be `player_weighted`. A stage that fits nothing (no usable capacity
+observation in any setting) also refuses instead of exiting 0 with an all-NaN table, and a
+missing int/bool column is a refusal, not a silent null.
+The friction-circle form `sqrt(a_tan² + a_lat²) ≤ a_max(v)` is fitted **at the same quantile as
+the primary** and reported as `form=friction_circle_upper`; it is never the primary definition and
+never mixed with a quantile change, so the form comparison varies one thing only.
+**Why.** The inherited config advertised `friction_circle_sensitivity` but fitted it at 0.90 while
+the primary was 0.75, so the "form" rows also moved the quantile. A config key that changes
+nothing while the manifest quotes it is worse than no key: it makes a non-choice look like a
+choice, and it makes the manifest lie about what was estimated.
+**Evidence.** `src/bdb27/envelope.py::_validate_config`, `_capacity_mask`;
+`tests/test_envelope.py::test_unsupported_config_is_refused`,
+`test_friction_circle_sensitivity_is_a_form_change_only`.
+
+---
+
+## D144 — The Phase 2 fixture's corners demand ~1.27× their nominal capacity, so its stage-03 gate is ordering, not level · 2026-11-07
+**Decision.** Recovery of planted capacities is tested on **purpose-built synthetic turn tables**
+(`fixtures/synthetic/make_envelope_world.py`) with known `a_max(v)`, known retention surfaces and
+a known between-player spread, at a tight absolute gate (`recovery_rel_err_max` 0.12,
+`recovery_rel_err_median_max` 0.08). The **end-to-end fixture** (`fixtures/synthetic/*.csv`, the
+raw tracking world used by stages 00–02) is checked only on **ordering** (Spearman ≥ 0.8 between
+recovered and planted capacity) because its Bezier corners physically demand about 1.27× the
+nominal planted lateral capacity — a constant geometric scale, not engine error.
+**Why.** Holding the end-to-end world to an absolute gate would either fail for a geometry reason
+unrelated to the estimator or force the gate so loose that it stops testing anything. The
+ordering check is the real plumbing test (does planted talent come back in the right order), and
+the absolute check lives where the geometry is exact.
+**Evidence.** `config.yaml` (`envelope.fixture_geometry_rel_err_max`),
+`tests/test_envelope.py::test_fixture_plumbing_is_ordering_correct`.
+
+---
+
+## D145 — Time-to-regain is estimated on uncensored turns only; the censoring is counted and flagged · 2026-11-07
+**Decision.** `regain_entry_speed_s` enters the plant-capacity fit only when
+`regain_exhausted` is false. Exhausted turns (no regain of entry speed inside the window) are
+**dropped, not right-censored**; their count is in `envelope_players.parquet` (`n_regain` vs
+`n_plant`) and the limitation is stated in `notes/phase3-envelope.md` (and must be carried into
+`notes/limitations.md`, the phase-7 deliverable).
+**Why.** A quantile regression on observed times cannot represent an unobserved regain, and a
+right-censored quantile estimator is a materially larger model than this stage needs. Dropping
+biases the estimated regain time **downward** (the survivors are the quick regains), which makes
+the lower envelope optimistic — so this is a known direction of error, reported, not hidden.
+**Scale of the issue.** In the host sample 16.9% of plant turns are exhausted in the Combine and
+41.4% in games; the game figure is large enough that regain must not be quoted without it.
+**Evidence.** `src/bdb27/envelope.py::_regain_mask`, `outputs/envelope/envelope_players.parquet`
+(`n_plant`, `n_regain`).
+
+---
+
+## D146 — One prediction per feasibility cell at its midpoint; the tolerance is a frozen config value · 2026-11-07
+**Decision.** The feasible region is evaluated on the `bins.entry_speed × bins.turn_angle` grid at
+each cell's **midpoint**, with one predicted retention, its bootstrap p05/p95 and the bootstrap
+`inside_share`. `feasibility.retention_tolerance` (0.90) and the bin edges are config values that
+prereg freezes; changing either changes the region and is a sensitivity, never a quiet default.
+**Why the midpoint.** The cell is the unit the demand map (stage 04) counts turns in, so the region
+and the demand must live on the same lattice. Evaluating at the midpoint keeps one number per
+cell and avoids inventing a distribution of entry speeds inside a cell before stage 04 defines the
+demand weights.
+**Why 0.90.** It is the spec's own example ("for example 90%"); it is a design choice, not a
+finding, and it is not tuned against any outcome.
+**Evidence.** `config.yaml` (`feasibility.*`, `bins.*`), `outputs/envelope/feasible_region.parquet`.

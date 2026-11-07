@@ -241,10 +241,15 @@ turn_coverage:
     min_turns_reliable: 10               # `reliable` flag; DESIGN CHOICE
     # Shrinkage below this share means the player's own data said nothing.
     fully_pooled_shrinkage_max: 0.05     # DESIGN CHOICE (fraction)
-    # IRLS / EM controls. max_iter is a safety cap on a normally <50-iteration
-    # solve; tol is on the largest coefficient change per iteration.
-    em_max_iter: 200
-    em_tol: 1.0e-6
+    # IRLS / EM controls. The inner IRLS solve stops on the RELATIVE objective
+    # gain (weighted check loss + random-effect penalty), not on a coefficient
+    # delta: the delta rule never fired at 1e-6 and burned thousands of
+    # iterations on a converged objective. `em_max_iter` caps the outer tau^2
+    # (EM) cycle; `irls_max_iter` caps the inner solve.
+    em_max_iter: 50
+    em_tol: 1.0e-6                       # tau^2 relative-change stop (EM)
+    irls_max_iter: 60                    # inner IRLS cap
+    irls_obj_tol: 1.0e-7                 # relative objective gain per IRLS step
     irls_eps: 1.0e-6                     # residual floor in the IRLS weights
     # The EM tau^2 floor is (frac * prior)^2, so the variance can never collapse
     # to zero and a flat world is reported as small-but-identified. DESIGN CHOICE.
@@ -283,7 +288,7 @@ turn_coverage:
     # range measured from the valid Combine turns in the input (D142).
     observed_rule: cell_inside_combine_range
     cell_statistic: midpoint             # predict at the cell midpoint
-    probability_inside_min: 0.50         # share of bootstrap draws for `inside_prob`
+    inside_share_min: 0.50               # bootstrap share for `inside_share_ge_min`
 
   bins:
     entry_speed: [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0]

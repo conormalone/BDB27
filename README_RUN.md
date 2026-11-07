@@ -2,8 +2,8 @@
 
 **Status: the notebook is the interface. `notebooks/bdb27_full_run.ipynb` runs the seven
 stages in spec order and renders the headline from the audit artefacts.**
-Phases 0–2 are implemented (stage 02 is the real kinematics/turn table); Phases 3–6
-(stages 03–06) are still loud stubs.
+Phases 0–3 are implemented (stage 02 is the kinematics/turn table, stage 03 the turn
+envelope); phases 4–6 (stages 04–06) are still loud stubs.
 
 ## 1. Environment
 
@@ -88,7 +88,7 @@ stage so the headline can show what exists.
 | 00 thresholds | `src/00_thresholds.py` | implemented | `outputs/thresholds.json` |
 | 01 audit | `src/01_audit.py` | implemented (items a–m) | `outputs/audit/{audit_items.csv,gate.json,schema_*.json,…}` |
 | 02 turns | `src/02_turns.py` | implemented (Phase 2) | `outputs/turns/{turns,attempts,summary}.parquet`, `sanity.csv`, `smoother_counts.csv`, `segmentation_sensitivity.csv`, `geometry_recovery.csv`, `manifest.json` |
-| 03 envelope | `src/03_envelope.py` | **loud stub** | nothing |
+| 03 envelope | `src/03_envelope.py` | implemented (Phase 3) | `outputs/envelope/{envelope_players,feasible_region}.parquet`, `envelope_fit.csv`, `envelope_modelfree.csv`, `feasible_region_summary.csv`, `manifest.json` |
 | 04 demand + coverage | `src/04_demand_coverage.py` | **loud stub** | nothing |
 | 05 validate | `src/05_validate.py` | **loud stub** | nothing |
 | 06 figures | `src/06_figures.py` | **loud stub** | nothing |
@@ -103,7 +103,8 @@ checkpoint — a layout-only run can never look finished.
 | 00_thresholds | < 1 s | < 100 MB | pure config; skips if the file exists |
 | 01_audit | **~2 min 45 s** | **~1.1 GB** | first run also converts CSVs to Parquet (~1 min extra) |
 | 02_turns | **~7 min** | **~400 MB** | six smoothers on every attempt/snap plus the shuffled null; Combine points are held in memory, game tracking is chunked |
-| 03–06 | instant | — | stubs |
+| 03_envelope | see `notes/scale.md` | see `notes/scale.md` | random-effects quantile fits plus 200 player-weighted bootstrap replicates per group; the dominant cost is the bootstrap |
+| 04–06 | instant | — | stubs |
 | whole notebook | **~10 min** | — | same work as the shell chain |
 
 The audit converts each raw CSV to Parquet once under
