@@ -34,6 +34,7 @@ turn_coverage:
     outputs: outputs
     audit: outputs/audit
     turns: outputs/turns
+    envelope: outputs/envelope
     figures: outputs/figures
     notes: notes
     fixtures: fixtures
@@ -200,6 +201,89 @@ turn_coverage:
     # for a low-apex turn to be a plant rather than a decelerating arc.
     # DESIGN CHOICE (yd/s).
     reaccel_min_yd_s: 0.2
+
+  envelope:
+    # ---- estimator (TASK.md Phase 3) ------------------------------------------
+    # Random-effects quantile regression. No sampler: the reported uncertainty is
+    # a bootstrap, never a posterior (see `bootstrap_kind`).
+    estimator: random_effects_quantile
+    # DESIGN CHOICE, COUNT-DRIVEN: the sample audit's median turns per player is
+    # 11 (Combine) and 32 (game); a 0.90 quantile is roughly one turn per player
+    # and unstable, so 0.75 is the highest quantile estimable with these counts.
+    # This is a reliability choice, not an outcome choice, and the prereg fixes
+    # the final quantile. 0.90 and the top-k cross-check are reported beside it.
+    quantile: 0.75
+    quantile_sensitivity: [0.75, 0.90]   # both reported; only 0.75 is primary
+    # a_max(v) = a0 + a1*(v - reference). Linear in speed, centred so the
+    # intercept IS the capacity at a speed every player reaches. DESIGN CHOICE.
+    capacity_form: linear_centred
+    capacity_reference_speed: 4.0        # yd/s; near the Combine turn apex median
+    capacity_reference_speeds: [2.0, 4.0, 6.0, 8.0]   # reported grid, yd/s
+    # The apex is where |omega| peaks and tangential acceleration is ~0, so the
+    # friction-circle total demand reduces to the lateral component there
+    # (D141). DESIGN CHOICE, stated in the Phase 3 note.
+    capacity_speed_variable: apex_speed
+    capacity_demand: peak_lateral_accel  # -> peak_lateral_accel_yd_s2
+    # Fit the total-demand form sqrt(a_lat^2 + a_tan^2) as a sensitivity; it is
+    # reported in envelope_fit.csv as form=friction_circle_upper, never primary.
+    friction_circle_sensitivity: true
+    # MEASUREMENT-VALIDITY rule, not a tuning knob: below 1.5 yd/s the derived
+    # v*omega is dominated by discrete heading steps and 180-degree reversals,
+    # not by lateral acceleration (D141). DESIGN CHOICE.
+    apex_speed_floor: 1.5
+    random_effects: intercept            # partial pooling of the intercept only
+    # Used only when the EM variance moment is non-finite or has to be floored;
+    # the fit row records `prior_used`. DESIGN CHOICE (yd/s^2).
+    between_player_sd_prior: 1.5
+    # A group with fewer turns than this is pooled into one ALL group rather than
+    # estimated on its own. DESIGN CHOICE (counts, not outcomes).
+    min_turns_per_position: 5
+    min_turns_reliable: 10               # `reliable` flag; DESIGN CHOICE
+    # Shrinkage below this share means the player's own data said nothing.
+    fully_pooled_shrinkage_max: 0.05     # DESIGN CHOICE (fraction)
+    # IRLS / EM controls. max_iter is a safety cap on a normally <50-iteration
+    # solve; tol is on the largest coefficient change per iteration.
+    em_max_iter: 200
+    em_tol: 1.0e-6
+    irls_eps: 1.0e-6                     # residual floor in the IRLS weights
+    # The EM tau^2 floor is (frac * prior)^2, so the variance can never collapse
+    # to zero and a flat world is reported as small-but-identified. DESIGN CHOICE.
+    tau_floor_fraction: 0.25
+    # Physical cap on lateral demand for winsorisation (yd/s^2). DESIGN CHOICE:
+    # above ~3.5 g the 10 Hz derivative noise dominates any real cut.
+    winsor_lateral_yd_s2: 35.0
+    winsor_retention: [0.0, 2.5]         # retention is a ratio; clip, never drop
+    retention_form: linear_interaction   # retention ~ entry + angle + entry*angle
+    retention_entry_centre: 4.0          # yd/s, centring choice
+    retention_angle_centre: 90.0         # deg, centring choice
+    # Lower envelope of regain time = upper envelope of (-time) at 1 - 0.25.
+    regain_quantile: 0.25                # DESIGN CHOICE
+    # Player-weighted bootstrap: one Exp(1) weight per player per replicate plus
+    # a uniform draw inside each turn's smoother min/max (D142).
+    bootstrap_reps: 200
+    bootstrap_kind: player_weighted
+    bootstrap_seed_offset: 31337
+    # Model-free cross-check (never used to fit): per-bin upper quantiles/top-k.
+    modelfree_quantile: 0.90
+    modelfree_top_k: 3
+    modelfree_speed_edges: [1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0]  # yd/s
+    modelfree_min_turns: 3               # a player-bin needs this many turns
+    # Synthetic recovery gates for tests/fixtures, not for real data.
+    recovery_rel_err_max: 0.12           # per-player max relative error
+    recovery_rel_err_median_max: 0.08    # per-player median relative error
+    # The Phase 2 fixture's Bezier corners demand ~1.27x their nominal planted
+    # capacity, so its absolute-recovery gate is loose on purpose; the ordering
+    # (Spearman) is the real plumbing check there (D144).
+    fixture_geometry_rel_err_max: 0.60
+
+  feasibility:
+    # A cell is inside the region when predicted speed retention >= this share.
+    retention_tolerance: 0.90            # DESIGN CHOICE, frozen by prereg
+    # Observed = the cell's entry-speed interval is fully inside the Combine
+    # range measured from the valid Combine turns in the input (D142).
+    observed_rule: cell_inside_combine_range
+    cell_statistic: midpoint             # predict at the cell midpoint
+    probability_inside_min: 0.50         # share of bootstrap draws for `inside_prob`
 
   bins:
     entry_speed: [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
