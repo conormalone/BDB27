@@ -1,10 +1,10 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "af878068fab40977",
-  "generated_utc": "2026-11-07T01:05:32Z",
+  "config_sha": "8df1ad93c268b61f",
+  "generated_utc": "2026-11-07T01:32:15Z",
   "spec_commit": "52015cd",
-  "git_rev": "6345bc7",
+  "git_rev": "9cf45ab",
   "mode": "sample",
   "frozen": false,
   "note": "Thresholds are design choices from config.yaml, NOT estimates. PLACEHOLDER_SAMPLE until prereg fixes them; never tune on sample results.",

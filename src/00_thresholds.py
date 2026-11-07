@@ -89,4 +89,8 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except common.StageRefused as exc:
+        print(f"[00_thresholds] REFUSED: {exc}", file=sys.stderr)
+        raise SystemExit(2)

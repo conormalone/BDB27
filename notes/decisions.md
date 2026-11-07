@@ -5154,7 +5154,7 @@ claiming GO would be a verdict on sample data, which TASK.md forbids.
 **Why not NO-GO.** The three stop conditions that *can* be tested all pass, including
 the detector against physical drill geometry.
 **Warning carried into the gate.** The audit's **provisional** capacity proxy has
-split-half ICC **−0.183** in the Combine (484 players). It is not the Phase 3 parameter
+split-half ICC **−0.183** in the Combine (484 players; the sample game side is 0.354). It is not the Phase 3 parameter
 (the envelope model is not built), but a negative value must not be buried: G4's detail
 text quotes it, and a below-threshold reliability of the real parameter remains a stop
 condition.

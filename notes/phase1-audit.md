@@ -205,7 +205,7 @@ shares are sample diagnostics only.
 | setting | turns | players | median turns/player | share ≥ 10 turns | split-half ICC (peak lateral accel) |
 |---|---:|---:|---:|---:|---:|
 | Combine (complete) | 5,536 | 508 | 10 | 53.9% | **−0.183** (484 players) |
-| Game (sample) | 7,143 | 153 | 32 | 82.4% | 0.262 (147 players) |
+| Game (sample) | 7,143 | 153 | 32 | 82.4% | 0.354 (147 players) |
 
 * The **Combine-game correlation and the noise ceiling are PENDING FULL RUN** —
   the game side is a row sample.

@@ -173,9 +173,13 @@ class Audit:
             for i in range(0, len(ids), size):
                 batch = [int(g) for g in ids[i:i + size]]
                 ph = ",".join("?" * len(batch))
-                yield con.execute(
+                df = con.execute(
                     f"SELECT game_id, play_id, nfl_id, epoch_ms(time) AS ms, x, y, s, a, dis, o, dir, event "
                     f"FROM read_parquet(?) WHERE game_id IN ({ph})", [str(pq), *batch]).df()
+                # DuckDB may return rows in a thread-dependent order; sort so that
+                # the turn table, and every quantity derived from row order
+                # (split-half assignments), is reproducible.
+                yield df.sort_values(["game_id", "play_id", "nfl_id", "ms"], kind="stable")
         finally:
             con.close()
 
@@ -1119,6 +1123,8 @@ def main(argv=None) -> int:
                              "nfl_id": int(nfl_id), "attempt": int(attempt),
                              "combine_position": pos, "n_frames": len(g), "turns": len(det)})
         turns = pd.DataFrame(turn_rows)
+        turns = turns.sort_values(["drill_name", "event_id", "nfl_id", "attempt", "frame_start"],
+                                  kind="stable").reset_index(drop=True)
         timer.rows = len(combine) + len(turns)
         if turns.empty:
             raise common.StageRefused("01_audit: no turns detected with the configured detector — "
@@ -1136,7 +1142,7 @@ def main(argv=None) -> int:
         gturn_rows, frame_parts = [], []
         for chunk in a.game_chunks():
             for (gid, pid, nid), g in chunk.groupby(["game_id", "play_id", "nfl_id"],
-                                                    observed=True, sort=False):
+                                                    observed=True, sort=True):
                 if len(g) < 8:
                     continue
                 g = g.sort_values("ms")
@@ -1152,6 +1158,8 @@ def main(argv=None) -> int:
             timer.rows = len(combine) + len(gturn_rows)
         game_turns = pd.DataFrame(gturn_rows)
         if not game_turns.empty:
+            game_turns = game_turns.sort_values(["game_id", "play_id", "nfl_id", "frame_start"],
+                                                kind="stable").reset_index(drop=True)
             pos = a.load_positions()
             game_turns = game_turns.merge(pos, on="nfl_id", how="left")
         game_frames = pd.concat(frame_parts, ignore_index=True) if frame_parts else pd.DataFrame()
@@ -1185,4 +1193,8 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except common.StageRefused as exc:
+        print(f"[01_audit] REFUSED: {exc}", file=sys.stderr)
+        raise SystemExit(2)
