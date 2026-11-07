@@ -68,7 +68,8 @@ def checkpoint_ok(cfg: common.Config, mode: str, outdir) -> bool:
         return False
     return (d.get("config_sha") == common.config_fingerprint(cfg)
             and d.get("mode") == mode
-            and d.get("provenance") == common.provenance(mode))
+            and d.get("provenance") == common.provenance(mode)
+            and d.get("artefact_version") == envelope.ARTEFACT_VERSION)
 
 
 def _write_artefacts(result: envelope.EnvelopeResult, cfg: common.Config,
@@ -99,12 +100,23 @@ def _headline(result: envelope.EnvelopeResult, mode: str, outdir) -> None:
     print(f"  settings fitted : {', '.join(man['settings_fitted'])}")
     print(f"  players fitted  : " + ", ".join(
         f"{k}={v}" for k, v in man["players_fitted"].items()))
+    fit = result.fit
+    n_fits = int(len(fit))
+    n_converged = int(fit["converged"].astype(bool).sum()) if n_fits else 0
+    print(f"  fits converged  : {n_converged}/{n_fits}")
+    if n_fits:
+        bad = fit[~fit["converged"].astype(bool)]
+        for _, row in bad.sort_values(
+                ["setting", "position_group", "model", "form", "quantile"]).iterrows():
+            print(f"  not converged   : {row['setting']}/{row['position_group']}/"
+                  f"{row['model']}/q={row['quantile']:g} "
+                  f"(form={row['form']}, {row['stop_reason']}, "
+                  f"iterations={int(row['irls_iterations'])})")
     ex = counts["excluded"]
     print(f"  turns           : in={counts['turns_in']} used={counts['turns_used']} "
           f"excluded(invalid={ex['invalid']}, below_apex_floor={ex['below_apex_floor']}, "
           f"nonfinite={ex['nonfinite']}, nonpositive_demand={ex['nonpositive_demand']}) "
           f"winsorised(kept)={counts['winsorised_demand']}")
-    fit = result.fit
     primary = fit[(fit.model == "capacity") & (fit.form == "lateral_at_apex")
                   & (np.isclose(fit["quantile"], man["estimator"]["quantile"]))]
     for _, row in primary.sort_values(["setting", "position_group"]).iterrows():
@@ -133,9 +145,24 @@ def main(argv=None) -> int:
 
     outdir = cfg.repo_path("envelope")
     if checkpoint_ok(cfg, args.mode, outdir) and not args.force:
+        man = json.loads((outdir / "manifest.json").read_text())
+        conv = man.get("convergence", {})
+        all_ok = bool(conv.get("all_converged", False))
+        n_fits = int(conv.get("n_fits", 0))
+        n_bad = int(conv.get("n_not_converged", 0 if all_ok else 1))
         print(f"{STAGE}: checkpoint reused ({outdir / 'envelope_players.parquet'})")
-        common.log_run(STAGE, args.mode, 0.0, 0, "OK",
+        common.log_run(STAGE, args.mode, 0.0, 0,
+                       "OK" if all_ok else "NONCONVERGED",
                        "checkpoint reused, nothing rebuilt", cfg=cfg)
+        if not all_ok:
+            if n_fits:
+                print(f"{STAGE}: {n_bad}/{n_fits} fits did not converge — their "
+                      "numbers are flagged in every artefact and must not be read "
+                      "as results.")
+            else:
+                print(f"{STAGE}: convergence certificate missing from the reused "
+                      "manifest — rerun with --force.")
+            return 3
         return 0
 
     turns = envelope.load_turns(cfg.repo_path("turns") / "turns.parquet")
@@ -146,6 +173,14 @@ def main(argv=None) -> int:
                         f"players={sum(result.manifest['players_fitted'].values())}")
         _write_artefacts(result, cfg, args.mode, outdir)
         _headline(result, args.mode, outdir)
+        n_fits = int(len(result.fit))
+        n_bad = int((~result.fit["converged"].astype(bool)).sum())
+        if n_bad:
+            timer.status = "NONCONVERGED"
+    if n_bad:
+        print(f"{STAGE}: {n_bad}/{n_fits} fits did not converge — their numbers "
+              "are flagged in every artefact and must not be read as results.")
+        return 3
     return 0
 
 

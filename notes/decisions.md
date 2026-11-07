@@ -5501,3 +5501,50 @@ demand weights.
 **Why 0.90.** It is the spec's own example ("for example 90%"); it is a design choice, not a
 finding, and it is not tuned against any outcome.
 **Evidence.** `config.yaml` (`feasibility.*`, `bins.*`), `outputs/envelope/feasible_region.parquet`.
+
+---
+
+## D147 — Convergence is certified on the fitted values, with a warm start across the EM cycle · 2026-11-07
+**Decision.** The convergence paragraph of **D140 is superseded**. The estimator, the check
+loss and the EM moment for `tau^2` are unchanged, and `envelope.irls_max_iter` is **not**
+raised: it stays at 60. What changed is how a solve is started and when it is certified.
+1. **Warm start across the EM cycle.** `_solve_re_irls` accepts optional `beta0`/`u0`, and
+   `fit_re_quantile` passes the previous cycle's `(beta, u)` into the next cycle and into the
+   final pass. The first cycle stays cold (`u0 = zeros`, pooled weighted least squares for
+   `beta`). Each of the (up to 50) EM cycles therefore no longer re-walks the same path from
+   a cold start; that re-walking, not the iteration cap, was the cost.
+2. **A certificate on the estimand.** The **primary** inner stop is a windowed relative L2
+   movement of the fitted values `X beta + u[gidx]`: compare the current vector with its value
+   `irls_stability_window` (10) iterations earlier and divide by `max(||y||_2, 1)`; the fit is
+   certified when that movement stays below `irls_stability_tol` (1e-3) for a full window
+   (`min_iter = window + 1`). The relative objective-gain test (`irls_obj_tol`, **still
+   1e-7**) remains as a secondary stop and also certifies convergence. A coefficient delta
+   remains only as a non-certifying safety stop. `converged` is True only for `stability` or
+   `objective`; `max_iter`, `delta`, `degenerate` and `em_not_settled` are reported as
+   non-converged.
+3. **EM convergence is part of convergence.** `REFit.converged = inner_converged and
+   em_converged`, where `em_converged` is the settled `|delta tau^2| / max(1, tau^2) <= em_tol`
+   condition. If the EM loop exhausts its cycles the fit row says `stop_reason=em_not_settled`;
+   it is not silently certified by a converged final inner pass.
+**Why the certificate is not a loosened tolerance.** `irls_obj_tol` was left at 1e-7 and is
+still recorded per fit (`obj_gain_last`). The new rule tests a different quantity — movement
+of the estimate itself — rather than accepting a larger objective gain. The objective value,
+the final relative gain and the final windowed movement are all recorded (`objective`,
+`obj_gain_last`, `stability_last`), so the fit can be audited after the fact.
+**Measured on the real sample.** With the old objective-only rule no group reached 1e-7 in 60
+iterations; gains levelled off at ~1e-5 to 1e-2 while the estimate was already stable (the
+DL/combine intercept moved from 7.0143 at iteration 60 to 7.0237 at iteration 400, 0.13%).
+The windowed certificate fires between iteration **41 and 89** in every sample group (DL 67,
+WR 71, TE 41, OL 89, DB 55), and the fit at that point is within **0.15%-0.52% (L2)** of an
+800-iteration reference.
+**Reported everywhere, never read as a result.** A fit that does not certify carries
+`stop_reason` and `converged=False` in `envelope_fit.csv`; it is counted in the manifest's
+`convergence` block and named in `warnings`; the per-player row gets
+`capacity_group_not_converged`, `retention_group_not_converged` or
+`regain_group_not_converged`; the headline prints `fits converged: n/N` and one line per
+failed fit. If any point fit is non-converged, stage 03 writes every artefact, sets the
+run-log status to `NONCONVERGED` and exits **3** instead of claiming success. Bootstrap
+replicates are explicitly not certified (`bootstrap_fits_certified: false`) because they are
+fitted at a relaxed objective tolerance for speed.
+**Evidence.** `src/bdb27/envelope.py::_solve_re_irls`, `fit_re_quantile`, `_manifest`;
+`src/03_envelope.py::main`, `_headline`; `config.yaml` (`envelope.irls_stability_*`).

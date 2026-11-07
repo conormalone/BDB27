@@ -173,13 +173,17 @@ class StageTimer:
     def __init__(self, stage: str, mode: str, cfg: Config, detail: str = ""):
         self.stage, self.mode, self.cfg, self.detail = stage, mode, cfg, detail
         self.rows = 0
+        # Callers may override the success status inside the `with` block (e.g.
+        # NONCONVERGED) without changing the context-manager contract.
+        self.status = "OK"
 
     def __enter__(self):
         self.t0 = time.perf_counter()
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        status = "OK" if exc_type is None else ("REFUSED" if exc_type is StageRefused else "ERROR")
+        status = self.status if exc_type is None else (
+            "REFUSED" if exc_type is StageRefused else "ERROR")
         log_run(self.stage, self.mode, time.perf_counter() - self.t0, self.rows,
                 status, self.detail or (str(exc) if exc else ""), cfg=self.cfg)
         return False

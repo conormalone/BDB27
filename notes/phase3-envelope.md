@@ -64,18 +64,24 @@ manifest says `"uncertainty": "player_weighted_bootstrap"`, `"posterior": false`
 bootstrap share a probability. Upgrading to a genuine hierarchical Bayesian fit is a
 prereg decision to be taken before a full run (see below); it is not faked here.
 
-Convergence is reported honestly: the IRLS solve stops on the **relative change of the
-penalised quantile objective** (`envelope.irls_obj_tol`), not on a coefficient delta, because
-the coefficient path approaches the optimum slowly (a delta criterion ran ~2,800 iterations
-per fit and still reported non-convergence). `converged` in `envelope_fit.csv` is that
-criterion.
+Convergence is reported honestly: the **primary** stop is a windowed stability certificate on
+the estimate, not on the objective alone. Each inner solve is warm-started from the previous
+EM cycle, and it certifies when the fitted values `Xβ + u` move by less than
+`envelope.irls_stability_tol` (1e-3) in relative L2 norm over the last
+`envelope.irls_stability_window` (10) iterations, scaled by `max(||y||₂, 1)`; the relative
+objective-gain test (`envelope.irls_obj_tol`, still 1e-7) remains a secondary stop that also
+certifies. A coefficient delta is only a non-certifying safety stop. The measured certificate
+fires in 41–89 iterations per group on the sample, within 0.15%–0.52% (L2) of an
+800-iteration reference (D147). `converged` is `inner_converged and em_converged`, so an EM
+cycle that never settles is reported as `stop_reason=em_not_settled` and is not counted as a
+converged fit.
 
 ## Files written
 
 | file | content |
 |---|---|
 | `envelope_players.parquet` | one row per (setting, player): capacity, slope, retention, regain, SEs, shrinkage, flags, counts, model-free refs |
-| `envelope_fit.csv` | one row per (setting, group, model, form, quantile): coefficients, SEs, random-effect SD, `prior_used`, iterations, `converged`, capacity distribution |
+| `envelope_fit.csv` | one row per (setting, group, model, form, quantile): coefficients, SEs, random-effect SD, `prior_used`, iterations, `converged`, `stop_reason`, `objective`, `obj_gain_last`, `stability_last`, `em_converged`, capacity distribution |
 | `envelope_modelfree.csv` | per-bin upper quantiles and top-k means, position and player level |
 | `feasible_region.parquet` | one row per (setting, player, cell): predicted retention, p05/p95, `inside_share`, `inside_point`, `inside_share_ge_min`, `observed`, turn counts |
 | `feasible_region_summary.csv` | the same collapsed per group and **separately for observed and extrapolated cells** |

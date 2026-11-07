@@ -241,16 +241,23 @@ turn_coverage:
     min_turns_reliable: 10               # `reliable` flag; DESIGN CHOICE
     # Shrinkage below this share means the player's own data said nothing.
     fully_pooled_shrinkage_max: 0.05     # DESIGN CHOICE (fraction)
-    # IRLS / EM controls. The inner IRLS solve stops on the RELATIVE objective
-    # gain (weighted check loss + random-effect penalty), not on a coefficient
-    # delta: the delta rule never fired at 1e-6 and burned thousands of
-    # iterations on a converged objective. `em_max_iter` caps the outer tau^2
-    # (EM) cycle; `irls_max_iter` caps the inner solve.
+    # IRLS / EM controls. The PRIMARY inner stop is the windowed relative L2
+    # movement of the fitted values X*beta + u (scaled by max(||y||, 1)); the
+    # RELATIVE objective-gain test (weighted check loss + random-effect penalty)
+    # remains as the secondary stop and also certifies convergence. The
+    # coefficient delta is a non-certifying safety stop only. `em_max_iter` caps
+    # the outer tau^2 (EM) cycle; `irls_max_iter` caps the inner solve.
     em_max_iter: 50
     em_tol: 1.0e-6                       # tau^2 relative-change stop (EM)
     irls_max_iter: 60                    # inner IRLS cap
     irls_obj_tol: 1.0e-7                 # relative objective gain per IRLS step
     irls_eps: 1.0e-6                     # residual floor in the IRLS weights
+    # MEASURED certificate (D147): compare X*beta + u with its value this many
+    # iterations earlier; require the relative L2 move to stay below the
+    # tolerance for a full window. On the sample this fires in 41-89 iterations
+    # and the fit is within 0.15-0.52% (L2) of an 800-iteration reference.
+    irls_stability_window: 10
+    irls_stability_tol: 1.0e-3
     # The EM tau^2 floor is (frac * prior)^2, so the variance can never collapse
     # to zero and a flat world is reported as small-but-identified. DESIGN CHOICE.
     tau_floor_fraction: 0.25

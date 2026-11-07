@@ -75,6 +75,10 @@ from . import common
 
 STAGE = "03_envelope"
 
+#: Bump when the persisted artefact contract changes, so stage 03 rebuilds
+#: artefacts written by an older engine instead of silently reusing them.
+ARTEFACT_VERSION = 1
+
 #: Columns the stage cannot run without (TASK.md Phase 3 inputs).
 REQUIRED_COLUMNS = [
     "setting", "nfl_id", "player_name", "position", "position_group",
@@ -252,6 +256,11 @@ class REFit:
     n_obs: np.ndarray           # (J,) observation count
     n_iter: int
     converged: bool
+    em_converged: bool = True
+    stop_reason: str = "max_iter"
+    objective: float = float("nan")
+    obj_gain_last: float = float("nan")
+    stability_last: float = float("nan")
 
     def index(self, nfl_id: int) -> int | None:
         hit = np.flatnonzero(self.player_ids == nfl_id)
@@ -286,33 +295,69 @@ def _group_sums(X: np.ndarray, y: np.ndarray, gidx: np.ndarray, J: int,
 
 def _solve_re_irls(X: np.ndarray, y: np.ndarray, gidx: np.ndarray, J: int, *,
                    tau: float, tau2: float, base_w: np.ndarray, max_iter: int,
-                   tol: float, obj_tol: float, eps: float
-                   ) -> tuple[np.ndarray, np.ndarray, int, bool]:
-    """One IRLS solve at a fixed ``tau2``. Returns (beta, u, iterations, converged).
+                   tol: float, obj_tol: float, eps: float,
+                   beta0: np.ndarray | None = None,
+                   u0: np.ndarray | None = None,
+                   stability_window: int = 10,
+                   stability_tol: float = 1.0e-3
+                   ) -> tuple[np.ndarray, np.ndarray, int, bool, str,
+                              float, float, float]:
+    """One IRLS solve at a fixed ``tau2``.
 
-    Convergence is judged on the relative gain of the objective
-    ``sum(base_w * rho_tau(r)) + ||u||^2 / (2 tau2)`` after at least five
-    iterations. A coefficient delta remains only as a secondary safety stop: the
+    Returns ``(beta, u, iterations, converged, stop_reason, objective,
+    obj_gain_last, stability_last)``.
+
+    The **primary** convergence certificate is the windowed relative L2 movement
+    of the fitted values ``X @ beta + u[gidx]``: compare the current fitted
+    vector with the one ``stability_window`` iterations earlier and divide by
+    ``max(||y||_2, 1)``. When that movement stays below ``stability_tol`` for a
+    full window the estimate is certified (``stop_reason="stability"``).
+
+    The relative gain of the penalised objective
+    ``sum(base_w * rho_tau(r)) + ||u||^2 / (2 tau2)`` remains as the **secondary**
+    stop and also certifies convergence (``stop_reason="objective"``). A
+    coefficient delta remains only as a safety stop that does not certify. The
     old delta rule (``tol`` = 1e-6) never fired on a converged fit and ran
-    thousands of iterations. ``converged`` is reported from the objective rule.
+    thousands of iterations.
+
+    ``beta0`` / ``u0`` warm-start the solve from a previous EM cycle. On the
+    first cycle the caller passes no ``beta0`` and ``u0 = zeros``, which is the
+    old cold start from pooled weighted least squares.
     """
     p = X.shape[1]
     lam = 1.0 / max(tau2, 1e-12)
-    # start from the pooled weighted least squares fit
-    XtWX = np.zeros((p, p))
-    XtWy = np.zeros(p)
-    for k in range(p):
-        XtWy[k] = np.sum(base_w * X[:, k] * y)
-        for l in range(k, p):
-            XtWX[k, l] = XtWX[l, k] = np.sum(base_w * X[:, k] * X[:, l])
-    try:
-        beta = np.linalg.solve(XtWX + 1e-9 * np.eye(p), XtWy)
-    except np.linalg.LinAlgError:  # pragma: no cover - degenerate design
-        beta = np.zeros(p)
-    u = np.zeros(J)
+    if beta0 is not None and len(beta0) == p and np.all(np.isfinite(beta0)):
+        beta = np.array(beta0, dtype=float, copy=True)
+    else:
+        # cold start: pooled weighted least squares
+        XtWX = np.zeros((p, p))
+        XtWy = np.zeros(p)
+        for k in range(p):
+            XtWy[k] = np.sum(base_w * X[:, k] * y)
+            for l in range(k, p):
+                XtWX[k, l] = XtWX[l, k] = np.sum(base_w * X[:, k] * X[:, l])
+        try:
+            beta = np.linalg.solve(XtWX + 1e-9 * np.eye(p), XtWy)
+        except np.linalg.LinAlgError:  # pragma: no cover - degenerate design
+            beta = np.zeros(p)
+    if u0 is not None and len(u0) == J and np.all(np.isfinite(u0)):
+        u = np.array(u0, dtype=float, copy=True)
+    else:
+        u = np.zeros(J)
     converged = False
+    stop_reason = "max_iter"
+    objective = float("nan")
+    obj_gain_last = float("nan")
+    stability_last = float("nan")
+    y_norm = max(float(np.linalg.norm(y)), 1.0)
+    window = max(1, int(stability_window))
+    min_iter = window + 1
+    fitted_hist: list[np.ndarray] = [X @ beta + u[gidx]]
+    r0 = y - X @ beta - u[gidx]
+    loss0 = np.where(r0 > 0, tau * r0, (tau - 1.0) * r0)
+    objective = float(np.sum(base_w * loss0)
+                      + 0.5 * np.sum(u * u) / max(tau2, 1e-12))
     obj_prev: float | None = None
-    min_iter = 5
     it = 0
     for it in range(1, max_iter + 1):
         r = y - X @ beta - u[gidx]
@@ -331,8 +376,10 @@ def _solve_re_irls(X: np.ndarray, y: np.ndarray, gidx: np.ndarray, J: int, *,
         try:
             beta_new = np.linalg.solve(M, rhs)
         except np.linalg.LinAlgError:  # pragma: no cover - degenerate design
+            stop_reason = "degenerate"
             break
         if not np.all(np.isfinite(beta_new)):
+            stop_reason = "degenerate"
             break
         u_new = (D - B @ beta_new) / d
         delta = max(float(np.max(np.abs(beta_new - beta), initial=0.0)),
@@ -343,27 +390,50 @@ def _solve_re_irls(X: np.ndarray, y: np.ndarray, gidx: np.ndarray, J: int, *,
         obj = float(np.sum(base_w * loss)
                     + 0.5 * np.sum(u * u) / max(tau2, 1e-12))
         if not np.isfinite(obj):
+            stop_reason = "degenerate"
             break
+        objective = obj
+        fitted = X @ beta + u[gidx]
+        fitted_hist.append(fitted)
+        if len(fitted_hist) > window + 1:
+            fitted_hist.pop(0)
         if it >= min_iter and obj_prev is not None:
             gain = (obj_prev - obj) / max(1.0, abs(obj))
+            obj_gain_last = float(gain)
+            if len(fitted_hist) == window + 1:
+                move = float(np.linalg.norm(fitted_hist[-1] - fitted_hist[0]))
+                stability_last = move / y_norm
+                if stability_last < stability_tol:
+                    converged = True
+                    stop_reason = "stability"
+                    break
             if gain < obj_tol:
                 converged = True
+                stop_reason = "objective"
                 break
             if delta < tol:  # secondary safety: coefficients stopped moving
+                stop_reason = "delta"
                 break
         obj_prev = obj
-    return beta, u, it, converged
+    return (beta, u, it, converged, stop_reason, objective,
+            obj_gain_last, stability_last)
 
 
 def fit_re_quantile(X: np.ndarray, y: np.ndarray, player_ids: np.ndarray, *,
                     tau: float, prior_sd: float, em_max_iter: int,
                     irls_max_iter: int, tol: float, obj_tol: float, eps: float,
                     base_w: np.ndarray | None = None,
-                    tau_floor_frac: float = 0.25) -> REFit:
+                    tau_floor_frac: float = 0.25,
+                    stability_window: int = 10,
+                    stability_tol: float = 1.0e-3) -> REFit:
     """Random-effects quantile regression with an EM update for ``tau^2``.
 
     ``em_max_iter`` caps the outer tau^2 cycle; ``irls_max_iter`` and ``obj_tol``
-    are the inner solve's iteration cap and relative-objective tolerance.
+    are the inner solve's iteration cap and relative-objective tolerance. The
+    inner solve is warm-started from the previous EM cycle; the primary stop is
+    the windowed stability certificate (``stability_window``/``stability_tol``).
+    The fit is ``converged`` only when **both** the final inner solve and the
+    EM ``tau^2`` loop certify.
     """
     player_ids = np.asarray(player_ids, dtype=np.int64)
     uniq, gidx = np.unique(player_ids, return_inverse=True)
@@ -378,14 +448,22 @@ def fit_re_quantile(X: np.ndarray, y: np.ndarray, player_ids: np.ndarray, *,
     cap = (10.0 * float(prior_sd)) ** 2
     it_total = 0
     converged = False
-    beta = np.zeros(X.shape[1])
-    u = np.zeros(J)
+    em_converged = False
+    beta: np.ndarray | None = None
+    u = np.zeros(J)  # first cycle stays cold: beta0=None, u0=zeros
+    inner_converged = False
+    stop_reason = "max_iter"
+    objective = float("nan")
+    obj_gain_last = float("nan")
+    stability_last = float("nan")
     for _ in range(int(em_max_iter)):
-        beta, u, it, conv = _solve_re_irls(
+        beta, u, it, inner_converged, stop_reason, objective, obj_gain_last, \
+            stability_last = _solve_re_irls(
             X, y, gidx, J, tau=tau, tau2=tau2, base_w=base_w,
-            max_iter=int(irls_max_iter), tol=tol, obj_tol=obj_tol, eps=eps)
+            max_iter=int(irls_max_iter), tol=tol, obj_tol=obj_tol, eps=eps,
+            beta0=beta, u0=u,
+            stability_window=stability_window, stability_tol=stability_tol)
         it_total += it
-        converged = conv
         # summed weight mass per player at the solution (for shrinkage / EM)
         r = y - X @ beta - u[gidx]
         w = np.where(r > 0, tau, 1.0 - tau) / np.maximum(np.abs(r), eps) * base_w
@@ -398,24 +476,34 @@ def fit_re_quantile(X: np.ndarray, y: np.ndarray, player_ids: np.ndarray, *,
             tau2_new = min(max(moment, floor), cap)
         if abs(tau2_new - tau2) <= max(tol, 1e-9) * max(1.0, tau2):
             tau2 = tau2_new
+            em_converged = True
             break
         tau2 = tau2_new
     # final pass at the settled variance so beta/u and A agree
-    beta, u, it, conv = _solve_re_irls(
+    beta, u, it, inner_converged, stop_reason, objective, obj_gain_last, \
+        stability_last = _solve_re_irls(
         X, y, gidx, J, tau=tau, tau2=tau2, base_w=base_w,
-        max_iter=int(irls_max_iter), tol=tol, obj_tol=obj_tol, eps=eps)
+        max_iter=int(irls_max_iter), tol=tol, obj_tol=obj_tol, eps=eps,
+        beta0=beta, u0=u,
+        stability_window=stability_window, stability_tol=stability_tol)
     it_total += it
-    converged = conv
     r = y - X @ beta - u[gidx]
     w = np.where(r > 0, tau, 1.0 - tau) / np.maximum(np.abs(r), eps) * base_w
     A = np.bincount(gidx, weights=w, minlength=J)
     if not np.all(np.isfinite(beta)) or not np.all(np.isfinite(u)):
         raise common.StageRefused(
             f"{STAGE}: quantile regression diverged (non-finite coefficients)")
+    converged = bool(inner_converged and em_converged)
+    if not em_converged:
+        stop_reason = "em_not_settled"
     return REFit(beta=beta, u=u, tau2=float(tau2), prior_used=prior_used,
                  player_ids=uniq, weight_mass=A,
                  n_obs=np.bincount(gidx, minlength=J).astype(float),
-                 n_iter=int(it_total), converged=bool(converged))
+                 n_iter=int(it_total), converged=converged,
+                 em_converged=bool(em_converged), stop_reason=str(stop_reason),
+                 objective=float(objective),
+                 obj_gain_last=float(obj_gain_last),
+                 stability_last=float(stability_last))
 
 
 # ------------------------------------------------------------------- data prep
@@ -629,7 +717,9 @@ class Envelope:
             irls_max_iter=int(self.cfg.get("envelope.irls_max_iter")),
             tol=float(self.cfg.get("envelope.em_tol")),
             obj_tol=float(self.cfg.get("envelope.irls_obj_tol")),
-            eps=float(self.cfg.get("envelope.irls_eps")))
+            eps=float(self.cfg.get("envelope.irls_eps")),
+            stability_window=int(self.cfg.get("envelope.irls_stability_window")),
+            stability_tol=float(self.cfg.get("envelope.irls_stability_tol")))
         return GroupFit(label=label, player_ids=fit.player_ids, fit=fit)
 
     def _bootstrap_group(self, label: str, X: np.ndarray, y: np.ndarray,
@@ -660,7 +750,9 @@ class Envelope:
                 irls_max_iter=irls_cap,
                 tol=max(float(self.cfg.get("envelope.em_tol")), 1e-5),
                 obj_tol=1e-6,
-                eps=float(self.cfg.get("envelope.irls_eps")), base_w=base_w)
+                eps=float(self.cfg.get("envelope.irls_eps")), base_w=base_w,
+                stability_window=int(self.cfg.get("envelope.irls_stability_window")),
+                stability_tol=float(self.cfg.get("envelope.irls_stability_tol")))
             # fit.u is indexed by np.unique(players); a silent reorder would
             # corrupt every SE downstream, so verify it rather than assume it.
             if not np.array_equal(fit.player_ids, uniq) or len(fit.u) != J:
@@ -700,10 +792,23 @@ class Envelope:
         modelfree = pd.DataFrame(modelfree_rows)
         summary = self._feasible_summary(feasible)
         self._attach_feasibility_to_fit(fit, summary)
-        manifest = self._manifest(len(self.turns))
+        self._record_convergence(fit)
+        manifest = self._manifest(len(self.turns), fit)
         return EnvelopeResult(players=players, fit=fit, modelfree=modelfree,
                               feasible=feasible, feasible_summary=summary,
                               manifest=manifest)
+
+    def _record_convergence(self, fit: pd.DataFrame) -> None:
+        """Name every non-certified point fit in the manifest warnings."""
+        if len(fit) == 0:
+            return
+        bad = fit[~fit["converged"].astype(bool)]
+        for _, row in bad.iterrows():
+            self.warnings.append(
+                "non-converged fit: "
+                f"{row['setting']}/{row['position_group']}/{row['model']}/"
+                f"{row['form']}/q={row['quantile']:g} "
+                f"({row['stop_reason']}, iterations={int(row['irls_iterations'])})")
 
     # -- one setting -----------------------------------------------------------
     def _run_setting(self, setting: str, frame: pd.DataFrame, player_rows: list,
@@ -962,9 +1067,17 @@ class Envelope:
             flags.append("no_regain")
 
         gf = capacity_models.get(primary_form, {}).get(group)
+        rfit = retention_models.get(rgroup)
+        gfit = regain_models.get(rgroup)
+        if gf is not None and gf.fit.index(nid) is not None and not gf.fit.converged:
+            flags.append("capacity_group_not_converged")
+        if rfit is not None and rfit.fit.index(nid) is not None and not rfit.fit.converged:
+            flags.append("retention_group_not_converged")
+        if gfit is not None and gfit.fit.index(nid) is not None and not gfit.fit.converged:
+            flags.append("regain_group_not_converged")
         cap = self._capacity_values(gf, nid, apex, idx, speeds, ref, n_capacity)
-        ret = self._retention_values(retention_models.get(rgroup), nid, n_plant)
-        reg = self._regain_values(regain_models.get(rgroup), nid)
+        ret = self._retention_values(rfit, nid, n_plant)
+        reg = self._regain_values(gfit, nid)
 
         # model-free reference-window values for this player
         mf_q75, mf_q90, mf_top3 = self._modelfree_ref(sub, idx, kept, nid)
@@ -1153,6 +1266,11 @@ class Envelope:
             "prior_used": bool(gf.fit.prior_used),
             "irls_iterations": int(gf.fit.n_iter),
             "converged": bool(gf.fit.converged),
+            "stop_reason": str(gf.fit.stop_reason),
+            "objective": float(gf.fit.objective),
+            "obj_gain_last": float(gf.fit.obj_gain_last),
+            "stability_last": float(gf.fit.stability_last),
+            "em_converged": bool(gf.fit.em_converged),
         }
         for i in range(4):
             row[f"coef{i}"] = float(gf.fit.beta[i]) if i < len(gf.fit.beta) else float("nan")
@@ -1357,7 +1475,7 @@ class Envelope:
                         hit.share_player_cells_inside_share_ge_min.iloc[0])
 
     # -- manifest --------------------------------------------------------------
-    def _manifest(self, turns_in: int) -> dict:
+    def _manifest(self, turns_in: int, fit: pd.DataFrame) -> dict:
         cfg = self.cfg
         used = 0
         excl_total = {"invalid": 0, "below_apex_floor": 0, "nonfinite": 0,
@@ -1375,8 +1493,20 @@ class Envelope:
             if len(frame):
                 fitted_players[setting] = int(
                     len(np.unique(_num(frame, "nfl_id").astype(np.int64))))
+        n_fits = int(len(fit))
+        n_converged = int(fit["converged"].astype(bool).sum()) if n_fits else 0
+        n_not_converged = n_fits - n_converged
+        by_model: dict[str, dict[str, int]] = {}
+        if n_fits:
+            for model in sorted(fit["model"].astype(str).unique()):
+                sub = fit[fit["model"].astype(str) == model]
+                by_model[model] = {
+                    "fits": int(len(sub)),
+                    "converged": int(sub["converged"].astype(bool).sum()),
+                }
         return {
             "stage": STAGE,
+            "artefact_version": int(ARTEFACT_VERSION),
             "mode": None,  # filled by the CLI
             "provenance": None,
             "label": None,
@@ -1424,6 +1554,25 @@ class Envelope:
                                 "reliability/counts, never outcomes)"),
             "retention_tolerance": float(cfg.get("feasibility.retention_tolerance")),
             "feasibility_cells": int(len(self._cells())),
+            "convergence": {
+                "criterion": "windowed_relative_l2_fitted_values",
+                "stability_tol": float(cfg.get("envelope.irls_stability_tol")),
+                "stability_window": int(cfg.get("envelope.irls_stability_window")),
+                "objective_tol": float(cfg.get("envelope.irls_obj_tol")),
+                "irls_max_iter": int(cfg.get("envelope.irls_max_iter")),
+                "em_max_iter": int(cfg.get("envelope.em_max_iter")),
+                "n_fits": n_fits,
+                "n_converged": n_converged,
+                "n_not_converged": n_not_converged,
+                "all_converged": bool(n_fits > 0 and n_not_converged == 0),
+                "by_model": by_model,
+                "bootstrap_fits_certified": False,
+                "bootstrap_note": (
+                    "Bootstrap replicates are fitted at a relaxed objective "
+                    "tolerance for speed and are not individually "
+                    "convergence-certified; only the point fits counted here "
+                    "carry the certificate."),
+            },
             "smoother_spread_available": bool(self.smoother_spread),
             "missing_smoother_columns": list(self.missing_smoother),
             "open_decisions": ["D124 segmentation rule", "D125 drill geometry model"],
