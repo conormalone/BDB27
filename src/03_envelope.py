@@ -80,6 +80,7 @@ def _write_artefacts(result: envelope.EnvelopeResult, cfg: common.Config,
     common.write_parquet(result.feasible, outdir / "feasible_region.parquet",
                          envelope.FEASIBLE_SCHEMA, mode, cfg)
     common.write_csv(result.fit, outdir / "envelope_fit.csv", mode, cfg)
+    common.write_csv(result.variance, outdir / "variance_components.csv", mode, cfg)
     common.write_csv(result.modelfree, outdir / "envelope_modelfree.csv", mode, cfg)
     common.write_csv(result.feasible_summary, outdir / "feasible_region_summary.csv",
                      mode, cfg)
@@ -104,6 +105,33 @@ def _headline(result: envelope.EnvelopeResult, mode: str, outdir) -> None:
     n_fits = int(len(fit))
     n_converged = int(fit["converged"].astype(bool).sum()) if n_fits else 0
     print(f"  fits converged  : {n_converged}/{n_fits}")
+    variance = result.variance
+    if len(variance):
+        n_boundary = int((variance["tau2_status"] == "AT_BOUNDARY").sum())
+        n_insufficient = int((variance["tau2_status"] == "INSUFFICIENT_PLAYERS").sum())
+        disagree = variance["routes_agree"].apply(lambda v: v is False)
+        n_disagree = int(disagree.sum())
+        print(f"  tau2 route      : moment_matched "
+              f"(cross-check: player_grouped_kfold_heldout_check_loss)")
+        print(f"  tau2 components : {len(variance)} "
+              f"({n_boundary} AT_BOUNDARY, {n_insufficient} INSUFFICIENT_PLAYERS, "
+              f"{n_disagree} route disagreement(s))")
+        for _, row in variance.sort_values(
+                ["setting", "position_group", "measure"]).iterrows():
+            heldout = ("null" if pd.isna(row["tau2_heldout_optimal"])
+                       else f"{float(row['tau2_heldout_optimal']):.4g}")
+            agree = ("null" if pd.isna(row["routes_agree"])
+                     else str(bool(row["routes_agree"])))
+            print(f"  tau2            : {row['setting']:<8} {row['position_group']:<6} "
+                  f"{row['measure']:<16} tau2={float(row['tau2']):.4g} "
+                  f"[{float(row['tau2_p05']):.3g},{float(row['tau2_p95']):.3g}] "
+                  f"status={row['tau2_status']:<19} "
+                  f"heldout_optimal={heldout} routes_agree={agree}")
+            if row["routes_agree"] is False:
+                print(f"  DISAGREEMENT    : {row['setting']}/{row['position_group']}/"
+                      f"{row['measure']} moment_tau2={float(row['tau2']):.4g} vs "
+                      f"heldout_optimal={float(row['tau2_heldout_optimal']):.4g} "
+                      "— both reported; production uses the moment estimate")
     if n_fits:
         bad = fit[~fit["converged"].astype(bool)]
         for _, row in bad.sort_values(
@@ -111,7 +139,9 @@ def _headline(result: envelope.EnvelopeResult, mode: str, outdir) -> None:
             print(f"  not converged   : {row['setting']}/{row['position_group']}/"
                   f"{row['model']}/q={row['quantile']:g} "
                   f"(form={row['form']}, {row['stop_reason']}, "
-                  f"iterations={int(row['irls_iterations'])})")
+                  f"iterations={int(row['irls_iterations'])}, "
+                  f"n_obs={int(row['n_obs'])}, n_players={int(row['n_players'])}, "
+                  f"objective_gain={float(row['obj_gain_last']):.3g})")
     ex = counts["excluded"]
     print(f"  turns           : in={counts['turns_in']} used={counts['turns_used']} "
           f"excluded(invalid={ex['invalid']}, below_apex_floor={ex['below_apex_floor']}, "

@@ -142,3 +142,80 @@ def test_full_mode_preflight_names_the_missing_tracking(notebook, tmp_path):
     blocked, message = preflight(tmp_path, "game_tracking.csv")
     assert blocked is False
     assert message == ""
+
+
+# ------------------------------------------------- phase 3 envelope headline
+
+def test_envelope_headline_absent_renders_not_run(notebook, tmp_path):
+    source = source_of(notebook, "def render_envelope_headline")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        namespace = exec_cell(source, Path=Path, OUTPUTS_DIR=tmp_path)
+        namespace["render_envelope_headline"](
+            tmp_path / "manifest.json", tmp_path / "variance_components.csv")
+    text = out.getvalue()
+
+    assert "NOT RUN — envelope manifest absent" in text
+    for field in ("provenance", "artefact_version", "settings_fitted",
+                  "players_fitted", "tau2_route", "crosscheck", "n_components",
+                  "n_at_boundary", "n_disagreements", "convergence"):
+        assert f"NOT RUN — {field} absent" in text, f"{field} did not render NOT RUN"
+    assert "NOT A RESULT" not in text
+
+
+def test_envelope_headline_prints_route_boundary_and_convergence(notebook, tmp_path):
+    manifest = {
+        "provenance": "PLACEHOLDER_SAMPLE",
+        "artefact_version": 2,
+        "settings_fitted": ["combine"],
+        "players_fitted": {"combine": 3},
+        "variance": {
+            "route": "moment_matched",
+            "crosscheck": "player_grouped_kfold_heldout_check_loss",
+            "n_components": 2,
+            "n_at_boundary": 1,
+            "n_disagreements": 1,
+        },
+        "convergence": {
+            "n_fits": 5, "n_converged": 4, "n_not_converged": 1,
+            "explanations": [{
+                "setting": "combine", "position_group": "WR", "model": "capacity",
+                "stop_reason": "max_iter", "iterations": 120, "n_obs": 100,
+                "n_players": 10, "objective_gain_last": 1e-7,
+            }],
+        },
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    components_path = tmp_path / "variance_components.csv"
+    components_path.write_text(
+        "setting,position_group,measure,tau2,tau2_status,tau2_heldout_optimal,routes_agree\n"
+        "combine,WR,arc_capacity,0.0,AT_BOUNDARY,0.0,True\n"
+        "combine,WR,plant_retention,1.2,INTERIOR,0.0,False\n",
+        encoding="utf-8")
+
+    source = source_of(notebook, "def render_envelope_headline")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        namespace = exec_cell(source, Path=Path, OUTPUTS_DIR=tmp_path)
+        namespace["render_envelope_headline"](manifest_path, components_path)
+    text = out.getvalue()
+
+    assert "moment_matched" in text
+    assert "player_grouped_kfold_heldout_check_loss" in text
+    assert "AT_BOUNDARY" in text
+    assert "1 of 2 component(s) AT_BOUNDARY" in text
+    assert "disagreements=1" in text
+    assert "4/5" in text and "non-converged=1" in text
+    assert "combine/WR" in text
+
+
+def test_envelope_headline_cell_has_no_baked_outputs(notebook):
+    for cell in notebook["cells"]:
+        if cell["cell_type"] != "code":
+            continue
+        if "def render_envelope_headline" in "".join(cell["source"]):
+            assert cell.get("outputs", []) == []
+            assert cell.get("execution_count") is None
+            return
+    raise AssertionError("the envelope headline code cell is absent")

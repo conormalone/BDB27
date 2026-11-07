@@ -206,7 +206,7 @@ turn_coverage:
     # ---- estimator (TASK.md Phase 3) ------------------------------------------
     # Random-effects quantile regression. No sampler: the reported uncertainty is
     # a bootstrap, never a posterior (see `bootstrap_kind`).
-    estimator: random_effects_quantile
+    estimator: fixed_tau2_penalised_quantile_regression
     # DESIGN CHOICE, COUNT-DRIVEN: the sample audit's median turns per player is
     # 11 (Combine) and 32 (game); a 0.90 quantile is roughly one turn per player
     # and unstable, so 0.75 is the highest quantile estimable with these counts.
@@ -232,24 +232,54 @@ turn_coverage:
     # not by lateral acceleration (D141). DESIGN CHOICE.
     apex_speed_floor: 1.5
     random_effects: intercept            # partial pooling of the intercept only
-    # Used only when the EM variance moment is non-finite or has to be floored;
-    # the fit row records `prior_used`. DESIGN CHOICE (yd/s^2).
-    between_player_sd_prior: 1.5
+    # ---- between-player variance (D148) ---------------------------------------
+    # tau^2 = max(0, Var(q_j) - mean(s_j^2)) from per-player yardsticks q_j and
+    # their player-turn bootstrap SEs s_j. No EM, no iteration, floor at 0.
+    # DESIGN CHOICE: the only supported value; any other is refused.
+    tau2_method: moment_matched
+    # Resamples of a player's own turns used for the yardstick SE s_j.
+    # DESIGN CHOICE (200: a stable SE at these turn counts).
+    tau2_quantile_bootstrap_reps: 200
+    # A player needs this many usable turns to enter the moment. DESIGN CHOICE:
+    # 2 is the minimum at which a yardstick spread can be estimated; a 1-turn
+    # player is excluded and counted, never given a fake s_j = 0.
+    tau2_min_turns_per_player: 2
+    # Player-cluster bootstrap replicates for the tau^2 SE and p05/p95.
+    # DESIGN CHOICE.
+    tau2_bootstrap_reps: 200
+    # Held-out cross-check grid: fractions of the between-player SD scale,
+    # squared, always including 0 and the moment estimate. DESIGN CHOICE: 1.5
+    # is the same physical scale as the retired EM variance prior.
+    tau2_grid_scale_sd: 1.5
+    tau2_grid_sd_fractions: [0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0]
+    # Player-grouped K-fold held-out check; folds = min(this, n_players) and
+    # assignment is sorted player id modulo K (deterministic). DESIGN CHOICE.
+    tau2_heldout_folds: 5
+    # IRLS cap for the held-out refits. DESIGN CHOICE: the cross-check needs the
+    # same estimand, not the last decimal, so it is cheaper than a point fit.
+    tau2_heldout_irls_max_iter: 40
+    # Agreement band: |sqrt(moment) - sqrt(heldout optimum)| <= frac x grid SD.
+    # DESIGN CHOICE; a disagreement is reported, never resolved by choosing one.
+    tau2_agree_tol_sd_frac: 0.25
     # A group with fewer turns than this is pooled into one ALL group rather than
     # estimated on its own. DESIGN CHOICE (counts, not outcomes).
     min_turns_per_position: 5
     min_turns_reliable: 10               # `reliable` flag; DESIGN CHOICE
     # Shrinkage below this share means the player's own data said nothing.
     fully_pooled_shrinkage_max: 0.05     # DESIGN CHOICE (fraction)
-    # IRLS / EM controls. The PRIMARY inner stop is the windowed relative L2
+    # IRLS controls. The PRIMARY inner stop is the windowed relative L2
     # movement of the fitted values X*beta + u (scaled by max(||y||, 1)); the
     # RELATIVE objective-gain test (weighted check loss + random-effect penalty)
     # remains as the secondary stop and also certifies convergence. The
-    # coefficient delta is a non-certifying safety stop only. `em_max_iter` caps
-    # the outer tau^2 (EM) cycle; `irls_max_iter` caps the inner solve.
-    em_max_iter: 50
-    em_tol: 1.0e-6                       # tau^2 relative-change stop (EM)
-    irls_max_iter: 60                    # inner IRLS cap
+    # coefficient delta is a non-certifying safety stop only. There is no EM
+    # loop: tau^2 is fixed before the solve (D148).
+    # Non-certifying safety stop. It is set below any realistic coefficient
+    # movement so it can never preempt the windowed certificate; a cold start
+    # reaches 1e-6 coefficient movement long before the fitted values settle.
+    irls_delta_tol: 1.0e-9
+    # Inner IRLS cap. DESIGN CHOICE: 120 lets a cold-start solve reach the
+    # windowed certificate; the measured worst case is 67 iterations.
+    irls_max_iter: 120
     irls_obj_tol: 1.0e-7                 # relative objective gain per IRLS step
     irls_eps: 1.0e-6                     # residual floor in the IRLS weights
     # MEASURED certificate (D147): compare X*beta + u with its value this many
@@ -258,9 +288,6 @@ turn_coverage:
     # and the fit is within 0.15-0.52% (L2) of an 800-iteration reference.
     irls_stability_window: 10
     irls_stability_tol: 1.0e-3
-    # The EM tau^2 floor is (frac * prior)^2, so the variance can never collapse
-    # to zero and a flat world is reported as small-but-identified. DESIGN CHOICE.
-    tau_floor_fraction: 0.25
     # Physical cap on lateral demand for winsorisation (yd/s^2). DESIGN CHOICE:
     # above ~3.5 g the 10 Hz derivative noise dominates any real cut.
     winsor_lateral_yd_s2: 35.0

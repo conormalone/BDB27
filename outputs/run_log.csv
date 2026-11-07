@@ -60,3 +60,5 @@ LINE 4:                    sum(CASE WHEN pp.time_to_pressure IS NULL THEN 1 ELSE
 2026-11-07T10:52:23Z,03_envelope,sample,PLACEHOLDER_SAMPLE,OK,0.0,244.5,0,"checkpoint reused, nothing rebuilt"
 2026-11-07T10:52:38Z,03_envelope,sample,PLACEHOLDER_SAMPLE,OK,0.0,245.7,0,"checkpoint reused, nothing rebuilt"
 2026-11-07T10:52:57Z,03_envelope,sample,PLACEHOLDER_SAMPLE,OK,0.0,245.0,0,"checkpoint reused, nothing rebuilt"
+2026-11-07T13:11:00Z,03_envelope,sample,PLACEHOLDER_SAMPLE,NONCONVERGED,588.304,205.3,8425,settings=3 players=1170
+2026-11-07T15:12:06Z,03_envelope,sample,PLACEHOLDER_SAMPLE,OK,143.476,206.3,8425,settings=3 players=1170

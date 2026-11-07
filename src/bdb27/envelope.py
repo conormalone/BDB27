@@ -22,9 +22,10 @@ What is estimated
 
 Estimator
 ---------
-Random-effects (partial-pooling) quantile regression. Per position group: fixed
-intercept + slope, per player a Gaussian random intercept ``u_j`` with variance
-``tau^2``. The asymmetric check loss is minimised by IRLS (numpy only):
+Random-effects (partial-pooling) quantile regression at a **fixed** between-player
+variance. Per position group: fixed intercept + slope, per player a Gaussian random
+intercept ``u_j`` with variance ``tau^2``. The asymmetric check loss is minimised by
+IRLS (numpy only):
 
     sum_i rho_tau(y_i - x_i'b - u_j) + sum_j u_j^2 / (2 tau^2)
 
@@ -33,19 +34,27 @@ only random effect is an intercept, the normal equations reduce by Schur complem
 to a ``p x p`` system (``p`` = number of fixed effects) after per-player sums, so a
 fit costs ``O(n p^2 + J p^3)`` and hundreds of bootstrap replicates are cheap.
 
-``tau^2`` is updated with the standard random-intercept EM moment
-``mean(u^2) + mean(tau^2 / (1 + A_j tau^2))`` (``A_j`` = summed IRLS weight of
-player ``j``), floored so it can never collapse to zero; if the moment is not
-finite the configured design prior ``between_player_sd_prior`` is used and the fit
-row says so (``prior_used``).
+``tau^2`` is **not** estimated inside the fit (D148). It is the moment-matched
+between-player variance of a per-player yardstick:
+
+    q_j = the model-free upper quantile (0.75) of player j's usable turns
+    s_j = bootstrap SE of q_j, resampling player j's own turns
+    tau^2 = max(0, Var(q_j) - mean(s_j^2))          (Var with ddof=1)
+
+with an SE for ``tau^2`` from a player-cluster bootstrap. ``tau^2 = 0`` is a
+first-class result: ``AT_BOUNDARY`` when ``Var(q_j) <= mean(s_j^2)`` (no detectable
+between-player spread) and ``INSUFFICIENT_PLAYERS`` when fewer than two players
+contribute. A held-out predictive-loss cross-check is reported beside the moment
+estimate; it never selects the production value (D150).
 
 Uncertainty
 -----------
 A **player-weighted bootstrap** (``bootstrap_kind: player_weighted``): every
 replicate draws one ``Exp(1)`` weight per player, applies it to all of that
 player's turns, redraws each turn's demand / retention uniformly inside its
-smoother min/max when available, and refits. Reported standard errors are the SD
-across replicates and p05/p95 are their percentiles.
+smoother min/max when available, and refits **at the same fixed production
+``tau^2``**. Reported standard errors are the SD across replicates and p05/p95 are
+their percentiles.
 
 **These are bootstrap draws, not posterior draws.** Nothing in this module is a
 Bayesian sampler, so no artefact may call them posterior. The manifest records
@@ -63,6 +72,7 @@ outcomes.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -77,7 +87,7 @@ STAGE = "03_envelope"
 
 #: Bump when the persisted artefact contract changes, so stage 03 rebuilds
 #: artefacts written by an older engine instead of silently reusing them.
-ARTEFACT_VERSION = 1
+ARTEFACT_VERSION = 2
 
 #: Columns the stage cannot run without (TASK.md Phase 3 inputs).
 REQUIRED_COLUMNS = [
@@ -101,6 +111,20 @@ SMOOTHER_COLUMNS = [
 DEMAND_COLUMNS = {"peak_lateral_accel": "peak_lateral_accel_yd_s2"}
 
 SETTINGS = ("combine", "game", "combined")
+
+#: The three production variance components (D148). ``measure`` is the label
+#: carried into ``variance_components.csv`` and the manifest.
+TAU2_MEASURES = ("arc_capacity", "plant_retention", "plant_regain")
+
+#: Columns of ``variance_components.csv``, one row per
+#: (setting, position_group, measure). ``envelope.write_csv`` prepends the three
+#: provenance columns, as it does for every evidence CSV.
+VARIANCE_COLUMNS = [
+    "setting", "position_group", "measure", "n_players", "n_players_excluded",
+    "tau2", "tau2_se", "tau2_p05", "tau2_p95", "tau2_status", "tau2_route",
+    "tau2_heldout_optimal", "heldout_loss", "routes_agree", "grid", "loss_curve",
+    "note",
+]
 
 
 # --------------------------------------------------------------------- schemas
@@ -156,6 +180,14 @@ ENVELOPE_PLAYER_SCHEMA = pa.schema([
     ("modelfree_q75_ref", pa.float64()),
     ("modelfree_q90_ref", pa.float64()),
     ("modelfree_top3_ref", pa.float64()),
+    # Between-player variance route for the three production components (D148).
+    ("capacity_tau2", pa.float64()),
+    ("capacity_at_boundary", pa.bool_()),
+    ("retention_tau2", pa.float64()),
+    ("retention_at_boundary", pa.bool_()),
+    ("regain_tau2", pa.float64()),
+    ("regain_at_boundary", pa.bool_()),
+    ("tau2_at_boundary", pa.bool_()),
     ("flags", pa.string()),
 ])
 
@@ -250,13 +282,11 @@ class REFit:
     beta: np.ndarray            # (p,) fixed effects
     u: np.ndarray               # (J,) random intercepts
     tau2: float
-    prior_used: bool
     player_ids: np.ndarray      # (J,) nfl_id
     weight_mass: np.ndarray     # (J,) summed IRLS weight A_j
     n_obs: np.ndarray           # (J,) observation count
     n_iter: int
     converged: bool
-    em_converged: bool = True
     stop_reason: str = "max_iter"
     objective: float = float("nan")
     obj_gain_last: float = float("nan")
@@ -420,20 +450,21 @@ def _solve_re_irls(X: np.ndarray, y: np.ndarray, gidx: np.ndarray, J: int, *,
 
 
 def fit_re_quantile(X: np.ndarray, y: np.ndarray, player_ids: np.ndarray, *,
-                    tau: float, prior_sd: float, em_max_iter: int,
+                    tau: float, tau2: float,
                     irls_max_iter: int, tol: float, obj_tol: float, eps: float,
                     base_w: np.ndarray | None = None,
-                    tau_floor_frac: float = 0.25,
                     stability_window: int = 10,
                     stability_tol: float = 1.0e-3) -> REFit:
-    """Random-effects quantile regression with an EM update for ``tau^2``.
+    """Random-effects quantile regression at a **fixed** ``tau2``.
 
-    ``em_max_iter`` caps the outer tau^2 cycle; ``irls_max_iter`` and ``obj_tol``
-    are the inner solve's iteration cap and relative-objective tolerance. The
-    inner solve is warm-started from the previous EM cycle; the primary stop is
-    the windowed stability certificate (``stability_window``/``stability_tol``).
-    The fit is ``converged`` only when **both** the final inner solve and the
-    EM ``tau^2`` loop certify.
+    Exactly one :func:`_solve_re_irls` pass is run: ``tau2`` is supplied by the
+    caller (moment-matched, D148), never updated inside the fit (there is no EM
+    loop). ``irls_max_iter`` and ``obj_tol`` cap/certify the inner solve; the
+    primary stop is the windowed stability certificate
+    (``stability_window``/``stability_tol``).
+
+    ``tau2 = 0`` is valid and means "no between-player spread": the random
+    intercepts are shrunk to zero and the fit is a pooled quantile regression.
     """
     player_ids = np.asarray(player_ids, dtype=np.int64)
     uniq, gidx = np.unique(player_ids, return_inverse=True)
@@ -442,68 +473,290 @@ def fit_re_quantile(X: np.ndarray, y: np.ndarray, player_ids: np.ndarray, *,
     if base_w is None:
         base_w = np.ones(n)
     base_w = np.asarray(base_w, dtype=float)
-    tau2 = float(prior_sd) ** 2
-    prior_used = False
-    floor = (tau_floor_frac * float(prior_sd)) ** 2
-    cap = (10.0 * float(prior_sd)) ** 2
-    it_total = 0
-    converged = False
-    em_converged = False
-    beta: np.ndarray | None = None
-    u = np.zeros(J)  # first cycle stays cold: beta0=None, u0=zeros
-    inner_converged = False
-    stop_reason = "max_iter"
-    objective = float("nan")
-    obj_gain_last = float("nan")
-    stability_last = float("nan")
-    for _ in range(int(em_max_iter)):
-        beta, u, it, inner_converged, stop_reason, objective, obj_gain_last, \
-            stability_last = _solve_re_irls(
-            X, y, gidx, J, tau=tau, tau2=tau2, base_w=base_w,
-            max_iter=int(irls_max_iter), tol=tol, obj_tol=obj_tol, eps=eps,
-            beta0=beta, u0=u,
-            stability_window=stability_window, stability_tol=stability_tol)
-        it_total += it
-        # summed weight mass per player at the solution (for shrinkage / EM)
-        r = y - X @ beta - u[gidx]
-        w = np.where(r > 0, tau, 1.0 - tau) / np.maximum(np.abs(r), eps) * base_w
-        A = np.bincount(gidx, weights=w, minlength=J)
-        moment = float(np.mean(u ** 2)) + float(np.mean(tau2 / (1.0 + A * tau2)))
-        if not np.isfinite(moment):
-            prior_used = True
-            tau2_new = float(prior_sd) ** 2
-        else:
-            tau2_new = min(max(moment, floor), cap)
-        if abs(tau2_new - tau2) <= max(tol, 1e-9) * max(1.0, tau2):
-            tau2 = tau2_new
-            em_converged = True
-            break
-        tau2 = tau2_new
-    # final pass at the settled variance so beta/u and A agree
-    beta, u, it, inner_converged, stop_reason, objective, obj_gain_last, \
+    tau2 = max(float(tau2), 0.0)
+    beta, u, it, converged, stop_reason, objective, obj_gain_last, \
         stability_last = _solve_re_irls(
         X, y, gidx, J, tau=tau, tau2=tau2, base_w=base_w,
         max_iter=int(irls_max_iter), tol=tol, obj_tol=obj_tol, eps=eps,
-        beta0=beta, u0=u,
+        beta0=None, u0=None,
         stability_window=stability_window, stability_tol=stability_tol)
-    it_total += it
     r = y - X @ beta - u[gidx]
     w = np.where(r > 0, tau, 1.0 - tau) / np.maximum(np.abs(r), eps) * base_w
     A = np.bincount(gidx, weights=w, minlength=J)
     if not np.all(np.isfinite(beta)) or not np.all(np.isfinite(u)):
         raise common.StageRefused(
             f"{STAGE}: quantile regression diverged (non-finite coefficients)")
-    converged = bool(inner_converged and em_converged)
-    if not em_converged:
-        stop_reason = "em_not_settled"
-    return REFit(beta=beta, u=u, tau2=float(tau2), prior_used=prior_used,
+    return REFit(beta=beta, u=u, tau2=float(tau2),
                  player_ids=uniq, weight_mass=A,
                  n_obs=np.bincount(gidx, minlength=J).astype(float),
-                 n_iter=int(it_total), converged=converged,
-                 em_converged=bool(em_converged), stop_reason=str(stop_reason),
+                 n_iter=int(it), converged=bool(converged),
+                 stop_reason=str(stop_reason),
                  objective=float(objective),
                  obj_gain_last=float(obj_gain_last),
                  stability_last=float(stability_last))
+
+
+# ------------------------------------------------- between-player variance (D148)
+
+@dataclass
+class VarianceComponent:
+    """One (setting, position_group, measure) between-player variance estimate."""
+
+    measure: str
+    n_players: int
+    n_players_excluded: int
+    tau2: float
+    tau2_se: float
+    tau2_p05: float
+    tau2_p95: float
+    status: str                       # INTERIOR | AT_BOUNDARY | INSUFFICIENT_PLAYERS
+    route: str                        # always "moment_matched"
+    tau2_heldout_optimal: float | None
+    heldout_loss: float | None
+    routes_agree: bool | None
+    grid: list[float]
+    loss_curve: list[float]
+    note: str
+
+    @property
+    def at_boundary(self) -> bool:
+        return self.status == "AT_BOUNDARY"
+
+    def row(self, setting: str, position_group: str) -> dict:
+        return {
+            "setting": setting,
+            "position_group": position_group,
+            "measure": self.measure,
+            "n_players": int(self.n_players),
+            "n_players_excluded": int(self.n_players_excluded),
+            "tau2": float(self.tau2),
+            "tau2_se": float(self.tau2_se),
+            "tau2_p05": float(self.tau2_p05),
+            "tau2_p95": float(self.tau2_p95),
+            "tau2_status": str(self.status),
+            "tau2_route": str(self.route),
+            "tau2_heldout_optimal": (None if self.tau2_heldout_optimal is None
+                                     else float(self.tau2_heldout_optimal)),
+            "heldout_loss": None if self.heldout_loss is None else float(self.heldout_loss),
+            "routes_agree": self.routes_agree,
+            "grid": json.dumps([float(x) for x in self.grid]),
+            "loss_curve": json.dumps([
+                None if not np.isfinite(x) else float(x) for x in self.loss_curve]),
+            "note": str(self.note),
+        }
+
+    def manifest(self, setting: str, position_group: str) -> dict:
+        out = self.row(setting, position_group)
+        out.pop("grid")
+        out.pop("loss_curve")
+        out["grid"] = [float(x) for x in self.grid]
+        out["loss_curve"] = [None if not np.isfinite(x) else float(x)
+                             for x in self.loss_curve]
+        return out
+
+
+def _player_quantiles(y: np.ndarray, players: np.ndarray, *,
+                      min_turns: int, quantile: float, reps: int,
+                      seed_label: str, base_seed: int
+                      ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """Per-player yardstick ``q_j`` and its bootstrap SE ``s_j``.
+
+    Players with fewer than ``min_turns`` usable turns are **excluded and
+    counted**, never given a fake ``s_j = 0`` (D148). The resample is over that
+    player's own turns, with a deterministic seed per
+    (setting, measure, player id).
+    """
+    uniq = np.unique(players)
+    q_vals: list[float] = []
+    s_vals: list[float] = []
+    ids: list[int] = []
+    excluded = 0
+    for pid in uniq:
+        vals = np.asarray(y[players == pid], dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if len(vals) < int(min_turns):
+            excluded += 1
+            continue
+        q = float(np.quantile(vals, quantile))
+        rng = np.random.default_rng(_seed(
+            f"{seed_label}|{int(pid)}|tau2_quantile", base_seed))
+        draws = rng.integers(0, len(vals), size=(int(reps), len(vals)))
+        qs = np.quantile(vals[draws], quantile, axis=1)
+        q_vals.append(q)
+        s_vals.append(float(np.std(qs, ddof=1)) if len(qs) > 1 else 0.0)
+        ids.append(int(pid))
+    return (np.asarray(q_vals, dtype=float), np.asarray(s_vals, dtype=float),
+            np.asarray(ids, dtype=np.int64), int(excluded))
+
+
+def _moment_tau2(q: np.ndarray, s: np.ndarray) -> tuple[float, str]:
+    """``tau2 = max(0, Var(q_j) - mean(s_j^2))`` and its status (D148/D149)."""
+    q = np.asarray(q, dtype=float)
+    s = np.asarray(s, dtype=float)
+    if len(q) < 2:
+        return 0.0, "INSUFFICIENT_PLAYERS"
+    var = float(np.var(q, ddof=1))
+    measurement = float(np.mean(s * s))
+    tau2 = var - measurement
+    if tau2 <= 0.0:
+        return 0.0, "AT_BOUNDARY"
+    return float(tau2), "INTERIOR"
+
+
+def _tau2_bootstrap(q: np.ndarray, s: np.ndarray, *, reps: int,
+                    seed_label: str, base_seed: int
+                    ) -> tuple[float, float, float]:
+    """Player-cluster bootstrap SE and p05/p95 for the moment ``tau2``."""
+    q = np.asarray(q, dtype=float)
+    s = np.asarray(s, dtype=float)
+    J = len(q)
+    if J < 2:
+        return float("nan"), float("nan"), float("nan")
+    rng = np.random.default_rng(_seed(f"{seed_label}|tau2_bootstrap", base_seed))
+    draws = np.empty(int(reps), dtype=float)
+    for r in range(int(reps)):
+        idx = rng.integers(0, J, size=J)
+        qq, ss = q[idx], s[idx]
+        draws[r] = max(0.0, float(np.var(qq, ddof=1)) - float(np.mean(ss * ss)))
+    return (float(np.std(draws, ddof=1)) if len(draws) > 1 else 0.0,
+            float(np.percentile(draws, 5)), float(np.percentile(draws, 95)))
+
+
+def _grid(moment: float, cfg: common.Config) -> list[float]:
+    """Candidate ``tau2`` grid: 0, the moment estimate, and the SD fractions."""
+    scale = float(cfg.get("envelope.tau2_grid_scale_sd")) ** 2
+    fractions = [float(f) for f in cfg.get("envelope.tau2_grid_sd_fractions")]
+    values = {0.0, round(float(moment), 12)}
+    values.update(round(f * scale, 12) for f in fractions)
+    return sorted(values)
+
+
+def _heldout_crosscheck(X: np.ndarray, y: np.ndarray, players: np.ndarray, *,
+                        tau: float, moment_tau2: float, cfg: common.Config,
+                        seed_label: str) -> dict:
+    """Player-grouped K-fold held-out check loss at each candidate ``tau2``.
+
+    Folds are assigned by sorted player id modulo ``K`` (deterministic). Each
+    candidate is fitted on the training players at that fixed ``tau2`` and
+    scored on the held-out players with ``u = 0`` (fixed effects only). The
+    argmin is reported beside the production moment estimate; it never selects
+    the production value (D150). Ties go to the smallest ``tau2``.
+    """
+    players = np.asarray(players, dtype=np.int64)
+    uniq = np.unique(players)
+    grid = _grid(moment_tau2, cfg)
+    blank = {
+        "tau2_heldout_optimal": None, "heldout_loss": None,
+        "routes_agree": None, "grid": grid,
+        "loss_curve": [float("nan")] * len(grid),
+        "note": "held-out cross-check not run",
+    }
+    if len(uniq) < 2 or len(y) < 2:
+        blank["note"] = ("held-out cross-check not run: fewer than 2 players or "
+                         "observations; production route stays moment_matched")
+        return blank
+    folds = min(int(cfg.get("envelope.tau2_heldout_folds")), len(uniq))
+    if folds < 2:
+        blank["note"] = "held-out cross-check not run: fewer than 2 folds"
+        return blank
+    fold_of = {int(pid): i % folds for i, pid in enumerate(uniq)}
+    fold_idx = np.array([fold_of[int(p)] for p in players], dtype=int)
+    losses: list[float] = []
+    for t2 in grid:
+        total, count = 0.0, 0
+        for f in range(folds):
+            train = fold_idx != f
+            test = ~train
+            if train.sum() < 1 or test.sum() < 1:
+                continue
+            fit = fit_re_quantile(
+                X[train], y[train], players[train], tau=tau, tau2=t2,
+                irls_max_iter=int(cfg.get("envelope.tau2_heldout_irls_max_iter")),
+                tol=float(cfg.get("envelope.irls_delta_tol")),
+                obj_tol=float(cfg.get("envelope.irls_obj_tol")),
+                eps=float(cfg.get("envelope.irls_eps")),
+                stability_window=int(cfg.get("envelope.irls_stability_window")),
+                stability_tol=float(cfg.get("envelope.irls_stability_tol")))
+            resid = y[test] - X[test] @ fit.beta
+            loss = np.where(resid > 0, tau * resid, (tau - 1.0) * resid)
+            total += float(np.sum(loss))
+            count += int(len(loss))
+        losses.append(total / count if count else float("nan"))
+    best_i = None
+    for i, value in enumerate(losses):
+        if not np.isfinite(value):
+            continue
+        if best_i is None or value < losses[best_i]:
+            best_i = i
+    if best_i is None:
+        blank["loss_curve"] = losses
+        blank["note"] = "held-out cross-check not run: every candidate fold failed"
+        return blank
+    opt = float(grid[best_i])
+    return {
+        "tau2_heldout_optimal": opt,
+        "heldout_loss": float(losses[best_i]),
+        "routes_agree": None,  # filled by _variance_component, needs the SE band
+        "grid": grid,
+        "loss_curve": losses,
+        "note": "",
+    }
+
+
+def _variance_component(measure: str, y: np.ndarray, players: np.ndarray, *,
+                        X: np.ndarray | None, tau: float, cfg: common.Config,
+                        seed_label: str) -> VarianceComponent:
+    """Moment-matched ``tau2`` + cluster-bootstrap SE + held-out cross-check."""
+    base_seed = int(cfg.seed) + int(cfg.get("envelope.bootstrap_seed_offset"))
+    q, s, _, excluded = _player_quantiles(
+        y, players,
+        min_turns=int(cfg.get("envelope.tau2_min_turns_per_player")),
+        quantile=float(cfg.get("envelope.quantile")),
+        reps=int(cfg.get("envelope.tau2_quantile_bootstrap_reps")),
+        seed_label=f"{seed_label}|{measure}", base_seed=base_seed)
+    tau2, status = _moment_tau2(q, s)
+    se, p05, p95 = _tau2_bootstrap(
+        q, s, reps=int(cfg.get("envelope.tau2_bootstrap_reps")),
+        seed_label=f"{seed_label}|{measure}", base_seed=base_seed)
+    if X is None:
+        cross = {
+            "tau2_heldout_optimal": None, "heldout_loss": None,
+            "routes_agree": None,
+            "grid": _grid(tau2, cfg),
+            "loss_curve": [float("nan")] * len(_grid(tau2, cfg)),
+            "note": "held-out cross-check not run: no design matrix",
+        }
+    else:
+        cross = _heldout_crosscheck(
+            X, y, players, tau=tau, moment_tau2=tau2, cfg=cfg,
+            seed_label=f"{seed_label}|{measure}")
+    agree = cross["routes_agree"]
+    opt = cross["tau2_heldout_optimal"]
+    if opt is not None:
+        tol = float(cfg.get("envelope.tau2_agree_tol_sd_frac")) * float(
+            cfg.get("envelope.tau2_grid_scale_sd"))
+        both_zero = (tau2 == 0.0 and opt == 0.0)
+        sd_close = abs(np.sqrt(max(tau2, 0.0)) - np.sqrt(max(opt, 0.0))) <= tol
+        inside = (np.isfinite(p05) and np.isfinite(p95)
+                  and p05 <= opt <= p95)
+        agree = bool(both_zero or sd_close or inside)
+        if agree:
+            cross["note"] = "routes agree"
+        else:
+            cross["note"] = (
+                "routes disagree: production uses the moment estimate; the "
+                "held-out optimum is reported, never used to select")
+    elif status == "INSUFFICIENT_PLAYERS":
+        cross["note"] = ("fewer than 2 contributing players; tau2 fixed at 0 "
+                         "(INSUFFICIENT_PLAYERS)")
+    return VarianceComponent(
+        measure=measure, n_players=int(len(q)), n_players_excluded=int(excluded),
+        tau2=float(tau2), tau2_se=float(se), tau2_p05=float(p05),
+        tau2_p95=float(p95), status=str(status), route="moment_matched",
+        tau2_heldout_optimal=cross["tau2_heldout_optimal"],
+        heldout_loss=cross["heldout_loss"], routes_agree=agree,
+        grid=list(cross["grid"]), loss_curve=list(cross["loss_curve"]),
+        note=str(cross["note"]))
 
 
 # ------------------------------------------------------------------- data prep
@@ -615,13 +868,13 @@ class GroupFit:
     fit: REFit
     beta_reps: np.ndarray | None = None       # (R, p)
     u_reps: np.ndarray | None = None          # (R, J)
-    prior_used_reps: np.ndarray | None = None
 
 
 @dataclass
 class EnvelopeResult:
     players: pd.DataFrame
     fit: pd.DataFrame
+    variance: pd.DataFrame
     modelfree: pd.DataFrame
     feasible: pd.DataFrame
     feasible_summary: pd.DataFrame
@@ -659,6 +912,11 @@ class Envelope:
         self.capacity: dict[str, dict[str, GroupFit]] = {}
         self.retention: dict[str, dict[str, GroupFit]] = {}
         self.regain: dict[str, dict[str, GroupFit]] = {}
+        # Between-player variance components, per setting and group (D148).
+        self.capacity_variance: dict[str, dict[str, VarianceComponent]] = {}
+        self.retention_variance: dict[str, dict[str, VarianceComponent]] = {}
+        self.regain_variance: dict[str, dict[str, VarianceComponent]] = {}
+        self.variance_rows: list[dict] = []
         self.player_capacity_group: dict[str, dict[int, str]] = {}
         self.player_retention_group: dict[str, dict[int, str]] = {}
         self.player_capacity_median: dict[str, dict[int, float]] = {}
@@ -687,12 +945,14 @@ class Envelope:
             raise common.StageRefused(
                 f"{STAGE}: unsupported envelope.capacity_demand={demand!r}; "
                 f"supported values: {', '.join(sorted(DEMAND_COLUMNS))}")
+        method = str(self.cfg.get("envelope.tau2_method"))
+        if method != "moment_matched":
+            raise common.StageRefused(
+                f"{STAGE}: unsupported envelope.tau2_method={method!r}; the only "
+                "supported value is 'moment_matched' (D148)")
 
     def _sub(self, setting: str) -> pd.DataFrame:
         return self.players_frames[setting]
-
-    def _tau2_prior(self) -> float:
-        return float(self.cfg.get("envelope.between_player_sd_prior"))
 
     def _assign_groups(self, setting: str, mask: np.ndarray, min_turns: int,
                        frame: pd.DataFrame, setting_label: str) -> tuple[dict[int, str], dict[str, int]]:
@@ -709,13 +969,12 @@ class Envelope:
 
     def _fit_group(self, label: str, X: np.ndarray, y: np.ndarray,
                    players: np.ndarray, setting: str, model: str,
-                   tau: float) -> GroupFit:
+                   tau: float, tau2: float) -> GroupFit:
         fit = fit_re_quantile(
             X, y, players,
-            tau=tau, prior_sd=self._tau2_prior(),
-            em_max_iter=int(self.cfg.get("envelope.em_max_iter")),
+            tau=tau, tau2=float(tau2),
             irls_max_iter=int(self.cfg.get("envelope.irls_max_iter")),
-            tol=float(self.cfg.get("envelope.em_tol")),
+            tol=float(self.cfg.get("envelope.irls_delta_tol")),
             obj_tol=float(self.cfg.get("envelope.irls_obj_tol")),
             eps=float(self.cfg.get("envelope.irls_eps")),
             stability_window=int(self.cfg.get("envelope.irls_stability_window")),
@@ -724,6 +983,7 @@ class Envelope:
 
     def _bootstrap_group(self, label: str, X: np.ndarray, y: np.ndarray,
                          players: np.ndarray, setting: str, model: str, tau: float,
+                         tau2: float,
                          draw_lo: np.ndarray | None, draw_hi: np.ndarray | None
                          ) -> tuple[np.ndarray, np.ndarray]:
         reps = int(self.cfg.get("envelope.bootstrap_reps"))
@@ -745,10 +1005,9 @@ class Envelope:
             y_draw = _smoother_draw(rng, y, draw_lo, draw_hi)
             fit = fit_re_quantile(
                 X, y_draw, players,
-                tau=tau, prior_sd=self._tau2_prior(),
-                em_max_iter=int(self.cfg.get("envelope.em_max_iter")),
+                tau=tau, tau2=float(tau2),
                 irls_max_iter=irls_cap,
-                tol=max(float(self.cfg.get("envelope.em_tol")), 1e-5),
+                tol=max(float(self.cfg.get("envelope.irls_delta_tol")), 1e-5),
                 obj_tol=1e-6,
                 eps=float(self.cfg.get("envelope.irls_eps")), base_w=base_w,
                 stability_window=int(self.cfg.get("envelope.irls_stability_window")),
@@ -779,7 +1038,13 @@ class Envelope:
         modelfree_rows: list[dict] = []
         feasible_rows: list[dict] = []
         self._combine_range()
+        single_settings = [s for s in ("combine", "game")
+                           if len(self.players_frames[s])]
         for setting in self.settings:
+            # `combined` is the union of the two settings; when only one exists
+            # it is not a second setting and must not be fitted twice.
+            if setting == "combined" and len(single_settings) < 2:
+                continue
             frame = self._sub(setting)
             if len(frame) == 0:
                 continue
@@ -789,12 +1054,14 @@ class Envelope:
         players = self._finalise_players(player_rows)
         feasible = pd.DataFrame(feasible_rows)
         fit = pd.DataFrame(fit_rows)
+        variance = pd.DataFrame(self.variance_rows, columns=VARIANCE_COLUMNS)
         modelfree = pd.DataFrame(modelfree_rows)
         summary = self._feasible_summary(feasible)
         self._attach_feasibility_to_fit(fit, summary)
         self._record_convergence(fit)
         manifest = self._manifest(len(self.turns), fit)
-        return EnvelopeResult(players=players, fit=fit, modelfree=modelfree,
+        return EnvelopeResult(players=players, fit=fit, variance=variance,
+                              modelfree=modelfree,
                               feasible=feasible, feasible_summary=summary,
                               manifest=manifest)
 
@@ -808,7 +1075,9 @@ class Envelope:
                 "non-converged fit: "
                 f"{row['setting']}/{row['position_group']}/{row['model']}/"
                 f"{row['form']}/q={row['quantile']:g} "
-                f"({row['stop_reason']}, iterations={int(row['irls_iterations'])})")
+                f"({row['stop_reason']}, iterations={int(row['irls_iterations'])}, "
+                f"n_obs={int(row['n_obs'])}, n_players={int(row['n_players'])}, "
+                f"objective_gain={float(row['obj_gain_last']):.3g})")
 
     # -- one setting -----------------------------------------------------------
     def _run_setting(self, setting: str, frame: pd.DataFrame, player_rows: list,
@@ -847,29 +1116,41 @@ class Envelope:
         if bool(cfg.get("envelope.friction_circle_sensitivity")):
             forms.append("friction_circle_upper")
         primary_form = "lateral_at_apex"
-        capacity_models: dict[str, dict[str, GroupFit]] = {}
-        for form in forms:
-            y_form = np.clip(_demand(frame, cfg, form), 0.0, cap)
-            capacity_models[form] = {}
-            for group in sorted(set(player_group.values())):
-                mask = kept & (group_of_row == group)
-                if mask.sum() < 3:
-                    continue
-                X = np.column_stack([np.ones(int(mask.sum())), apex[mask] - ref])
-                y = y_form[mask]
-                pl = nfl[mask]
-                gf = self._fit_group(group, X, y, pl, setting, f"capacity:{form}",
-                                     quantile)
+        capacity_models: dict[str, dict[str, GroupFit]] = {f: {} for f in forms}
+        cap_y = {form: np.clip(_demand(frame, cfg, form), 0.0, cap)
+                 for form in forms}
+        capacity_variance: dict[str, VarianceComponent] = {}
+        for group in sorted(set(player_group.values())):
+            mask = kept & (group_of_row == group)
+            if mask.sum() < 3:
+                continue
+            X = np.column_stack([np.ones(int(mask.sum())), apex[mask] - ref])
+            # One production variance component per group, measured on the
+            # primary demand. The form and quantile sensitivities are fitted at
+            # this same tau2 so those comparisons change one thing only (D148).
+            component = _variance_component(
+                "arc_capacity", cap_y[primary_form][mask], nfl[mask], X=X,
+                tau=quantile, cfg=cfg,
+                seed_label=f"{setting}|{group}|capacity")
+            capacity_variance[group] = component
+            self.variance_rows.append(component.row(setting, group))
+            for form in forms:
+                y_form = cap_y[form][mask]
+                gf = self._fit_group(group, X, y_form, nfl[mask], setting,
+                                     f"capacity:{form}", quantile, component.tau2)
                 capacity_models[form][group] = gf
                 if self.with_bootstrap and form == primary_form:
-                    lo = _num(frame, "peak_lateral_accel_smoother_min") if self.smoother_spread else None
-                    hi = _num(frame, "peak_lateral_accel_smoother_max") if self.smoother_spread else None
+                    lo = (_num(frame, "peak_lateral_accel_smoother_min")
+                          if self.smoother_spread else None)
+                    hi = (_num(frame, "peak_lateral_accel_smoother_max")
+                          if self.smoother_spread else None)
                     gf.beta_reps, gf.u_reps = self._bootstrap_group(
-                        group, X, np.clip(y_form[mask], 0, cap), pl, setting,
-                        f"capacity:{form}", quantile,
+                        group, X, y_form, nfl[mask], setting,
+                        f"capacity:{form}", quantile, component.tau2,
                         None if lo is None else lo[mask],
                         None if hi is None else hi[mask])
                     self._check_recovery_frame(gf)
+        self.capacity_variance[setting] = capacity_variance
         self.capacity[setting] = capacity_models
 
         # quantile sensitivity point fits (cheap, no bootstrap)
@@ -879,9 +1160,10 @@ class Envelope:
             for group, gf in capacity_models[primary_form].items():
                 mask = kept & (group_of_row == group)
                 X = np.column_stack([np.ones(int(mask.sum())), apex[mask] - ref])
-                gfs = self._fit_group(group, X, np.clip(base_demand[mask], 0, cap),
-                                      nfl[mask], setting, f"capacity:{primary_form}",
-                                      float(q))
+                gfs = self._fit_group(group, X, cap_y[primary_form][mask],
+                                      nfl[mask], setting,
+                                      f"capacity:{primary_form}", float(q),
+                                      capacity_variance[group].tau2)
                 capacity_models.setdefault(f"__sens_{q}", {})[group] = gfs
 
         # ---- retention (plant) fit ------------------------------------------
@@ -894,6 +1176,7 @@ class Envelope:
         self.player_retention_group[setting] = ret_group
         ret_group_of_row = np.array([ret_group.get(int(p), "ALL") for p in nfl])
         retention_models: dict[str, GroupFit] = {}
+        retention_variance: dict[str, VarianceComponent] = {}
         if ret_mask.sum() >= 3:
             entry = _num(frame, "entry_speed")
             de = entry - float(cfg.get("envelope.retention_entry_centre"))
@@ -904,22 +1187,33 @@ class Envelope:
                     continue
                 X = np.column_stack([np.ones(int(mask.sum())), de[mask], da[mask],
                                      (de * da)[mask]])
+                component = _variance_component(
+                    "plant_retention", ret[mask], nfl[mask], X=X,
+                    tau=quantile, cfg=cfg,
+                    seed_label=f"{setting}|{group}|retention")
+                retention_variance[group] = component
+                self.variance_rows.append(component.row(setting, group))
                 gf = self._fit_group(group, X, ret[mask], nfl[mask], setting,
-                                     "retention", quantile)
+                                     "retention", quantile, component.tau2)
                 if self.with_bootstrap:
-                    lo = _num(frame, "speed_retention_smoother_min") if self.smoother_spread else None
-                    hi = _num(frame, "speed_retention_smoother_max") if self.smoother_spread else None
+                    lo = (_num(frame, "speed_retention_smoother_min")
+                          if self.smoother_spread else None)
+                    hi = (_num(frame, "speed_retention_smoother_max")
+                          if self.smoother_spread else None)
                     gf.beta_reps, gf.u_reps = self._bootstrap_group(
                         group, X, ret[mask], nfl[mask], setting, "retention",
-                        quantile, None if lo is None else lo[mask],
+                        quantile, component.tau2,
+                        None if lo is None else lo[mask],
                         None if hi is None else hi[mask])
                 retention_models[group] = gf
+        self.retention_variance[setting] = retention_variance
         self.retention[setting] = retention_models
 
         # ---- regain (lower envelope) fit ------------------------------------
         reg_mask = _regain_mask(frame, cfg)
         reg = _num(frame, "regain_entry_speed_s")
         regain_models: dict[str, GroupFit] = {}
+        regain_variance: dict[str, VarianceComponent] = {}
         if reg_mask.sum() >= 3:
             entry = _num(frame, "entry_speed")
             de = entry - float(cfg.get("envelope.retention_entry_centre"))
@@ -931,14 +1225,23 @@ class Envelope:
                     continue
                 X = np.column_stack([np.ones(int(mask.sum())), de[mask], da[mask],
                                      (de * da)[mask]])
-                # lower envelope of time == upper envelope of -time
+                # lower envelope of time == upper envelope of -time. The
+                # yardstick quantile is still 0.75, so q_j is the lower
+                # envelope of time at 0.25, matching the fit (D148).
+                component = _variance_component(
+                    "plant_regain", -reg[mask], nfl[mask], X=X,
+                    tau=1.0 - rq, cfg=cfg,
+                    seed_label=f"{setting}|{group}|regain")
+                regain_variance[group] = component
+                self.variance_rows.append(component.row(setting, group))
                 gf = self._fit_group(group, X, -reg[mask], nfl[mask], setting,
-                                     "regain", 1.0 - rq)
+                                     "regain", 1.0 - rq, component.tau2)
                 if self.with_bootstrap:
                     gf.beta_reps, gf.u_reps = self._bootstrap_group(
                         group, X, -reg[mask], nfl[mask], setting, "regain",
-                        1.0 - rq, None, None)
+                        1.0 - rq, component.tau2, None, None)
                 regain_models[group] = gf
+        self.regain_variance[setting] = regain_variance
         self.regain[setting] = regain_models
 
         # ---- per-player rows -------------------------------------------------
@@ -982,7 +1285,7 @@ class Envelope:
 
     def _check_recovery_frame(self, gf: GroupFit) -> None:
         """Guard against a silently exploded fit (a warning, never a silent pass)."""
-        if not np.all(np.isfinite(gf.fit.beta)) or gf.fit.tau2 <= 0:
+        if not np.all(np.isfinite(gf.fit.beta)) or not np.isfinite(gf.fit.tau2):
             self.warnings.append(f"non-finite capacity fit for group {gf.label}")
 
     def _modelfree(self, setting: str, frame: pd.DataFrame, kept: np.ndarray,
@@ -1075,6 +1378,15 @@ class Envelope:
             flags.append("retention_group_not_converged")
         if gfit is not None and gfit.fit.index(nid) is not None and not gfit.fit.converged:
             flags.append("regain_group_not_converged")
+        cap_var = self.capacity_variance.get(setting, {}).get(group)
+        ret_var = self.retention_variance.get(setting, {}).get(rgroup)
+        reg_var = self.regain_variance.get(setting, {}).get(rgroup)
+        capacity_at_boundary = bool(cap_var is not None and cap_var.at_boundary)
+        retention_at_boundary = bool(ret_var is not None and ret_var.at_boundary)
+        regain_at_boundary = bool(reg_var is not None and reg_var.at_boundary)
+        if any(v is not None and v.routes_agree is False
+               for v in (cap_var, ret_var, reg_var)):
+            flags.append("variance_route_disagreement")
         cap = self._capacity_values(gf, nid, apex, idx, speeds, ref, n_capacity)
         ret = self._retention_values(rfit, nid, n_plant)
         reg = self._regain_values(gfit, nid)
@@ -1111,6 +1423,17 @@ class Envelope:
             "modelfree_q75_ref": mf_q75,
             "modelfree_q90_ref": mf_q90,
             "modelfree_top3_ref": mf_top3,
+            "capacity_tau2": (float(cap_var.tau2) if cap_var is not None
+                              else float("nan")),
+            "capacity_at_boundary": capacity_at_boundary,
+            "retention_tau2": (float(ret_var.tau2) if ret_var is not None
+                               else float("nan")),
+            "retention_at_boundary": retention_at_boundary,
+            "regain_tau2": (float(reg_var.tau2) if reg_var is not None
+                            else float("nan")),
+            "regain_at_boundary": regain_at_boundary,
+            "tau2_at_boundary": bool(capacity_at_boundary or retention_at_boundary
+                                     or regain_at_boundary),
             "flags": ";".join(flags),
         }
 
@@ -1234,26 +1557,33 @@ class Envelope:
                 for group, gf in models.items():
                     rows.append(self._fit_row(
                         setting, group, "capacity", "lateral_at_apex", q, gf,
-                        mask & (cap_group_of_row == group), apex))
+                        mask & (cap_group_of_row == group), apex,
+                        self.capacity_variance.get(setting, {}).get(group)))
                 continue
             q = quantile
             for group, gf in models.items():
                 rows.append(self._fit_row(
                     setting, group, "capacity", form, q, gf,
-                    kept & (cap_group_of_row == group), apex))
+                    kept & (cap_group_of_row == group), apex,
+                    self.capacity_variance.get(setting, {}).get(group)))
         for group, gf in retention_models.items():
             rows.append(self._fit_row(
                 setting, group, "retention", "linear_interaction", quantile, gf,
-                ret_mask & (ret_group_of_row == group), apex))
+                ret_mask & (ret_group_of_row == group), apex,
+                self.retention_variance.get(setting, {}).get(group)))
         for group, gf in regain_models.items():
             rows.append(self._fit_row(
                 setting, group, "regain", "linear_interaction",
                 float(self.cfg.get("envelope.regain_quantile")), gf,
-                reg_mask & (ret_group_of_row == group), apex))
+                reg_mask & (ret_group_of_row == group), apex,
+                self.regain_variance.get(setting, {}).get(group)))
         return rows
 
     def _fit_row(self, setting, group, model, form, quantile, gf: GroupFit,
-                 mask: np.ndarray, apex) -> dict:
+                 mask: np.ndarray, apex,
+                 component: VarianceComponent | None = None) -> dict:
+        tau2 = (float(component.tau2) if component is not None
+                else float(gf.fit.tau2))
         row = {
             "setting": setting,
             "position_group": group,
@@ -1262,15 +1592,31 @@ class Envelope:
             "quantile": float(quantile),
             "n_players": int(len(gf.fit.player_ids)),
             "n_obs": int(mask.sum()),
-            "random_effect_sd": float(np.sqrt(max(gf.fit.tau2, 0.0))),
-            "prior_used": bool(gf.fit.prior_used),
+            "random_effect_sd": float(np.sqrt(max(tau2, 0.0))),
+            "tau2": tau2,
+            "tau2_se": (float(component.tau2_se) if component is not None
+                        else float("nan")),
+            "tau2_p05": (float(component.tau2_p05) if component is not None
+                         else float("nan")),
+            "tau2_p95": (float(component.tau2_p95) if component is not None
+                         else float("nan")),
+            "tau2_status": (str(component.status) if component is not None
+                            else "INSUFFICIENT_PLAYERS"),
+            "tau2_route": "moment_matched",
+            "tau2_heldout_optimal": (
+                None if component is None
+                or component.tau2_heldout_optimal is None
+                else float(component.tau2_heldout_optimal)),
+            "routes_agree": (None if component is None
+                             else component.routes_agree),
+            "tau2_source_measure": (str(component.measure) if component is not None
+                                    else None),
             "irls_iterations": int(gf.fit.n_iter),
             "converged": bool(gf.fit.converged),
             "stop_reason": str(gf.fit.stop_reason),
             "objective": float(gf.fit.objective),
             "obj_gain_last": float(gf.fit.obj_gain_last),
             "stability_last": float(gf.fit.stability_last),
-            "em_converged": bool(gf.fit.em_converged),
         }
         for i in range(4):
             row[f"coef{i}"] = float(gf.fit.beta[i]) if i < len(gf.fit.beta) else float("nan")
@@ -1504,6 +1850,30 @@ class Envelope:
                     "fits": int(len(sub)),
                     "converged": int(sub["converged"].astype(bool).sum()),
                 }
+        explanations: list[dict] = []
+        if n_fits:
+            bad = fit[~fit["converged"].astype(bool)]
+            for _, row in bad.iterrows():
+                explanations.append({
+                    "setting": str(row["setting"]),
+                    "position_group": str(row["position_group"]),
+                    "model": str(row["model"]),
+                    "form": str(row["form"]),
+                    "quantile": float(row["quantile"]),
+                    "stop_reason": str(row["stop_reason"]),
+                    "iterations": int(row["irls_iterations"]),
+                    "n_obs": int(row["n_obs"]),
+                    "n_players": int(row["n_players"]),
+                    "objective_gain_last": float(row["obj_gain_last"]),
+                })
+        n_components = len(self.variance_rows)
+        n_at_boundary = int(sum(1 for r in self.variance_rows
+                                if r["tau2_status"] == "AT_BOUNDARY"))
+        n_disagreements = int(sum(1 for r in self.variance_rows
+                                  if r["routes_agree"] is False))
+        # JSON-safe components: the grid/loss curve are plain lists here, not
+        # JSON strings (the CSV carries the JSON-string form).
+        components = [dict(r) for r in self.variance_rows]
         return {
             "stage": STAGE,
             "artefact_version": int(ARTEFACT_VERSION),
@@ -1521,7 +1891,7 @@ class Envelope:
             "uncertainty_kind": "bootstrap_share_not_posterior",
             "friction_circle_quantile": float(self.quantile),
             "estimator": {
-                "name": str(cfg.get("envelope.estimator")),
+                "name": "fixed_tau2_penalised_quantile_regression",
                 "quantile": float(self.quantile),
                 "quantile_sensitivity": [float(q) for q in cfg.get("envelope.quantile_sensitivity")],
                 "form": str(cfg.get("envelope.capacity_form")),
@@ -1532,11 +1902,37 @@ class Envelope:
                 "apex_speed_floor": float(cfg.get("envelope.apex_speed_floor")),
                 "winsor_lateral_yd_s2": float(cfg.get("envelope.winsor_lateral_yd_s2")),
                 "random_effects": str(cfg.get("envelope.random_effects")),
-                "between_player_sd_prior": float(cfg.get("envelope.between_player_sd_prior")),
+                "tau2_method": "moment_matched",
                 "bootstrap_reps": int(cfg.get("envelope.bootstrap_reps")),
                 "bootstrap_kind": str(cfg.get("envelope.bootstrap_kind")),
                 "uncertainty": "player_weighted_bootstrap",
                 "posterior": False,
+            },
+            "variance": {
+                "method": "moment_matched",
+                "formula": ("tau2 = max(0, Var(q_j) - mean(s_j^2)); q_j is the "
+                            "0.75 upper quantile of player j's usable turns, "
+                            "s_j its player-turn bootstrap SE; Var uses ddof=1"),
+                "floor": 0.0,
+                "route": "moment_matched",
+                "crosscheck": "player_grouped_kfold_heldout_check_loss",
+                "tau2_quantile_bootstrap_reps": int(
+                    cfg.get("envelope.tau2_quantile_bootstrap_reps")),
+                "tau2_min_turns_per_player": int(
+                    cfg.get("envelope.tau2_min_turns_per_player")),
+                "tau2_bootstrap_reps": int(cfg.get("envelope.tau2_bootstrap_reps")),
+                "grid_scale_sd": float(cfg.get("envelope.tau2_grid_scale_sd")),
+                "grid_sd_fractions": [float(f) for f in
+                                      cfg.get("envelope.tau2_grid_sd_fractions")],
+                "heldout_folds": int(cfg.get("envelope.tau2_heldout_folds")),
+                "heldout_irls_max_iter": int(
+                    cfg.get("envelope.tau2_heldout_irls_max_iter")),
+                "agree_tol_sd_frac": float(
+                    cfg.get("envelope.tau2_agree_tol_sd_frac")),
+                "n_components": int(n_components),
+                "n_at_boundary": int(n_at_boundary),
+                "n_disagreements": int(n_disagreements),
+                "components": components,
             },
             "counts": {
                 "turns_in": int(turns_in),
@@ -1560,12 +1956,12 @@ class Envelope:
                 "stability_window": int(cfg.get("envelope.irls_stability_window")),
                 "objective_tol": float(cfg.get("envelope.irls_obj_tol")),
                 "irls_max_iter": int(cfg.get("envelope.irls_max_iter")),
-                "em_max_iter": int(cfg.get("envelope.em_max_iter")),
                 "n_fits": n_fits,
                 "n_converged": n_converged,
                 "n_not_converged": n_not_converged,
                 "all_converged": bool(n_fits > 0 and n_not_converged == 0),
                 "by_model": by_model,
+                "explanations": explanations,
                 "bootstrap_fits_certified": False,
                 "bootstrap_note": (
                     "Bootstrap replicates are fitted at a relaxed objective "

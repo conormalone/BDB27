@@ -88,7 +88,7 @@ stage so the headline can show what exists.
 | 00 thresholds | `src/00_thresholds.py` | implemented | `outputs/thresholds.json` |
 | 01 audit | `src/01_audit.py` | implemented (items a–m) | `outputs/audit/{audit_items.csv,gate.json,schema_*.json,…}` |
 | 02 turns | `src/02_turns.py` | implemented (Phase 2) | `outputs/turns/{turns,attempts,summary}.parquet`, `sanity.csv`, `smoother_counts.csv`, `segmentation_sensitivity.csv`, `geometry_recovery.csv`, `manifest.json` |
-| 03 envelope | `src/03_envelope.py` | implemented (Phase 3) | `outputs/envelope/{envelope_players,feasible_region}.parquet`, `envelope_fit.csv`, `envelope_modelfree.csv`, `feasible_region_summary.csv`, `manifest.json` |
+| 03 envelope | `src/03_envelope.py` | implemented (Phase 3) | `outputs/envelope/{envelope_players,feasible_region}.parquet`, `envelope_fit.csv`, `variance_components.csv`, `envelope_modelfree.csv`, `feasible_region_summary.csv`, `manifest.json` |
 | 04 demand + coverage | `src/04_demand_coverage.py` | **loud stub** | nothing |
 | 05 validate | `src/05_validate.py` | **loud stub** | nothing |
 | 06 figures | `src/06_figures.py` | **loud stub** | nothing |
@@ -103,7 +103,7 @@ checkpoint — a layout-only run can never look finished.
 | 00_thresholds | < 1 s | < 100 MB | pure config; skips if the file exists |
 | 01_audit | **~2 min 45 s** | **~1.1 GB** | first run also converts CSVs to Parquet (~1 min extra) |
 | 02_turns | **~7 min** | **~400 MB** | six smoothers on every attempt/snap plus the shuffled null; Combine points are held in memory, game tracking is chunked |
-| 03_envelope | see `notes/scale.md` | see `notes/scale.md` | random-effects quantile fits plus 200 player-weighted bootstrap replicates per group; the dominant cost is the bootstrap |
+| 03_envelope | **~2 min 24 s** | **~206 MB** | fixed-`tau2` penalised quantile fits plus 200 player-weighted bootstrap replicates per group and the player-grouped held-out cross-check; no EM cycle (was ~9 min 48 s) |
 | 04–06 | instant | — | stubs |
 | whole notebook | **~10 min** | — | same work as the shell chain |
 

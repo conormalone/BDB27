@@ -5548,3 +5548,90 @@ replicates are explicitly not certified (`bootstrap_fits_certified: false`) beca
 fitted at a relaxed objective tolerance for speed.
 **Evidence.** `src/bdb27/envelope.py::_solve_re_irls`, `fit_re_quantile`, `_manifest`;
 `src/03_envelope.py::main`, `_headline`; `config.yaml` (`envelope.irls_stability_*`).
+
+---
+
+## D148 — Between-player variance is moment-matched before the fit; the model is fixed-tau penalised quantile regression · 2026-11-07
+**Decision.** The EM cycle is removed from the production estimator. `tau^2` is estimated
+**before** any quantile fit from a per-player yardstick and then held fixed:
+`q_j` = the model-free 0.75 upper quantile of player `j`'s usable turns for the measure
+(winsorised peak lateral acceleration; winsorised speed retention; `-`time to regain entry
+speed, so the upper 0.75 envelope of `-time` is the lower 0.25 envelope of time that the fit
+uses); `s_j` = its bootstrap SE by resampling that player's own turns
+(`tau2_quantile_bootstrap_reps`, 200, deterministic seed per setting/measure/player);
+`tau^2 = max(0, Var(q_j) - mean(s_j^2))` with `Var` using `ddof = 1`. A player with fewer
+than `tau2_min_turns_per_player` (2) usable turns is excluded and counted in
+`n_players_excluded`; he never receives a fake `s_j = 0`. `tau^2`'s SE and p05/p95 come from
+a player-cluster bootstrap (`tau2_bootstrap_reps`, 200). `fit_re_quantile` now requires
+`tau2` and makes exactly one `_solve_re_irls` pass; `_solve_re_irls` itself is unchanged
+(warm-start hooks, windowed stability certificate, objective secondary stop). The
+player-weighted bootstrap refits at the same fixed production `tau^2`. `em_max_iter`,
+`em_tol`, `tau_floor_fraction` and `between_player_sd_prior` are removed from the config and
+`prior_used`/`em_converged` from the fit contract.
+**Why.** The EM moment `mean(u^2) + mean(tau^2/(1 + A_j tau^2))` conflates the quantity of
+interest (how much players differ) with the fit's own penalty and needed a positive floor to
+avoid collapsing to a small-but-fake number; it also dominated runtime (50 outer cycles, each
+re-walking an IRLS solve). The yardstick moment measures between-player spread directly, is
+a closed-form expression with no convergence question, and separates measurement error
+(`s_j^2`) from real spread. Fixing `tau^2` also removes the circularity in which every
+bootstrap replicate re-estimated its own variance.
+**Cost.** The sample run fell from 588.3 s to 143.5 s wall; all 85 point fits converge and
+`em_not_settled` can no longer occur. The `q_j` yardstick is deliberately **not**
+speed-adjusted, so part of its spread is each player's entry-speed mix; the fitted speed
+curve remains in the model and this is a stated limitation, not a corrected quantity.
+**Evidence.** `src/bdb27/envelope.py::_player_quantiles`, `_moment_tau2`, `_tau2_bootstrap`,
+`fit_re_quantile`; `config.yaml` (`envelope.tau2_*`); `tests/test_envelope_stage.py`
+(zero world, large-heterogeneity recovery, determinism, one-IRLS unit test).
+
+---
+
+## D149 — The variance floor is 0 and `AT_BOUNDARY` is a first-class reported status · 2026-11-07
+**Decision.** `tau^2` is never floored above 0. It carries one of three statuses everywhere
+(`envelope_fit.csv`, `variance_components.csv`, the manifest's `variance` block and the
+per-player table): `INTERIOR` when `Var(q_j) > mean(s_j^2)`, `AT_BOUNDARY` when
+`Var(q_j) <= mean(s_j^2)` (so `tau^2` is exactly 0), and `INSUFFICIENT_PLAYERS` when fewer
+than two players contribute (also `tau^2 = 0`). Per-player columns are
+`capacity_tau2`/`capacity_at_boundary`, `retention_tau2`/`retention_at_boundary`,
+`regain_tau2`/`regain_at_boundary` and the derived `tau2_at_boundary`.
+**Why.** A zero variance is an estimable answer — "the data cannot separate these players
+from one another's measurement error" — not a numerical failure and not a reason to invent
+a floor. The old `(0.25 × prior)^2 = 0.1406` floor (SD 0.375) made a flat world look
+small-but-identified and made every zero-world test impossible to state. `AT_BOUNDARY` is
+therefore reported, counted in the manifest and the headline, and it does **not** make the
+stage exit 3; only a fit that fails its convergence certificate does.
+**Evidence (zero world).** `tests/test_envelope_stage.py` runs the real stage on 20 players
+whose `q_j` multiset is identical (`y = 7.0 + 0.4 (v - 4)` on the same speed grid): `tau^2`
+is exactly 0.0 for arc capacity and retention, both `tau2_status=AT_BOUNDARY`, `tau2_se=0`,
+and every player's `capacity_at_4`/`retention_ref` is identical (ptp < 1e-9), so the model
+does not manufacture between-player differences. On the host sample 43 of 51 components are
+`AT_BOUNDARY` (PLACEHOLDER_SAMPLE, not a result).
+
+---
+
+## D150 — The held-out predictive-loss cross-check is reported, never used to select the variance · 2026-11-07
+**Decision.** Every production component (primary arc capacity, retention, regain) is scored
+on a grid of candidate `tau^2` that always contains 0, the moment estimate, and
+`tau2_grid_sd_fractions × tau2_grid_scale_sd^2` (`[0, 0.25, 0.5, 0.75, 1, 1.5, 2] × 1.5^2`).
+Scoring is player-grouped K-fold CV (`tau2_heldout_folds` = 5, folds = `min(5, n_players)`,
+assignment by sorted player id modulo K): fit on the training players at that fixed `tau^2`,
+predict held-out players with `u = 0` (fixed effects only), loss = mean weighted check loss
+at the fit quantile. The argmin is `tau2_heldout_optimal` (ties to the smallest `tau^2`) and
+the full `grid`/`loss_curve` are stored. **Production always uses the moment estimate.** The
+routes are said to agree when `|sqrt(moment) - sqrt(held-out optimum)| <=
+tau2_agree_tol_sd_frac × grid scale SD`, or both are 0, or the held-out optimum lies inside
+the moment p05/p95. A disagreement is reported as both values, `routes_agree=false`, a
+`variance_route_disagreement` player flag for every player in that group, and both numbers in
+the stage headline. If the CV cannot run (<2 players/observations), its fields are null and
+the route is recorded as `moment_matched` with the reason in `note`.
+**Why the two can disagree.** A held-out player's random effect is unknown, so the best
+prediction for a new player is the **marginal** quantile. A large `tau^2` lets training
+random effects absorb between-player spread; that fits the training players better but does
+not help a player the model has never seen, so new-player CV can prefer `tau^2 = 0` even when
+the moment shows real, clearly INTERIOR between-player spread. The cross-check answers
+"what predicts an unseen player", not "how much do players differ", which is exactly why it
+is a check and not the selector. Choosing whichever number flatters the current table, or
+averaging them, would make the variance route unfalsifiable.
+**Evidence.** `src/bdb27/envelope.py::_heldout_crosscheck`, `_variance_component`,
+`_grid`; `tests/test_envelope_stage.py::test_disagreement_world_reports_both_values_and_flags`
+(planted spread 1.3: moment `tau^2 > 1`, held-out optimum 0, both printed, flag set);
+sample `variance_components.csv` (18 of 51 PLACEHOLDER components disagree).
