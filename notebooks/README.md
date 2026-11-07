@@ -3,6 +3,9 @@
 `bdb27_full_run.ipynb` **is the interface for this task.** Conor never uses a terminal:
 open the notebook, set `MODE` in §1, press **Run All**.
 
+Phases 0–2 are implemented (stage `02_turns` writes the real turn table); stages `03`–`06`
+are still loud stubs, so the notebook reports them as `NOT IMPLEMENTED (stub, exit 2)`.
+
 ## What it does
 
 1. **§1 Configuration** — the only cell to edit: `MODE`, `DATA_DIR`, `FORCE_STAGES`,

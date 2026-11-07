@@ -5227,3 +5227,144 @@ behaviour.
 `tests/test_notebook_contract.py`, `pytest -q` (41 passed), and a full `nbconvert --execute`
 sample run: zero error outputs, `00_thresholds`/`01_audit` exit 0, `02`–`06` exit 2,
 headline `CONDITIONAL GO` with G1–G9.
+
+---
+
+## D132 — Phase 2 is one kinematics engine and a streaming per-turn table · 2026-11-07
+**Decision.** `src/bdb27/turns.py` is the only Phase-2 engine: `Engine.analyse()` takes
+one attempt/snap, smooths it with every configured candidate, derives velocity, speed,
+heading (atan2 of velocity; differences wrapped to [-180, 180)), tangential acceleration
+and angular rate, detects turns with the shared detector, and returns
+`(attempt_row, [turn_row, …])`. `src/02_turns.py` is orchestration only: it loads the
+Combine attempts, walks game tracking in `resources.game_chunk_games` chunks, and streams
+rows to `outputs/turns/turns.parquet` through `common.ParquetSink` (fixed Arrow schema,
+ZSTD, explicit column selection). `attempts.parquet`, `summary.parquet` (drill and player
+levels), `sanity.csv`, `smoother_counts.csv`, `segmentation_sensitivity.csv`,
+`geometry_recovery.csv` and `manifest.json` sit beside it. Phase 3+ reads only the turn
+table.
+**Why streaming.** The full game file is not on this host, but the stage that will run on
+it must not concatenate every chunk in RAM. A fixed schema also makes chunk order
+irrelevant. Every parquet carries `provenance`/`label`/`config_sha` as file metadata; the
+volatile `generated_utc` lives only in `manifest.json`, so two runs on the same inputs
+produce a byte-identical turn table.
+**Evidence.** `src/02_turns.py`, `src/bdb27/turns.py`, `src/bdb27/common.py`
+(`ParquetSink`), `tests/test_turns_stage.py::test_same_seed_gives_byte_identical_turn_table`.
+
+---
+
+## D133 — Smoother uncertainty is carried on every turn by centre-time matching · 2026-11-07
+**Decision.** All six configured smoothers run on every attempt/snap. The primary turn is
+the reference; each alternative smoother's turn is matched when its centre is within
+`smoothing.match_tolerance_s` (0.5 s). The turn row stores the primary value plus
+`*_smoother_min`/`*_smoother_max` for entry/exit/apex speed, absolute turn angle, speed
+retention and peak lateral acceleration, and `n_smoothers_matched`. Unmatched smoothers
+contribute nothing and are counted, not imputed. `smoother_counts.csv` gives detections
+per smoother per setting, so a smoother that finds fewer turns is visible.
+**Why matching rather than fixed spans.** A turn's boundaries are detector output; forcing
+a different smoother onto the primary span would measure the primary's segmentation, not
+the alternative's. Matching by centre time compares like with like, and the match count
+states how much evidence the range has.
+**No threshold moved.** The primary remains `savgol_g9_p3` from the audit's diagnostics
+(D126); nothing here re-ranks smoothers on results.
+**Evidence.** `src/bdb27/turns.py::Engine._turn_row`, `outputs/turns/smoother_counts.csv`,
+`tests/test_turns_stage.py::test_smoother_spread_is_reported`.
+
+---
+
+## D134 — Turn classification is kinematic only; orientation is a game-only flag · 2026-11-07
+**Decision.** `plant` iff apex speed < `plant.retention_delta` × entry speed **and**
+exit − apex ≥ `plant.reaccel_min_yd_s` **and** entry/exit ≥ the setting's speed floor;
+otherwise `arc`. `plant.retention_delta = 0.80` is the config's retention threshold, i.e.
+TASK.md's (1 − δ) form with δ = 0.20; the key name is kept and the mapping is recorded
+here rather than renaming a frozen threshold. The definition uses smoothed x/y/time only.
+Game rows additionally carry `orientation_divergence_share` and `orientation_flag`
+(share of above-floor frames in the turn with |o − dir| > `orientation.divergence_deg`,
+sustained at ≥ `orientation.sustain_share`). Combine rows are null. The flag never enters
+`plant`, `arc` or any part of the turn definition.
+**Why.** TASK.md Phase 2 is explicit that facing-decoupled movement cannot be identified
+in the Combine and that orientation is a game-side contamination/sensitivity device only.
+**Evidence.** `src/bdb27/turns.py::Engine._turn_row`,
+`tests/test_turns_stage.py::test_context_columns_are_populated`.
+
+---
+
+## D135 — Gaps and sanity: interpolate only under the limit, flag every insertion · 2026-11-07
+**Decision.** Frame gaps up to `sampling.max_gap_s` (0.5 s) are filled linearly **only** to
+put the smoothing filter on a regular grid; every inserted frame is recorded, and
+`interpolated_in_turn` counts insertions inside a detected turn's span. A gap above the
+limit is never filled, `gap_above_limit` is set, and the turn is `valid = False`. A turn
+carrying a speed above `sanity.speed_cap_yd_s` (12 yd/s) is also invalid; acceleration
+above `smoothing.accel_cap_yd_s2` is a flag only, because smoothing artefacts are common
+and Phase 3 receives the column.
+**Reconciled constraint.** "Interpolate only outside the turn core" and "never
+differentiate raw positions" cannot both hold literally: the core is known only after
+detection, and computing its metrics on ungridded raw samples would mean differentiating
+raw positions. The stage therefore fills only sub-limit gaps, flags any insertion inside a
+turn, and invalidates instead of interpolating when the gap exceeds the limit. No
+threshold changed.
+**Why.** Fixture drops 5% of frames and real tracking has occasional gaps; silently
+smoothing across a 1 s hole would invent a turn.
+**Evidence.** `src/bdb27/turns.py::fill_small_gaps`, `Engine._turn_row`,
+`tests/test_turns_stage.py::test_dropped_frames_are_flagged_and_interpolated`.
+
+---
+
+## D136 — D124 and D125 stay OPEN; both alternatives are parameters, not defaults in disguise · 2026-11-07
+**Decision.** Conor has **not** accepted D124 (speed-maxima segmentation) or D125
+(point-vs-line drill geometry). Phase 2 therefore implements both as configuration:
+`detector.segmentation` is a named option (`speed_maxima` default, `fixed_window`
+retained) with `detector.segmentation_options` and a per-drill Combine count table
+(`segmentation_sensitivity.csv`); `geometry.drill_model` stays per drill and
+`geometry.report_models: [point, line]` makes `geometry_recovery.csv` report both
+precisions and recalls, with the point-model number visible beside the line-model gate.
+`manifest.json` names both as open decisions. Neither is declared settled here.
+**Why.** The task says the current audit's choices are judgement calls, not spec. Encoding
+them as parameters is the only way to keep them from hardening into unexamined defaults.
+**Evidence.** `config.yaml` (`detector.segmentation*`, `geometry.report_models`),
+`outputs/turns/geometry_recovery.csv` (both models),
+`tests/test_turns_stage.py::test_stage_runs_and_writes_the_turn_table`.
+
+---
+
+## D137 — Heading hold below the speed floor is an option, OFF by default · 2026-11-07
+**Decision.** `detector.low_speed_heading_hold` (default `false`) lets the detector
+forward-fill the last reliable heading through low-speed spans. It is kept for a full stop
+or a rotation at near-zero speed, where the atan2 heading is undefined. It is **off** by
+default because on the real 3-cone/shuttle data the hold clips the plant's angular
+signature: validated shuttle recall falls from 0.959 to 0.883 while precision is unchanged
+(measured against drill geometry only, never against downstream results). The default must
+reproduce the detector the audit validated (D124's speed-maxima segmentation already
+measures the plant from its approach).
+**Stop edge case.** A constructed run → stop → turn → run trace produces no turn and no
+exception under either setting; the stage never differentiates a zero-speed heading.
+**Evidence.** `config.yaml`, `src/bdb27/kinematics.py::hold_heading_below_floor`,
+`tests/test_turns_stage.py::test_stop_mid_drill_does_not_crash_or_invent_a_giant_turn`.
+
+---
+
+## D138 — Shuffled-heading null construction and what it measures · 2026-11-07
+**Decision.** The null permutes the per-frame heading increments of the primary smoothed
+series, keeps the observed speed profile and the increment magnitudes, re-integrates
+positions, smooths and detects. It is one shuffle per attempt with a seed derived from
+`seed + sanity.null_seed_offset + md5(key)`, so it is deterministic. Reported as
+detections per 1,000 frames beside the observed rate, broken down by drill and snap type
+with a TOTAL row.
+**What it shows.** On incoherent but equally "wiggly" heading sequences the detector still
+fires, because the 30°/0.5 s trigger is satisfied by the same discrete increments that make
+real plants. The null is therefore a sensitivity floor, not a false-positive estimate; the
+geometry validation (`geometry_recovery.csv`) is what establishes that detections are real.
+This is reported, never thresholded, and no detection is removed on the basis of it.
+**Evidence.** `src/bdb27/turns.py::Engine._null_count`, `outputs/turns/sanity.csv`.
+
+---
+
+## D139 — Fixture completed to the real `player_play` schema · 2026-11-07
+**Decision.** The synthetic fixture's `player_play.csv` now carries every column the
+pipeline selects, and fixture `players.csv` uses NFL game positions (`DE`/`WR`/`TE`)
+rather than Combine family labels, so `positions.game_families` is exercised. Regenerating
+the fixture is still deterministic.
+**Why.** `ensure_parquet` selects the configured column list; a fixture that is a subset of
+the real schema cannot exercise the same loader. The alternative (special-casing the
+fixture in the stage) would create a second code path, which TASK.md forbids.
+**Evidence.** `fixtures/synthetic/make_fixture.py`, `fixtures/synthetic/player_play.csv`,
+`tests/test_fixture_recovery.py::test_fixture_is_deterministic`.
