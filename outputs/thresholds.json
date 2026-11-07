@@ -1,24 +1,24 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "3ad72d486593d207",
-  "generated_utc": "2026-11-06T23:50:36Z",
+  "config_sha": "af878068fab40977",
+  "generated_utc": "2026-11-07T01:05:32Z",
   "spec_commit": "52015cd",
-  "git_rev": "febec60",
+  "git_rev": "6345bc7",
   "mode": "sample",
   "frozen": false,
   "note": "Thresholds are design choices from config.yaml, NOT estimates. PLACEHOLDER_SAMPLE until prereg fixes them; never tune on sample results.",
   "smoothing": {
-    "primary": "savgol_g7_p3",
+    "primary": "savgol_g9_p3",
     "primary_params": {
-      "name": "savgol_g7_p3",
+      "name": "savgol_g9_p3",
       "kind": "savgol",
-      "window": 7,
+      "window": 9,
       "polyorder": 3
     },
     "alternatives": [
       "savgol_g5_p2",
-      "savgol_g9_p3",
+      "savgol_g7_p3",
       "savgol_g11_p3",
       "kalman_cv",
       "spline_cubic"

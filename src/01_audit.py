@@ -21,8 +21,8 @@ from collections import Counter, defaultdict
 import numpy as np
 import pandas as pd
 
-from bdb import common, schema
-from bdb.kinematics import DetectorParams, detect_turns, smooth_positions, wrap180
+from bdb27 import common, schema
+from bdb27.kinematics import DetectorParams, detect_turns, smooth_positions, wrap180
 
 ITEM_NAMES = {
     "a": "Combine drills per position, direction changes, DL presence",
@@ -242,8 +242,8 @@ def item_a(a: Audit, combine: pd.DataFrame, turns: pd.DataFrame) -> None:
                    f"and the outcome test becomes descriptive ({len(alt)} WR/TE drills usable).")
     a.record("a", status, finding, "drills_by_position.csv", value=len(dl),
              threshold=a.cfg.get("detector.drill_min_share_attempts"), interpretable=True)
-    json.dump({"primary_group": primary, "dl_usable_drills": dl.drill_name.tolist()},
-              open(a.out / "primary_group.json", "w"), indent=2)
+    a.js({"primary_group": primary, "dl_usable_drills": dl.drill_name.tolist()},
+         "primary_group.json")
 
 
 # ------------------------------------------------------------------- item b
@@ -266,7 +266,9 @@ def item_b(a: Audit, combine: pd.DataFrame) -> None:
     has_s = any(r["column"] == "s" for r in cprof.to_dict("records"))
     has_a = any(r["column"] == "a" for r in cprof.to_dict("records"))
     off = schema.heading_offset(a.cfg, a.mode)
-    status = "PASS" if (cd["n_off_grid"] == 0 and gd["n_off_grid"] == 0) else "FAIL"
+    tot = cd["n"] + gd["n"]
+    off_share = (cd["n_off_grid"] + gd["n_off_grid"]) / max(tot, 1)
+    status = "PASS" if off_share <= a.cfg.get("sampling.max_off_grid_share") else "FAIL"
     finding = (
         f"Combine: {cd['n']:,} frame steps, {cd['n_exact_0p1']:,} exactly 0.1 s, "
         f"{cd['n_off_grid']} off-grid; {dt['duplicate_frames_combine']} duplicate frames. "
@@ -620,10 +622,10 @@ def item_f(a: Audit) -> dict:
         rows.append({
             "position": fam,
             "combine_players": int(g.nfl_id.nunique()),
-            "matched_to_nfl_players": int(g.nfl_position.notna().sum()),
+            "matched_to_nfl_players": int(g[g.nfl_position.notna()].nfl_id.nunique()),
             "in_game_sample": int(g.in_game_sample.sum()),
             "total_snaps": int(g.n.fillna(0).sum()),
-            "snaps_per_matched_player": round(float(g.n.fillna(0).sum() / max(g.nfl_position.notna().sum(), 1)), 1),
+            "snaps_per_matched_player": round(float(g.n.fillna(0).sum() / max(g[g.nfl_position.notna()].nfl_id.nunique(), 1)), 1),
             "pass_rush_snaps": int(g[g.snap_type == "PASS_RUSH"].n.sum()),
             "route_snaps": int(g[g.snap_type == "ROUTE"].n.sum()),
             "coverage_snaps": int(g[g.snap_type == "COVERAGE"].n.sum()),
@@ -820,7 +822,11 @@ def item_j(a: Audit, combine_turns: pd.DataFrame, game_turns: pd.DataFrame) -> N
             continue
         per_player = tr.groupby("nfl_id").size()
         cap = tr.groupby("nfl_id")["lateral_accel_yd_s2"].quantile(0.9)
-        half = tr.assign(idx=tr.groupby("nfl_id").cumcount() % 2)
+        # split-half WITHIN drill: alternating turns inside the same drill test
+        # repeatability of the parameter without contaminating it with the
+        # between-drill differences that make up most of a player's turn mix
+        key = "drill_name" if "drill_name" in tr.columns else "game_id"
+        half = tr.assign(idx=tr.groupby(["nfl_id", key]).cumcount() % 2)
         piv = half.pivot_table(index="nfl_id", columns="idx", values="lateral_accel_yd_s2", aggfunc="mean")
         piv = piv.dropna()
         icc = float("nan")
@@ -829,6 +835,7 @@ def item_j(a: Audit, combine_turns: pd.DataFrame, game_turns: pd.DataFrame) -> N
             icc = _icc_oneway(long, "v", "nfl_id")
         rows.append({
             "setting": label, "turns": int(len(tr)), "players": int(tr.nfl_id.nunique()),
+            "icc_players": int(len(piv)) if len(piv) else 0,
             "turns_per_player_median": float(per_player.median()),
             "turns_per_player_p10": float(per_player.quantile(0.1)),
             "share_players_meeting_min": float((per_player >= a.cfg.get("validation.min_turns_per_setting")).mean()),
@@ -858,7 +865,8 @@ def item_j(a: Audit, combine_turns: pd.DataFrame, game_turns: pd.DataFrame) -> N
          "Combine (complete file): "
          + "; ".join(f"{r.setting}: {r.turns} turns, {r.players} players, median "
                      f"{r.turns_per_player_median:.1f} turns/player, ICC(split-half lateral accel) "
-                     f"{r.icc_split_half_lateral_accel}" for r in out.itertuples())
+                     f"{r.icc_split_half_lateral_accel} on {r.icc_players} players with two "
+                     f"turns in the same drill" for r in out.itertuples())
          + f". The game side is a row sample, so the Combine-game correlation, the noise ceiling and "
            f"the reliability verdict are PENDING FULL RUN. Smoother sensitivity of the turn count is "
            f"in smoother_sensitivity.csv."),
@@ -1024,7 +1032,11 @@ def write_gate(a: Audit, primary_group: str, rec_smoother: str) -> dict:
     add("G4", "capacity reliability >= config threshold in both settings (prereg smoother)",
         "PENDING FULL RUN",
         "Needs the per-player capacity parameters (Phase 3) on full game tracking; "
-        "cannot be computed from a one-season row sample.")
+        "cannot be computed from a one-season row sample. WARNING from the audit's "
+        "provisional proxy: split-half ICC of peak lateral acceleration is "
+        + by_item["j"]["finding"].split("Combine (complete file): ")[-1].split(". The game side")[0]
+        + ". A negative Combine value for this proxy is a red flag for the Phase 3 "
+          "parameter, not a verdict on it.")
     add("G5", "Combine and game entry-speed ranges overlap",
         "PENDING FULL RUN", by_item["g"]["finding"])
     add("G6", "turns per player meet the config minimum in both settings",

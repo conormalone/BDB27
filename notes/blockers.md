@@ -1,13 +1,120 @@
-# Blockers — burst vs. jump
+# Blockers — Turn Coverage and the Cut Card (current task)
 
 A blocker is something that **stops a specified analysis from being done
 correctly**, not something that is merely hard. Each entry states what is blocked,
-the evidence, and exactly what would clear it. Nothing here has been worked
-around with a proxy.
+the evidence, and exactly what would clear it. Nothing here has been worked around
+with a proxy.
 
-Maintained from 2026-11-05 (Phase 0+1 run). Previous blockers file (leverage ×
-ceiling) is archived at
-`archive/legacy-2026-11-05/notes/blockers-legacy.md`.
+> **SCOPE.** Binding spec is `TASK.md` @ `52015cd` (Turn Coverage and the Cut Card).
+> Entries **B1–B14 below belong to the superseded burst-vs-jump task** and are kept
+> only as the audit trail; their resolutions do not carry over. Current-task
+> blockers are **TB1–TB6**, maintained from 2026-11-06. The previous blockers file
+> (leverage × ceiling) is archived at
+> `archive/legacy-2026-11-05/notes/blockers-legacy.md`.
+
+---
+
+## TB1 — `dis` has no documented unit and cannot be used as a distance cross-check
+
+**Blocks:** TASK.md Phase 1c ("compare cumulative `dis` with path length from x/y")
+as a *yardage* check; any future use of `dis` as an input.
+
+**Evidence** (`outputs/audit/dis_reconstruction.csv`, `notes/schema.md` §5). On a
+40-yard dash `dis` ends at 1.0000; `30·√dis` is an exact integer in 47.5% of all
+attempts (68.9% for the 40-yd dash), which is the signature of a stored **square of a
+whole-yard accumulator divided by 30**. But the implied distance is 0.61–3.10× the
+tracked path length depending on the drill, so no single mapping to yards holds.
+
+**Consequence.** Distance is derived from x/y only. The spec's note that "a
+participant repo claims Combine `dis` under-counts" is **neither confirmed nor
+refuted** — the test cannot be run without the definition.
+
+**What would clear it.** The vendor/data-dictionary definition of `dis` (unit,
+what it accumulates, whether it resets per attempt). Then re-run item c and record
+the ratio.
+
+---
+
+## TB2 — Outcome label null semantics are undocumented
+
+**Blocks:** Phase 6 outcome tests. `quick_pressure`, `unblocked_pressure` and
+`time_to_pressure` are populated like an **event record** (they appear together),
+so a null very probably means "no pressure on this rep", but that is an inference.
+
+**Evidence** (`outputs/audit/outcome_labels.csv`). DL: `quick_pressure` TRUE on 405
+of 23,604 rows, NULL on 94.3%. `unblocked_pressure` and `time_to_pressure` follow
+the same pattern. Treating null as false would manufacture ~22k negative labels;
+treating null as missing leaves the outcome on 5.7% of DL rows.
+
+**What would clear it.** An official data dictionary stating null = "no pressure",
+or an explicit decision by Conor defining the outcome (e.g. `(quick_pressure IS
+TRUE)` with null→false, stated in prereg). Until then no stage may read these labels.
+
+---
+
+## TB3 — No rusher–blocker / opponent ID exists
+
+**Blocks:** the "random effects for player, assigned opponent and team-game" term
+in Phase 6.
+
+**Evidence** (`outputs/audit/opponent_columns.json`). `player_play` has no opponent
+or blocker-assignment column; `pass_rushers_encountered` is a count. Inferring
+assignments from tracking geometry was ruled out for the previous task and nothing
+here reopens it.
+
+**What would clear it.** An official assignment table, or a decision to drop the
+opponent term and use team-game random effects only (must be written into prereg).
+
+---
+
+## TB4 — `player_play` is not a participation table
+
+**Blocks:** Phase 1f "snaps per matched player by snap type" and Phase 4 demand-map
+weighting that assumes complete participation.
+
+**Evidence** (`notes/schema.md` §4). 314,197 rows over 1,002 games and 114,954
+distinct play ids: **median 2 players per play** (p05 1, p95 6). It contains players
+with a recorded role/event, not all 22.
+
+**What would clear it.** Full data may ship a complete `player_play`; if it does not,
+snap-type counts must be described as role-event counts and the demand map restricted
+to turns observed in tracking (which do not need participation counts).
+
+---
+
+## TB5 — Pressure-label provenance cannot be verified from the data
+
+**Blocks:** the claim that no outcome label is derived from the player's own
+tracking.
+
+**Evidence** (`outputs/audit/label_provenance.json`). `player_get_off` was compared
+with the first tracked movement after `ball_snap` on 1,960 matched reps: median
+difference **−0.753 s**, 0% within 0.15 s. That is too far off to be a rounding or
+definition difference, so the probe is **inconclusive** — either the onset rule is
+wrong, the sample's `ball_snap` timing is unreliable, or `player_get_off` is measured
+differently. It neither confirms nor refutes tracking derivation.
+
+**What would clear it.** A documented definition of `player_get_off`, or a full-data
+re-run of the probe where the snap timestamps can be checked against play-level
+event times.
+
+---
+
+## TB6 — Drill geometry (cone positions) is not documented in the data package
+
+**Blocks:** Phase 1d's "detected turn locations must cluster at the physical cone
+positions" as a *literal* check.
+
+**Evidence.** No file in `data/raw/` documents cone coordinates. Cone **counts** per
+drill are a designed input (3 for the 3-cone, 2 turn lines for the shuttle);
+**positions** are estimated from the density of detected turn centres on half the
+attempts and evaluated on the other half (`outputs/audit/cone_estimates.csv`).
+
+**Consequence.** Precision/recall are against *estimated* geometry, which is
+legitimate (the estimation and evaluation halves are disjoint) but is not the same as
+against a surveyed cone layout. Reported as such in the audit note.
+
+**What would clear it.** Official drill-layout documentation with cone coordinates.
 
 ---
 

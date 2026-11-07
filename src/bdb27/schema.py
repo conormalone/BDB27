@@ -10,6 +10,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from typing import Sequence
+
 from . import kinematics as kin
 from .common import Config, connect, raw_csv_sql
 
@@ -196,9 +198,13 @@ def dt_profile(cfg: Config, mode: str) -> dict:
         out["duplicate_frames_game"] = con.execute(f"""
             SELECT count(*) n FROM (SELECT game_id,play_id,nfl_id,time,count(*) c FROM {g_sql}
             GROUP BY 1,2,3,4 HAVING c>1)""").fetchone()[0]
+        # entity_type='PLAYER' only: the BALL rows share the player id and would
+        # otherwise be counted as duplicate player frames.
         out["duplicate_frames_combine"] = con.execute(f"""
             SELECT count(*) n FROM (SELECT nfl_id,event_id,attempt,time,count(*) c FROM {c_sql}
-            GROUP BY 1,2,3,4 HAVING c>1)""").fetchone()[0]
+            WHERE entity_type='PLAYER' GROUP BY 1,2,3,4 HAVING c>1)""").fetchone()[0]
+        out["ball_rows_combine"] = con.execute(
+            f"SELECT count(*) FROM {c_sql} WHERE entity_type='BALL'").fetchone()[0]
     finally:
         con.close()
     return out
@@ -223,3 +229,28 @@ def compare_settings(combine_prof: pd.DataFrame, game_prof: pd.DataFrame) -> pd.
                         or (in_c and in_g and (c[col].dtype != g[col].dtype)),
         })
     return pd.DataFrame(rows)
+
+
+# ------------------------------------------------------------------ assertions
+
+
+class SchemaError(AssertionError):
+    """Raised when a file does not have the columns the pipeline requires."""
+
+
+def assert_columns(df: pd.DataFrame, required: Sequence[str], *, name: str) -> None:
+    """Fail loudly, naming every missing column and what was found instead."""
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise SchemaError(
+            f"{name}: missing required column(s) {missing}; found {list(df.columns)}")
+
+
+def assert_angle_range(df: pd.DataFrame, column: str, *, name: str) -> None:
+    """Angles must be degrees in [0, 360) — checked, not assumed."""
+    v = df[column].dropna()
+    if len(v) == 0:
+        raise SchemaError(f"{name}.{column}: no values")
+    lo, hi = float(v.min()), float(v.max())
+    if lo < -1e-9 or hi > 360.0 + 1e-9:
+        raise SchemaError(f"{name}.{column}: expected degrees in [0, 360], found [{lo}, {hi}]")

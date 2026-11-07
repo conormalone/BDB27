@@ -83,13 +83,16 @@ turn_coverage:
     max_gap_s: 0.5
     # Duplicate (player, time) rows are dropped; recorded in the audit.
     drop_duplicate_frames: true
+    # A sampling-rate check passes if at most this share of frame steps is off
+    # the 0.1 s grid (one frame in 1.03M is float rounding, not a data defect).
+    max_off_grid_share: 0.001
 
   smoothing:
     # PRIMARY is a recommendation produced by the audit's smoothing diagnostics
     # (TASK.md Phase 1e) and is FROZEN IN PREREG before any full run. It is never
     # chosen by downstream results. Until prereg exists, every artefact is
     # PLACEHOLDER_SAMPLE.
-    primary: savgol_g7_p3
+    primary: savgol_g9_p3
     candidates:
       - {name: savgol_g5_p2,  kind: savgol, window: 5,  polyorder: 2}
       - {name: savgol_g7_p3,  kind: savgol, window: 7,  polyorder: 3}

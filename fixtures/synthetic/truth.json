@@ -1,0 +1,871 @@
+{
+  "players": [
+    {
+      "nfl_id": 900001,
+      "combine_position": "DL",
+      "lateral_capacity_yd_s2": 16.0
+    },
+    {
+      "nfl_id": 900002,
+      "combine_position": "DL",
+      "lateral_capacity_yd_s2": 15.0
+    },
+    {
+      "nfl_id": 900003,
+      "combine_position": "DL",
+      "lateral_capacity_yd_s2": 14.0
+    },
+    {
+      "nfl_id": 900004,
+      "combine_position": "WR",
+      "lateral_capacity_yd_s2": 18.0
+    },
+    {
+      "nfl_id": 900005,
+      "combine_position": "WR",
+      "lateral_capacity_yd_s2": 16.0
+    },
+    {
+      "nfl_id": 900006,
+      "combine_position": "TE",
+      "lateral_capacity_yd_s2": 15.0
+    }
+  ],
+  "attempts": [
+    {
+      "event_id": "900001-THREE_CONE_DRILL",
+      "nfl_id": 900001,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 41,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900001-THREE_CONE_DRILL",
+      "nfl_id": 900001,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 54,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900001-SHORT_SHUTTLE",
+      "nfl_id": 900001,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 49,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900001-SHORT_SHUTTLE",
+      "nfl_id": 900001,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 69,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900002-THREE_CONE_DRILL",
+      "nfl_id": 900002,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 41,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900002-THREE_CONE_DRILL",
+      "nfl_id": 900002,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 54,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900002-SHORT_SHUTTLE",
+      "nfl_id": 900002,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 52,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900002-SHORT_SHUTTLE",
+      "nfl_id": 900002,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 70,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900003-THREE_CONE_DRILL",
+      "nfl_id": 900003,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 42,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900003-THREE_CONE_DRILL",
+      "nfl_id": 900003,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 59,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900003-SHORT_SHUTTLE",
+      "nfl_id": 900003,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 53,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900003-SHORT_SHUTTLE",
+      "nfl_id": 900003,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 73,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900004-THREE_CONE_DRILL",
+      "nfl_id": 900004,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 36,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900004-THREE_CONE_DRILL",
+      "nfl_id": 900004,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 53,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900004-SHORT_SHUTTLE",
+      "nfl_id": 900004,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 45,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900004-SHORT_SHUTTLE",
+      "nfl_id": 900004,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 64,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900005-THREE_CONE_DRILL",
+      "nfl_id": 900005,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 41,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900005-THREE_CONE_DRILL",
+      "nfl_id": 900005,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 53,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900005-SHORT_SHUTTLE",
+      "nfl_id": 900005,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 51,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900005-SHORT_SHUTTLE",
+      "nfl_id": 900005,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 67,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900006-THREE_CONE_DRILL",
+      "nfl_id": 900006,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 36,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900006-THREE_CONE_DRILL",
+      "nfl_id": 900006,
+      "drill_name": "THREE_CONE_DRILL",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 56,
+      "geometry": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900006-SHORT_SHUTTLE",
+      "nfl_id": 900006,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 1,
+      "sub_maximal": false,
+      "speed_scale": 1.0,
+      "frames": 51,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    },
+    {
+      "event_id": "900006-SHORT_SHUTTLE",
+      "nfl_id": 900006,
+      "drill_name": "SHORT_SHUTTLE",
+      "attempt": 2,
+      "sub_maximal": true,
+      "speed_scale": 0.85,
+      "frames": 67,
+      "geometry": [
+        [
+          -2,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          -5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "corner_radii": [
+        0,
+        0.8,
+        0.8,
+        0
+      ]
+    }
+  ],
+  "game_plays": [
+    {
+      "game_id": 2023999000,
+      "play_id": 100,
+      "nfl_id": 900001,
+      "cut_at": [
+        8.0,
+        0.0
+      ],
+      "cut_angle_deg": 90.0
+    },
+    {
+      "game_id": 2023999001,
+      "play_id": 101,
+      "nfl_id": 900002,
+      "cut_at": [
+        8.0,
+        0.0
+      ],
+      "cut_angle_deg": 90.0
+    },
+    {
+      "game_id": 2023999002,
+      "play_id": 102,
+      "nfl_id": 900003,
+      "cut_at": [
+        8.0,
+        0.0
+      ],
+      "cut_angle_deg": 90.0
+    },
+    {
+      "game_id": 2023999003,
+      "play_id": 103,
+      "nfl_id": 900004,
+      "cut_at": [
+        8.0,
+        0.0
+      ],
+      "cut_angle_deg": 90.0
+    }
+  ],
+  "seed": 20270106
+}

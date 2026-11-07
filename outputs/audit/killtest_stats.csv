@@ -1,3 +1,3 @@
-provenance,label,config_sha,setting,turns,players,turns_per_player_median,turns_per_player_p10,share_players_meeting_min,cap_p90_median,icc_split_half_lateral_accel,status
-PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,combine,5580,509,10.0,4.0,0.5579567779960707,38.84662650538486,-0.17,PENDING FULL RUN
-PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,70e4288d0fb70fa8,game_sample,7234,154,33.0,5.0,0.8246753246753247,27.27850885112941,0.27,PENDING FULL RUN
+provenance,label,config_sha,setting,turns,players,icc_players,turns_per_player_median,turns_per_player_p10,share_players_meeting_min,cap_p90_median,icc_split_half_lateral_accel,status
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,8df1ad93c268b61f,combine,5536,508,484,10.0,4.0,0.5393700787401575,38.95861052746433,-0.183,PENDING FULL RUN
+PLACEHOLDER_SAMPLE,UNVALIDATED SAMPLE OUTPUT,8df1ad93c268b61f,game_sample,7143,153,147,32.0,6.0,0.8235294117647058,27.412957363874394,0.255,PENDING FULL RUN

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from bdb.stub import refuse
+from bdb27.stub import refuse
 
 
 def main() -> int:

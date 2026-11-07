@@ -214,6 +214,10 @@ def detect_turns(t: np.ndarray, xs: np.ndarray, ys: np.ndarray,
     for c in kept:
         seg = np.arange(c, min(n - 1, c + w) + 1)
         apex = int(seg[np.argmin(speed[seg])])
+        # walk out to the approach and exit speed maxima. A cone/serpentine drill
+        # can turn twice in the SAME rotational sense with only a brief
+        # re-acceleration between them, so the speed maximum — not a heading
+        # inflection — is what separates one turn from the next.
         lo = apex
         while lo - 1 >= 0 and (apex - (lo - 1)) <= max_half and speed[lo - 1] >= speed[lo] - tol:
             lo -= 1

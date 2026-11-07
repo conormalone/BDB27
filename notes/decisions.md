@@ -5054,3 +5054,141 @@ to the superseded task. `notes/archive-tasks/` untouched.
 would imply stages that do not exist and would collide on filenames (`01_audit.py`, `run.py`).
 **Evidence.** `TASK.md` at `52015cd`; `archive/legacy-2026-11-05/` already holds the two earlier
 superseded pipelines, so this keeps one directory per superseded task.
+
+---
+
+## D123 — Phase 0+1 scaffold: config block, thresholds contract, stage order · 2026-11-06
+**Decision.** One namespaced config block `turn_coverage:` holds every path, threshold,
+window, bin edge and size; no magic numbers in code. Stage order is exactly
+`00_thresholds -> 01_audit -> 02_turns -> 03_envelope -> 04_demand_coverage ->
+05_validate -> 06_figures`, enforced by `src/run.py` (test asserts the list).
+`00_thresholds.py` writes `outputs/thresholds.json` with provenance
+`PLACEHOLDER_SAMPLE` in sample mode and `FULL` in full mode, `frozen: false` until
+prereg exists; in full mode it **refuses, naming the missing inputs**, when
+`game_tracking.csv` is absent. 02–06 are loud stubs (exit 2, `STAGE NOT IMPLEMENTED`,
+write nothing, create no checkpoint).
+**Design choices registered** (all "design choice, not estimate"): turn trigger window
+0.5 s; minimum turn angle 30°; drill direction-change bar 60° / ≥50% of attempts /
+≥10 players; speed floors 2.5 (Combine) and 2.0 (game) yd/s; NMS 0.3 s; max turn
+duration 2.0 s; accel cap 15 yd/s²; accel-phase fraction 0.6; entry-speed bins
+[0,2,4,6,8,10,12]; angle bins [0,30,…,180]; retention delta 0.80; detector
+precision/recall floors 0.80/0.70; cone radius 1.5 yd; heading tolerance 15°; speed
+tolerance 15%; entry-overlap floor 0.50; reliability floor ICC 0.50; minimum 10 turns
+per setting; power α 0.05 / 1−β 0.80.
+**Why.** TASK.md Engineering requires one code path and config-driven numbers; the
+prereg needs a single place to freeze them.
+**Evidence.** `config.yaml`, `src/00_thresholds.py`, `src/run.py`, `tests/test_stages.py`.
+
+---
+
+## D124 — Turn detector segments from approach speed max to exit speed max · 2026-11-06
+**Decision.** A turn candidate is a ≥30° heading change across a 0.5 s window; the
+turn is then **segmented from the last speed maximum before the apex to the first one
+after it**, entry/exit speeds are those maxima, and the angle is the total heading
+change over that span.
+**Why.** The first implementation measured the angle inside the fixed 0.5 s window. On
+real 3-cone data that recorded a ~180° plant as a **30° turn** and gave a **120° median
+angle error** against cone geometry, and on the shuttle it found **7 turns in 223
+attempts**. At 10 Hz the heading is undefined as speed passes through zero (ω spikes to
+−860°/s at a plant), so the plant has to be measured by its *approach*, not by its
+instantaneous heading. After the change: 3-cone precision 0.915 / recall 0.931, shuttle
+0.991 / 0.959, 2–3 turns per attempt.
+**Not a threshold change.** Every threshold stayed as configured; the segmentation
+rule is a correctness fix and is logged here because it changes the measured angle.
+**Evidence.** `src/bdb27/kinematics.py::detect_turns`, `outputs/audit/detector_geometry.csv`,
+`tests/test_fixture_recovery.py`.
+
+---
+
+## D125 — Drill geometry model: point for the 3-cone, line for the shuttle · 2026-11-06
+**Decision.** Cone positions are estimated (k-means seeded from density peaks, k from
+config) on half the attempts by `event_id` hash and evaluated on the other half.
+Precision/recall use a **point** target for `THREE_CONE_DRILL` (the athlete runs around
+cones) and a **line** target for `SHORT_SHUTTLE` (the athlete must touch a line 5 yd
+away, so the lateral coordinate is unconstrained). The pure point-model precision for
+the shuttle (**0.711**) is reported in the same table so the reader can see the effect
+of the model choice.
+**Why.** The shuttle's turning constraint is one-dimensional; scoring it as a point
+measures the athlete's lateral offset, not detector error. Turn *angle* for a reversal
+drill is 180° by construction, which is what the shuttle is compared against.
+**Evidence.** `outputs/audit/detector_geometry.csv` (both models),
+`outputs/audit/cone_estimates.csv`, config `geometry.drill_model`.
+
+---
+
+## D126 — Primary smoother by diagnostics only: `savgol_g9_p3` · 2026-11-06
+**Decision.** Of six candidates (SG 5/7/9/11 poly-2/3, Kalman CV, cubic smoothing
+spline), the config primary becomes **`savgol_g9_p3`**: highest monotonicity in the
+acceleration phase (0.994) with the smallest cross-smoother speed RMS (0.017 yd/s).
+**Why.** TASK.md Phase 1e: choose on plausibility diagnostics, never on downstream
+results. The 15 yd/s² acceleration cap never binds on straight sprints (0 exceedance
+for every candidate), so the cap alone cannot discriminate and the choice rests on
+monotonicity plus agreement. Kalman (0.263) and the spline (0.387) move the speed curve
+substantially more.
+**Status.** Recommendation only — **must be frozen in `notes/prereg.md`** before the
+first full run. All artefacts remain `PLACEHOLDER_SAMPLE` until then.
+**Evidence.** `outputs/audit/smoothing_diagnostics.csv`.
+
+---
+
+## D127 — Speed floor 2.5 yd/s, set from measured heading reliability · 2026-11-06
+**Decision.** Combine turn entry/exit must exceed **2.5 yd/s**; game turns 2.0 yd/s.
+**Why.** On 40-yard sprints (acceleration phase) the median absolute heading deviation
+is **21.7° below 1 yd/s, 5.2° at 1–2, 9.3° at 2–3, 0.41° at 4–6, 0.35° at 6–9**.
+Heading is not usable below ~2 yd/s, so a floor of 2.5 keeps only physically meaningful
+directions. A consequence, reported rather than hidden: many Combine plants decelerate
+to 0–1.5 yd/s **at the cone**, so the detector records the approach and exit speeds
+(which is the capacity quantity) and the plant itself is not a "turn" in this
+definition.
+**Evidence.** `outputs/audit/frame_resolution.csv` (heading_sd_* rows).
+
+---
+
+## D128 — Audit verdict: CONDITIONAL GO, with the reliability warning stated · 2026-11-06
+**Decision.** `outputs/audit/gate.json` records **CONDITIONAL GO**: no stop condition
+fired on the data available here (G1 DL direction changes PASS, G2 detector
+precision/recall PASS, G3 kinematics agreement PASS), and the pending conditions are
+named: G4 capacity reliability, G5 entry-speed overlap, G6 turns per player, G9 prereg.
+**Why not GO.** Four conditions genuinely cannot be answered on a one-season row sample;
+claiming GO would be a verdict on sample data, which TASK.md forbids.
+**Why not NO-GO.** The three stop conditions that *can* be tested all pass, including
+the detector against physical drill geometry.
+**Warning carried into the gate.** The audit's **provisional** capacity proxy has
+split-half ICC **−0.183** in the Combine (484 players). It is not the Phase 3 parameter
+(the envelope model is not built), but a negative value must not be buried: G4's detail
+text quotes it, and a below-threshold reliability of the real parameter remains a stop
+condition.
+**Evidence.** `outputs/audit/gate.json`, `outputs/audit/audit_items.csv`,
+`notes/phase1-audit.md`.
+
+---
+
+## D129 — Synthetic fixture: planted capacities, plant geometry, encoded `dis` · 2026-11-06
+**Decision.** `fixtures/synthetic/` is generated by a committed script with a fixed
+seed: 6 players (DL/WR/TE) with planted lateral capacities, two drills with real
+geometry (3-cone cones, shuttle line at 5 yd), a speed profile whose corner speed is
+`sqrt(a_lat · r)`, one sub-maximal attempt per player (×0.85), 5% dropped frames,
+Gaussian position noise, and a `dis` column encoded exactly as the real file
+(`(whole_yards/30)²`). A small game fixture plants one 90° cut per play and carries `o`.
+**Why.** TASK.md Tests-before-handoff requires synthetic recovery; Phase 2-3 need a
+fixture where the right answer is known. Encoding `dis` the way the real file does it
+means the cross-check code is exercised on the real encoding, not a simplified one.
+**Known edge case.** The sub-maximal attempt of the lowest-capacity player traverses the
+second corner at ~2.5 yd/s and the detector finds one of two turns; the recovery test
+requires ≥90% of attempts to recover both and asserts every detection is at a cone.
+**Evidence.** `fixtures/synthetic/make_fixture.py`, `truth.json`,
+`tests/test_fixture_recovery.py`.
+
+---
+
+## D130 — Shared package renamed `bdb27`; test suite covers schema, recovery, stubs · 2026-11-06
+**Decision.** `src/bdb/` → `src/bdb27/`. 36 tests: schema contract on the real files,
+fixture round-trip through the real loader, planted-turn recovery, stub behaviour
+(non-zero exit, no output, no checkpoint), full-mode refusal naming missing inputs,
+thresholds provenance, dispatcher order, determinism, and a contract on the gate
+artefacts (all 13 items present, allowed statuses, sample stamp on every artefact,
+kill test not a verdict on sample data).
+**Why rename.** `bdb` is the Python standard-library debugger module and shadowed the
+package depending on `sys.path` order; a name collision in the loader path is not worth
+living with.
+**Evidence.** `tests/`, `pytest -q`.

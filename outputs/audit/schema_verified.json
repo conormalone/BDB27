@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "70e4288d0fb70fa8",
-  "generated_utc": "2026-11-07T00:44:37Z",
+  "config_sha": "8df1ad93c268b61f",
+  "generated_utc": "2026-11-07T01:28:43Z",
   "combine": {
     "profile": [
       {
@@ -274,6 +274,7 @@
       "n_gaps_over_0p2": 0.0
     },
     "duplicate_frames_game": 0,
-    "duplicate_frames_combine": 32095
+    "duplicate_frames_combine": 0,
+    "ball_rows_combine": 32095
   }
 }

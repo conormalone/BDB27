@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from bdb import common
+from bdb27 import common
 
 
 def parse_args(argv=None):
