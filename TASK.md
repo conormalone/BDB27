@@ -1,6 +1,58 @@
 # TASK: Turn Coverage and the Cut Card: can this player run the turns his job requires, at game speed?
 NFL Big Data Bowl 2027 (Kaggle), deadline Jan 6, 2027 23:59 UTC.
 
+---
+
+## CURRENT FOCUS — amended 7 Nov 2026 (supersedes the framing below where they conflict)
+
+**Question, narrowed.** Does the Combine test the turn the NFL actually asks defensive backs to
+execute — the shallow break at moderate speed? On the sample: no.
+
+| DB turn band | Combine turns | Game turns |
+|---|---:|---:|
+| 30–45° | **4** | **97** |
+| 45–60° | 22 | 229 |
+
+Proportionally, turns above 120° are 64% of Combine DB turns and 42% of game DB turns;
+turns at 30–90° are 22% of the Combine and 35% of games. The Combine over-samples the big
+plant and barely samples the shallow break at all.
+
+**The 30–45° band is the focus.** It is the widest proportional hole (24×) and it is the one
+the proposed drill targets (`notes/drill-proposal.md`, status PROPOSAL pending Conor).
+
+**Deliverable now: build the case, surface the visual story.** The data work is essentially
+done (stages 00–04 produce the turn table, the envelope, the demand map and the supply counts).
+Remaining work is argument and figures, not new pipeline.
+
+1. **The case** — supply versus demand by turn band and position; the drill proposal; and the
+   measurement caveats that keep the claim honest: per-player capacity is not identifiable
+   (43 of 51 variance components sit at the boundary), and reversal-class turns carry
+   non-physical lateral accelerations (median 2.1 g, p95 7.0 g) so they are measured as
+   plants (apex, exit, regain), never as v·ω.
+2. **The visual story** — max 5 figures, in this order: (a) turn-band supply vs demand, DB
+   primary; (b) the same across positions; (c) the drill spec with the cells it would fill;
+   (d) what the existing DB drills cover; (e) measurement limits, i.e. why per-player ranking
+   is not supported.
+
+**Dropped as headline** (appendix at most):
+
+- Per-prospect Turn Coverage score and Cut Card — no per-player basis while the variance sits
+  at the boundary. Appendix only.
+- The DL outcome test as a confirmatory claim — DL has no meaningful speed gap (8 game turns
+  above 6 yd/s in the sample), so it cannot carry the argument.
+- The confirmatory transfer/feasibility structure of Phases 5–6 as written. Replace with the
+  coverage arithmetic plus an explicit statement of the measurement limits.
+
+**Still binding:** every rule under Rules, Engineering and Data constraints; no invented
+thresholds; sample outputs never interpreted; a short prereg before any full-data run, now
+fixing the band edges, the supply/demand definition and the coverage arithmetic.
+
+**Remaining data work, deliberately small:** finish stage 04 so the demand map and the supply
+table are reproducible artefacts (its suite is currently red); no new stages unless a figure
+needs one. Stage 05 is not required under this focus. Stage 06 becomes the figure renderer.
+
+---
+
 ## Goal
 Build a physics-based measure of each player's turning capacity from Combine tracking, compare it with the turns his position actually makes in games, and deliver (1) a per-prospect Turn Coverage score (share of his position's game turn demand that falls inside his Combine-derived feasible region), (2) cut gaps (specific turns he cannot execute at speed), and (3) a one-page Cut Card visual.
 
@@ -104,7 +156,8 @@ Go/no-go: stop if no Combine drill contains usable direction changes for the pri
 - Definition sensitivity: (i) all heading turns, (ii) kinematic plants (primary), (iii) arcs only, (iv) kinematic plants with game-side orientation-flagged contamination removed (game-only; the Combine side cannot be filtered the same way). Also vary smoother, window, minimum angle, bin widths, speed-retention tolerance, envelope form, minimum turns per player, blitz exclusion and unblocked_pressure handling. Report whether conclusions depend on the choices.
 - State final sample sizes and the smallest detectable effect. Interpret a null as informative only if the interval excludes the smallest effect of interest.
 
-7. Deliverables. Public Kaggle notebook and writeup within official limits (placeholders for results until the full run), max 5 figures: (1) the Cut Card for two or three illustrative prospects; (2) demand map with feasible-region overlay for one position; (3) transfer scatter with noise ceiling; (4) feasibility results by speed range; (5) held-out outcome comparison against the stopwatch-and-size baseline. Sections: the football question, data audit, kinematics and turn detection, envelope, demand map, coverage, validation, uses for scouts and coaches, limitations. /notes/limitations.md lists every threat and mitigation: contact invisible to the chips; 10 Hz heading noise and smoother dependence; no Combine speed, acceleration or orientation fields (derived from x/y only); plants not separable from backpedals and shuffles in the Combine; Combine entry speeds below game speeds so some cells are extrapolated; selected tracked sample for the demand map; model-derived pressure labels; draftee-only selection; short follow-up for the 2025 class; possible overlap with other entries' cutting metrics.
+7. Deliverables. **See CURRENT FOCUS above: the figures are the primary deliverable and the
+per-prospect Cut Card is appendix-only.** Public Kaggle notebook and writeup within official limits (placeholders for results until the full run), max 5 figures: (1) the Cut Card for two or three illustrative prospects; (2) demand map with feasible-region overlay for one position; (3) transfer scatter with noise ceiling; (4) feasibility results by speed range; (5) held-out outcome comparison against the stopwatch-and-size baseline. Sections: the football question, data audit, kinematics and turn detection, envelope, demand map, coverage, validation, uses for scouts and coaches, limitations. /notes/limitations.md lists every threat and mitigation: contact invisible to the chips; 10 Hz heading noise and smoother dependence; no Combine speed, acceleration or orientation fields (derived from x/y only); plants not separable from backpedals and shuffles in the Combine; Combine entry speeds below game speeds so some cells are extrapolated; selected tracked sample for the demand map; model-derived pressure labels; draftee-only selection; short follow-up for the 2025 class; possible overlap with other entries' cutting metrics.
 
 ## Tests before handoff
 1. Schema assertions on columns, dtypes, units, angle convention and coordinates; fail loudly on mismatch.

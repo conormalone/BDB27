@@ -20,13 +20,16 @@ of DB turns in game data in the same cell.
 
 | Turn angle | Combine turns | Game turns | Ratio |
 |---|---:|---:|---:|
-| 30–60° | **26** | **326** | 12.5× |
+| 30–45° | **4** | **97** | 24× |
+| 45–60° | 22 | 229 | 10× |
 | 60–90° | 237 | 476 | 2.0× |
 | 90–120° | 159 | 508 | 3.2× |
 | 120–150° | 499 | 460 | 0.9× |
 | 150–180° | 128 | 307 | 2.4× |
 | >180° (wrapped reversal) | 130 | 185 | 1.4× |
 | **>120° total** | **757** | **952** | 1.3× |
+
+**The 30–45° band is the focus** (Conor, 7 Nov): 4 Combine DB turns against 97 in games.
 
 Rows are mutually exclusive bands; turns above 180° are a real class (a heading change past a
 half-turn) and are counted separately rather than being dropped.
@@ -86,16 +89,16 @@ The drill therefore targets the **coverage** gap (1a), not the feasibility gap (
 
 ## 2. The drill
 
-**Tempo break — 45° at speed, both sides**
+**Tempo break — 40° at speed, both sides**
 
 ```
 Setup      Approach line marked by two cones, 8-10 yd apart.
            Break cone at the end of the approach.
-           Two exit gates 5 yd from the break cone, at 45 deg either side of
+           Two exit gates 5 yd from the break cone, at 40 deg either side of
            the approach line.
 Movement   Walk-in, 2-yd run-up, accelerate over 8-10 yd.
            Reach 3-5 yd/s at the break cone.
-           Single plant, break 45 deg, re-accelerate 5 yd through the gate.
+           Single plant, break 40 deg, re-accelerate 5 yd through the gate.
 Reps       6 total: 3 left, 3 right, alternating.
 Timing     No electronic gate required. The value is the 10 Hz tracking.
 Duration   ~90 s per player.
@@ -104,15 +107,18 @@ Space      Same cones and footprint as the 3-cone; no new station.
 
 **Why these parameters**
 
-- 45° sits in the middle of the 30–60° band, the widest proportional gap (12.5×).
-- 3–5 yd/s entry is the demanded band (178 + 115 game turns at 2–4 and 4–6).
+- 40° sits inside the chosen 30–45° band, the widest proportional gap (24×) — a 45° break
+  would sit on the band's upper edge and leak into 45–60° under smoothing noise.
+- 3–5 yd/s entry is the demanded band (178 + 115 game turns at 2–4 and 4–6 yd/s in the
+  30–60° band).
 - An 8–10 yd build-up reaches that entry speed: the 3-cone already records a 3.9 yd/s median
   entry across segments of about 5 yd.
 - Six reps gives every player repeated measurements of the *same* turn, which is what the
   existing incidental detections cannot provide.
 
 **What it would buy:** ~6 deliberate turns per player at that shape — roughly 730 turns
-across 122 DBs, against 326 game turns of the shape, versus 26 incidental detections today.
+across 122 DBs, against 97 game turns in the 30–45° band and 326 in 30–60°, versus 4
+detections today.
 
 ---
 
