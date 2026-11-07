@@ -18,6 +18,10 @@ from bdb27 import schema
 
 RAW = Path(__file__).resolve().parents[1] / "data" / "raw"
 
+pytestmark = pytest.mark.skipif(
+    not (RAW / "combine_tracking.csv").exists(),
+    reason="competition data not mounted at data/raw (see README_RUN.md §2)")
+
 
 def header(name: str) -> list[str]:
     with open(RAW / name, newline="", encoding="utf-8") as fh:
