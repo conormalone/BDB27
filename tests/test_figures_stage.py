@@ -35,6 +35,21 @@ BAND_COUNTS = [
 ]
 EDGES = [30.0, 45.0, 60.0, 90.0, 120.0, 150.0, 180.0]
 
+# Figure 5 needs every plotted position. These mirror the verified sample band
+# counts for the non-DB positions: (band_index, combine, game) per band, in the
+# same left-closed bands. Assertions still recompute from the written Parquet.
+POSITION_BAND_COUNTS = {
+    "WR": [(0, 25, 58), (1, 65, 164), (2, 385, 464), (3, 256, 357),
+           (4, 174, 247), (5, 55, 126), (6, 84, 88)],
+    "TE": [(0, 3, 14), (1, 28, 28), (2, 104, 86), (3, 34, 72),
+           (4, 29, 56), (5, 38, 25), (6, 58, 13)],
+    "OL": [(0, 5, 34), (1, 57, 94), (2, 258, 260), (3, 97, 299),
+           (4, 109, 270), (5, 199, 201), (6, 227, 92)],
+    "DL": [(0, 34, 25), (1, 61, 76), (2, 539, 206), (3, 358, 215),
+           (4, 387, 227), (5, 349, 206), (6, 339, 123)],
+}
+ALL_POSITIONS = ["DB", "WR", "TE", "OL", "DL"]
+
 # Verified DB Combine inventory (valid turns per drill) that the synthetic
 # table reproduces exactly; every assertion still recomputes from the Parquet.
 DRILL_TOTALS = {
@@ -99,6 +114,41 @@ def _turns_frame() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _extra_positions_frame() -> pd.DataFrame:
+    """WR/TE/OL/DL rows for the five-panel figure.
+
+    Deterministic and independent of the DB block above, so figure 1's expected
+    counts are untouched by the fixture growth.
+    """
+    rows = []
+    for i, (position, bands) in enumerate(POSITION_BAND_COUNTS.items()):
+        combine_ids = list(range(5001 + i * 200, 5001 + i * 200 + 40))
+        game_ids = combine_ids[:8]
+        for band_index, c_count, g_count in bands:
+            lo = EDGES[band_index]
+            hi = (EDGES[band_index + 1] if band_index + 1 < len(EDGES)
+                  else 400.0)
+            for setting, n in (("combine", c_count), ("game", g_count)):
+                angles = np.linspace(lo + 0.1, hi - 0.1, n) if n else []
+                for j, angle in enumerate(angles):
+                    ids = combine_ids if setting == "combine" else game_ids
+                    rows.append({
+                        "setting": setting,
+                        "abs_turn_angle": float(angle),
+                        "position_group": position,
+                        "nfl_id": ids[j % len(ids)],
+                        "game_id": None if setting == "combine" else 7000 + j % 4,
+                        "snap_type": ("COVERAGE" if setting == "game" else None),
+                        "drill_name": ("BOX_DRILL" if setting == "combine"
+                                       else np.nan),
+                        "entry_speed": float(3.0 + (j % 5) * 0.8),
+                        "event_id": f"{position}{setting[0]}{band_index}_{j}",
+                        "attempt": 1.0,
+                        "valid": True,
+                    })
+    return pd.DataFrame(rows)
+
+
 def _write_config(tmp: Path, *, edges=None) -> Path:
     cfg = yaml.safe_load((ROOT / "config.yaml").read_text())
     block = cfg["turn_coverage"]
@@ -114,8 +164,9 @@ def _write_config(tmp: Path, *, edges=None) -> Path:
     (tmp / "outputs").mkdir(parents=True, exist_ok=True)
     (tmp / "outputs" / "thresholds.json").write_text(
         json.dumps({"provenance": "PLACEHOLDER_SAMPLE"}))
-    _turns_frame().to_parquet(tmp / "outputs" / "turns" / "turns.parquet",
-                              index=False)
+    pd.concat([_turns_frame(), _extra_positions_frame()], ignore_index=True
+              ).to_parquet(tmp / "outputs" / "turns" / "turns.parquet",
+                           index=False)
     path = tmp / "config.yaml"
     path.write_text(yaml.safe_dump(cfg, sort_keys=False))
     return path
@@ -185,6 +236,8 @@ def rendered(tmp_path_factory):
             "ba_csv": out / "fig_before_after.csv",
             "ds_png": out / "fig_drill_schematic.png",
             "ds_csv": out / "fig_drill_schematic.csv",
+            "ap_png": out / "fig_all_positions.png",
+            "ap_csv": out / "fig_all_positions.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -676,7 +729,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
     assert len(pd.read_csv(rendered["ba_csv"])) == 44
     man = json.loads(rendered["manifest"].read_text())
     assert set(man["figures"]) == {"fig_the_hole", "fig_drill_coverage",
-                                   "fig_before_after", "fig_drill_schematic"}
+                                   "fig_before_after", "fig_drill_schematic",
+                                   "fig_all_positions"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -707,3 +761,271 @@ def test_drill_schematic_checks_can_fail(rendered):
     invented.loc[idx, "source_constant"] = "figures.not_a_constant"
     with pytest.raises(AssertionError):
         _check_schematic(invented, block)
+
+
+# ------------------------------------- figure 5: the same hole across positions
+AP_KEY = "fig_all_positions"
+
+
+def _ap_cells(turns: pd.DataFrame, cfg_path: Path):
+    from bdb27 import common, figures
+    cfg = common.load_config(cfg_path)
+    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    overflow = str(cfg.get("figures.hole.bands.overflow_label"))
+    positions = [str(p) for p in cfg.get("figures.all_positions.positions")]
+    return figures.positions_table(turns, edges, overflow, positions), cfg
+
+
+def _ap_expected(turns: pd.DataFrame, position: str, lo: float,
+                 hi: float | None, setting: str) -> int:
+    valid = turns["valid"].fillna(False).astype(bool)
+    d = turns[valid & (turns["position_group"] == position)
+              & (turns["setting"] == setting)]
+    mask = d["abs_turn_angle"] >= lo
+    if hi is not None:
+        mask = mask & (d["abs_turn_angle"] < hi)
+    return int(mask.sum())
+
+
+def _check_ap_csv(csv_df: pd.DataFrame, turns: pd.DataFrame) -> None:
+    """Every plotted share and count must reconcile to the turn table."""
+    assert len(csv_df) == 5 * 7 * 2, "five positions x seven bands x two settings"
+    assert list(csv_df["position"].unique()) == ALL_POSITIONS
+    for position in ALL_POSITIONS:
+        part = csv_df[csv_df["position"] == position]
+        assert len(part) == 14
+        valid = turns["valid"].fillna(False).astype(bool)
+        totals = turns[valid & (turns["position_group"] == position)
+                       ].groupby("setting").size().to_dict()
+        for _, row in part.iterrows():
+            hi = None if pd.isna(row["band_high_deg"]) else float(
+                row["band_high_deg"])
+            want = _ap_expected(turns, position, float(row["band_low_deg"]), hi,
+                                row["setting"])
+            assert int(row["count"]) == want, (
+                f"{position} {row['band']} {row['setting']}: csv="
+                f"{int(row['count'])} artefact={want}")
+            assert int(row["position_setting_total"]) == totals[row["setting"]]
+            assert np.isclose(float(row["share_within_setting"]),
+                              want / totals[row["setting"]], atol=1e-12)
+        assert int(part["count"].sum()) == sum(totals.values())
+
+
+def test_all_positions_png_and_csv_exist(rendered):
+    _check_png(rendered["ap_png"])
+    assert rendered["ap_csv"].exists()
+
+
+def test_all_positions_counts_reconcile_for_every_position(rendered):
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    csv_df = pd.read_csv(rendered["ap_csv"])
+    _check_ap_csv(csv_df, turns)
+    assert set(csv_df["position"]) == set(ALL_POSITIONS)
+
+
+def test_all_positions_panels_share_one_scale(rendered):
+    """Five panels, one axis: identical x and y limits, and bars in every one."""
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import PolyCollection
+
+    from bdb27 import figures
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    (table, context), cfg = _ap_cells(turns, rendered["cfg"])
+    plot = figures.plot_all_positions(table, context, cfg, turns=turns)
+    fig = plot.draw()
+    try:
+        assert len(fig.axes) == 5, f"expected five panels, got {len(fig.axes)}"
+        lims = {(tuple(np.round(ax.get_xlim(), 9)),
+                 tuple(np.round(ax.get_ylim(), 9))) for ax in fig.axes}
+        assert len(lims) == 1, f"panels do not share a scale: {lims}"
+        (xlim, _), = lims
+        assert xlim == (0.0, 70.0), f"shared x axis is {xlim}, expected 0-70%"
+        for ax in fig.axes:
+            bars = [c for c in ax.collections
+                    if isinstance(c, PolyCollection)]
+            assert sum(len(c.get_paths()) for c in bars) == 14, (
+                "each panel must hold 14 bars (7 bands x 2 settings)")
+        colours = {tuple(np.round(c, 2))
+                   for c in fig.axes[0].collections[0].get_facecolors()}
+        assert (0.0, 0.45, 0.7, 1.0) in colours  # accent at full opacity
+        others = {tuple(np.round(c, 2))
+                  for c in fig.axes[1].collections[0].get_facecolors()}
+        assert all(c[3] == 0.6 for c in others), (
+            f"non-DB panels must be drawn at 60% opacity, got {others}")
+    finally:
+        plt.close(fig)
+
+
+def test_all_positions_marks_only_the_positions_the_spec_flags(rendered):
+    """Exploratory marks come from TASK.md, not from the figure's taste."""
+    import matplotlib.pyplot as plt
+
+    from bdb27 import figures
+    spec = (ROOT / "TASK.md").read_text()
+    line = spec.splitlines()[62]
+    assert "OL and DB are exploratory" in line, (
+        "TASK.md line 63 no longer says OL and DB are exploratory — the "
+        "figure's marks are pinned to that sentence")
+    assert "OL and DB (exploratory)" in spec
+
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    (table, context), cfg = _ap_cells(turns, rendered["cfg"])
+    status = figures.all_positions_status(context, cfg)
+    assert set(status) == {"DB", "OL"}, f"statuses drawn: {sorted(status)}"
+
+    badges = figures.all_positions_badges(context, cfg)
+    assert set(badges["position"].astype(str)) == {"DB", "OL"}
+
+    plot = figures.plot_all_positions(table, context, cfg, turns=turns)
+    fig = plot.draw()
+    try:
+        marked = {}
+        for position, ax in zip(ALL_POSITIONS, fig.axes):
+            marked[position] = [t.get_text() for t in ax.texts
+                                if "EXPLORATORY" in t.get_text()]
+        assert marked["DB"] and marked["OL"]
+        assert not marked["WR"] and not marked["TE"] and not marked["DL"]
+    finally:
+        plt.close(fig)
+
+
+def test_all_positions_counts_annotated_on_the_accent_panel_only(rendered):
+    import matplotlib.pyplot as plt
+
+    from bdb27 import figures
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    (table, context), cfg = _ap_cells(turns, rendered["cfg"])
+    plot = figures.plot_all_positions(table, context, cfg, turns=turns)
+    fig = plot.draw()
+    try:
+        numeric = {p: [t.get_text() for t in ax.texts
+                       if t.get_text().replace(",", "").isdigit()]
+                   for p, ax in zip(ALL_POSITIONS, fig.axes)}
+        assert len(numeric["DB"]) == 14
+        for position in ALL_POSITIONS[1:]:
+            assert numeric[position] == [], (
+                f"{position} panel must not carry count labels")
+        db = table[table["position"] == "DB"]
+        assert sorted(int(x.replace(",", "")) for x in numeric["DB"]) == sorted(
+            int(n) for n in db["count"])
+    finally:
+        plt.close(fig)
+
+
+def test_all_positions_positions_come_from_config(rendered, tmp_path):
+    cfg = _write_config(tmp_path)
+    raw = yaml.safe_load(cfg.read_text())
+    raw["turn_coverage"]["figures"]["all_positions"]["positions"] = [
+        "DL", "DB", "OL", "WR", "TE"]
+    cfg.write_text(yaml.safe_dump(raw, sort_keys=False))
+    res = _run(cfg)
+    assert res.returncode == 0, res.stderr
+    csv_df = pd.read_csv(tmp_path / "outputs" / "figures" / f"{AP_KEY}.csv")
+    assert list(csv_df["position"].unique()) == ["DL", "DB", "OL", "WR", "TE"]
+
+
+def test_all_positions_refuses_to_drop_a_flagged_position(rendered, tmp_path):
+    """Dropping OL would erase its exploratory mark: the stage must refuse."""
+    cfg = _write_config(tmp_path)
+    raw = yaml.safe_load(cfg.read_text())
+    raw["turn_coverage"]["figures"]["all_positions"]["positions"] = [
+        "DB", "WR", "TE", "DL"]
+    cfg.write_text(yaml.safe_dump(raw, sort_keys=False))
+    res = _run(cfg)
+    assert res.returncode != 0
+    assert "exploratory" in res.stderr or "invisible" in res.stderr
+
+
+def test_all_positions_two_runs_are_byte_identical(rendered):
+    first = hashlib.sha256(rendered["ap_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    second = hashlib.sha256(rendered["ap_png"].read_bytes()).hexdigest()
+    assert first == second
+
+
+def test_all_positions_provenance_stamp(rendered):
+    csv_df = pd.read_csv(rendered["ap_csv"])
+    assert csv_df["stamp"].eq(STAMP).all()
+    assert csv_df["provenance"].eq("PLACEHOLDER_SAMPLE").all()
+    man = json.loads(rendered["manifest"].read_text())
+    assert man["provenance"] == "PLACEHOLDER_SAMPLE"
+    assert man["figures"][AP_KEY]["stamp"] == STAMP
+
+    from bdb27 import figures
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    (table, context), cfg = _ap_cells(turns, rendered["cfg"])
+    caption = figures.plot_all_positions(table, context, cfg, turns=turns
+                                         ).labels.get("caption", "")
+    assert STAMP in caption
+
+
+def test_all_positions_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][AP_KEY]
+    assert fig["figure"] == AP_KEY
+    assert fig["positions"] == ALL_POSITIONS
+    assert fig["emphasis_position"] == "DB"
+    assert fig["shared_axis"]["identical_in_all_panels"] is True
+    assert fig["shared_axis"]["max_pct"] == 70.0
+    assert set(fig["spec_status"]["statuses"]) == {"DB", "OL"}
+    assert "TASK.md:63" in fig["spec_status"]["source"]
+    assert [b for b in fig["bands"]] == ["30–45°", "45–60°", "60–90°",
+                                         "90–120°", "120–150°", "150–180°",
+                                         ">180°"]
+    assert len(fig["counts"]) == 70
+    assert fig["count_labels"] == {"panel": "DB", "shown_for_other_panels": False}
+    assert not any("rank" in k or "ratio" in k for k in fig), (
+        "the manifest must not carry a ranking or ratio of positions")
+
+
+def test_all_positions_caption_states_what_dl_shows(rendered):
+    """DL is included, not excused: the caption states its panel, not 'fine'."""
+    from bdb27 import figures
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    (table, context), cfg = _ap_cells(turns, rendered["cfg"])
+    caption = figures.plot_all_positions(table, context, cfg, turns=turns
+                                         ).labels.get("caption", "")
+    assert "DL is included unchanged" in caption
+    assert "speed story" in caption
+    assert 'No panel is labelled "fine"' in caption
+    assert "no ranking" in caption
+    man = json.loads(rendered["manifest"].read_text())
+    assert "fine" in man["figures"][AP_KEY]["claim"]
+
+
+def test_all_positions_leaves_figures_1_to_4_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    csv_before = {k: pd.read_csv(rendered[k]).shape
+                  for k in ("csv", "drill_csv", "ba_csv", "ds_csv")}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k], (
+            f"{k} changed: figure 5 must not alter figures 1-4")
+    for k, shape in csv_before.items():
+        assert pd.read_csv(rendered[k]).shape == shape
+
+
+def test_all_positions_checks_can_fail(rendered):
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    good = pd.read_csv(rendered["ap_csv"])
+    _check_ap_csv(good, turns)
+
+    bad = good.copy()
+    idx = bad.index[(bad["position"] == "OL")
+                    & (bad["band"] == "30–45°") & (bad["setting"] == "game")][0]
+    bad.loc[idx, "count"] = int(bad.loc[idx, "count"]) + 1
+    with pytest.raises(AssertionError):
+        _check_ap_csv(bad, turns)
+
+    dropped = good[good["position"] != "TE"].copy()
+    with pytest.raises(AssertionError):
+        _check_ap_csv(dropped, turns)
+
+    empty = rendered["tmp"] / "empty_ap.png"
+    empty.write_bytes(b"")
+    with pytest.raises(AssertionError):
+        _check_png(empty)

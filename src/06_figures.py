@@ -1,9 +1,12 @@
-"""Stage 06 — figures 1-3.
+"""Stage 06 — figures 1-5.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
   3. "Before and After" — measured supply vs supply + the proposed drill, on
                           one angle x entry-speed grid.
+  4. "Tempo break"      — the proposed drill drawn to scale (a diagram).
+  5. "Same hole"        — figure 1's paired share panel repeated for DB, WR,
+                          TE, OL and DL on one identical axis.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -156,6 +159,25 @@ def main(argv=None) -> int:
         ds_payload = figures.drill_schematic_manifest_payload(ds_table, ds_context)
         _write_manifest(ds_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 5: the same hole across positions (five panels, one axis)
+        ap_block = "figures.all_positions"
+        ap_positions = [str(p) for p in cfg.get(f"{ap_block}.positions")]
+        ap_table, ap_context = figures.positions_table(
+            turns, edges, overflow, ap_positions)
+        ap_csv = figures.all_positions_csv_frame(ap_table, ap_context, cfg)
+        ap_png = outdir / f"{figures.FIGURE_KEY_ALL_POSITIONS}.png"
+        ap_csv_path = outdir / f"{figures.FIGURE_KEY_ALL_POSITIONS}.csv"
+        common.write_csv(ap_csv, ap_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_ALL_POSITIONS})
+        ap_plot = figures.plot_all_positions(ap_table, ap_context, cfg,
+                                             turns=turns)
+        figures.render(ap_plot, cfg, ap_png, block="all_positions")
+        ap_payload = figures.all_positions_manifest_payload(
+            ap_table, ap_context, cfg)
+        ap_payload["stamp"] = figures.STAMP
+        _write_manifest(ap_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -170,16 +192,22 @@ def main(argv=None) -> int:
                         f"{figures.FIGURE_KEY_DRILL_SCHEMATIC}: "
                         f"status={ds_context['status']} "
                         f"elements={ds_context['n_elements']} "
-                        f"annotations={ds_context['n_annotations']}")
+                        f"annotations={ds_context['n_annotations']}; "
+                        f"{figures.FIGURE_KEY_ALL_POSITIONS}: "
+                        f"positions={len(ap_context['positions'])} "
+                        f"turns={ap_context['n_turns']} ")
 
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
+          f"{ap_png.name}, {ap_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
           f"{ba_context['grid_shape'][0]}x{ba_context['grid_shape'][1]} grid; "
-          f"drill schematic status {ds_context['status']})")
+          f"drill schematic status {ds_context['status']}; "
+          f"{ap_context['n_turns']} valid turns across "
+          f"{len(ap_context['positions'])} positions)")
     return 0
 
 

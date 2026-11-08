@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "82f99324ea833143",
-  "generated_utc": "2026-11-08T11:26:11Z",
+  "config_sha": "eb8e227ef5d38b5d",
+  "generated_utc": "2026-11-08T12:25:43Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -1408,6 +1408,968 @@
       ],
       "png": "outputs/figures/fig_drill_schematic.png",
       "csv": "outputs/figures/fig_drill_schematic.csv"
+    },
+    "fig_all_positions": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_all_positions",
+      "title": "The same hole across positions: 30\u201345\u00b0 breaks are rare in the Combine and common in games",
+      "claim": "Every panel plots the same quantity \u2014 the share of that setting's own valid turns in each 30\u201345\u00b0 reporting band, Combine vs game, on one identical 0\u201370% axis. What each panel shows differs by position (DL: 34 vs 25 turns in 30\u201345\u00b0); the figure ranks no position and labels no panel \"fine\".",
+      "sources": [
+        "outputs/turns/turns.parquet"
+      ],
+      "positions": [
+        "DB",
+        "WR",
+        "TE",
+        "OL",
+        "DL"
+      ],
+      "position_order_note": "Order as TASK.md \u00a71 lists the positions; not a ranking by gap size. No position is ranked or dropped.",
+      "emphasis_position": "DB",
+      "muted_alpha": 0.6,
+      "shared_axis": {
+        "axis": "x",
+        "metric": "share of that setting's own valid turns (percent)",
+        "min_pct": 0.0,
+        "max_pct": 70.0,
+        "identical_in_all_panels": true
+      },
+      "bands": [
+        "30\u201345\u00b0",
+        "45\u201360\u00b0",
+        "60\u201390\u00b0",
+        "90\u2013120\u00b0",
+        "120\u2013150\u00b0",
+        "150\u2013180\u00b0",
+        ">180\u00b0"
+      ],
+      "spec_status": {
+        "statuses": {
+          "DB": "exploratory",
+          "OL": "exploratory"
+        },
+        "source": "TASK.md:63 and TASK.md:153 \u2014 OL and DB are exploratory (contamination risk); TASK.md:136 the same for the demand map",
+        "note": "Carried from the spec, not assigned here. Positions absent from this map carry no status on this figure and are neither promoted nor demoted."
+      },
+      "count_labels": {
+        "panel": "DB",
+        "shown_for_other_panels": false
+      },
+      "per_position": {
+        "DB": {
+          "n_valid": 3441,
+          "n_by_setting": {
+            "combine": 1179,
+            "game": 2262
+          },
+          "players_by_setting": {
+            "combine": 122,
+            "game": 33
+          },
+          "spec_status": "exploratory"
+        },
+        "WR": {
+          "n_valid": 2548,
+          "n_by_setting": {
+            "combine": 1044,
+            "game": 1504
+          },
+          "players_by_setting": {
+            "combine": 107,
+            "game": 37
+          },
+          "spec_status": ""
+        },
+        "TE": {
+          "n_valid": 588,
+          "n_by_setting": {
+            "combine": 294,
+            "game": 294
+          },
+          "players_by_setting": {
+            "combine": 41,
+            "game": 12
+          },
+          "spec_status": ""
+        },
+        "OL": {
+          "n_valid": 2202,
+          "n_by_setting": {
+            "combine": 952,
+            "game": 1250
+          },
+          "players_by_setting": {
+            "combine": 120,
+            "game": 37
+          },
+          "spec_status": "exploratory"
+        },
+        "DL": {
+          "n_valid": 3145,
+          "n_by_setting": {
+            "combine": 2067,
+            "game": 1078
+          },
+          "players_by_setting": {
+            "combine": 118,
+            "game": 25
+          },
+          "spec_status": ""
+        }
+      },
+      "caveats": [
+        "Descriptive shares of a census of turns: no confidence bands, no per-position significance test, no ranking of positions by gap size.",
+        "Exposure differs by setting and by position (one Combine session vs several player-games per player), which is why each bar is that setting's own share rather than a count.",
+        "DB is both the case's focus and marked exploratory in the spec (TASK.md:63, TASK.md:153). Both signals are drawn as specified; the tension is left open for Conor.",
+        "DL is included unchanged and is not annotated as \"fine\": its panel shows no 30\u201345\u00b0 shortfall, and TASK.md \u00a7CURRENT FOCUS records DL's gap as a speed story rather than an angle one.",
+        "Bands are left-closed; the final class is >180\u00b0."
+      ],
+      "counts": [
+        {
+          "position": "DB",
+          "band_index": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "setting": "combine",
+          "count": 4,
+          "setting_total": 1179,
+          "share_within_setting": 0.0033927056827820186,
+          "share_pct": 0.33927056827820185
+        },
+        {
+          "position": "DB",
+          "band_index": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "setting": "game",
+          "count": 97,
+          "setting_total": 2262,
+          "share_within_setting": 0.04288240495137047,
+          "share_pct": 4.288240495137047
+        },
+        {
+          "position": "DB",
+          "band_index": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "setting": "combine",
+          "count": 22,
+          "setting_total": 1179,
+          "share_within_setting": 0.018659881255301103,
+          "share_pct": 1.8659881255301103
+        },
+        {
+          "position": "DB",
+          "band_index": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "setting": "game",
+          "count": 229,
+          "setting_total": 2262,
+          "share_within_setting": 0.10123784261715296,
+          "share_pct": 10.123784261715297
+        },
+        {
+          "position": "DB",
+          "band_index": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "setting": "combine",
+          "count": 237,
+          "setting_total": 1179,
+          "share_within_setting": 0.2010178117048346,
+          "share_pct": 20.10178117048346
+        },
+        {
+          "position": "DB",
+          "band_index": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "setting": "game",
+          "count": 476,
+          "setting_total": 2262,
+          "share_within_setting": 0.21043324491600354,
+          "share_pct": 21.043324491600355
+        },
+        {
+          "position": "DB",
+          "band_index": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "setting": "combine",
+          "count": 159,
+          "setting_total": 1179,
+          "share_within_setting": 0.13486005089058525,
+          "share_pct": 13.486005089058525
+        },
+        {
+          "position": "DB",
+          "band_index": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "setting": "game",
+          "count": 508,
+          "setting_total": 2262,
+          "share_within_setting": 0.22458001768346597,
+          "share_pct": 22.4580017683466
+        },
+        {
+          "position": "DB",
+          "band_index": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "setting": "combine",
+          "count": 499,
+          "setting_total": 1179,
+          "share_within_setting": 0.42324003392705684,
+          "share_pct": 42.324003392705684
+        },
+        {
+          "position": "DB",
+          "band_index": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "setting": "game",
+          "count": 460,
+          "setting_total": 2262,
+          "share_within_setting": 0.20335985853227231,
+          "share_pct": 20.335985853227232
+        },
+        {
+          "position": "DB",
+          "band_index": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "setting": "combine",
+          "count": 128,
+          "setting_total": 1179,
+          "share_within_setting": 0.1085665818490246,
+          "share_pct": 10.856658184902459
+        },
+        {
+          "position": "DB",
+          "band_index": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "setting": "game",
+          "count": 307,
+          "setting_total": 2262,
+          "share_within_setting": 0.13572060123784263,
+          "share_pct": 13.572060123784263
+        },
+        {
+          "position": "DB",
+          "band_index": 7,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "setting": "combine",
+          "count": 130,
+          "setting_total": 1179,
+          "share_within_setting": 0.1102629346904156,
+          "share_pct": 11.02629346904156
+        },
+        {
+          "position": "DB",
+          "band_index": 7,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "setting": "game",
+          "count": 185,
+          "setting_total": 2262,
+          "share_within_setting": 0.08178603006189213,
+          "share_pct": 8.178603006189213
+        },
+        {
+          "position": "WR",
+          "band_index": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "setting": "combine",
+          "count": 25,
+          "setting_total": 1044,
+          "share_within_setting": 0.023946360153256706,
+          "share_pct": 2.3946360153256707
+        },
+        {
+          "position": "WR",
+          "band_index": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "setting": "game",
+          "count": 58,
+          "setting_total": 1504,
+          "share_within_setting": 0.03856382978723404,
+          "share_pct": 3.856382978723404
+        },
+        {
+          "position": "WR",
+          "band_index": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "setting": "combine",
+          "count": 65,
+          "setting_total": 1044,
+          "share_within_setting": 0.06226053639846743,
+          "share_pct": 6.226053639846743
+        },
+        {
+          "position": "WR",
+          "band_index": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "setting": "game",
+          "count": 164,
+          "setting_total": 1504,
+          "share_within_setting": 0.10904255319148937,
+          "share_pct": 10.904255319148938
+        },
+        {
+          "position": "WR",
+          "band_index": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "setting": "combine",
+          "count": 385,
+          "setting_total": 1044,
+          "share_within_setting": 0.36877394636015326,
+          "share_pct": 36.877394636015325
+        },
+        {
+          "position": "WR",
+          "band_index": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "setting": "game",
+          "count": 464,
+          "setting_total": 1504,
+          "share_within_setting": 0.30851063829787234,
+          "share_pct": 30.851063829787233
+        },
+        {
+          "position": "WR",
+          "band_index": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "setting": "combine",
+          "count": 256,
+          "setting_total": 1044,
+          "share_within_setting": 0.24521072796934865,
+          "share_pct": 24.521072796934863
+        },
+        {
+          "position": "WR",
+          "band_index": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "setting": "game",
+          "count": 357,
+          "setting_total": 1504,
+          "share_within_setting": 0.23736702127659576,
+          "share_pct": 23.736702127659576
+        },
+        {
+          "position": "WR",
+          "band_index": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "setting": "combine",
+          "count": 174,
+          "setting_total": 1044,
+          "share_within_setting": 0.16666666666666666,
+          "share_pct": 16.666666666666664
+        },
+        {
+          "position": "WR",
+          "band_index": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "setting": "game",
+          "count": 247,
+          "setting_total": 1504,
+          "share_within_setting": 0.16422872340425532,
+          "share_pct": 16.42287234042553
+        },
+        {
+          "position": "WR",
+          "band_index": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "setting": "combine",
+          "count": 55,
+          "setting_total": 1044,
+          "share_within_setting": 0.05268199233716475,
+          "share_pct": 5.268199233716475
+        },
+        {
+          "position": "WR",
+          "band_index": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "setting": "game",
+          "count": 126,
+          "setting_total": 1504,
+          "share_within_setting": 0.08377659574468085,
+          "share_pct": 8.377659574468085
+        },
+        {
+          "position": "WR",
+          "band_index": 7,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "setting": "combine",
+          "count": 84,
+          "setting_total": 1044,
+          "share_within_setting": 0.08045977011494253,
+          "share_pct": 8.045977011494253
+        },
+        {
+          "position": "WR",
+          "band_index": 7,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "setting": "game",
+          "count": 88,
+          "setting_total": 1504,
+          "share_within_setting": 0.05851063829787234,
+          "share_pct": 5.851063829787234
+        },
+        {
+          "position": "TE",
+          "band_index": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "setting": "combine",
+          "count": 3,
+          "setting_total": 294,
+          "share_within_setting": 0.01020408163265306,
+          "share_pct": 1.0204081632653061
+        },
+        {
+          "position": "TE",
+          "band_index": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "setting": "game",
+          "count": 14,
+          "setting_total": 294,
+          "share_within_setting": 0.047619047619047616,
+          "share_pct": 4.761904761904762
+        },
+        {
+          "position": "TE",
+          "band_index": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "setting": "combine",
+          "count": 28,
+          "setting_total": 294,
+          "share_within_setting": 0.09523809523809523,
+          "share_pct": 9.523809523809524
+        },
+        {
+          "position": "TE",
+          "band_index": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "setting": "game",
+          "count": 28,
+          "setting_total": 294,
+          "share_within_setting": 0.09523809523809523,
+          "share_pct": 9.523809523809524
+        },
+        {
+          "position": "TE",
+          "band_index": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "setting": "combine",
+          "count": 104,
+          "setting_total": 294,
+          "share_within_setting": 0.35374149659863946,
+          "share_pct": 35.374149659863946
+        },
+        {
+          "position": "TE",
+          "band_index": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "setting": "game",
+          "count": 86,
+          "setting_total": 294,
+          "share_within_setting": 0.2925170068027211,
+          "share_pct": 29.25170068027211
+        },
+        {
+          "position": "TE",
+          "band_index": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "setting": "combine",
+          "count": 34,
+          "setting_total": 294,
+          "share_within_setting": 0.11564625850340136,
+          "share_pct": 11.564625850340136
+        },
+        {
+          "position": "TE",
+          "band_index": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "setting": "game",
+          "count": 72,
+          "setting_total": 294,
+          "share_within_setting": 0.24489795918367346,
+          "share_pct": 24.489795918367346
+        },
+        {
+          "position": "TE",
+          "band_index": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "setting": "combine",
+          "count": 29,
+          "setting_total": 294,
+          "share_within_setting": 0.09863945578231292,
+          "share_pct": 9.863945578231291
+        },
+        {
+          "position": "TE",
+          "band_index": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "setting": "game",
+          "count": 56,
+          "setting_total": 294,
+          "share_within_setting": 0.19047619047619047,
+          "share_pct": 19.047619047619047
+        },
+        {
+          "position": "TE",
+          "band_index": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "setting": "combine",
+          "count": 38,
+          "setting_total": 294,
+          "share_within_setting": 0.1292517006802721,
+          "share_pct": 12.925170068027212
+        },
+        {
+          "position": "TE",
+          "band_index": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "setting": "game",
+          "count": 25,
+          "setting_total": 294,
+          "share_within_setting": 0.08503401360544217,
+          "share_pct": 8.503401360544217
+        },
+        {
+          "position": "TE",
+          "band_index": 7,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "setting": "combine",
+          "count": 58,
+          "setting_total": 294,
+          "share_within_setting": 0.19727891156462585,
+          "share_pct": 19.727891156462583
+        },
+        {
+          "position": "TE",
+          "band_index": 7,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "setting": "game",
+          "count": 13,
+          "setting_total": 294,
+          "share_within_setting": 0.04421768707482993,
+          "share_pct": 4.421768707482993
+        },
+        {
+          "position": "OL",
+          "band_index": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "setting": "combine",
+          "count": 5,
+          "setting_total": 952,
+          "share_within_setting": 0.005252100840336135,
+          "share_pct": 0.5252100840336135
+        },
+        {
+          "position": "OL",
+          "band_index": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "setting": "game",
+          "count": 34,
+          "setting_total": 1250,
+          "share_within_setting": 0.0272,
+          "share_pct": 2.7199999999999998
+        },
+        {
+          "position": "OL",
+          "band_index": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "setting": "combine",
+          "count": 57,
+          "setting_total": 952,
+          "share_within_setting": 0.059873949579831935,
+          "share_pct": 5.987394957983193
+        },
+        {
+          "position": "OL",
+          "band_index": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "setting": "game",
+          "count": 94,
+          "setting_total": 1250,
+          "share_within_setting": 0.0752,
+          "share_pct": 7.5200000000000005
+        },
+        {
+          "position": "OL",
+          "band_index": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "setting": "combine",
+          "count": 258,
+          "setting_total": 952,
+          "share_within_setting": 0.2710084033613445,
+          "share_pct": 27.100840336134453
+        },
+        {
+          "position": "OL",
+          "band_index": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "setting": "game",
+          "count": 260,
+          "setting_total": 1250,
+          "share_within_setting": 0.208,
+          "share_pct": 20.8
+        },
+        {
+          "position": "OL",
+          "band_index": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "setting": "combine",
+          "count": 97,
+          "setting_total": 952,
+          "share_within_setting": 0.10189075630252101,
+          "share_pct": 10.1890756302521
+        },
+        {
+          "position": "OL",
+          "band_index": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "setting": "game",
+          "count": 299,
+          "setting_total": 1250,
+          "share_within_setting": 0.2392,
+          "share_pct": 23.919999999999998
+        },
+        {
+          "position": "OL",
+          "band_index": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "setting": "combine",
+          "count": 109,
+          "setting_total": 952,
+          "share_within_setting": 0.11449579831932773,
+          "share_pct": 11.449579831932773
+        },
+        {
+          "position": "OL",
+          "band_index": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "setting": "game",
+          "count": 270,
+          "setting_total": 1250,
+          "share_within_setting": 0.216,
+          "share_pct": 21.6
+        },
+        {
+          "position": "OL",
+          "band_index": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "setting": "combine",
+          "count": 199,
+          "setting_total": 952,
+          "share_within_setting": 0.20903361344537816,
+          "share_pct": 20.903361344537817
+        },
+        {
+          "position": "OL",
+          "band_index": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "setting": "game",
+          "count": 201,
+          "setting_total": 1250,
+          "share_within_setting": 0.1608,
+          "share_pct": 16.08
+        },
+        {
+          "position": "OL",
+          "band_index": 7,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "setting": "combine",
+          "count": 227,
+          "setting_total": 952,
+          "share_within_setting": 0.23844537815126052,
+          "share_pct": 23.844537815126053
+        },
+        {
+          "position": "OL",
+          "band_index": 7,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "setting": "game",
+          "count": 92,
+          "setting_total": 1250,
+          "share_within_setting": 0.0736,
+          "share_pct": 7.359999999999999
+        },
+        {
+          "position": "DL",
+          "band_index": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "setting": "combine",
+          "count": 34,
+          "setting_total": 2067,
+          "share_within_setting": 0.01644895984518626,
+          "share_pct": 1.644895984518626
+        },
+        {
+          "position": "DL",
+          "band_index": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "setting": "game",
+          "count": 25,
+          "setting_total": 1078,
+          "share_within_setting": 0.023191094619666047,
+          "share_pct": 2.3191094619666046
+        },
+        {
+          "position": "DL",
+          "band_index": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "setting": "combine",
+          "count": 61,
+          "setting_total": 2067,
+          "share_within_setting": 0.029511369134010642,
+          "share_pct": 2.951136913401064
+        },
+        {
+          "position": "DL",
+          "band_index": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "setting": "game",
+          "count": 76,
+          "setting_total": 1078,
+          "share_within_setting": 0.07050092764378478,
+          "share_pct": 7.050092764378478
+        },
+        {
+          "position": "DL",
+          "band_index": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "setting": "combine",
+          "count": 539,
+          "setting_total": 2067,
+          "share_within_setting": 0.2607643928398645,
+          "share_pct": 26.076439283986453
+        },
+        {
+          "position": "DL",
+          "band_index": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "setting": "game",
+          "count": 206,
+          "setting_total": 1078,
+          "share_within_setting": 0.19109461966604824,
+          "share_pct": 19.109461966604822
+        },
+        {
+          "position": "DL",
+          "band_index": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "setting": "combine",
+          "count": 358,
+          "setting_total": 2067,
+          "share_within_setting": 0.17319787131107886,
+          "share_pct": 17.319787131107887
+        },
+        {
+          "position": "DL",
+          "band_index": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "setting": "game",
+          "count": 215,
+          "setting_total": 1078,
+          "share_within_setting": 0.19944341372912802,
+          "share_pct": 19.944341372912803
+        },
+        {
+          "position": "DL",
+          "band_index": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "setting": "combine",
+          "count": 387,
+          "setting_total": 2067,
+          "share_within_setting": 0.18722786647314948,
+          "share_pct": 18.722786647314948
+        },
+        {
+          "position": "DL",
+          "band_index": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "setting": "game",
+          "count": 227,
+          "setting_total": 1078,
+          "share_within_setting": 0.21057513914656772,
+          "share_pct": 21.057513914656774
+        },
+        {
+          "position": "DL",
+          "band_index": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "setting": "combine",
+          "count": 349,
+          "setting_total": 2067,
+          "share_within_setting": 0.16884373488147073,
+          "share_pct": 16.884373488147073
+        },
+        {
+          "position": "DL",
+          "band_index": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "setting": "game",
+          "count": 206,
+          "setting_total": 1078,
+          "share_within_setting": 0.19109461966604824,
+          "share_pct": 19.109461966604822
+        },
+        {
+          "position": "DL",
+          "band_index": 7,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "setting": "combine",
+          "count": 339,
+          "setting_total": 2067,
+          "share_within_setting": 0.16400580551523947,
+          "share_pct": 16.400580551523948
+        },
+        {
+          "position": "DL",
+          "band_index": 7,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "setting": "game",
+          "count": 123,
+          "setting_total": 1078,
+          "share_within_setting": 0.11410018552875696,
+          "share_pct": 11.410018552875696
+        }
+      ],
+      "png": "outputs/figures/fig_all_positions.png",
+      "csv": "outputs/figures/fig_all_positions.csv",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }
 }

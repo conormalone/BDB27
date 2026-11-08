@@ -17,6 +17,7 @@ Design rules honoured here:
 
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
 import matplotlib
@@ -44,6 +45,7 @@ from plotnine import (
     ggplot,
     labs,
     position_dodge,
+    scale_alpha_manual,
     scale_colour_manual,
     scale_fill_gradientn,
     scale_fill_manual,
@@ -51,6 +53,7 @@ from plotnine import (
     scale_x_discrete,
     scale_x_continuous,
     scale_y_continuous,
+    scale_y_discrete,
     theme,
     theme_bw,
 )
@@ -62,6 +65,7 @@ ARTEFACT_VERSION = 1
 FIGURE_KEY = "fig_the_hole"
 FIGURE_KEY_DRILLS = "fig_drill_coverage"
 FIGURE_KEY_BEFORE_AFTER = "fig_before_after"
+FIGURE_KEY_ALL_POSITIONS = "fig_all_positions"
 
 #: Figure 3 needs only the grid coordinates and the player identity.
 SUPPLY_COLUMNS = [
@@ -91,6 +95,9 @@ TURN_COLUMNS = [
     "game_id",
     "snap_type",
     "valid",
+    # Figure 5 needs the entry-speed floor note for the DL panel; figure 1
+    # ignores the column. Reading it once here keeps stage 06 to one pass.
+    "entry_speed",
 ]
 
 DRILL_COLUMNS = [
@@ -1762,4 +1769,406 @@ def drill_schematic_manifest_payload(table: pd.DataFrame,
         ],
         "png": f"outputs/figures/{FIGURE_KEY_DRILL_SCHEMATIC}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_DRILL_SCHEMATIC}.csv",
+    }
+
+
+# --------------------- figure 5: the same hole across positions
+#: TASK.md:63 — "Descriptive: transfer and feasibility for the other groups.
+#: OL and DB are exploratory (contamination risk, see below)." TASK.md:153
+#: repeats the flag for the Phase 6 tests, and TASK.md:136 restricts the demand
+#: map the same way. The set itself is read from
+#: ``demand.exploratory_positions`` (already derived from those lines); the line
+#: references are carried into the caption, the CSV and the manifest so the
+#: mark is traceable to the spec rather than to this figure's judgement.
+SPEC_STATUS_SOURCE = ("TASK.md:63 and TASK.md:153 — OL and DB are exploratory "
+                      "(contamination risk); TASK.md:136 the same for the "
+                      "demand map")
+EXPLORATORY_LABEL = "EXPLORATORY"
+#: Horizontal bar geometry, in band-row units. Two settings per row.
+BAR_OFFSET = 0.19
+BAR_WIDTH = 0.34
+
+
+def _wrap_text(text: str, width: int) -> str:
+    """Hard-wrap a caption line so it cannot run past the canvas edge.
+
+    Wrapping changes no wording and drops no clause: it only breaks at word
+    boundaries, keeping the honesty text intact and readable at the fixed
+    figure width.
+    """
+    return "\n".join(textwrap.wrap(str(text), width=width,
+                                    break_long_words=False,
+                                    break_on_hyphens=False))
+
+
+def positions_table(turns: pd.DataFrame, edges: list[float],
+                    overflow_label: str,
+                    positions: list[str]) -> tuple[pd.DataFrame, dict]:
+    """Figure 1's band table, repeated for every position on the same bands.
+
+    Reuses :func:`band_table` per position, so the banding, the share definition
+    and the "no turn may fall outside the bands" check are literally figure 1's
+    code. Every position is required: a missing one refuses instead of quietly
+    producing a four-panel figure.
+    """
+    positions = [str(p) for p in positions]
+    if not positions:
+        raise ValueError(f"{STAGE}: figures.all_positions.positions is empty")
+    if len(set(positions)) != len(positions):
+        raise ValueError(
+            f"{STAGE}: duplicate position in figures.all_positions.positions: "
+            f"{positions}")
+
+    tables, per_position = [], {}
+    for position in positions:
+        part, context = band_table(turns, edges, overflow_label, position)
+        part.insert(0, "position", position)
+        tables.append(part)
+        per_position[position] = context
+
+    table = pd.concat(tables, ignore_index=True)
+    claimed = sum(int(c["n_valid"]) for c in per_position.values())
+    if int(table["count"].sum()) != claimed:
+        raise ValueError(
+            f"{STAGE}: plotted counts sum to {int(table['count'].sum())} but the "
+            f"selected positions hold {claimed} valid turns")
+
+    bands = per_position[positions[0]]["bands"]
+    for position, context in per_position.items():
+        if context["bands"] != bands:
+            raise ValueError(
+                f"{STAGE}: {position} was banded differently from "
+                f"{positions[0]} — refusing to draw incomparable panels")
+
+    context = {
+        "positions": positions,
+        "bands": bands,
+        "edges": [float(e) for e in edges],
+        "per_position": per_position,
+        "n_turns": int(table["count"].sum()),
+    }
+    return table, context
+
+
+def all_positions_plot_frame(table: pd.DataFrame, context: dict,
+                             cfg: common.Config) -> pd.DataFrame:
+    """One row per drawn bar, with the emphasis flag that sets its opacity."""
+    block = "figures.all_positions"
+    emphasis = str(cfg.get(f"{block}.emphasis_position"))
+    muted = float(cfg.get(f"{block}.muted_alpha"))
+    if emphasis not in context["positions"]:
+        raise ValueError(
+            f"{STAGE}: emphasis_position {emphasis!r} is not one of the plotted "
+            f"positions {context['positions']}")
+
+    frame = table.copy()
+    frame["share_pct"] = frame["share_within_setting"] * 100.0
+    x_max = float(cfg.get(f"{block}.x_max_pct"))
+    over = frame.loc[frame["share_pct"] > x_max, "share_pct"]
+    if len(over):
+        raise common.StageRefused(
+            f"{STAGE}: a plotted share is {float(over.max()):.1f}%, above the "
+            f"shared {x_max:g}% axis — widen figures.all_positions.x_max_pct "
+            "rather than clipping a bar")
+
+    frame["setting"] = pd.Categorical(frame["setting"],
+                                      categories=["combine", "game"],
+                                      ordered=True)
+    frame["band"] = pd.Categorical(frame["band"],
+                                   categories=list(context["bands"]),
+                                   ordered=True)
+    frame["position"] = pd.Categorical(frame["position"],
+                                       categories=list(context["positions"]),
+                                       ordered=True)
+    accent = frame["position"].astype(str) == emphasis
+    frame["emphasis"] = pd.Categorical(np.where(accent, "accent", "muted"),
+                                       categories=["accent", "muted"],
+                                       ordered=True)
+    # Bars are placed on a numeric axis by hand: y is the negated band index
+    # (so 30-45 sits at the top), and the two settings straddle that row. This
+    # keeps the row order fixed and every panel on the same scale, without
+    # depending on dodge behaviour over a discrete axis.
+    frame["y"] = -frame["band_index"].astype(float)
+    frame["y_bar"] = frame["y"] + np.where(
+        frame["setting"].astype(str) == "combine", BAR_OFFSET, -BAR_OFFSET)
+    # Explicit rectangles: bar length runs along x, row thickness along y. With
+    # both axes continuous a bar geom cannot infer its orientation, so the
+    # corners are given directly.
+    frame["xmin"] = 0.0
+    frame["xmax"] = frame["share_pct"]
+    frame["ymin"] = frame["y_bar"] - BAR_WIDTH / 2.0
+    frame["ymax"] = frame["y_bar"] + BAR_WIDTH / 2.0
+    return frame
+
+
+def all_positions_count_labels(frame: pd.DataFrame, cfg: common.Config) -> pd.DataFrame:
+    """Counts for the accent panel only — the others are read as shares."""
+    block = "figures.all_positions"
+    offset = float(cfg.get(f"{block}.count_offset_pct"))
+    labels = frame[frame["emphasis"].astype(str) == "accent"].copy()
+    labels["lab_x"] = labels["share_pct"] + offset
+    labels["lab_y"] = labels["y_bar"]
+    labels["label"] = [f"{int(n):,}" for n in labels["count"]]
+    return labels
+
+
+def all_positions_status(context: dict, cfg: common.Config) -> dict[str, str]:
+    """Position -> spec status, for the positions the spec actually flags.
+
+    Nothing is added here: a position absent from
+    ``demand.exploratory_positions`` carries no status on this figure, so it can
+    be neither promoted nor demoted by omission.
+    """
+    exploratory = [str(p) for p in cfg.get("demand.exploratory_positions")]
+    unknown = [p for p in exploratory if p not in context["positions"]]
+    if unknown:
+        raise ValueError(
+            f"{STAGE}: demand.exploratory_positions names {unknown}, which this "
+            "figure does not plot — the mark would be invisible")
+    return {p: "exploratory" for p in exploratory}
+
+
+def all_positions_badges(context: dict, cfg: common.Config) -> pd.DataFrame:
+    """The per-panel spec-status mark, drawn inside the panel it applies to."""
+    block = "figures.all_positions"
+    status = all_positions_status(context, cfg)
+    x = float(cfg.get(f"{block}.x_max_pct")) - 1.5
+    rows = [{"position": position, "x": x,
+             "y": -float(len(context["bands"])),
+             "label": f"{EXPLORATORY_LABEL}\n(TASK.md:63)"}
+            for position in status]
+    if not rows:
+        return pd.DataFrame({"position": [], "x": [], "y": [], "label": []})
+    badges = pd.DataFrame(rows)
+    badges["position"] = pd.Categorical(badges["position"],
+                                        categories=list(context["positions"]),
+                                        ordered=True)
+    return badges
+
+
+def all_positions_dl_speed_count(turns: pd.DataFrame, position: str,
+                                 speed_floor: float) -> int:
+    """Game turns of ``position`` entering above ``speed_floor`` yd/s."""
+    valid = turns["valid"].fillna(False).astype(bool)
+    df = turns[valid & (turns["position_group"] == position)
+               & (turns["setting"] == "game")]
+    speed = pd.to_numeric(df["entry_speed"], errors="coerce")
+    return int((speed > float(speed_floor)).sum())
+
+
+def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
+                       turns: pd.DataFrame | None = None) -> ggplot:
+    block = "figures.all_positions"
+    frame = all_positions_plot_frame(table, context, cfg)
+    labels = all_positions_count_labels(frame, cfg)
+    badges = all_positions_badges(context, cfg)
+    bands = list(context["bands"])
+    x_max = float(cfg.get(f"{block}.x_max_pct"))
+    x_breaks = [float(b) for b in cfg.get(f"{block}.x_breaks_pct")]
+    emphasis = str(cfg.get(f"{block}.emphasis_position"))
+
+    per = context["per_position"]
+    n_turns = context["n_turns"]
+    n_positions = len(context["positions"])
+
+    band0 = context["bands"][0]
+
+    dl_line = ""
+    floor = float(cfg.get(f"{block}.dl_speed_floor_yd_s", 6.0))
+    if "DL" in per and turns is not None:
+        dl = table[(table["position"] == "DL") & (table["band"] == band0)]
+        dl_c = int(dl.loc[dl["setting"] == "combine", "count"].iloc[0])
+        dl_g = int(dl.loc[dl["setting"] == "game", "count"].iloc[0])
+        dl_fast = all_positions_dl_speed_count(turns, "DL", floor)
+        dl_cs = float(dl.loc[dl["setting"] == "combine",
+                             "share_within_setting"].iloc[0]) * 100.0
+        dl_gs = float(dl.loc[dl["setting"] == "game",
+                             "share_within_setting"].iloc[0]) * 100.0
+        dl_line = (
+            f" DL is included unchanged and read as it is: {dl_c} Combine vs "
+            f"{dl_g} game turns in 30–45° ({dl_cs:.1f}% vs {dl_gs:.1f}% of DL's "
+            f"own turns), and only {dl_fast} game DL turns enter above "
+            f"{floor:g} yd/s — TASK.md §CURRENT FOCUS records DL's gap as a "
+            "speed story, not an angle one. No panel is labelled \"fine\".")
+
+    title = ("The same hole across positions: 30–45° breaks are rare in the "
+             "Combine and common in games")
+    subtitle = _wrap_text(
+        f"Paired bars: each position's own valid turns by absolute turn angle, "
+        f"Combine (accent) vs game (grey). Every panel uses the same 0–{x_max:g}% "
+        f"share-of-that-setting axis, so the panels compare by eye. Counts are "
+        f"printed on the {emphasis} panel only.", 160)
+
+    caption_lines = [
+        STAMP,
+        (f"{n_positions} positions, {n_turns:,} valid turns. Bands are figure 1's "
+         f"reporting bands (figures.hole.bands), left-closed, final class >180°. "
+         f"Counts are printed once, on the {emphasis} panel; every other "
+         "panel's counts are in the CSV beside this image."),
+        (f"{EXPLORATORY_LABEL} is the spec's own status, not this figure's "
+         f"judgement: {SPEC_STATUS_SOURCE}. No other panel carries a status "
+         "here; none is promoted or demoted."),
+        (f"{emphasis} is both the case's focus and marked exploratory in the "
+         "spec. Both signals are drawn exactly as specified — full accent AND "
+         "the exploratory mark — and this figure does not resolve them."),
+        dl_line.strip(),
+        ("Descriptive shares of a census of turns: no confidence bands, no "
+         "per-position significance test, no ranking of positions by gap size. "
+         "Panels are ordered as TASK.md §1 lists them. Each bar is that "
+         "setting's own share because exposure differs (one Combine session vs "
+         "several player-games). Source: outputs/turns/turns.parquet (valid "
+         "turns), stage 02; counts computed at render time."),
+    ]
+    caption = "\n".join(_wrap_text(line, 172) for line in caption_lines if line)
+
+    n_bands = len(bands)
+    plot = (
+        ggplot(frame, aes(xmin="xmin", xmax="xmax", ymin="ymin", ymax="ymax",
+                          fill="setting", alpha="emphasis"))
+        + geom_rect(colour="white", size=0.2)
+        + geom_text(data=labels,
+                    mapping=aes(x="lab_x", y="lab_y", label="label"),
+                    inherit_aes=False, size=2.55,
+                    colour="#1A1A1A", ha="left", va="center", show_legend=False)
+        + geom_text(data=badges, mapping=aes(x="x", y="y", label="label"),
+                    inherit_aes=False, size=2.5, colour=ALERT,
+                    fontweight="bold", ha="right", va="center")
+        + facet_wrap("~ position", nrow=1)
+        + scale_fill_manual(values=["#0072B2", "#7F7F7F"],
+                            labels=[COMBINE_LABEL, GAME_LABEL], name=None)
+        + scale_alpha_manual(values=[1.0, float(cfg.get(f"{block}.muted_alpha"))],
+                             guide=None)
+        + scale_x_continuous(limits=(0.0, x_max), breaks=x_breaks,
+                             expand=(0, 0))
+        + scale_y_continuous(breaks=[-float(i) for i in range(1, n_bands + 1)],
+                            labels=bands,
+                            limits=(-float(n_bands) - 0.6, -0.4),
+                            expand=(0, 0))
+        + labs(title=title, subtitle=subtitle, caption=caption,
+               x="Share of that setting's own valid turns (%)", y=None)
+        + theme_bw(base_size=9)
+        + theme(
+            figure_size=(float(cfg.get(f"{block}.width_in")),
+                         float(cfg.get(f"{block}.height_in"))),
+            panel_background=element_rect(fill="#EBEBEB", colour=None),
+            panel_grid_major=element_line(colour="white", linewidth=0.7),
+            panel_grid_minor=element_blank(),
+            panel_border=element_rect(colour="#B3B3B3", linewidth=0.4),
+            strip_background=element_rect(fill="#D9D9D9", colour="#B3B3B3"),
+            strip_text=element_text(weight="bold", size=11),
+            plot_title=element_text(size=14, weight="bold"),
+            plot_subtitle=element_text(size=8.4, colour="#333333"),
+            plot_caption=element_text(size=6.5, colour="#333333", ha="left",
+                                      linespacing=1.35),
+            axis_title_x=element_text(size=8.6),
+            axis_title_y=element_blank(),
+            axis_text_x=element_text(size=7.6),
+            axis_text_y=element_text(size=7.6),
+            legend_position="bottom",
+            legend_title=element_blank(),
+            legend_key=element_rect(fill="#EBEBEB", colour=None),
+        )
+    )
+    return plot
+
+
+def all_positions_csv_frame(table: pd.DataFrame, context: dict,
+                            cfg: common.Config) -> pd.DataFrame:
+    """Every plotted share and count: position x band x setting."""
+    out = table.copy()
+    out["share_pct"] = out["share_within_setting"] * 100.0
+    out["position_index"] = out["position"].map(
+        {p: i + 1 for i, p in enumerate(context["positions"])})
+    out["spec_status"] = out["position"].map(
+        {p: s for p, s in all_positions_status(context, cfg).items()}).fillna("")
+    out["spec_status_source"] = np.where(out["spec_status"] == "exploratory",
+                                         SPEC_STATUS_SOURCE, "")
+    out["emphasis"] = np.where(out["position"] == str(
+        cfg.get("figures.all_positions.emphasis_position")), "accent", "muted")
+    out["position_setting_total"] = out["setting_total"].astype(int)
+    out["n_players"] = [
+        int(context["per_position"][p]["players_by_setting"][s])
+        for p, s in zip(out["position"], out["setting"])]
+    return out[["position_index", "position", "spec_status",
+                "spec_status_source", "emphasis", "band_index", "band",
+                "band_low_deg", "band_high_deg", "setting", "count",
+                "position_setting_total", "share_within_setting", "share_pct",
+                "n_players"]]
+
+
+def all_positions_manifest_payload(table: pd.DataFrame, context: dict,
+                                   cfg: common.Config) -> dict:
+    block = "figures.all_positions"
+    emphasis = str(cfg.get(f"{block}.emphasis_position"))
+    status = all_positions_status(context, cfg)
+    per = context["per_position"]
+    band0 = table[table["band"] == context["bands"][0]]
+    dl_c = int(band0.loc[(band0["position"] == "DL")
+                         & (band0["setting"] == "combine"), "count"].iloc[0])
+    dl_g = int(band0.loc[(band0["position"] == "DL")
+                         & (band0["setting"] == "game"), "count"].iloc[0])
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_ALL_POSITIONS,
+        "title": ("The same hole across positions: 30–45° breaks are rare in "
+                  "the Combine and common in games"),
+        "claim": ("Every panel plots the same quantity — the share of that "
+                  "setting's own valid turns in each 30–45° reporting band, "
+                  "Combine vs game, on one identical 0–70% axis. What each "
+                  f"panel shows differs by position (DL: {dl_c} vs {dl_g} "
+                  "turns in 30–45°); the figure ranks no position and labels "
+                  "no panel \"fine\"."),
+        "sources": ["outputs/turns/turns.parquet"],
+        "positions": list(context["positions"]),
+        "position_order_note": ("Order as TASK.md §1 lists the positions; not a "
+                                "ranking by gap size. No position is ranked or "
+                                "dropped."),
+        "emphasis_position": emphasis,
+        "muted_alpha": float(cfg.get(f"{block}.muted_alpha")),
+        "shared_axis": {"axis": "x", "metric": "share of that setting's own "
+                        "valid turns (percent)",
+                        "min_pct": 0.0,
+                        "max_pct": float(cfg.get(f"{block}.x_max_pct")),
+                        "identical_in_all_panels": True},
+        "bands": context["bands"],
+        "spec_status": {
+            "statuses": status,
+            "source": SPEC_STATUS_SOURCE,
+            "note": ("Carried from the spec, not assigned here. Positions "
+                     "absent from this map carry no status on this figure and "
+                     "are neither promoted nor demoted."),
+        },
+        "count_labels": {"panel": emphasis,
+                          "shown_for_other_panels": False},
+        "per_position": {
+            p: {
+                "n_valid": int(c["n_valid"]),
+                "n_by_setting": {k: int(v) for k, v in
+                                 c["n_by_setting"].items()},
+                "players_by_setting": {k: int(v) for k, v in
+                                       c["players_by_setting"].items()},
+                "spec_status": status.get(p, ""),
+            } for p, c in per.items()
+        },
+        "caveats": [
+            ("Descriptive shares of a census of turns: no confidence bands, no "
+             "per-position significance test, no ranking of positions by gap "
+             "size."),
+            ("Exposure differs by setting and by position (one Combine session "
+             "vs several player-games per player), which is why each bar is "
+             "that setting's own share rather than a count."),
+            (f"{emphasis} is both the case's focus and marked exploratory in "
+             "the spec (TASK.md:63, TASK.md:153). Both signals are drawn as "
+             "specified; the tension is left open for Conor."),
+            ("DL is included unchanged and is not annotated as \"fine\": its "
+             "panel shows no 30–45° shortfall, and TASK.md §CURRENT FOCUS "
+             "records DL's gap as a speed story rather than an angle one."),
+            ("Bands are left-closed; the final class is >180°."),
+        ],
+        "counts": table.assign(
+            share_pct=(table["share_within_setting"] * 100.0)).to_dict(
+                orient="records"),
+        "png": f"outputs/figures/{FIGURE_KEY_ALL_POSITIONS}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_ALL_POSITIONS}.csv",
     }

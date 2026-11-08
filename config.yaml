@@ -440,6 +440,31 @@ turn_coverage:
       width_in: 11.5
       height_in: 7.0
 
+    # Stage 06 figure 5 ("The same hole across positions"): figure 1's paired
+    # share panel repeated once per position on ONE identical axis. The
+    # reporting bands are NOT repeated here — they are read from
+    # `figures.hole.bands` so the two figures cannot drift apart. Position order
+    # is the order TASK.md §1 lists them (DB, WR, TE, OL, DL); it is NOT a
+    # ranking by gap size, and nothing in the figure ranks positions.
+    all_positions:
+      positions: [DB, WR, TE, OL, DL]
+      # Full accent on the case's focus panel; every other panel is the same
+      # encoding at reduced opacity, so it reads as comparable but secondary.
+      emphasis_position: DB
+      muted_alpha: 0.6
+      # Shared x axis, identical in all five panels (percent of that setting's
+      # own turns). A share above max_pct refuses rather than clips.
+      x_max_pct: 70
+      x_breaks_pct: [0, 10, 20, 30, 40, 50, 60, 70]
+      count_offset_pct: 1.5
+      # TASK.md §CURRENT FOCUS calls DL's gap a speed story, not an angle one
+      # and quotes game turns above 6 yd/s. The caption counts them from the
+      # turn table at this floor; 6.0 is TASK.md's own threshold.
+      dl_speed_floor_yd_s: 6.0
+      dpi: 150
+      width_in: 13.0
+      height_in: 6.6
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).
