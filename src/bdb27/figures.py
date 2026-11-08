@@ -1849,6 +1849,11 @@ def positions_table(turns: pd.DataFrame, edges: list[float],
         "edges": [float(e) for e in edges],
         "per_position": per_position,
         "n_turns": int(table["count"].sum()),
+        # Valid turns outside the plotted positions: every one of these must be
+        # named in the caption, or "11,924 valid turns" would read as a census.
+        "n_excluded": int(
+            (turns["valid"].fillna(False).astype(bool)
+             & ~turns["position_group"].isin(positions)).sum()),
     }
     return table, context
 
@@ -2004,8 +2009,11 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
 
     caption_lines = [
         STAMP,
-        (f"{n_positions} positions, {n_turns:,} valid turns. Bands are figure 1's "
-         f"reporting bands (figures.hole.bands), left-closed, final class >180°. "
+        (f"{n_positions} positions, {n_turns:,} valid turns in these panels. "
+         f"Excluded from these panels: {context['n_excluded']:,} valid game "
+         "turns with position_group OTHER (unclassified), so this is not a "
+         "census of all valid turns. Bands are figure 1's reporting bands "
+         "(figures.hole.bands), left-closed, final class >180°. "
          f"Counts are printed once, on the {emphasis} panel; every other "
          "panel's counts are in the CSV beside this image."),
         (f"{EXPLORATORY_LABEL} is the spec's own status, not this figure's "

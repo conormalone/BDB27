@@ -1050,6 +1050,34 @@ def test_all_positions_caption_states_what_dl_shows(rendered):
     assert "fine" in man["figures"][AP_KEY]["claim"]
 
 
+def test_all_positions_caption_names_the_turns_outside_the_panels(rendered):
+    """The count is not a census: unclassified game turns are named."""
+    from bdb27 import figures
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    (table, context), cfg = _ap_cells(turns, rendered["cfg"])
+    caption = figures.plot_all_positions(table, context, cfg, turns=turns
+                                         ).labels.get("caption", "")
+    flat = " ".join(caption.split())
+    assert (f"Excluded from these panels: {context['n_excluded']:,} valid game "
+            "turns with position_group OTHER") in flat
+    assert "not a census of all valid turns" in flat
+
+    # Move seven DB game turns to OTHER: the caption's excluded count and the
+    # plotted total must both follow, or the clause is decorative.
+    tweaked = turns.copy()
+    idx = tweaked.index[(tweaked["position_group"] == "DB")
+                        & (tweaked["setting"] == "game")][:7]
+    tweaked.loc[idx, "position_group"] = "OTHER"
+    (t2, context2), cfg2 = _ap_cells(tweaked, rendered["cfg"])
+    caption2 = figures.plot_all_positions(t2, context2, cfg2, turns=tweaked
+                                          ).labels.get("caption", "")
+    flat2 = " ".join(caption2.split())
+    assert context2["n_excluded"] == context["n_excluded"] + 7
+    assert (f"{context2['n_excluded']:,} valid game turns with position_group "
+            "OTHER") in flat2
+    assert context2["n_turns"] == context["n_turns"] - 7
+
+
 def test_all_positions_leaves_figures_1_to_4_untouched(rendered):
     keys = ["png", "drill_png", "ba_png", "ds_png"]
     before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
