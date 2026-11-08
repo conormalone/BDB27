@@ -14,8 +14,10 @@ blocked, with no silent fallback to the sample.
 from __future__ import annotations
 
 import ast
+import base64
 import io
 import json
+import re
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -24,6 +26,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = ROOT / "notebooks" / "bdb27_full_run.ipynb"
+REAL_FIGURES = ROOT / "outputs" / "figures"
+REAL_MANIFEST = REAL_FIGURES / "figures_manifest.json"
+
+SAMPLE_STAMP = "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
 
 #: TASK.md "Layout and run order".
 SPEC_ORDER = ["00_thresholds", "01_audit", "02_turns", "03_envelope",
@@ -310,3 +316,178 @@ def test_demand_coverage_headline_prints_mass_boundary_and_cards(notebook, tmp_p
     assert "2 selected" in text and "rendering deferred to stage 06" in text
     assert "3 Combine player(s)" in text
     assert "lowest coverage WR/all" in text
+
+
+# ------------------------------------------------------- figure gallery (§5)
+
+#: A real 1x1 PNG: the gallery displays from path, so the file has to exist.
+PNG_1PX = base64.b64decode(
+    b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+
+
+def gallery_source(notebook):
+    return source_of(notebook, "def figure_gallery")
+
+
+def run_gallery(notebook, manifest_path, fig_dir):
+    """Exec the gallery cell, then run its function against the given manifest."""
+    with redirect_stdout(io.StringIO()):
+        namespace = exec_cell(gallery_source(notebook),
+                              Path=Path, REPO=ROOT, FIG_DIR=Path(fig_dir),
+                              MODE="sample", stage_results=[])
+    shown = []
+    out = io.StringIO()
+    with redirect_stdout(out):
+        returned = namespace["figure_gallery"](
+            Path(manifest_path), Path(fig_dir), "sample", [],
+            display_fn=lambda image: shown.append(image))
+    return out.getvalue(), returned, shown
+
+
+def write_manifest(tmp_path, figures, provenance="PLACEHOLDER_SAMPLE"):
+    path = tmp_path / "figures_manifest.json"
+    path.write_text(json.dumps({
+        "provenance": provenance,
+        "label": "UNVALIDATED SAMPLE OUTPUT" if provenance == "PLACEHOLDER_SAMPLE" else "FULL",
+        "stamp": SAMPLE_STAMP if provenance == "PLACEHOLDER_SAMPLE" else "FULL",
+        "generated_utc": "2026-11-08T00:00:00Z",
+        "config_sha": "deadbeef",
+        "figures": figures,
+    }), encoding="utf-8")
+    return path
+
+
+def sample_entry(name, **overrides):
+    entry = {
+        "figure": name,
+        "stage": "06_figures",
+        "title": f"{name} title",
+        "claim": f"{name} claim",
+        "caveats": [f"{name} caveat one", f"{name} caveat two"],
+        "sources": ["outputs/turns/turns.parquet"],
+        "stamp": SAMPLE_STAMP,
+        "png": f"outputs/figures/{name}.png",
+    }
+    entry.update(overrides)
+    return entry
+
+
+def test_gallery_lists_every_manifest_entry(notebook):
+    """(a) Every figure the manifest carries appears in the rendered text."""
+    manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
+    entries = manifest["figures"]
+    assert len(entries) == 14, f"stage 06 should list fourteen figures, found {len(entries)}"
+
+    text, returned, shown = run_gallery(notebook, REAL_MANIFEST, REAL_FIGURES)
+
+    for name, entry in entries.items():
+        assert f"] {name}" in text, f"{name} was not named by the gallery"
+        assert entry["title"] in text, f"{name} title was not rendered"
+        if "claim" in entry:
+            assert entry["claim"] in text, f"{name} claim was not rendered"
+        else:
+            assert "claim   : ABSENT" in text, f"{name} has no claim and did not say so"
+        for caveat in entry["caveats"]:
+            assert caveat in text, f"{name} caveat was not rendered"
+    assert returned["displayed"] == len(entries) == len(shown)
+    assert returned["missing"] == []
+    assert "GALLERY RESULT — 14 of 14 figure(s) displayed" in text
+
+
+def test_gallery_cell_reads_the_manifest_not_a_literal_figure_list(notebook):
+    """(b) The gallery is driven by the manifest; no figure name is typed into it."""
+    source = gallery_source(notebook)
+    assert "figures_manifest.json" in source
+    assert "json.loads" in source
+    assert "manifest.get(\"figures\"" in source
+    # `fig_dir` is the folder argument and `config_sha` carries the letters by accident;
+    # any other fig_ token would be a typed-in figure name.
+    literal = r"(?<!con)fig_(?!dir\b)[a-z0-9]"
+    assert not re.search(literal, source), \
+        "the gallery cell hard-codes a figure name"
+    for cell in notebook["cells"]:
+        if cell["cell_type"] == "code":
+            body = "".join(cell["source"])
+            assert not re.search(literal, body), \
+                "a notebook cell names a figure literally"
+
+
+def test_gallery_missing_png_is_missing_not_an_exception(notebook, tmp_path):
+    """(c) A listed PNG that is absent prints MISSING against its manifest name."""
+    path = write_manifest(tmp_path, {"fig_nowhere": sample_entry("fig_nowhere")})
+    text, returned, shown = run_gallery(notebook, path, tmp_path)
+
+    assert "MISSING — fig_nowhere" in text
+    assert returned == {"figures": 1, "displayed": 0,
+                        "missing": ["fig_nowhere"], "proposal": []}
+    assert shown == [], "no image should be displayed for a missing PNG"
+    assert "1 of 1 figure(s) displayed, 0 MISSING" not in text
+
+
+def test_gallery_prints_the_sample_banner_once(notebook, tmp_path):
+    """(d) Sample provenance is a banner at the top, never a silent per-figure fact."""
+    (tmp_path / "fig_a.png").write_bytes(PNG_1PX)
+    path = write_manifest(tmp_path, {"fig_a": sample_entry("fig_a")})
+    text, returned, shown = run_gallery(notebook, path, tmp_path)
+
+    assert text.count("SAMPLE BANNER") == 1
+    assert SAMPLE_STAMP in text
+    assert "NOT A RESULT" in text
+    assert "PLACEHOLDER_SAMPLE" in text
+    assert "1 of 1 figures below are sample output" in text
+    assert returned["displayed"] == 1 and len(shown) == 1
+
+
+def test_gallery_shows_the_schematic_as_a_proposal(notebook, tmp_path):
+    """(e) The proposal schematic wears PROPOSAL; no sample badge is forced onto it."""
+    (tmp_path / "fig_schematic.png").write_bytes(PNG_1PX)
+    (tmp_path / "fig_data.png").write_bytes(PNG_1PX)
+    schematic = sample_entry(
+        "fig_schematic",
+        status="PROPOSAL",
+        status_stamp="PROPOSED DRILL — not part of the task spec, awaiting sign-off",
+        stamp="PROPOSED DRILL — not part of the task spec, awaiting sign-off",
+        provenance_applied=False,
+    )
+    path = write_manifest(tmp_path, {
+        "fig_data": sample_entry("fig_data"),
+        "fig_schematic": schematic,
+    })
+    text, returned, shown = run_gallery(notebook, path, tmp_path)
+
+    body = text.split("GALLERY RESULT")[0]
+    blocks = [b for b in body.split("-" * 92) if re.match(r"\s*\[\d+/\d+\]", b)]
+    proposal_block = next(b for b in blocks if "fig_schematic" in b)
+    data_block = next(b for b in blocks if "fig_data" in b)
+    assert "PROPOSAL — PROPOSED DRILL" in proposal_block
+    assert "PLACEHOLDER_SAMPLE" not in proposal_block
+    assert "deliberately NOT sample-stamped" in proposal_block
+    assert SAMPLE_STAMP in data_block, "a data figure keeps its sample stamp"
+    assert returned["proposal"] == ["fig_schematic"]
+    assert returned["displayed"] == 2 and len(shown) == 2
+    assert "1 of 2 figures below are sample output" in text
+
+
+def test_gallery_absent_manifest_says_not_run(notebook, tmp_path):
+    """No manifest is reported with the stage reason, never as an empty gallery."""
+    stage_results = [{
+        "stage": "06_figures", "rc": 2, "seconds": 0.0, "output": "", "error": "",
+        "changed": False,
+        "outcome": {"status": "NOT IMPLEMENTED (stub, exit 2)", "passed": False,
+                    "stub": True, "reused": False},
+    }]
+    with redirect_stdout(io.StringIO()):
+        namespace = exec_cell(gallery_source(notebook),
+                              Path=Path, REPO=ROOT, FIG_DIR=tmp_path,
+                              MODE="sample", stage_results=stage_results)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        returned = namespace["figure_gallery"](
+            tmp_path / "figures_manifest.json", tmp_path, "sample", stage_results,
+            display_fn=lambda image: None)
+    text = out.getvalue()
+
+    assert "NOT RUN — figures manifest absent" in text
+    assert "NOT IMPLEMENTED (stub, exit 2)" in text
+    assert "SAMPLE BANNER" not in text
+    assert returned["figures"] == 0 and returned["displayed"] == 0

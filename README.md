@@ -22,15 +22,15 @@ verified and what is marked `UNVERIFIED`.
 |---|---|---|
 | 00 thresholds | `src/00_thresholds.py` | implemented — placeholder provenance in `--mode sample` |
 | 01 audit | `src/01_audit.py` | implemented — items a–m, writes `outputs/audit/` |
-| 02 turns | `src/02_turns.py` | **loud stub** — exits 2 with `STAGE NOT IMPLEMENTED` |
-| 03 envelope | `src/03_envelope.py` | **loud stub** |
-| 04 demand/coverage | `src/04_demand_coverage.py` | **loud stub** |
-| 05 validate | `src/05_validate.py` | **loud stub** |
-| 06 figures | `src/06_figures.py` | **loud stub** |
+| 02 turns | `src/02_turns.py` | implemented — writes the turn table |
+| 03 envelope | `src/03_envelope.py` | implemented — variance route + components |
+| 04 demand/coverage | `src/04_demand_coverage.py` | implemented — demand map, coverage, cut gaps |
+| 05 validate | `src/05_validate.py` | **loud stub** — exits 2 with `STAGE NOT IMPLEMENTED` |
+| 06 figures | `src/06_figures.py` | implemented — fourteen figures + `figures_manifest.json` |
 
-Phase 0 + Phase 1 are done for the audit; Phases 2–6 are deliberately unimplemented
-this cycle. **The notebook click-through interface does not exist yet** — see
-`README_RUN.md` and `notebooks/README.md`.
+Six of the seven stages are implemented; `05_validate` is still a loud stub and is never
+counted as a pass. **The notebook is the interface** (`notebooks/bdb27_full_run.ipynb`) —
+see `notebooks/README.md`; `README_RUN.md` is the equivalent shell fallback.
 
 Every artefact written in `--mode sample` carries `UNVALIDATED SAMPLE OUTPUT`.
 Nothing in this repo may be interpreted, reported or tuned against sample results.

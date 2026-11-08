@@ -6113,3 +6113,48 @@ on the image, no player names and no per-player values.
 counts printed match the artefacts, no pooled bar, shallow band stated with
 counts and no inset, byte-identical re-render, figures 1–13 unchanged, stage 06
 renders fourteen).
+
+## D171 — The notebook's figure section becomes a manifest-driven gallery · 2026-11-08
+
+**What it is.** Section §5 of `notebooks/bdb27_full_run.ipynb` (directly after the
+stage table) now renders all fourteen figures from
+`outputs/figures/figures_manifest.json`, in manifest order: title, claim,
+caveats, sources, the figure's own stamp, then the PNG displayed **from its
+path**. The old §8 "Figures" cell — a folder listing whose prose said a sample
+run has no figures — is gone; it was true when `06_figures` was a stub and false
+the moment the stage wrote fourteen. The gallery keeps its one useful behaviour
+(the `06_figures` row from §4 explains an absent manifest) and drops the second
+place a figure could be described.
+
+**The manifest is the list.** No figure name is typed into the notebook: the cell
+iterates `manifest["figures"]`, so a figure added in `06_figures` appears with no
+notebook edit. Contract test (b) asserts the gallery cell contains no `fig_`
+literal (allowing `fig_dir` and the accidental letters in `config_sha`), and that
+no notebook cell names a figure literally. The retired `DELIVERABLE_FIGURES`
+five-tuple list, which named figures a–e that no stage produces, is deleted for
+the same reason.
+
+**Absent is printed, never skipped.** A listed PNG that is not on disk prints
+`MISSING — <manifest figure name>` and is counted in the closing
+`GALLERY RESULT` line; no placeholder image is drawn and no entry disappears. A
+PNG on disk that the manifest does not list is printed separately as "on disk
+but NOT in the manifest (not displayed, not counted)" — the gallery reports the
+disagreement instead of resolving it.
+
+**Sample stamp once, at the top; PROPOSAL where it belongs.** Sample provenance
+is a single banner derived from the manifest's own `provenance`/`label`/`stamp`
+fields (13 of 14 in the current sample), and every sample entry repeats its own
+stamp on its block line so a screenshot cannot separate a figure from its
+provenance. The schematic (figure 4, D166) has `status: PROPOSAL`,
+`provenance_applied: false` and no sample stamp; the gallery prints
+`status: PROPOSAL — PROPOSED DRILL — …` plus "deliberately NOT sample-stamped"
+and never a sample badge. One stamp is not forced onto every figure.
+
+**Not embedded.** Images are displayed with `Image(filename=…)` from
+`outputs/figures/`; nothing is base64-encoded into the `.ipynb`. The committed
+notebook still carries zero outputs and zero execution counts.
+
+**Evidence.** `notebooks/bdb27_full_run.ipynb` §5 (markdown + gallery cell);
+`src/06_figures.py` (unchanged — the manifest already carried title, claim,
+caveats, sources, png and stamp per figure); `tests/test_notebook_contract.py`
+(gallery tests a–e); `notebooks/README.md` §5.
