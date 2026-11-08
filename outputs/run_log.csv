@@ -81,3 +81,8 @@ LINE 4:                    sum(CASE WHEN pp.time_to_pressure IS NULL THEN 1 ELSE
 2026-11-07T22:16:45Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,0.0,1360.2,0,"checkpoint reused, nothing rebuilt"
 2026-11-07T22:17:46Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,2.168,255.4,4615,groups=5 players=508 cards=3
 2026-11-07T23:57:08Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,1.214,183.5,3441,fig_the_hole: bands=7 valid_DB=3441
+2026-11-08T00:41:19Z,06_figures,sample,PLACEHOLDER_SAMPLE,ERROR,1.441,187.0,0,Unrecognized marker style np.int64(16)
+2026-11-08T00:41:24Z,06_figures,sample,PLACEHOLDER_SAMPLE,ERROR,1.685,186.9,0,"0.0 is not a valid value for align. Supported values are 'center', 'right', 'left'"
+2026-11-08T00:42:01Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,1.866,197.1,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179
+2026-11-08T00:50:02Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,2.526,197.6,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179
+2026-11-08T00:50:06Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,2.631,197.5,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179

@@ -353,6 +353,25 @@ turn_coverage:
       width_in: 11.5
       height_in: 7.6
 
+    # Stage 06 figure 2 ("What each drill actually asks for"). The target cell
+    # and the proposed drill are the case's settled design (Conor): a 40 degree
+    # tempo break at 2-6 yd/s entry, 6 reps per player. Angles are the same
+    # left-closed absolute turn angles used everywhere else.
+    drill_coverage:
+      position_group: DB
+      target_angle_deg: [30, 45]
+      target_entry_speed_yd_s: [2, 6]
+      proposed:
+        label: "Proposed 40° tempo drill"
+        angle_deg: 40.0
+        entry_speed_yd_s: 4.0
+        reps_per_player: 6
+      x_lim: [30, 200]
+      y_lim: [1.6, 9.0]
+      dpi: 150
+      width_in: 11.5
+      height_in: 7.4
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

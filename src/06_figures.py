@@ -61,7 +61,7 @@ def _write_manifest(payload: dict, path: Path, mode: str,
             existing = json.loads(path.read_text()).get("figures", {})
         except Exception:  # corrupt manifest is rebuilt, not trusted
             existing = {}
-    existing[figures.FIGURE_KEY] = payload
+    existing[payload["figure"]] = payload
     common.write_json(
         {
             "stage": STAGE,
@@ -102,11 +102,30 @@ def main(argv=None) -> int:
         payload = figures.manifest_payload(table, context)
         payload["stamp"] = figures.STAMP
         _write_manifest(payload, manifest_path, args.mode, cfg)
+
+        drill_turns = figures.load_drill_turns(turns_path)
+        drill_table, drill_context = figures.drill_table(drill_turns, cfg)
+        drill_csv = figures.drill_csv_frame(drill_table)
+        drill_png = outdir / f"{figures.FIGURE_KEY_DRILLS}.png"
+        drill_csv_path = outdir / f"{figures.FIGURE_KEY_DRILLS}.csv"
+        common.write_csv(drill_csv, drill_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_DRILLS})
+        drill_plot = figures.plot_drill_coverage(drill_table, drill_context, cfg)
+        figures.render(drill_plot, cfg, drill_png, block="drill_coverage")
+        drill_payload = figures.drill_manifest_payload(drill_table, drill_context)
+        drill_payload["stamp"] = figures.STAMP
+        _write_manifest(drill_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
-                        f"valid_{position}={context['n_valid']}")
+                        f"valid_{position}={context['n_valid']}; "
+                        f"{figures.FIGURE_KEY_DRILLS}: "
+                        f"drills={drill_context['n_drills']} "
+                        f"turns={drill_context['n_turns']}")
 
-    print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, {manifest_path.name} "
+    print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
+          f"{drill_png.name}, {drill_csv_path.name}, {manifest_path.name} "
           f"({context['n_valid']} valid {position} turns)")
     return 0
 

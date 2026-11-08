@@ -35,23 +35,51 @@ BAND_COUNTS = [
 ]
 EDGES = [30.0, 45.0, 60.0, 90.0, 120.0, 150.0, 180.0]
 
+# Verified DB Combine inventory (valid turns per drill) that the synthetic
+# table reproduces exactly; every assertion still recomputes from the Parquet.
+DRILL_TOTALS = {
+    "BOX_DRILL": 304,
+    "TERYL_AUSTIN_DRILL_2": 199,
+    "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION": 133,
+    "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL": 118,
+    "TERYL_AUSTIN_DRILL_1": 108,
+    "W_DRILL": 107,
+    "THREE_CONE_DRILL": 98,
+    "SHORT_SHUTTLE": 70,
+    "GAUNTLET_DRILL": 41,
+    "FORTY_YARD_DASH": 1,
+}
+
+
+def _drill_sequence() -> list[str]:
+    """One drill label per Combine turn, shuffled with a fixed seed."""
+    labels = [d for d, n in DRILL_TOTALS.items() for _ in range(n)]
+    np.random.RandomState(20270106).shuffle(labels)
+    return labels
+
 
 def _turns_frame() -> pd.DataFrame:
     rows = []
     nfl = {"combine": [1001, 1002, 1003, 1004, 1005],
            "game": [2001, 2002, 2003]}
+    drills = _drill_sequence()
+    k = 0
     game_i = 0
     for lo, hi, c_count, g_count in BAND_COUNTS:
         for setting, n in (("combine", c_count), ("game", g_count)):
             angles = np.linspace(lo + 0.1, hi - 0.1, n)
             for j, angle in enumerate(angles):
                 if setting == "combine":
-                    game_id, snap = None, None
+                    game_id, snap, drill = None, None, drills[k]
+                    k += 1
+                    entry = (3.0 + 0.15 * j if (lo, hi) == (30.0, 45.0)
+                             else 2.6 + 5.9 * (((j * 37) + int(lo)) % 100) / 100.0)
                 else:
                     game_id = 3000 + (game_i % 3)
                     snap = ("COVERAGE" if game_i < 1111 else
                             ("OTHER" if game_i < 1111 + 1121 else "PASS_RUSH"))
                     game_i += 1
+                    drill, entry = np.nan, 4.0
                 rows.append({
                     "setting": setting,
                     "abs_turn_angle": float(angle),
@@ -59,8 +87,13 @@ def _turns_frame() -> pd.DataFrame:
                     "nfl_id": nfl[setting][j % len(nfl[setting])],
                     "game_id": game_id,
                     "snap_type": snap,
+                    "drill_name": drill,
+                    "entry_speed": float(entry),
+                    "event_id": f"{setting[0]}{lo:g}_{j}",
+                    "attempt": 1.0,
                     "valid": True,
                 })
+    assert k == sum(DRILL_TOTALS.values())
     return pd.DataFrame(rows)
 
 
@@ -144,6 +177,8 @@ def rendered(tmp_path_factory):
     out = tmp / "outputs" / "figures"
     return {"tmp": tmp, "cfg": cfg, "png": out / "fig_the_hole.png",
             "csv": out / "fig_the_hole.csv",
+            "drill_png": out / "fig_drill_coverage.png",
+            "drill_csv": out / "fig_drill_coverage.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -219,6 +254,7 @@ def test_full_mode_refuses_on_non_full_thresholds(tmp_path):
     assert "thresholds provenance" in res.stderr
     assert "FULL" in res.stderr
     assert not (tmp_path / "outputs" / "figures" / "fig_the_hole.png").exists()
+    assert not (tmp_path / "outputs" / "figures" / "fig_drill_coverage.png").exists()
 
 
 def test_full_mode_refuses_without_prereg(tmp_path):
@@ -229,3 +265,92 @@ def test_full_mode_refuses_without_prereg(tmp_path):
     assert res.returncode != 0
     assert "prereg" in res.stderr
     assert not (tmp_path / "outputs" / "figures" / "fig_the_hole.png").exists()
+    assert not (tmp_path / "outputs" / "figures" / "fig_drill_coverage.png").exists()
+
+
+# ------------------------------------------------ figure 2: drill coverage
+def _check_drill_csv(csv_df: pd.DataFrame, turns: pd.DataFrame) -> None:
+    """CSV drill-total and target-cell counts must match the written Parquet."""
+    valid = turns["valid"].fillna(False).astype(bool)
+    db = turns[valid & (turns["position_group"] == "DB")
+               & (turns["setting"] == "combine")]
+    assert len(csv_df) == len(DRILL_TOTALS) + 1
+    measured = csv_df[csv_df["kind"] == "measured"]
+    assert len(measured) == len(DRILL_TOTALS)
+    for drill, g in db.groupby("drill_name"):
+        row = measured[measured["drill"] == drill]
+        assert len(row) == 1, f"drill {drill} appears {len(row)} times"
+        assert int(row["n_turns"].iloc[0]) == len(g), drill
+        assert int(row["n_players"].iloc[0]) == g["nfl_id"].nunique(), drill
+        assert np.isclose(float(row["median_angle_deg"].iloc[0]),
+                          g["abs_turn_angle"].median())
+        assert np.isclose(float(row["median_entry_speed_yd_s"].iloc[0]),
+                          g["entry_speed"].median())
+    assert int(measured["n_turns"].sum()) == len(db)
+    target = db[(db["abs_turn_angle"] >= 30.0) & (db["abs_turn_angle"] < 45.0)
+                & (db["entry_speed"] >= 2.0) & (db["entry_speed"] < 6.0)]
+    assert int(measured["turns_in_target_cell"].sum()) == len(target)
+    proposed = csv_df[csv_df["kind"] == "proposed"]
+    assert len(proposed) == 1
+    p = proposed.iloc[0]
+    assert float(p["median_angle_deg"]) == 40.0
+    assert float(p["median_entry_speed_yd_s"]) == 4.0
+    assert float(p["median_reps_per_player"]) == 6.0
+
+
+def test_drill_png_exists_non_empty_and_wide(rendered):
+    _check_png(rendered["drill_png"])
+
+
+def test_drill_csv_matches_artefact_counts(rendered):
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    csv_df = pd.read_csv(rendered["drill_csv"])
+    _check_drill_csv(csv_df, turns)
+    assert set(csv_df.loc[csv_df["kind"] == "measured", "drill"]) == set(DRILL_TOTALS)
+
+
+def test_drill_provenance_stamp_in_csv_and_manifest(rendered):
+    csv_df = pd.read_csv(rendered["drill_csv"])
+    assert csv_df["stamp"].eq(STAMP).all()
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"]["fig_drill_coverage"]
+    assert fig["stamp"] == STAMP
+    assert man["provenance"] == "PLACEHOLDER_SAMPLE"
+    assert float(fig["proposed"]["angle"]) == 40.0
+    assert fig["target_angle_deg"] == [30.0, 45.0]
+    assert fig["target_entry_speed_yd_s"] == [2.0, 6.0]
+    assert "players × one session" in fig["caveats"][0]
+
+
+def test_drill_two_runs_are_byte_identical(rendered):
+    first = hashlib.sha256(rendered["drill_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    second = hashlib.sha256(rendered["drill_png"].read_bytes()).hexdigest()
+    assert first == second
+
+
+def test_drill_checks_can_fail(rendered):
+    """A wrong drill total or target-cell count must fail the checker."""
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    good = pd.read_csv(rendered["drill_csv"])
+    _check_drill_csv(good, turns)
+
+    bad = good.copy()
+    idx = bad.index[bad["kind"] == "measured"][0]
+    bad.loc[idx, "n_turns"] = int(bad.loc[idx, "n_turns"]) + 1
+    with pytest.raises(AssertionError):
+        _check_drill_csv(bad, turns)
+
+    bad_cell = good.copy()
+    hit = bad_cell.index[(bad_cell["kind"] == "measured")
+                         & (bad_cell["turns_in_target_cell"] > 0)]
+    assert len(hit) > 0
+    bad_cell.loc[hit[0], "turns_in_target_cell"] = 0
+    with pytest.raises(AssertionError):
+        _check_drill_csv(bad_cell, turns)
+
+    empty = rendered["tmp"] / "empty_drill.png"
+    empty.write_bytes(b"")
+    with pytest.raises(AssertionError):
+        _check_png(empty)

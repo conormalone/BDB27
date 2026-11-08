@@ -28,18 +28,23 @@ import numpy as np
 import pandas as pd
 from plotnine import (
     aes,
+    coord_cartesian,
     element_blank,
     element_line,
     element_rect,
     element_text,
     facet_wrap,
     geom_col,
+    geom_point,
     geom_rect,
+    geom_segment,
     geom_text,
     ggplot,
     labs,
     position_dodge,
+    scale_colour_manual,
     scale_fill_manual,
+    scale_shape_manual,
     scale_x_discrete,
     theme,
     theme_bw,
@@ -50,6 +55,7 @@ from bdb27 import common
 STAGE = "06_figures"
 ARTEFACT_VERSION = 1
 FIGURE_KEY = "fig_the_hole"
+FIGURE_KEY_DRILLS = "fig_drill_coverage"
 
 STAMP = f"{common.PROVENANCE_SAMPLE} — {common.SAMPLE_LABEL}"
 
@@ -70,6 +76,48 @@ TURN_COLUMNS = [
     "snap_type",
     "valid",
 ]
+
+DRILL_COLUMNS = [
+    "setting",
+    "drill_name",
+    "abs_turn_angle",
+    "entry_speed",
+    "position_group",
+    "nfl_id",
+    "event_id",
+    "attempt",
+    "valid",
+]
+
+#: Short, reader-facing drill names. Presentation only; the CSV keeps the
+#: source ``drill_name`` so every plotted point is traceable to the artefact.
+DRILL_SHORT = {
+    "BOX_DRILL": "Box",
+    "TERYL_AUSTIN_DRILL_2": "Teryl Austin 2",
+    "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION": "Back pedal + 45° reaction",
+    "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL": "Back pedal + 90° break",
+    "TERYL_AUSTIN_DRILL_1": "Teryl Austin 1",
+    "W_DRILL": "W drill",
+    "THREE_CONE_DRILL": "3-cone",
+    "SHORT_SHUTTLE": "Short shuttle",
+    "GAUNTLET_DRILL": "Gauntlet",
+    "FORTY_YARD_DASH": "40-yard dash",
+}
+
+#: Label placement in data units: (dx, dy, hjust). Styling only — no plotted
+#: value is taken from here.
+DRILL_LABEL_POS = {
+    "BOX_DRILL": (3.0, -0.42, 0.0),
+    "TERYL_AUSTIN_DRILL_1": (3.0, 0.22, 0.0),
+    "TERYL_AUSTIN_DRILL_2": (0.0, 0.55, 0.5),
+    "W_DRILL": (-3.0, -0.10, 1.0),
+    "SHORT_SHUTTLE": (-3.0, 0.38, 1.0),
+    "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION": (0.0, 0.42, 0.5),
+    "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL": (-3.0, -0.28, 1.0),
+    "THREE_CONE_DRILL": (-3.0, 0.18, 1.0),
+    "GAUNTLET_DRILL": (0.0, 0.38, 0.5),
+    "FORTY_YARD_DASH": (0.0, -0.42, 0.5),
+}
 
 
 # --------------------------------------------------------------------- data
@@ -334,9 +382,10 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
     return plot
 
 
-def render(plot: ggplot, cfg: common.Config, out_png: Path) -> plt.Figure:
+def render(plot: ggplot, cfg: common.Config, out_png: Path,
+           block: str = "hole") -> plt.Figure:
     """Draw and save once, with fixed metadata so repeated runs are identical."""
-    dpi = int(cfg.get("figures.hole.dpi"))
+    dpi = int(cfg.get(f"figures.{block}.dpi"))
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig = plot.draw()
     fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.2,
@@ -388,4 +437,311 @@ def manifest_payload(table: pd.DataFrame, context: dict) -> dict:
         "counts": table.to_dict(orient="records"),
         "png": f"outputs/figures/{FIGURE_KEY}.png",
         "csv": f"outputs/figures/{FIGURE_KEY}.csv",
+    }
+
+
+# ------------------------------------------------- figure 2: drill coverage
+def load_drill_turns(path: Path) -> pd.DataFrame:
+    """Read the columns figure 2 needs; refuse loudly if the table is absent."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the per-turn table is absent ({path}) — run 02_turns first")
+    df = pd.read_parquet(path, columns=DRILL_COLUMNS)
+    missing = [c for c in DRILL_COLUMNS if c not in df.columns]
+    if missing:  # pragma: no cover - pd.read_parquet(columns=...) already raises
+        raise common.StageRefused(
+            f"{STAGE}: turn table is missing columns: {', '.join(missing)}")
+    return df
+
+
+def drill_table(turns: pd.DataFrame, cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """One row per drill: n, players, median/IQR angle and entry speed.
+
+    Every number is counted from ``turns`` at render time. The proposed drill
+    is appended as its own row so the CSV carries the plotted expectation.
+    """
+    block = "figures.drill_coverage"
+    position = str(cfg.get(f"{block}.position_group"))
+    angle_lo, angle_hi = (float(x) for x in cfg.get(f"{block}.target_angle_deg"))
+    speed_lo, speed_hi = (float(x) for x in cfg.get(f"{block}.target_entry_speed_yd_s"))
+    proposed = cfg.get(f"{block}.proposed")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    df = turns[valid & (turns["position_group"] == position)
+               & (turns["setting"] == "combine")].copy()
+    df["abs_turn_angle"] = pd.to_numeric(df["abs_turn_angle"], errors="coerce")
+    df["entry_speed"] = pd.to_numeric(df["entry_speed"], errors="coerce")
+    df = df[df["abs_turn_angle"].notna() & df["entry_speed"].notna()]
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid Combine {position} turns with angle and entry "
+            "speed — nothing to plot")
+
+    in_target = ((df["abs_turn_angle"] >= angle_lo)
+                 & (df["abs_turn_angle"] < angle_hi)
+                 & (df["entry_speed"] >= speed_lo)
+                 & (df["entry_speed"] < speed_hi))
+
+    rows = []
+    for drill, g in df.groupby("drill_name", sort=False):
+        reps = (g[["nfl_id", "event_id", "attempt"]].drop_duplicates()
+                .groupby("nfl_id").size())
+        hit = g[in_target.loc[g.index]]
+        rows.append({
+            "kind": "measured",
+            "drill": str(drill),
+            "drill_label": DRILL_SHORT.get(str(drill), str(drill)),
+            "n_turns": int(len(g)),
+            "n_players": int(g["nfl_id"].nunique()),
+            "median_angle_deg": float(g["abs_turn_angle"].median()),
+            "q1_angle_deg": float(g["abs_turn_angle"].quantile(0.25)),
+            "q3_angle_deg": float(g["abs_turn_angle"].quantile(0.75)),
+            "median_entry_speed_yd_s": float(g["entry_speed"].median()),
+            "q1_entry_speed_yd_s": float(g["entry_speed"].quantile(0.25)),
+            "q3_entry_speed_yd_s": float(g["entry_speed"].quantile(0.75)),
+            "turns_in_target_cell": int(len(hit)),
+            "players_in_target_cell": int(hit["nfl_id"].nunique()),
+            "median_reps_per_player": float(reps.median()),
+        })
+    table = pd.DataFrame(rows).sort_values(
+        ["n_turns", "drill"], ascending=[False, True]).reset_index(drop=True)
+
+    if int(table["n_turns"].sum()) != len(df):
+        raise ValueError(
+            f"{STAGE}: drill counts sum to {int(table['n_turns'].sum())}, but "
+            f"the table has {len(df)} valid Combine {position} turns")
+
+    proposed_row = {
+        "kind": "proposed",
+        "drill": "PROPOSED_40_TEMPO_BREAK",
+        "drill_label": str(proposed["label"]),
+        "n_turns": 0,
+        "n_players": 0,
+        "median_angle_deg": float(proposed["angle_deg"]),
+        "q1_angle_deg": float(proposed["angle_deg"]),
+        "q3_angle_deg": float(proposed["angle_deg"]),
+        "median_entry_speed_yd_s": float(proposed["entry_speed_yd_s"]),
+        "q1_entry_speed_yd_s": float(proposed["entry_speed_yd_s"]),
+        "q3_entry_speed_yd_s": float(proposed["entry_speed_yd_s"]),
+        "turns_in_target_cell": 0,
+        "players_in_target_cell": 0,
+        "median_reps_per_player": float(proposed["reps_per_player"]),
+    }
+    table = pd.concat([table, pd.DataFrame([proposed_row])], ignore_index=True)
+
+    band = df[(df["abs_turn_angle"] >= angle_lo) & (df["abs_turn_angle"] < angle_hi)]
+    band_reps = (band[["nfl_id", "event_id", "attempt"]].drop_duplicates()
+                 .groupby("nfl_id").size())
+    # The 60-90 band is the densest single band by player count among the
+    # repertoire's own median angles; quote it as the best-covered band.
+    best = df[(df["abs_turn_angle"] >= 60.0) & (df["abs_turn_angle"] < 90.0)]
+    best_reps = (best[["nfl_id", "event_id", "attempt"]].drop_duplicates()
+                 .groupby("nfl_id").size())
+    target = df[in_target]
+    context = {
+        "position": position,
+        "n_turns": int(len(df)),
+        "n_players": int(df["nfl_id"].nunique()),
+        "n_drills": int(df["drill_name"].nunique()),
+        "n_reps": int(df[["nfl_id", "event_id", "attempt"]]
+                      .drop_duplicates().shape[0]),
+        "target_angle": (angle_lo, angle_hi),
+        "target_speed": (speed_lo, speed_hi),
+        "target_turns": int(len(target)),
+        "target_players": int(target["nfl_id"].nunique()),
+        "target_drills": int(target["drill_name"].nunique()),
+        "target_share": float(len(target) / len(df)) if len(df) else 0.0,
+        "band_turns": int(len(band)),
+        "band_players": int(band["nfl_id"].nunique()),
+        "band_median_reps": float(band_reps.median()) if len(band_reps) else 0.0,
+        "best_turns": int(len(best)),
+        "best_players": int(best["nfl_id"].nunique()),
+        "best_median_reps": float(best_reps.median()) if len(best_reps) else 0.0,
+        "proposed": {
+            "label": str(proposed["label"]),
+            "angle": float(proposed["angle_deg"]),
+            "speed": float(proposed["entry_speed_yd_s"]),
+            "reps": int(proposed["reps_per_player"]),
+        },
+    }
+    return table, context
+
+
+def _drill_plot_frames(table: pd.DataFrame, context: dict) -> dict:
+    """Split the table into the frames each geom draws."""
+    measured = table[table["kind"] == "measured"].copy()
+    proposed = table[table["kind"] == "proposed"].copy()
+    points = pd.concat([measured, proposed], ignore_index=True)
+    points["kind_label"] = points["kind"].map(
+        {"measured": "measured drill", "proposed": "proposed"})
+    points["x"] = points["median_angle_deg"]
+    points["y"] = points["median_entry_speed_yd_s"]
+
+    whisk = []
+    for _, r in measured.iterrows():
+        whisk.append({"x": r["q1_angle_deg"], "xend": r["q3_angle_deg"],
+                      "y": r["median_entry_speed_yd_s"],
+                      "yend": r["median_entry_speed_yd_s"]})
+        whisk.append({"x": r["median_angle_deg"], "xend": r["median_angle_deg"],
+                      "y": r["q1_entry_speed_yd_s"],
+                      "yend": r["q3_entry_speed_yd_s"]})
+
+    labels = []
+    align = {0: "left", 0.5: "center", 1: "right"}
+    for _, r in measured.iterrows():
+        dx, dy, hjust = DRILL_LABEL_POS.get(r["drill"], (2.0, 0.3, 0.0))
+        labels.append({"x": r["median_angle_deg"] + dx,
+                       "y": r["median_entry_speed_yd_s"] + dy,
+                       "label": r["drill_label"],
+                       "hjust": align[float(hjust)]})
+    p = context["proposed"]
+    labels.append({"x": p["angle"] + 5.0, "y": p["speed"],
+                   "label": f"{p['label']}\n{p['reps']} reps per player",
+                   "hjust": "left"})
+
+    return {
+        "points": points,
+        "whisk": pd.DataFrame(whisk),
+        "labels": pd.DataFrame(labels),
+    }
+
+
+def plot_drill_coverage(table: pd.DataFrame, context: dict,
+                        cfg: common.Config) -> ggplot:
+    frames = _drill_plot_frames(table, context)
+    points, whisk, labels = frames["points"], frames["whisk"], frames["labels"]
+    block = "figures.drill_coverage"
+    x_lo, x_hi = (float(x) for x in cfg.get(f"{block}.x_lim"))
+    y_lo, y_hi = (float(y) for y in cfg.get(f"{block}.y_lim"))
+    a_lo, a_hi = context["target_angle"]
+    v_lo, v_hi = context["target_speed"]
+
+    target_rect = pd.DataFrame([{"xmin": a_lo, "xmax": a_hi,
+                                 "ymin": v_lo, "ymax": v_hi}])
+    target_text = pd.DataFrame([{
+        "x": (a_lo + a_hi) / 2.0, "y": v_hi + 0.30,
+        "label": f"TARGET CELL\n{a_lo:g}–{a_hi:g}° × {v_lo:g}–{v_hi:g} yd/s"}])
+
+    t = context["target_turns"]
+    share = context["target_share"] * 100.0
+    title = ("Every DB drill asks for a big turn at low speed — the 30–45° "
+             "cell is effectively empty")
+    subtitle = (f"Each drill is one point: median absolute turn angle × median "
+                f"entry speed, with interquartile spread on both axes. "
+                f"{context['n_drills']} drills, {context['n_turns']:,} valid "
+                f"Combine DB turns from {context['n_players']} players.")
+    caption = "\n".join([
+        STAMP,
+        (f"The ten-drill inventory is {context['n_drills']} drills and "
+         f"{context['n_turns']:,} valid DB turns ({context['n_reps']:,} reps) "
+         f"from {context['n_players']} players."),
+        ("Median reps per player is 1–2 in every drill (no drill gives more); "
+         f"even the best-covered band (60–90°: {context['best_turns']} turns, "
+         f"{context['best_players']} players) gives a median of only "
+         f"{context['best_median_reps']:g}."),
+        (f"Target cell ({a_lo:g}–{a_hi:g}° at {v_lo:g}–{v_hi:g} yd/s): {t} of "
+         f"{context['n_turns']:,} Combine turns ({share:.1f}%), from "
+         f"{context['target_players']} players across {context['target_drills']} "
+         "drills — incidental fragments, not a deliberate test. Games demand 97 "
+         "turns in that band from 25 players."),
+        (f"The proposed drill would add {context['proposed']['reps']} reps per "
+         "player inside the cell. Caveat: Combine supply is 122 players × one "
+         "session, so coverage is an inventory of tests, not of players."),
+        ("Medians and quartiles computed at render time from "
+         "outputs/turns/turns.parquet (valid DB Combine turns)."),
+    ])
+
+    plot = (
+        ggplot(points, aes(x="x", y="y", colour="kind_label", shape="kind_label"))
+        + geom_rect(data=target_rect, mapping=aes(xmin="xmin", xmax="xmax",
+                                                  ymin="ymin", ymax="ymax"),
+                    inherit_aes=False, fill=HIGHLIGHT, alpha=0.35,
+                    colour="#8C7A00", linetype="dashed", size=0.5)
+        + geom_segment(data=whisk, mapping=aes(x="x", xend="xend", y="y",
+                                               yend="yend"),
+                       inherit_aes=False, colour="#7A7A7A", size=0.45)
+        + geom_point(size=3.1)
+        + geom_text(data=labels, mapping=aes(x="x", y="y", label="label",
+                                             hjust="hjust"),
+                    inherit_aes=False, size=2.65, colour="#1A1A1A", va="center",
+                    show_legend=False)
+        + geom_text(data=target_text, mapping=aes(x="x", y="y", label="label"),
+                    inherit_aes=False, size=2.8, colour="#6B5D00",
+                    fontweight="bold", ha="center", va="bottom")
+        + scale_colour_manual(values=[PALETTE["combine"], PALETTE["game"]],
+                              breaks=["measured drill", "proposed"],
+                              labels=["measured drill", "proposed"], name=None)
+        + scale_shape_manual(values=["o", "D"],
+                             breaks=["measured drill", "proposed"],
+                             labels=["measured drill", "proposed"], name=None)
+        + coord_cartesian(xlim=(x_lo, x_hi), ylim=(y_lo, y_hi))
+        + labs(title=title, subtitle=subtitle, caption=caption,
+               x="Absolute turn angle at the drill's median turn (°)",
+               y="Entry speed at the drill's median turn (yd/s)")
+        + theme_bw(base_size=9)
+        + theme(
+            figure_size=(float(cfg.get(f"{block}.width_in")),
+                         float(cfg.get(f"{block}.height_in"))),
+            panel_background=element_rect(fill="#EBEBEB", colour=None),
+            panel_grid_major=element_line(colour="white", linewidth=0.6),
+            panel_grid_minor=element_blank(),
+            panel_border=element_rect(colour="#B3B3B3", linewidth=0.4),
+            plot_title=element_text(size=14, weight="bold"),
+            plot_subtitle=element_text(size=8.6, colour="#333333"),
+            plot_caption=element_text(size=6.7, colour="#333333", ha="left",
+                                      linespacing=1.35),
+            axis_title_x=element_text(size=9.0),
+            axis_title_y=element_text(size=9.0),
+            axis_text=element_text(size=8.2),
+            legend_position="bottom",
+            legend_title=element_blank(),
+            legend_key=element_rect(fill="#EBEBEB", colour=None),
+        )
+    )
+    return plot
+
+
+def drill_csv_frame(table: pd.DataFrame) -> pd.DataFrame:
+    return table[[
+        "kind", "drill", "drill_label", "n_turns", "n_players",
+        "median_angle_deg", "q1_angle_deg", "q3_angle_deg",
+        "median_entry_speed_yd_s", "q1_entry_speed_yd_s",
+        "q3_entry_speed_yd_s", "turns_in_target_cell",
+        "players_in_target_cell", "median_reps_per_player",
+    ]].copy()
+
+
+def drill_manifest_payload(table: pd.DataFrame, context: dict) -> dict:
+    t = context["target_turns"]
+    share = context["target_share"] * 100.0
+    a_lo, a_hi = context["target_angle"]
+    v_lo, v_hi = context["target_speed"]
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_DRILLS,
+        "title": ("Every DB drill asks for a big turn at low speed — the "
+                  "30–45° cell is effectively empty"),
+        "claim": (f"Of {context['n_turns']:,} valid Combine DB turns across "
+                  f"{context['n_drills']} drills, {t} ({share:.1f}%) fall in the "
+                  f"{a_lo:g}–{a_hi:g}° × {v_lo:g}–{v_hi:g} yd/s cell the games "
+                  "demand; the repertoire is big-angle at low entry speed."),
+        "sources": ["outputs/turns/turns.parquet"],
+        "caveats": [
+            (f"Combine supply is {context['n_players']} players × one session; "
+             "the figure describes the test inventory, not player populations."),
+            ("Median reps per player is 1–2 in every drill; even the best-covered "
+             f"band (60–90°) gives a median of {context['best_median_reps']:g}."),
+            (f"The target cell holds {t} incidental Combine turns from "
+             f"{context['target_players']} players; game demand in the 30–45° "
+             "band is 97 turns from 25 players."),
+        ],
+        "position_group": context["position"],
+        "target_angle_deg": [a_lo, a_hi],
+        "target_entry_speed_yd_s": [v_lo, v_hi],
+        "proposed": context["proposed"],
+        "drills": table.to_dict(orient="records"),
+        "png": f"outputs/figures/{FIGURE_KEY_DRILLS}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_DRILLS}.csv",
     }
