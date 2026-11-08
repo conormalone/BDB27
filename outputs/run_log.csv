@@ -80,3 +80,4 @@ LINE 4:                    sum(CASE WHEN pp.time_to_pressure IS NULL THEN 1 ELSE
 2026-11-07T22:16:45Z,03_envelope,sample,PLACEHOLDER_SAMPLE,OK,149.182,1360.2,8425,settings=3 players=1170
 2026-11-07T22:16:45Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,0.0,1360.2,0,"checkpoint reused, nothing rebuilt"
 2026-11-07T22:17:46Z,04_demand_coverage,sample,PLACEHOLDER_SAMPLE,OK,2.168,255.4,4615,groups=5 players=508 cards=3
+2026-11-07T23:57:08Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,1.214,183.5,3441,fig_the_hole: bands=7 valid_DB=3441

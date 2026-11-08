@@ -330,6 +330,29 @@ turn_coverage:
     turn_angle: [0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0]
     speed_band: [0.0, 2.0, 4.0, 6.0, 8.0, 12.0]
 
+  figures:
+    # Stage 06 reporting bands for figure 1 ("The Hole"). DESIGN CHOICE,
+    # recorded as D164 in notes/decisions.md.
+    #
+    # These are REPORTING bands over the turn table, not demand-bin edges:
+    # `bins.turn_angle` (30-degree spacing) still governs Stage 03/04. The 45
+    # edge is added here because (a) the case isolates the 30-45 degree band
+    # and 45 is absent from bins.turn_angle, and (b) 30/45/60/90/120/150/180
+    # keeps every reporting band wide enough to read at a glance. Bands are
+    # left-closed; turns at or above the last edge form a separate overflow
+    # class labelled ">180" (the detector returns absolute angles above 180
+    # for wrap-around turns, so that class is not empty).
+    hole:
+      position_group: DB
+      bands:
+        turn_angle_deg: [30, 45, 60, 90, 120, 150, 180]
+        overflow_label: ">180"
+      # Fixed render size: width >= 1500 px at this DPI, readable in a
+      # Kaggle writeup. Fixed values keep the PNG reproducible.
+      dpi: 150
+      width_in: 11.5
+      height_in: 7.6
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

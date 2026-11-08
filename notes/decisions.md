@@ -5835,3 +5835,19 @@ reader from mistaking the subset for the universe.
 30–45° = 97 and 45–60° = 229 over all DB game turns, matching the table at the
 top of `TASK.md`. `notes/phase4-demand-coverage.md` §Turn universe;
 `outputs/demand_coverage/demand_map.csv` carries `snap_type_scope` per row.
+
+## D164 — Figure 1 gets its own reporting bands, adding the 45° edge · 2026-11-07
+**Decision.** Figure 1 ("The Hole", Stage 06) reads its bands from
+`figures.hole.bands.turn_angle_deg = [30, 45, 60, 90, 120, 150, 180]` with a
+separate `>= 180` overflow class labelled `>180`. This is a NEW reporting-band
+list, not an edit to `bins.turn_angle` (which keeps 30° spacing and still
+governs Stages 03–04). Bands are left-closed, so 45.0 belongs to 45–60 and 180.0
+to the overflow class. The figure is DB-only (`figures.hole.position_group`).
+**Why.** `bins.turn_angle` lacks 45, and the case isolates the 30–45° band; a
+figure that cannot separate 30–45 from 45–60 cannot show the hole. Changing the
+shared demand bins would silently move Stage 03/04 results, so the reporting
+bands are separate by design. The 45° edge is a presentation choice made before
+looking at this figure's counts, not a tuned cut.
+**Evidence.** `config.yaml` §`figures.hole`; `src/bdb27/figures.py`
+(`band_table` refuses to plot if any valid turn falls outside the bands);
+`tests/test_figures_stage.py::test_band_edges_come_from_config`.

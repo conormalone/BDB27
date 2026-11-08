@@ -58,3 +58,6 @@ Thumbs.db
 !outputs/thresholds.json
 # Stage timing / peak-RAM log. Small, and part of the handoff evidence.
 !outputs/run_log.csv
+# Figure artefacts: the PNG is not useful without the numbers behind it.
+!outputs/figures/*.csv
+!outputs/figures/*.json

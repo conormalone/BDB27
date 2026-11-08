@@ -19,9 +19,10 @@ def run(stage: str, *args, cwd=ROOT):
                           capture_output=True, text=True, cwd=str(cwd))
 
 
-# 03_envelope and 04_demand_coverage are implemented; they are covered by
-# tests/test_envelope_stage.py and tests/test_demand_coverage_stage.py.
-@pytest.mark.parametrize("stage", ["05_validate", "06_figures"])
+# 03_envelope, 04_demand_coverage and 06_figures are implemented; they are
+# covered by tests/test_envelope_stage.py, tests/test_demand_coverage_stage.py
+# and tests/test_figures_stage.py.
+@pytest.mark.parametrize("stage", ["05_validate"])
 def test_stub_is_loud_and_writes_nothing(stage, tmp_path):
     before = set((ROOT / "outputs").rglob("*"))
     ckpt = ROOT / "data" / "interim" / "checkpoints"
