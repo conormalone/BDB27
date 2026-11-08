@@ -293,6 +293,8 @@ def rendered(tmp_path_factory):
             "ap_csv": out / "fig_all_positions.csv",
             "ml_png": out / "fig_measurement_limits.png",
             "ml_csv": out / "fig_measurement_limits.csv",
+            "gh_png": out / "fig_gap_honest.png",
+            "gh_csv": out / "fig_gap_honest.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -786,7 +788,7 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
     assert set(man["figures"]) == {"fig_the_hole", "fig_drill_coverage",
                                    "fig_before_after", "fig_drill_schematic",
                                    "fig_all_positions",
-                                   "fig_measurement_limits"}
+                                   "fig_measurement_limits", "fig_gap_honest"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1315,11 +1317,12 @@ def test_measurement_limits_detector_numbers_have_a_stored_source():
         assert token in gate, f"{token} missing from the audit gate"
 
 
-def test_measurement_limits_stage_06_renders_all_six(rendered):
+def test_measurement_limits_stage_06_renders_all_seven(rendered):
     man = json.loads(rendered["manifest"].read_text())
     assert set(man["figures"]) == {
         "fig_the_hole", "fig_drill_coverage", "fig_before_after",
-        "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits"}
+        "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits",
+        "fig_gap_honest"}
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -1362,3 +1365,240 @@ def test_measurement_limits_checks_can_fail(rendered):
     empty.write_bytes(b"")
     with pytest.raises(AssertionError):
         _check_png(empty)
+
+
+# ------------------- figure 7: how big is the gap, really? (the exposure attack)
+GH_KEY = "fig_gap_honest"
+
+
+def _gh_subset(turns: pd.DataFrame, cfg, universe: str) -> pd.DataFrame:
+    """The turn table filtered exactly as one configured universe defines it."""
+    spec = cfg.get(f"figures.gap_honest.universes.{universe}")
+    valid = turns["valid"].fillna(False).astype(bool)
+    position = str(cfg.get("figures.gap_honest.position_group"))
+    df = turns[valid & (turns["position_group"] == position)].copy()
+    floor = spec.get("exclude_angles_at_or_above_deg")
+    if floor is not None:
+        df = df[df["abs_turn_angle"] < float(floor)]
+    snaps = [str(s) for s in (spec.get("game_snap_types") or [])]
+    if snaps:
+        game = df["setting"].astype(str) == "game"
+        df = df[~game | df["snap_type"].astype(str).isin(snaps)]
+    return df
+
+
+def _gh_expected(turns: pd.DataFrame, cfg, universe: str,
+                 setting: str) -> tuple[int, int, int, int]:
+    """(band count, universe turns, players, player-appearances)."""
+    df = _gh_subset(turns, cfg, universe)
+    part = df[df["setting"].astype(str) == setting]
+    lo, hi = [float(x) for x in cfg.get("figures.gap_honest.band_deg")]
+    n_band = int(((part["abs_turn_angle"] >= lo)
+                  & (part["abs_turn_angle"] < hi)).sum())
+    if setting == "game":
+        appearances = int(part.groupby(["nfl_id", "game_id"]).ngroups)
+    else:
+        appearances = int(part["nfl_id"].nunique())
+    return n_band, int(len(part)), int(part["nfl_id"].nunique()), appearances
+
+
+def _check_gh_csv(csv_df: pd.DataFrame, turns: pd.DataFrame, cfg) -> None:
+    """Every count, denominator and ratio reconciles to the turn table."""
+    from bdb27 import figures
+
+    metrics = {panel: metric for panel, _, metric in figures.GAP_PANELS}
+    assert set(csv_df["universe"]) == {"all_valid", "stage04"}
+    assert csv_df.loc[csv_df["is_headline"], "universe"].unique().tolist() == [
+        "all_valid"], "exactly one universe is the headline"
+    for universe in ("all_valid", "stage04"):
+        part = csv_df[csv_df["universe"] == universe]
+        for panel, metric in metrics.items():
+            rows = part[part["panel"] == panel]
+            values = {}
+            for setting in ("combine", "game"):
+                row = rows[rows["setting"] == setting]
+                assert len(row) == 1, f"{universe} {panel} {setting}"
+                row = row.iloc[0]
+                n_band, n_turns, _, n_app = _gh_expected(
+                    turns, cfg, universe, setting)
+                assert int(row["count"]) == n_band
+                assert int(row["n_players"]) > 0
+                assert int(row["n_appearances"]) == n_app
+                denominator = n_turns if metric == "share_pct" else n_app
+                assert int(row["denominator"]) == denominator, (
+                    f"{universe} {panel} {setting} denominator")
+                expected = {"count": float(n_band),
+                            "share_pct": 100.0 * n_band / n_turns,
+                            "per_appearance": n_band / n_app}[metric]
+                assert np.isclose(float(row["value"]), expected, atol=1e-12)
+                assert str(row["printed_value"]) == figures._gap_value_text(
+                    panel, expected)
+                values[setting] = row
+            ratio = rows[rows["setting"] == "ratio"]
+            assert len(ratio) == 1
+            ratio = ratio.iloc[0]
+            want = float(values["game"]["value"]) / float(
+                values["combine"]["value"])
+            assert np.isclose(float(ratio["ratio"]), want, atol=1e-12)
+            assert np.isclose(float(ratio["value"]), want, atol=1e-12)
+            assert np.isclose(float(ratio["ratio_numerator"]),
+                              float(values["game"]["value"]), atol=1e-12)
+            assert np.isclose(float(ratio["ratio_denominator"]),
+                              float(values["combine"]["value"]), atol=1e-12)
+            expression = str(ratio["ratio_expression"])
+            assert str(values["game"]["printed_value"]) in expression
+            assert str(values["combine"]["printed_value"]) in expression
+
+
+def test_gap_honest_png_and_csv_exist(rendered):
+    _check_png(rendered["gh_png"])
+    assert rendered["gh_csv"].exists()
+    csv_df = pd.read_csv(rendered["gh_csv"])
+    assert len(csv_df) == 2 * 3 * 3, "2 universes x 3 panels x 3 rows"
+
+
+def test_gap_honest_counts_reconcile_for_both_universes(rendered):
+    import yaml as _yaml
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    _check_gh_csv(pd.read_csv(rendered["gh_csv"]), turns, cfg)
+    raw = _yaml.safe_load(rendered["cfg"].read_text())
+    assert raw["turn_coverage"]["figures"]["gap_honest"]["headline_universe"] \
+        == "all_valid"
+
+
+def test_gap_honest_ratios_equal_printed_arithmetic(rendered):
+    """Each printed expression contains its own two numbers and its ratio."""
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    csv_df = pd.read_csv(rendered["gh_csv"])
+    for _, row in csv_df[csv_df["setting"] == "ratio"].iterrows():
+        part = csv_df[(csv_df["universe"] == row["universe"])
+                      & (csv_df["panel"] == row["panel"])]
+        combine = part[part["setting"] == "combine"].iloc[0]
+        game = part[part["setting"] == "game"].iloc[0]
+        want = float(game["value"]) / float(combine["value"])
+        assert f"{want:.2f}×" in str(row["ratio_expression"]) or \
+            f"{want:.1f}×" in str(row["ratio_expression"])
+        assert str(combine["printed_value"]) in str(row["ratio_expression"])
+        assert str(game["printed_value"]) in str(row["ratio_expression"])
+
+
+def test_gap_honest_never_mixes_universes_in_a_panel(rendered):
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = figures.gap_universe_table(turns, cfg)
+    frame, ratio_rows = figures.gap_plot_frame(table, context)
+    assert set(frame["universe"]) == {context["headline"]}
+    assert set(ratio_rows["universe"]) == {context["headline"]}
+    # Each sensitivity ratio is computed inside its own universe's two rows.
+    for universe in context["universes"]:
+        part = table[(table["universe"] == universe)
+                     & (table["setting"] != "ratio")]
+        for panel in part["panel"].astype(str).unique():
+            sub = part[part["panel"].astype(str) == panel]
+            vals = dict(zip(sub["setting"], sub["value"]))
+            ratio = table[(table["universe"] == universe)
+                          & (table["panel"].astype(str) == panel)
+                          & (table["setting"] == "ratio")].iloc[0]
+            assert np.isclose(float(ratio["ratio"]),
+                              float(vals["game"]) / float(vals["combine"]))
+
+
+def test_gap_honest_png_is_wide_and_two_runs_are_identical(rendered):
+    _check_png(rendered["gh_png"])
+    first = hashlib.sha256(rendered["gh_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    second = hashlib.sha256(rendered["gh_png"].read_bytes()).hexdigest()
+    assert first == second
+
+
+def test_gap_honest_leaves_figures_1_to_6_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png", "ap_png", "ml_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k], (
+            f"{k} changed: figure 7 must not alter figures 1-6")
+
+
+def test_gap_honest_caption_states_the_headline_and_the_sensitivity(rendered):
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = figures.gap_universe_table(turns, cfg)
+    plot = figures.plot_gap_honest(table, context, cfg)
+    text = " ".join((plot.labels.get("title", "") + " "
+                     + plot.labels.get("subtitle", "") + " "
+                     + plot.labels.get("caption", "")).split())
+    assert "Headline universe:" in text
+    assert "All valid DB turns" in text
+    assert "SENSITIVITY" in text
+    assert "COVERAGE snaps only" in text
+    assert "Never mixed with the headline panels" in text
+    assert "exposure-confounded" in text
+    frame, _ = figures.gap_plot_frame(table, context)
+    strips = " ".join(str(s) for s in frame["strip"].unique())
+    for panel, _, metric in figures.GAP_PANELS:
+        expression = figures._gap_ratio_text(
+            panel, context["universes"]["all_valid"]["values"]["game"][metric],
+            context["universes"]["all_valid"]["values"]["combine"][metric])
+        assert expression.replace(" ", "") in strips.replace(" ", "")
+
+
+def test_gap_honest_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][GH_KEY]
+    assert fig["figure"] == GH_KEY
+    assert fig["headline_universe"] == "all_valid"
+    assert set(fig["universes"]) == {"all_valid", "stage04"}
+    assert fig["universes"]["all_valid"]["is_headline"] is True
+    assert fig["universes"]["stage04"]["is_headline"] is False
+    assert len(fig["panels"]) == 3
+    assert {p["panel"] for p in fig["panels"]} == {
+        "a_raw_counts", "b_share", "c_per_appearance"}
+    assert fig["stamp"] == STAMP
+    assert fig["png"].endswith("fig_gap_honest.png")
+
+
+def test_gap_honest_refuses_a_headline_not_in_the_universes(rendered):
+    from bdb27 import common, figures
+    raw = yaml.safe_load(rendered["cfg"].read_text())
+    raw["turn_coverage"]["figures"]["gap_honest"][
+        "headline_universe"] = "not_a_universe"
+    bad = rendered["tmp"] / "config_gh_bad.yaml"
+    bad.write_text(yaml.safe_dump(raw, sort_keys=False))
+    cfg = common.load_config(bad)
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    with pytest.raises(common.StageRefused):
+        figures.gap_universe_table(turns, cfg)
+
+
+def test_gap_honest_checks_can_fail(rendered):
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    good = pd.read_csv(rendered["gh_csv"])
+    _check_gh_csv(good, turns, cfg)  # sanity: passes on the real file
+
+    bad = good.copy()
+    idx = bad.index[(bad["universe"] == "all_valid")
+                    & (bad["panel"] == "b_share")
+                    & (bad["setting"] == "game")][0]
+    bad.loc[idx, "count"] = int(bad.loc[idx, "count"]) + 1
+    with pytest.raises(AssertionError):
+        _check_gh_csv(bad, turns, cfg)
+
+    mixed = good.copy()
+    idx = mixed.index[(mixed["universe"] == "stage04")
+                      & (mixed["panel"] == "a_raw_counts")
+                      & (mixed["setting"] == "ratio")][0]
+    mixed.loc[idx, "ratio"] = float(mixed.loc[idx, "ratio"]) + 0.5
+    with pytest.raises(AssertionError):
+        _check_gh_csv(mixed, turns, cfg)

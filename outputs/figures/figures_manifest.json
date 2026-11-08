@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "733f31c2b4a139b3",
-  "generated_utc": "2026-11-08T13:50:51Z",
+  "config_sha": "c1b562aee086cea7",
+  "generated_utc": "2026-11-08T14:16:46Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -3028,6 +3028,133 @@
       ],
       "png": "outputs/figures/fig_measurement_limits.png",
       "csv": "outputs/figures/fig_measurement_limits.csv",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_gap_honest": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_gap_honest",
+      "title": "How big is the gap, really? Raw counts, own-turn share and turns per player-appearance",
+      "claim": "The 4-vs-97 raw count is a 24.25\u00d7 ratio inflated by exposure (122 Combine players measured once vs 33 game players over 299 player-games); on each setting's own turns the gap is 4.29% vs 0.34% = 12.6\u00d7, and per player-appearance 0.324 vs 0.033 = 9.9\u00d7 \u2014 still damning.",
+      "sources": [
+        "outputs/turns/turns.parquet"
+      ],
+      "position_group": "DB",
+      "band_deg": [
+        30.0,
+        45.0
+      ],
+      "headline_universe": "all_valid",
+      "headline_reason": "The headline keeps figure 1's population \u2014 all valid DB turns, angles >=180 kept as their own class \u2014 so the correction describes the same turns as the 4-vs-97 claim it answers.",
+      "panels": [
+        {
+          "panel": "a_raw_counts",
+          "label": "a. Raw counts",
+          "metric": "count",
+          "value_printed": "97",
+          "ratio": 24.25,
+          "ratio_expression": "97 \u00f7 4 = 24.25\u00d7"
+        },
+        {
+          "panel": "b_share",
+          "label": "b. Share of that setting's own turns",
+          "metric": "share_pct",
+          "value_printed": "4.29%",
+          "ratio": 12.639588859416447,
+          "ratio_expression": "4.29% \u00f7 0.34% = 12.6\u00d7"
+        },
+        {
+          "panel": "c_per_appearance",
+          "label": "c. Turns per player-appearance",
+          "metric": "per_appearance",
+          "value_printed": "0.324",
+          "ratio": 9.894648829431437,
+          "ratio_expression": "0.324 \u00f7 0.033 = 9.9\u00d7"
+        }
+      ],
+      "universes": {
+        "all_valid": {
+          "label": "All valid DB turns (angles >=180 kept as their own class)",
+          "is_headline": true,
+          "n_band": {
+            "combine": 4,
+            "game": 97
+          },
+          "n_turns": {
+            "combine": 1179,
+            "game": 2262
+          },
+          "n_players": {
+            "combine": 122,
+            "game": 33
+          },
+          "n_appearances": {
+            "combine": 122,
+            "game": 299
+          },
+          "values": {
+            "combine": {
+              "count": 4.0,
+              "share_pct": 0.33927056827820185,
+              "per_appearance": 0.03278688524590164
+            },
+            "game": {
+              "count": 97.0,
+              "share_pct": 4.288240495137047,
+              "per_appearance": 0.32441471571906355
+            }
+          },
+          "ratios": {
+            "a_raw_counts": 24.25,
+            "b_share": 12.639588859416447,
+            "c_per_appearance": 9.894648829431437
+          }
+        },
+        "stage04": {
+          "label": "Stage-04 universe (game COVERAGE snaps only; angles >=180 excluded as wrap artefacts)",
+          "is_headline": false,
+          "n_band": {
+            "combine": 4,
+            "game": 41
+          },
+          "n_turns": {
+            "combine": 1049,
+            "game": 1017
+          },
+          "n_players": {
+            "combine": 122,
+            "game": 25
+          },
+          "n_appearances": {
+            "combine": 122,
+            "game": 199
+          },
+          "values": {
+            "combine": {
+              "count": 4.0,
+              "share_pct": 0.3813155386081983,
+              "per_appearance": 0.03278688524590164
+            },
+            "game": {
+              "count": 41.0,
+              "share_pct": 4.031465093411996,
+              "per_appearance": 0.20603015075376885
+            }
+          },
+          "ratios": {
+            "a_raw_counts": 10.25,
+            "b_share": 10.572517207472961,
+            "c_per_appearance": 6.283919597989949
+          }
+        }
+      },
+      "caveats": [
+        "The raw count is exposure-confounded: one Combine session per player versus many player-games per game player. Panels b and c divide by each setting's own exposure and are the honest comparison.",
+        "The sensitivity universe applies the stage-04 scope to both settings \u2014 game COVERAGE snaps only and angles >=180 excluded as wrap artefacts \u2014 and is shown as a labelled note, never mixed with the headline inside a panel.",
+        "Counts, denominators and ratios are recomputed at render time from outputs/turns/turns.parquet; no number is hard-coded."
+      ],
+      "png": "outputs/figures/fig_gap_honest.png",
+      "csv": "outputs/figures/fig_gap_honest.csv",
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }

@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-6.
+"""Stage 06 — figures 1-7.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -10,6 +10,10 @@
   6. "Measurement limits" — why per-player ranking is not supported: variance
                           components at the boundary, and the reversal zone
                           that is not physical capacity.
+  7. "How big is the gap, really?" — the 4-vs-97 count answered three ways:
+                          raw counts, each setting's own share, and turns per
+                          player-appearance, with the stricter stage-04
+                          population as a labelled sensitivity note.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -202,6 +206,21 @@ def main(argv=None) -> int:
         ml_payload["stamp"] = figures.STAMP
         _write_manifest(ml_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 7: how big is the gap, really? (the exposure attack)
+        gh_table, gh_context = figures.gap_universe_table(turns, cfg)
+        gh_csv = figures.gap_honest_csv_frame(gh_table)
+        gh_png = outdir / f"{figures.FIGURE_KEY_GAP_HONEST}.png"
+        gh_csv_path = outdir / f"{figures.FIGURE_KEY_GAP_HONEST}.csv"
+        common.write_csv(gh_csv, gh_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_GAP_HONEST})
+        gh_plot = figures.plot_gap_honest(gh_table, gh_context, cfg)
+        figures.render(gh_plot, cfg, gh_png, block="gap_honest")
+        gh_payload = figures.gap_honest_manifest_payload(
+            gh_table, gh_context, cfg)
+        gh_payload["stamp"] = figures.STAMP
+        _write_manifest(gh_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -223,13 +242,18 @@ def main(argv=None) -> int:
                         f"{figures.FIGURE_KEY_MEASUREMENT_LIMITS}: "
                         f"components={ml_lctx['n_components']} "
                         f"at_boundary={ml_lctx['n_at_boundary']} "
-                        f"turns={ml_rctx['n_turns']} ")
+                        f"turns={ml_rctx['n_turns']}; "
+                        f"{figures.FIGURE_KEY_GAP_HONEST}: "
+                        f"headline={gh_context['headline']} "
+                        f"ratios="
+                        f"{gh_context['universes'][gh_context['headline']]['ratios']} ")
 
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
           f"{ap_png.name}, {ap_csv_path.name}, "
           f"{ml_png.name}, {ml_csv_path.name}, "
+          f"{gh_png.name}, {gh_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -238,7 +262,8 @@ def main(argv=None) -> int:
           f"{ap_context['n_turns']} valid turns across "
           f"{len(ap_context['positions'])} positions; "
           f"{ml_lctx['n_at_boundary']} of {ml_lctx['n_components']} variance "
-          f"components at the boundary)")
+          f"components at the boundary; figure 7 headline "
+          f"{gh_context['headline']})")
     return 0
 
 

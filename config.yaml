@@ -486,6 +486,32 @@ turn_coverage:
       width_in: 13.2
       height_in: 8.6
 
+    # Stage 06 figure 7 ("How big is the gap, really?"). The four-way panel
+    # answers the exposure attack on the 4-vs-97 headline: raw counts, each
+    # setting's own share, and turns per player-appearance. The headline keeps
+    # figure 1's population (all valid DB turns, >=180 kept as its own class)
+    # so it describes the same turns as the claim it corrects. The stricter
+    # stage-04 population is a labelled sensitivity note and is never mixed
+    # with the headline inside a panel.
+    gap_honest:
+      position_group: DB
+      band_deg: [30, 45]
+      headline_universe: all_valid
+      universes:
+        all_valid:
+          label: "All valid DB turns (angles >=180 kept as their own class)"
+          game_snap_types: []
+          exclude_angles_at_or_above_deg: null
+        stage04:
+          label: >-
+            Stage-04 universe (game COVERAGE snaps only; angles >=180 excluded
+            as wrap artefacts)
+          game_snap_types: [COVERAGE]
+          exclude_angles_at_or_above_deg: 180.0
+      dpi: 150
+      width_in: 14.5
+      height_in: 7.4
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

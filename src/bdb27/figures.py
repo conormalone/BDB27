@@ -36,6 +36,7 @@ from plotnine import (
     element_rect,
     element_text,
     facet_wrap,
+    geom_blank,
     geom_col,
     geom_point,
     geom_rect,
@@ -67,6 +68,7 @@ FIGURE_KEY_DRILLS = "fig_drill_coverage"
 FIGURE_KEY_BEFORE_AFTER = "fig_before_after"
 FIGURE_KEY_ALL_POSITIONS = "fig_all_positions"
 FIGURE_KEY_MEASUREMENT_LIMITS = "fig_measurement_limits"
+FIGURE_KEY_GAP_HONEST = "fig_gap_honest"
 
 #: Figure 3 needs only the grid coordinates and the player identity.
 SUPPLY_COLUMNS = [
@@ -2845,3 +2847,461 @@ def measurement_limits_manifest_payload(left: pd.DataFrame, right: pd.DataFrame,
         "png": f"outputs/figures/{FIGURE_KEY_MEASUREMENT_LIMITS}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_MEASUREMENT_LIMITS}.csv",
     }
+
+
+# ------------- figure 7: how big is the gap, really? (the exposure attack)
+#: The three panels, in reading order. Each is one metric over the same two
+#: settings; no panel ever mixes the headline universe with the sensitivity
+#: universe.
+GAP_PANELS = [
+    ("a_raw_counts", "a. Raw counts", "count"),
+    ("b_share", "b. Share of that setting's own turns", "share_pct"),
+    ("c_per_appearance", "c. Turns per player-appearance", "per_appearance"),
+]
+
+
+def _gap_value_text(panel: str, value: float) -> str:
+    """How each panel's value is printed on the image and in the CSV."""
+    if panel == "a_raw_counts":
+        return f"{int(round(value)):,}"
+    if panel == "b_share":
+        return f"{value:.2f}%"
+    return f"{value:.3f}"
+
+
+def _gap_ratio_text(panel: str, game_value: float,
+                    combine_value: float) -> str:
+    """The ratio *with the two numbers it was computed from*, as printed."""
+    if combine_value <= 0:
+        raise common.StageRefused(
+            f"{STAGE}: cannot print a ratio from a zero Combine value")
+    ratio = game_value / combine_value
+    if panel == "a_raw_counts":
+        return (f"{int(round(game_value)):,} ÷ "
+                f"{int(round(combine_value)):,} = {ratio:.2f}×")
+    if panel == "b_share":
+        return (f"{game_value:.2f}% ÷ {combine_value:.2f}% = "
+                f"{ratio:.1f}×")
+    return f"{game_value:.3f} ÷ {combine_value:.3f} = {ratio:.1f}×"
+
+
+def gap_universe_table(turns: pd.DataFrame,
+                       cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """Both defensible game populations, each computed on its own terms.
+
+    The headline population is configured (``headline_universe``) and stays
+    figure 1's: all valid DB turns, angles >=180 kept as their own class.
+    The stricter population applies the stage-04 scope to *both* settings —
+    game COVERAGE snaps only, angles >=180 excluded as wrap artefacts — so a
+    sensitivity ratio never mixes one setting's population with the other's.
+
+    Every count is recomputed here from the turn table; nothing is hard-coded.
+    """
+    block = "figures.gap_honest"
+    position = str(cfg.get(f"{block}.position_group"))
+    lo, hi = [float(x) for x in cfg.get(f"{block}.band_deg")]
+    universes = cfg.get(f"{block}.universes") or {}
+    headline = str(cfg.get(f"{block}.headline_universe"))
+    if headline not in universes:
+        raise common.StageRefused(
+            f"{STAGE}: headline_universe {headline!r} is not one of the "
+            f"configured universes {sorted(universes)}")
+    if len(universes) < 2:
+        raise common.StageRefused(
+            f"{STAGE}: figure 7 needs the headline universe and at least one "
+            "sensitivity universe")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    df = turns[valid & (turns["position_group"] == position)].copy()
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} turns — nothing to plot")
+    df["setting"] = df["setting"].astype(str)
+    df["abs_turn_angle"] = pd.to_numeric(df["abs_turn_angle"], errors="coerce")
+
+    rows: list[dict] = []
+    contexts: dict[str, dict] = {}
+    for name, spec in universes.items():
+        name = str(name)
+        sub = df.copy()
+        floor = spec.get("exclude_angles_at_or_above_deg")
+        if floor is not None:
+            sub = sub[sub["abs_turn_angle"] < float(floor)]
+        snaps = [str(s) for s in (spec.get("game_snap_types") or [])]
+        if snaps:
+            # Snap-type scope applies to game turns only; Combine drills carry
+            # no player_play snap taxonomy.
+            is_game = (sub["setting"] == "game").to_numpy()
+            keep = sub["snap_type"].astype(str).isin(snaps).to_numpy()
+            sub = sub[~is_game | keep]
+
+        missing = [s for s in ("combine", "game")
+                   if not (sub["setting"] == s).any()]
+        if missing:
+            raise common.StageRefused(
+                f"{STAGE}: universe {name!r} has no {missing} turns; a ratio "
+                "cannot be drawn from one setting")
+
+        values: dict[str, dict[str, float]] = {}
+        for setting in ("combine", "game"):
+            part = sub[sub["setting"] == setting]
+            in_band = (part["abs_turn_angle"] >= lo) & (
+                part["abs_turn_angle"] < hi)
+            n_band = int(in_band.sum())
+            n_turns = int(len(part))
+            n_players = int(part["nfl_id"].nunique())
+            if setting == "game":
+                n_appearances = int(part.groupby(
+                    ["nfl_id", "game_id"]).ngroups)
+                appearance_unit = "player-games"
+            else:
+                # A Combine player is measured once at one event; every drill
+                # turn belongs to that single appearance.
+                n_appearances = n_players
+                appearance_unit = "players × one Combine session"
+            if n_turns <= 0 or n_appearances <= 0:
+                raise common.StageRefused(
+                    f"{STAGE}: universe {name!r} has zero exposure for "
+                    f"{setting}")
+            values[setting] = {
+                "count": float(n_band),
+                "share_pct": 100.0 * n_band / n_turns,
+                "per_appearance": n_band / n_appearances,
+            }
+            for panel, panel_label, metric in GAP_PANELS:
+                if metric == "count":
+                    denominator, unit = float(n_appearances), appearance_unit
+                elif metric == "share_pct":
+                    denominator, unit = float(n_turns), "valid turns"
+                else:
+                    denominator, unit = float(n_appearances), appearance_unit
+                rows.append({
+                    "universe": name,
+                    "universe_label": str(spec.get("label", name)),
+                    "is_headline": name == headline,
+                    "panel": panel,
+                    "panel_label": panel_label,
+                    "setting": setting,
+                    "band_low_deg": lo,
+                    "band_high_deg": hi,
+                    "count": n_band,
+                    "denominator": denominator,
+                    "denominator_unit": unit,
+                    "value": values[setting][metric],
+                    "printed_value": _gap_value_text(
+                        panel, values[setting][metric]),
+                    "n_players": n_players,
+                    "n_appearances": n_appearances,
+                    "ratio": np.nan,
+                    "ratio_numerator": np.nan,
+                    "ratio_denominator": np.nan,
+                    "ratio_expression": "",
+                })
+
+        for panel, panel_label, metric in GAP_PANELS:
+            combine_value = values["combine"][metric]
+            game_value = values["game"][metric]
+            expression = _gap_ratio_text(panel, game_value, combine_value)
+            rows.append({
+                "universe": name,
+                "universe_label": str(spec.get("label", name)),
+                "is_headline": name == headline,
+                "panel": panel,
+                "panel_label": panel_label,
+                "setting": "ratio",
+                "band_low_deg": lo,
+                "band_high_deg": hi,
+                "count": np.nan,
+                "denominator": np.nan,
+                "denominator_unit": "",
+                "value": game_value / combine_value,
+                "printed_value": expression,
+                "n_players": np.nan,
+                "n_appearances": np.nan,
+                "ratio": game_value / combine_value,
+                "ratio_numerator": game_value,
+                "ratio_denominator": combine_value,
+                "ratio_expression": expression,
+            })
+
+        def _appearances(setting: str, part: pd.DataFrame) -> int:
+            if setting == "game":
+                return int(part.groupby(["nfl_id", "game_id"]).ngroups)
+            return int(part["nfl_id"].nunique())
+
+        contexts[name] = {
+            "label": str(spec.get("label", name)),
+            "is_headline": name == headline,
+            "n_band": {s: int(values[s]["count"]) for s in values},
+            "n_turns": {s: int(sub[sub["setting"] == s].shape[0])
+                        for s in values},
+            "n_players": {s: int(sub.loc[sub["setting"] == s, "nfl_id"].nunique())
+                          for s in values},
+            "n_appearances": {s: _appearances(s, sub[sub["setting"] == s])
+                              for s in values},
+            "values": values,
+            "ratios": {panel: values["game"][metric]
+                       / values["combine"][metric]
+                       for panel, _, metric in GAP_PANELS},
+        }
+
+    table = pd.DataFrame(rows)
+    table["panel"] = pd.Categorical(
+        table["panel"], categories=[p for p, _, _ in GAP_PANELS],
+        ordered=True)
+    context = {
+        "position": position,
+        "band_deg": [lo, hi],
+        "headline": headline,
+        "universes": contexts,
+        "sensitivity": [k for k in contexts if k != headline],
+    }
+    return table, context
+
+
+def gap_plot_frame(table: pd.DataFrame,
+                   context: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Bar geometry and the text printed beside each bar (headline only)."""
+    head = table[(table["is_headline"]) & (table["setting"] != "ratio")].copy()
+    if head.empty:
+        raise common.StageRefused(
+            f"{STAGE}: figure 7 has no headline-universe rows to draw")
+    head["setting"] = pd.Categorical(
+        head["setting"], categories=["combine", "game"], ordered=True)
+    head["y"] = np.where(head["setting"].astype(str) == "combine", 2.0, 1.0)
+    maxima = head.groupby("panel", observed=True)["value"].max().to_dict()
+    head["pad"] = head["panel"].map(maxima).astype(float) * 0.02
+    # An invisible anchor widens each free x-scale so the value label printed
+    # at the end of the longest bar cannot run off the panel edge.
+    head["x_blank"] = head["panel"].map(maxima).astype(float) * 1.25
+    head["xmin"] = 0.0
+    head["xmax"] = head["value"].astype(float)
+    head["ymin"] = head["y"] - 0.27
+    head["ymax"] = head["y"] + 0.27
+    head["lab_x"] = head["xmax"] + head["pad"]
+    head["lab_y"] = head["y"]
+    head["denom_y"] = head["y"] - 0.34
+    head["const_x"] = 0.0
+
+    def _denominator(row) -> str:
+        panel = str(row["panel"])
+        setting = str(row["setting"])
+        name = "Combine" if setting == "combine" else "game"
+        if panel == "a_raw_counts":
+            if setting == "combine":
+                return (f"{int(row['n_players'])} players × one Combine "
+                        "session")
+            return (f"{int(row['n_players'])} players × "
+                    f"{int(row['n_appearances']):,} player-games")
+        if panel == "b_share":
+            return (f"÷ {int(row['denominator']):,} valid {name} turns")
+        return (f"÷ {int(row['denominator']):,} "
+                f"{'Combine appearances' if setting == 'combine' else 'player-games'}")
+
+    head["denom_label"] = head.apply(_denominator, axis=1)
+    head["value_label"] = head["printed_value"].astype(str)
+
+    ratio_rows = table[(table["is_headline"])
+                       & (table["setting"] == "ratio")].copy()
+    ratios = {str(r["panel"]): f"{r['panel_label']}\n({r['ratio_expression']})"
+              for _, r in ratio_rows.iterrows()}
+    order = [p for p, _, _ in GAP_PANELS]
+    if set(ratios) != set(order):
+        raise common.StageRefused(
+            f"{STAGE}: figure 7 is missing a headline ratio for "
+            f"{sorted(set(order) - set(ratios))}")
+    head["strip"] = head["panel"].astype(str).map(ratios)
+    head["strip"] = pd.Categorical(head["strip"],
+                                   categories=[ratios[p] for p in order],
+                                   ordered=True)
+    return head, ratio_rows
+
+
+def plot_gap_honest(table: pd.DataFrame, context: dict,
+                    cfg: common.Config) -> ggplot:
+    block = "figures.gap_honest"
+    frame, ratio_rows = gap_plot_frame(table, context)
+    h = context["universes"][context["headline"]]
+    hv, hr = h["values"], h["ratios"]
+
+    title = (
+        "How big is the gap, really? Raw counts say "
+        f"{hr['a_raw_counts']:.0f}×; exposure-corrected it is "
+        f"{min(hr['b_share'], hr['c_per_appearance']):.1f}–"
+        f"{max(hr['b_share'], hr['c_per_appearance']):.1f}×")
+    subtitle = _wrap_text(
+        f"Headline universe: {h['label']} — the same population as figures 1, "
+        "3 and 5. Panel a prints the exposed counts; panels b and c divide by "
+        "each setting's own exposure, so the 122-vs-299 denominator cannot "
+        "inflate the gap.", 178)
+
+    sens_lines = []
+    for key in context["sensitivity"]:
+        s = context["universes"][key]
+        sv, sr = s["values"], s["ratios"]
+        sens_lines.append(_wrap_text(
+            f"SENSITIVITY — {s['label']}: {s['n_band']['combine']} vs "
+            f"{s['n_band']['game']} turns. Share of own turns: "
+            f"{sv['combine']['share_pct']:.2f}% vs "
+            f"{sv['game']['share_pct']:.2f}% = {sr['b_share']:.1f}×. Turns per "
+            f"player-appearance: {sv['combine']['per_appearance']:.3f} vs "
+            f"{sv['game']['per_appearance']:.3f} = "
+            f"{sr['c_per_appearance']:.1f}×. Never mixed with the headline "
+            "panels: the gap survives the stricter population, only its size "
+            "moves.", 178))
+
+    caption_lines = [
+        STAMP,
+        (f"Panel a: {h['n_band']['combine']} Combine vs {h['n_band']['game']} "
+         f"game turns in {context['band_deg'][0]:g}–{context['band_deg'][1]:g}°; "
+         f"{h['n_players']['combine']} Combine players × one session vs "
+         f"{h['n_players']['game']} game players × "
+         f"{h['n_appearances']['game']:,} player-games. The raw ratio is "
+         "exposure-confounded: one Combine session per player against hundreds "
+         "of player-games."),
+        ("Dividing by each setting's own turns (b) or by player-appearances "
+         "(c) removes that advantage. The corrected gap is roughly "
+         f"{min(hr['b_share'], hr['c_per_appearance']):.0f} to "
+         f"{max(hr['b_share'], hr['c_per_appearance']):.0f} "
+         f"times, not the raw {hr['a_raw_counts']:.0f}, and it is still "
+         "damning."),
+    ] + sens_lines + [
+        ("Counts recomputed at render time from outputs/turns/turns.parquet "
+         "(valid turns, stage 02). The two universes are never mixed inside a "
+         "panel."),
+    ]
+    caption = "\n".join(_wrap_text(line, 200) for line in caption_lines
+                        if line)
+
+    plot = (
+        ggplot(frame, aes(xmin="xmin", xmax="xmax", ymin="ymin", ymax="ymax",
+                          fill="setting"))
+        + geom_rect(colour="white", size=0.25)
+        + geom_text(data=frame,
+                    mapping=aes(x="lab_x", y="lab_y", label="value_label"),
+                    inherit_aes=False, size=3.2, colour="#1A1A1A",
+                    fontweight="bold", ha="left", va="center")
+        + geom_text(data=frame,
+                    mapping=aes(x="const_x", y="denom_y", label="denom_label"),
+                    inherit_aes=False, size=2.5, colour="#333333",
+                    ha="left", va="center")
+        + geom_blank(data=frame, mapping=aes(x="x_blank", y="y"),
+                     inherit_aes=False)
+        + facet_wrap("~ strip", nrow=1, scales="free_x")
+        + scale_fill_manual(values=["#0072B2", "#7F7F7F"],
+                            labels=[COMBINE_LABEL, GAME_LABEL], name=None)
+        + scale_x_continuous(expand=(0, 0))
+        + scale_y_continuous(breaks=[2.0, 1.0], labels=["Combine", "Game"],
+                             limits=(0.40, 2.78), expand=(0, 0))
+        + labs(title=title, subtitle=subtitle, caption=caption,
+               x="Value (count, percent, or turns per appearance)", y=None)
+        + theme_bw(base_size=9)
+        + theme(
+            figure_size=(float(cfg.get(f"{block}.width_in")),
+                         float(cfg.get(f"{block}.height_in"))),
+            panel_background=element_rect(fill="#EBEBEB", colour=None),
+            panel_grid_major=element_line(colour="white", linewidth=0.7),
+            panel_grid_minor=element_blank(),
+            panel_border=element_rect(colour="#B3B3B3", linewidth=0.4),
+            strip_background=element_rect(fill="#D9D9D9", colour="#B3B3B3"),
+            strip_text=element_text(weight="bold", size=8.2),
+            plot_title=element_text(size=14, weight="bold"),
+            plot_subtitle=element_text(size=8.4, colour="#333333"),
+            plot_caption=element_text(size=6.4, colour="#333333", ha="left",
+                                      linespacing=1.35),
+            axis_title_x=element_text(size=8.6),
+            axis_title_y=element_blank(),
+            axis_text_x=element_text(size=7.6),
+            axis_text_y=element_text(size=9.0),
+            legend_position="bottom",
+            legend_title=element_blank(),
+            legend_key=element_rect(fill="#EBEBEB", colour=None),
+        )
+    )
+    return plot
+
+
+def gap_honest_csv_frame(table: pd.DataFrame) -> pd.DataFrame:
+    """Every count, denominator and ratio, tagged with its universe."""
+    out = table.copy()
+    out["panel"] = out["panel"].astype(str)
+    out["setting_order"] = out["setting"].map(
+        {"combine": 0, "game": 1, "ratio": 2}).fillna(3).astype(int)
+    head = out[out["is_headline"]]
+    others = out[~out["is_headline"]]
+    out = pd.concat([head, others], ignore_index=True)
+    return out.sort_values(
+        ["is_headline", "universe", "panel", "setting_order"],
+        ascending=[False, True, True, True]).reset_index(drop=True)[[
+            "universe", "universe_label", "is_headline", "panel",
+            "panel_label", "setting", "band_low_deg", "band_high_deg",
+            "count", "denominator", "denominator_unit", "value",
+            "printed_value", "n_players", "n_appearances", "ratio",
+            "ratio_numerator", "ratio_denominator", "ratio_expression"]]
+
+
+def gap_honest_manifest_payload(table: pd.DataFrame, context: dict,
+                                cfg: common.Config) -> dict:
+    h = context["universes"][context["headline"]]
+    hv, hr = h["values"], h["ratios"]
+    claim = (
+        f"The {h['n_band']['combine']}-vs-{h['n_band']['game']} raw count is a "
+        f"{hr['a_raw_counts']:.2f}× ratio inflated by exposure "
+        f"({h['n_players']['combine']} Combine players measured once vs "
+        f"{h['n_players']['game']} game players over "
+        f"{h['n_appearances']['game']:,} player-games); on each setting's own "
+        f"turns the gap is {hv['game']['share_pct']:.2f}% vs "
+        f"{hv['combine']['share_pct']:.2f}% = {hr['b_share']:.1f}×, and per "
+        f"player-appearance {hv['game']['per_appearance']:.3f} vs "
+        f"{hv['combine']['per_appearance']:.3f} = "
+        f"{hr['c_per_appearance']:.1f}× — still damning.")
+    payload = {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_GAP_HONEST,
+        "title": ("How big is the gap, really? Raw counts, own-turn share and "
+                  "turns per player-appearance"),
+        "claim": claim,
+        "sources": ["outputs/turns/turns.parquet"],
+        "position_group": context["position"],
+        "band_deg": context["band_deg"],
+        "headline_universe": context["headline"],
+        "headline_reason": (
+            "The headline keeps figure 1's population — all valid DB turns, "
+            "angles >=180 kept as their own class — so the correction "
+            "describes the same turns as the 4-vs-97 claim it answers."),
+        "panels": [
+            {"panel": panel, "label": label, "metric": metric,
+             "value_printed": _gap_value_text(panel, h["values"]["game"][metric]),
+             "ratio": h["ratios"][panel],
+             "ratio_expression": _gap_ratio_text(
+                 panel, h["values"]["game"][metric],
+                 h["values"]["combine"][metric])}
+            for panel, label, metric in GAP_PANELS],
+        "universes": {
+            name: {
+                "label": u["label"],
+                "is_headline": bool(u["is_headline"]),
+                "n_band": u["n_band"],
+                "n_turns": u["n_turns"],
+                "n_players": u["n_players"],
+                "n_appearances": u["n_appearances"],
+                "values": u["values"],
+                "ratios": u["ratios"],
+            } for name, u in context["universes"].items()},
+        "caveats": [
+            ("The raw count is exposure-confounded: one Combine session per "
+             "player versus many player-games per game player. Panels b and c "
+             "divide by each setting's own exposure and are the honest "
+             "comparison."),
+            ("The sensitivity universe applies the stage-04 scope to both "
+             "settings — game COVERAGE snaps only and angles >=180 excluded "
+             "as wrap artefacts — and is shown as a labelled note, never "
+             "mixed with the headline inside a panel."),
+            ("Counts, denominators and ratios are recomputed at render time "
+             "from outputs/turns/turns.parquet; no number is hard-coded."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_GAP_HONEST}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_GAP_HONEST}.csv",
+    }
+    return payload
