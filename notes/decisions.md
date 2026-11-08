@@ -5960,3 +5960,47 @@ image equals the CSV and the source file; both panels reconcile to their
 sources; threshold read from config and refused when off-grid; byte-identical
 re-render; figures 1–5 unchanged; all six figures render; detector numbers have
 a stored source).
+
+## D168 — Figure 10 splits the 30–60° DB band by turn sign, and refuses to name a body side · 2026-11-08
+
+**Decision.** Figure 10 draws four counts: the 30–60° DB band split by the
+sign of `turn_angle`, Combine against game, one shared axis,
+`figures.both_hips` in `config.yaml`. The bars are labelled from an explicit
+orientation check on the game-only `o` column, never from convention alone.
+
+**Sign convention as found.** `kinematics.heading_deg` is
+`degrees(arctan2(vx, vy)) % 360`, i.e. 0 = +y with the angle increasing
+clockwise; `detect_turns` stores `unwrapped[hi] - unwrapped[lo]` as
+`turn_angle`. A positive turn is therefore a clockwise heading change.
+
+**Why that is still not left/right.** Naming a body side also needs the field
+frame's handedness: whether +x lies to a player's right when he faces +y. No
+field in the Combine or game files records it, and `o` lives in the same frame
+as `heading`, so a mirrored or y-flipped frame would flip both together and
+cannot be seen from inside the data. The check therefore tests consistency, not
+handedness: on the 326 plotted game turns, 28 clear "steady forward running"
+(both ends ≥ 4.0 yd/s, body within 45° of travel) and 27 of 28 (96%) have the
+sign of Δ`o` agree with the sign of `turn_angle`. `resolved` stays false, so the
+bars read SIDE A (positive) / SIDE B (negative), and the caption says direction
+could not be tied to a body side in this data. `direction_labels` is the single
+place that turns the recorded check into names, and it returns RIGHT/LEFT only
+when the check reports `resolved`.
+
+**What the figure may claim.** The Combine's 26 shallow turns come from 16
+players (median 1 per player): they are incidental fragments, so the Combine
+cannot be testing that a DB can break both ways, while games demand both
+directions about evenly (172 / 154). It may not claim any asymmetry in these
+players — 15/11 on 26 turns from 16 players is not evidence about a body — and
+no symmetry test, binomial p-value or interval on the split exists anywhere in
+the code path (a source-token test enforces that). The envelope is fitted on
+`|turn_angle|` with no direction term, so it deliberately cannot model a
+left/right asymmetry; the caption says so.
+
+**Evidence.** `config.yaml` §`figures.both_hips`; `src/bdb27/figures.py`
+(`orientation_check`, `direction_labels`, `both_hips_table`,
+`plot_both_hips`, `both_hips_csv_frame`, `both_hips_manifest_payload`);
+`tests/test_figures_stage.py::test_both_hips_*` (counts reconcile to the
+Parquet; labels follow the recorded check and flip to RIGHT/LEFT only on a
+resolved check; the check itself fails when `o` is flipped or the frames are
+missing; no symmetry/p-value token in the path; byte-identical re-render;
+figures 1–9 unchanged; all ten figures render).

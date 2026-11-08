@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "675f834078b483c9",
-  "generated_utc": "2026-11-08T16:55:55Z",
+  "config_sha": "e57c1edbec5553b4",
+  "generated_utc": "2026-11-08T17:52:10Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -3416,6 +3416,75 @@
       ],
       "png": "outputs/figures/fig_stopwatch.png",
       "csv": "outputs/figures/fig_stopwatch.csv",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_both_hips": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_both_hips",
+      "title": "The test never checks which way he turns",
+      "band": {
+        "position_group": "DB",
+        "abs_turn_angle_deg": [
+          30.0,
+          60.0
+        ],
+        "rule": "valid turns, left-closed on abs_turn_angle_deg"
+      },
+      "counts": {
+        "combine": {
+          "positive": 15,
+          "negative": 11,
+          "total": 26,
+          "players": 16,
+          "turns_per_player_median": 1.0
+        },
+        "game": {
+          "positive": 172,
+          "negative": 154,
+          "total": 326,
+          "players": 30,
+          "turns_per_player_median": 9.0
+        }
+      },
+      "direction": {
+        "sign_convention": "turn_angle = unwrapped heading change over the turn segment, end minus start; heading = atan2(vx, vy) in degrees mod 360, i.e. 0 = +y with the angle increasing clockwise (kinematics.heading_deg). A POSITIVE turn_angle is therefore a clockwise heading change and a NEGATIVE one is counter-clockwise. Direction of rotation is not the same as a body side: calling it left/right also needs to know whether +x lies to the player's right when he faces +y, and no field in these files records that.",
+        "labels": {
+          "positive": "SIDE A",
+          "negative": "SIDE B"
+        },
+        "orientation_check": {
+          "field": "o (game tracking only; absent in the Combine)",
+          "rule": "both segment ends at or above steady speed and body within the divergence limit of the direction of travel",
+          "n_plotted_turns": 326,
+          "n_with_both_frames": 326,
+          "n_tested": 28,
+          "n_agree": 27,
+          "agree_share": 0.9642857142857143,
+          "steady_speed_yd_s": 4.0,
+          "max_body_heading_divergence_deg": 45.0,
+          "sign_tracks_orientation": true,
+          "frame_handedness_established": false,
+          "resolved": false,
+          "reason": "the orientation column o is expressed in the same frame as heading, so an agreement between the sign of the turn and the sign of the change in o proves the turn is a real body rotation in a consistent sense, but a mirrored (or y-flipped) frame would flip both together and cannot be detected from inside the data. Nothing in the Combine or game files records which side of a player +x lies on, so no body side is named"
+        },
+        "why_not_left_right": "the orientation column o is expressed in the same frame as heading, so an agreement between the sign of the turn and the sign of the change in o proves the turn is a real body rotation in a consistent sense, but a mirrored (or y-flipped) frame would flip both together and cannot be detected from inside the data. Nothing in the Combine or game files records which side of a player +x lies on, so no body side is named"
+      },
+      "claim": "The Combine's shallow-turn band is a handful of incidental fragments (median about one turn per player), so the Combine cannot be testing that a defensive back can break both ways, while games demand both directions about evenly.",
+      "not_claimed": [
+        "That any asymmetry exists in these players' bodies or skills.",
+        "That a 15/11 split of 26 turns from 16 players is evidence of anything about a body.",
+        "Any symmetry test, binomial p-value, confidence interval, correlation or fitted effect for the split.",
+        "That the sign of turn_angle has been tied to a body side in this data."
+      ],
+      "caveats": [
+        "Sample data: one session of sample data; nothing here is a finding about the 2027 class.",
+        "Descriptive counts only. The split is not tested for symmetry and no p-value is computed anywhere in the figure's code path.",
+        "The capacity envelope is fitted on |turn_angle| with no direction term, so it deliberately cannot model a left/right asymmetry; this figure is not a modelled effect.",
+        "Direction labels come from the recorded orientation check, not from convention alone; where a body side could not be established the bars are SIDE A / SIDE B."
+      ],
+      "png": "outputs/figures/fig_both_hips.png",
+      "csv": "outputs/figures/fig_both_hips.csv",
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }

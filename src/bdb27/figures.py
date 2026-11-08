@@ -71,6 +71,7 @@ FIGURE_KEY_MEASUREMENT_LIMITS = "fig_measurement_limits"
 FIGURE_KEY_GAP_HONEST = "fig_gap_honest"
 FIGURE_KEY_TURN_COST = "fig_turn_cost"
 FIGURE_KEY_STOPWATCH = "fig_stopwatch"
+FIGURE_KEY_BOTH_HIPS = "fig_both_hips"
 
 #: Figure 3 needs only the grid coordinates and the player identity.
 SUPPLY_COLUMNS = [
@@ -4512,4 +4513,571 @@ def stopwatch_manifest_payload(table: pd.DataFrame, context: dict,
         ],
         "png": f"outputs/figures/{FIGURE_KEY_STOPWATCH}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_STOPWATCH}.csv",
+    }
+
+
+# ------------- figure 10: the test never checks which way he turns
+#: Added at Conor's request (2026-11-08); it is not derived from a TASK.md line.
+#: The demand claim behind the whole case is that a game DB must break both
+#: ways. The Combine's shallow-turn band is the one place a test *could* check
+#: that, so this figure shows the same band split by the SIGN of the detector's
+#: turn angle, Combine against games.
+#:
+#: The sign is not self-interpreting. ``turn_angle`` is a heading change, and
+#: ``heading_deg`` is ``atan2(vx, vy)`` (0 = +y, increasing clockwise). Turning
+#: that into "left" and "right" needs the field frame's handedness, which no
+#: field in these files records. So the figure runs an explicit check against
+#: the game-only orientation column ``o`` and *derives* its labels from the
+#: result: LEFT/RIGHT only when a body side can actually be established,
+#: SIDE A/SIDE B otherwise. The labels are never hard-coded here.
+#:
+#: The figure is descriptive by construction: four counts and two player counts.
+#: No symmetry test, no binomial p-value, no interval on the split — a 15/11
+#: split of 26 turns from 16 players is not evidence about anybody's body, and
+#: the caption says so in those words.
+BOTH_HIPS_COLUMNS = [
+    "setting",
+    "abs_turn_angle",
+    "turn_angle",
+    "position_group",
+    "nfl_id",
+    "game_id",
+    "play_id",
+    "frame_start",
+    "frame_end",
+    "valid",
+]
+
+#: Human-facing direction names, chosen by ``direction_labels`` from the check.
+SIDE_POSITIVE = "SIDE A"
+SIDE_NEGATIVE = "SIDE B"
+
+#: The detector's own convention, quoted from ``kinematics.heading_deg``.
+SIGN_CONVENTION = (
+    "turn_angle = unwrapped heading change over the turn segment, end minus "
+    "start; heading = atan2(vx, vy) in degrees mod 360, i.e. 0 = +y with the "
+    "angle increasing clockwise (kinematics.heading_deg). A POSITIVE turn_angle "
+    "is therefore a clockwise heading change and a NEGATIVE one is "
+    "counter-clockwise. Direction of rotation is not the same as a body side: "
+    "calling it left/right also needs to know whether +x lies to the player's "
+    "right when he faces +y, and no field in these files records that."
+)
+
+#: Why the orientation check alone cannot name a body side. Stated on the image,
+#: in the CSV and in the manifest so the reader is never left guessing.
+HANDEDNESS_REASON = (
+    "the orientation column o is expressed in the same frame as heading, so an "
+    "agreement between the sign of the turn and the sign of the change in o "
+    "proves the turn is a real body rotation in a consistent sense, but a "
+    "mirrored (or y-flipped) frame would flip both together and cannot be "
+    "detected from inside the data. Nothing in the Combine or game files records "
+    "which side of a player +x lies on, so no body side is named"
+)
+
+
+def load_both_hips_turns(path: Path) -> pd.DataFrame:
+    """Read the columns figure 10 needs, including the signed turn angle."""
+    df = pd.read_parquet(path, columns=BOTH_HIPS_COLUMNS)
+    if df.empty:
+        raise common.StageRefused(f"{STAGE}: turns.parquet is empty")
+    return df
+
+
+def load_game_orientation(cfg: common.Config, mode: str,
+                          turns: pd.DataFrame) -> pd.DataFrame:
+    """Frames for the plotted game turns only, straight from the raw CSV.
+
+    DuckDB filters on ``nfl_id`` (>= 30 ids), so the full tracking file is never
+    loaded into pandas. ``frame_idx`` reproduces the period ordering stage 02
+    used: the row number within ``(game_id, play_id, nfl_id)`` by ``time``.
+    """
+    keys = turns[["game_id", "play_id", "nfl_id"]].dropna().copy()
+    if keys.empty:
+        return pd.DataFrame(columns=["game_id", "play_id", "nfl_id",
+                                     "frame_idx", "s", "o", "dir"])
+    for col in ("game_id", "play_id", "nfl_id"):
+        keys[col] = pd.to_numeric(keys[col], errors="coerce")
+    keys = keys.dropna().astype("int64").drop_duplicates()
+    ids = sorted(int(i) for i in keys["nfl_id"].unique())
+    con = common.connect(cfg)
+    try:
+        sql = (
+            "SELECT game_id, play_id, nfl_id, s, o, dir, "
+            "CAST(row_number() OVER (PARTITION BY game_id, play_id, nfl_id "
+            "ORDER BY time) - 1 AS BIGINT) AS frame_idx "
+            f"FROM {common.raw_csv_sql(cfg, mode, 'game_tracking')} "
+            f"WHERE nfl_id IN ({', '.join(str(i) for i in ids)})"
+        )
+        frames = con.execute(sql).df()
+    finally:
+        con.close()
+    frames = frames.merge(keys, on=["game_id", "play_id", "nfl_id"], how="inner")
+    for col in ("s", "o", "dir"):
+        frames[col] = pd.to_numeric(frames[col], errors="coerce")
+    return frames
+
+
+def _wrap180(deg: float) -> float:
+    """Wrap an angular difference into [-180, 180)."""
+    return (float(deg) + 180.0) % 360.0 - 180.0
+
+
+def orientation_check(turns: pd.DataFrame, frames: pd.DataFrame,
+                      cfg: common.Config) -> dict:
+    """Test the turn-angle sign against the game-only orientation column ``o``.
+
+    Population: the plotted game turns. A turn is TESTED only where both ends of
+    its segment are present in the tracking sample, both ends are at or above
+    ``steady_speed_yd_s``, and the body is facing the direction of travel at both
+    ends (``|o - dir|`` within ``max_body_heading_divergence_deg``). Those are
+    the "steady forward running" frames where a heading change and a body
+    rotation must have the same sign.
+
+    The check is a CONSISTENCY test, not a handedness test: it can show that a
+    positive turn angle is a body rotating one way rather than a numerical
+    artefact, and it cannot show which side of the body that is (see
+    ``HANDEDNESS_REASON``).
+    """
+    block = "figures.both_hips.orientation_check"
+    steady = float(cfg.get(f"{block}.steady_speed_yd_s"))
+    max_div = float(cfg.get(f"{block}.max_body_heading_divergence_deg"))
+    min_tested = int(cfg.get(f"{block}.min_tested"))
+    min_share = float(cfg.get(f"{block}.min_agree_share"))
+    if steady <= 0 or max_div <= 0 or min_tested < 1 or not 0 < min_share <= 1:
+        raise common.StageRefused(
+            f"{STAGE}: figures.both_hips.orientation_check values are unusable")
+
+    lookup: dict[tuple[int, int, int, int], tuple[float, float, float]] = {}
+    empty = frames is None or len(frames) == 0
+    if not empty:
+        work = frames.copy()
+        for col in ("game_id", "play_id", "nfl_id", "frame_idx"):
+            work[col] = pd.to_numeric(work[col], errors="coerce")
+        work = work.dropna(subset=["game_id", "play_id", "nfl_id", "frame_idx",
+                                   "s", "o", "dir"])
+        work = work.drop_duplicates(subset=["game_id", "play_id", "nfl_id",
+                                            "frame_idx"], keep="first")
+        for row in work.itertuples(index=False):
+            lookup[(int(row.game_id), int(row.play_id), int(row.nfl_id),
+                    int(row.frame_idx))] = (float(row.s), float(row.o),
+                                            float(row.dir))
+
+    n_testable = 0
+    n_tested = 0
+    n_agree = 0
+    for row in turns.itertuples(index=False):
+        if pd.isna(row.game_id) or pd.isna(row.play_id) or pd.isna(row.nfl_id):
+            continue
+        if pd.isna(row.frame_start) or pd.isna(row.frame_end):
+            continue
+        key = (int(row.game_id), int(row.play_id), int(row.nfl_id))
+        lo = lookup.get(key + (int(row.frame_start),))
+        hi = lookup.get(key + (int(row.frame_end),))
+        if lo is None or hi is None:
+            continue
+        n_testable += 1
+        if lo[0] < steady or hi[0] < steady:
+            continue
+        if abs(_wrap180(lo[1] - lo[2])) > max_div:
+            continue
+        if abs(_wrap180(hi[1] - hi[2])) > max_div:
+            continue
+        delta_o = _wrap180(hi[1] - lo[1])
+        if abs(delta_o) < 1e-9 or abs(float(row.turn_angle)) < 1e-9:
+            continue
+        n_tested += 1
+        if np.sign(delta_o) == np.sign(float(row.turn_angle)):
+            n_agree += 1
+
+    share = (n_agree / n_tested) if n_tested else float("nan")
+    tracks = bool(n_tested >= min_tested and np.isfinite(share)
+                  and share >= min_share)
+    # No datum in these files fixes the frame's handedness, so a body side can
+    # never be named from this data; see HANDEDNESS_REASON.
+    handedness_known = False
+    resolved = bool(tracks and handedness_known)
+    return {
+        "tracking_available": not empty,
+        "n_plotted_turns": int(len(turns)),
+        "n_with_both_frames": int(n_testable),
+        "n_tested": int(n_tested),
+        "n_agree": int(n_agree),
+        "n_disagree": int(n_tested - n_agree),
+        "agree_share": float(share) if np.isfinite(share) else None,
+        "steady_speed_yd_s": steady,
+        "max_body_heading_divergence_deg": max_div,
+        "min_tested": min_tested,
+        "min_agree_share": min_share,
+        "sign_tracks_orientation": tracks,
+        "frame_handedness_established": handedness_known,
+        "handedness_reason": HANDEDNESS_REASON,
+        "resolved": resolved,
+    }
+
+
+def direction_labels(check: dict) -> dict[str, str]:
+    """Map the sign of ``turn_angle`` to a label, from the recorded check.
+
+    LEFT/RIGHT only when ``check['resolved']`` — i.e. the sign was shown to track
+    real body rotation AND a body side could be established. Otherwise the two
+    signs are SIDE A (positive) and SIDE B (negative). Nothing here may assume
+    an outcome: the caller passes the check it actually ran.
+    """
+    if check.get("resolved"):
+        return {"positive": "RIGHT", "negative": "LEFT"}
+    return {"positive": SIDE_POSITIVE, "negative": SIDE_NEGATIVE}
+
+
+def both_hips_table(turns: pd.DataFrame, frames: pd.DataFrame,
+                    cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """Four counts: setting x sign of the turn, inside the configured band."""
+    block = "figures.both_hips"
+    position = str(cfg.get(f"{block}.position_group"))
+    settings = [str(s) for s in cfg.get(f"{block}.settings")]
+    low, high = (float(x) for x in cfg.get(f"{block}.angle_band_deg"))
+    if high <= low:
+        raise common.StageRefused(
+            f"{STAGE}: figures.both_hips.angle_band_deg must be increasing")
+    if not settings:
+        raise common.StageRefused(f"{STAGE}: figures.both_hips.settings is empty")
+    missing = [c for c in ("setting", "abs_turn_angle", "turn_angle",
+                           "position_group", "nfl_id", "valid")
+               if c not in turns.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet has no {missing} column(s); the direction "
+            "split cannot be drawn")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    mask = (valid
+            & (turns["position_group"] == position)
+            & turns["setting"].isin(settings)
+            & (angle >= low) & (angle < high))
+    df = turns[mask].copy()
+    df["turn_angle"] = pd.to_numeric(df["turn_angle"], errors="coerce")
+    df = df[df["turn_angle"].notna() & (df["turn_angle"] != 0)]
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} turns in [{low:g}, {high:g}) with a "
+            "signed angle — nothing to show")
+
+    check = orientation_check(
+        df[df["setting"] == "game"].copy(), frames, cfg)
+    labels = direction_labels(check)
+
+    rows = []
+    for setting in settings:
+        part = df[df["setting"] == setting]
+        if part.empty:
+            raise common.StageRefused(
+                f"{STAGE}: no valid {position} turns in [{low:g}, {high:g}) for "
+                f"setting {setting!r} — a two-group figure cannot be drawn with "
+                "one empty group")
+        total = int(len(part))
+        per_player = part.groupby("nfl_id").size()
+        for sign, label in ((1, labels["positive"]), (-1, labels["negative"])):
+            sub = part[np.sign(part["turn_angle"]) == sign]
+            count = int(len(sub))
+            rows.append({
+                "setting": setting,
+                "setting_label": (COMBINE_LABEL if setting == "combine"
+                                  else GAME_LABEL),
+                "direction_label": label,
+                "turn_sign": "positive" if sign > 0 else "negative",
+                "count": count,
+                "share_within_setting": count / total,
+                "n_players_setting": int(part["nfl_id"].nunique()),
+                "turns_setting": total,
+                "turns_per_player_median": float(per_player.median()),
+            })
+    table = pd.DataFrame(rows)
+
+    players = {s: int(df[df["setting"] == s]["nfl_id"].nunique())
+               for s in settings}
+    totals = {s: int((df["setting"] == s).sum()) for s in settings}
+    medians = {s: float(df[df["setting"] == s].groupby("nfl_id").size().median())
+               for s in settings}
+    coverage = df["nfl_id"].nunique()
+
+    if int(table["count"].sum()) != int(len(df)):
+        raise ValueError(
+            f"{STAGE}: the four bars do not reconstruct the turn population")
+    for setting in settings:
+        if int(table[table["setting"] == setting]["count"].sum()) != totals[setting]:
+            raise ValueError(
+                f"{STAGE}: {setting} bars do not sum to its turn count")
+
+    context = {
+        "position": position,
+        "settings": settings,
+        "angle_low": low,
+        "angle_high": high,
+        "labels": labels,
+        "check": check,
+        "players": players,
+        "totals": totals,
+        "medians": medians,
+        "n_players": int(coverage),
+        "n_turns": int(len(df)),
+        "sign_convention": SIGN_CONVENTION,
+    }
+    return table, context
+
+
+def both_hips_plot_frame(table: pd.DataFrame) -> pd.DataFrame:
+    """One row per bar, with the x tick label carrying the exposure."""
+    frame = table.copy()
+    frame["x"] = frame["setting_label"]
+    frame["lab_y"] = frame["count"] + 0.0
+    return frame
+
+
+def plot_both_hips(table: pd.DataFrame, context: dict,
+                   cfg: common.Config) -> ggplot:
+    """Four bars in two groups, one shared axis, counts at the bar ends."""
+    block = "figures.both_hips"
+    frame = both_hips_plot_frame(table)
+    labels = frame[frame["count"] > 0].copy()
+
+    settings = list(context["settings"])
+    x_order = [COMBINE_LABEL if s == "combine" else GAME_LABEL for s in settings]
+    ticks = []
+    for s in settings:
+        ticks.append(f"{COMBINE_LABEL if s == 'combine' else GAME_LABEL}\n"
+                     f"{context['players'][s]} players · "
+                     f"{context['totals'][s]} turns")
+
+    cpos = table[(table["setting"] == "combine")
+                 & (table["turn_sign"] == "positive")]["count"].iloc[0]
+    cneg = table[(table["setting"] == "combine")
+                 & (table["turn_sign"] == "negative")]["count"].iloc[0]
+    gpos = table[(table["setting"] == "game")
+                 & (table["turn_sign"] == "positive")]["count"].iloc[0]
+    gneg = table[(table["setting"] == "game")
+                 & (table["turn_sign"] == "negative")]["count"].iloc[0]
+    check = context["check"]
+    pos_label = context["labels"]["positive"]
+    neg_label = context["labels"]["negative"]
+    n_tested = check["n_tested"]
+    agree = check["n_agree"]
+    share = check["agree_share"]
+    share_txt = f"{share * 100:.0f}%" if share is not None else "n/a"
+
+    title = "The test never checks which way he turns"
+    subtitle = (
+        f"Valid {context['position']} turns of {context['angle_low']:g}–"
+        f"{context['angle_high']:g}°, split by the sign of the detector's turn "
+        "angle — Combine (one session) against games. Four bars, one axis, "
+        "counts on the bars.")
+
+    caption_lines = [
+        STAMP,
+        ("FINDING, AS MEASURED. The Combine's "
+         f"{context['totals']['combine']} shallow turns in this band come from "
+         f"{context['players']['combine']} players, a median of "
+         f"{context['medians']['combine']:.0f} turn per player "
+         f"({cpos} {pos_label} / {cneg} {neg_label}): they are incidental "
+         "fragments of other drills, not a test of anything. Games produce "
+         f"{context['totals']['game']} such turns across "
+         f"{context['players']['game']} players ({gpos} {pos_label} / "
+         f"{gneg} {neg_label}). The game demands both directions about evenly, "
+         "so any test of a defensive back's ability to break both ways would "
+         "have to be a test the Combine does not run — with a median of "
+         f"{context['medians']['combine']:.0f} shallow turn per Combine player, "
+         "the Combine cannot be checking it."),
+        ("NOT A CLAIM ABOUT THESE PLAYERS. "
+         f"{cpos}/{cneg} is {context['totals']['combine']} turns from "
+         f"{context['players']['combine']} players. It is not evidence that "
+         "these players turn better one way, that either direction is rarer in "
+         "this population, or that anything about a body is asymmetric. No "
+         "symmetry test, no binomial p-value and no confidence interval on the "
+         "split is computed, printed or implied: descriptive counts only."),
+        ("WHAT THE BARS MEAN. " + context["sign_convention"] + " " +
+         f"Labels are {pos_label} / {neg_label}, not left/right, because " +
+         HANDEDNESS_REASON + "."),
+        (f"ORIENTATION CHECK (game only; o does not exist in the Combine). "
+         f"Using the same {context['totals']['game']} game turns, {n_tested} "
+         "were tested at steady forward running (both segment ends at or above "
+         f"{check['steady_speed_yd_s']:.1f} yd/s and body within "
+         f"{check['max_body_heading_divergence_deg']:.0f}° of the direction of "
+         f"travel); {agree} of {n_tested} ({share_txt}) had the sign of the "
+         "heading change agree with the sign of the change in o. That shows the "
+         "sign is a real body rotation, and it does not name a side: "
+         f"check resolved = {'true' if check['resolved'] else 'false'}."),
+        ("NOT A MODELLED EFFECT. The capacity envelope is fitted on "
+         "|turn_angle| with no direction term, so it deliberately cannot "
+         "produce a left/right asymmetry; nothing in this figure is a modelled "
+         "effect, an estimate, or an input to the envelope."),
+        ("Counts are recomputed at render time from outputs/turns/turns.parquet "
+         "(valid turns) and the raw game tracking sample; every value shown is "
+         "in outputs/figures/fig_both_hips.csv. Sample data: this says what the "
+         "Combine does and does not test, not what any player can do."),
+    ]
+    wrapped: list[str] = []
+    for line in caption_lines:
+        wrapped.extend(_wrap_text(line, 150).split("\n"))
+    caption = "\n".join(wrapped)
+
+    dodge = position_dodge(width=0.78)
+    plot = (
+        ggplot(frame, aes(x="x", y="count", fill="direction_label"))
+        + geom_col(position=dodge, width=0.68, colour="white", size=0.3)
+        + geom_text(data=labels,
+                    mapping=aes(x="x", y="lab_y", label="count",
+                                group="direction_label"),
+                    position=dodge, size=4.0, colour="#1A1A1A", va="bottom",
+                    fontweight="bold", show_legend=False)
+        + scale_fill_manual(values=[PALETTE["combine"], PALETTE["game"]],
+                            labels=[f"{pos_label} (positive turn_angle)",
+                                    f"{neg_label} (negative turn_angle)"],
+                            name=None)
+        + scale_x_discrete(limits=x_order, labels=ticks)
+        + scale_y_continuous(
+            limits=(0.0, float(frame["count"].max()) * 1.16),
+            expand=(0.0, 0.0))
+        + labs(title=title, subtitle=subtitle, caption=caption,
+               x=None, y="Valid turns, 30–60° (count)")
+        + theme_bw(base_size=9)
+        + theme(
+            figure_size=(float(cfg.get(f"{block}.width_in")),
+                         float(cfg.get(f"{block}.height_in"))),
+            panel_background=element_rect(fill="#EBEBEB", colour=None),
+            panel_grid_major=element_line(colour="white", linewidth=0.6),
+            panel_grid_minor=element_blank(),
+            panel_border=element_rect(colour="#B3B3B3", linewidth=0.4),
+            plot_title=element_text(size=15, weight="bold"),
+            plot_subtitle=element_text(size=9.0, colour="#333333"),
+            plot_caption=element_text(size=6.3, colour="#333333", ha="left",
+                                      linespacing=1.35),
+            axis_title_y=element_text(size=8.4, colour="#333333"),
+            axis_text_x=element_text(size=9.0, colour="#222222"),
+            axis_text_y=element_text(size=8.0),
+            legend_position="bottom",
+            legend_title=element_blank(),
+            legend_key=element_rect(fill="#EBEBEB", colour=None),
+        )
+    )
+    return plot
+
+
+def render_both_hips(plot: ggplot, cfg: common.Config, out_png: Path) -> Path:
+    """Draw and save figure 10 once, with fixed metadata (byte-identical runs)."""
+    dpi = int(cfg.get("figures.both_hips.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig = plot.draw()
+    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def both_hips_csv_frame(table: pd.DataFrame, context: dict) -> pd.DataFrame:
+    """One row per bar, plus the convention and the check that fixed the names."""
+    out = table.copy()
+    out["angle_low_deg"] = context["angle_low"]
+    out["angle_high_deg"] = context["angle_high"]
+    out["sign_convention"] = context["sign_convention"]
+    check = context["check"]
+    out["orientation_check_n_tested"] = check["n_tested"]
+    out["orientation_check_n_agree"] = check["n_agree"]
+    out["orientation_check_agree_share"] = check["agree_share"]
+    out["orientation_check_resolved"] = check["resolved"]
+    out["orientation_check_tracks_sign"] = check["sign_tracks_orientation"]
+    out["label_basis"] = (
+        f"resolved={check['resolved']}; " + HANDEDNESS_REASON)
+    return out[["setting", "setting_label", "direction_label", "turn_sign",
+                "count", "share_within_setting", "turns_setting",
+                "n_players_setting", "turns_per_player_median",
+                "angle_low_deg", "angle_high_deg", "sign_convention",
+                "orientation_check_n_tested", "orientation_check_n_agree",
+                "orientation_check_agree_share", "orientation_check_resolved",
+                "orientation_check_tracks_sign", "label_basis"]]
+
+
+def both_hips_manifest_payload(table: pd.DataFrame, context: dict,
+                               cfg: common.Config) -> dict:
+    check = context["check"]
+    counts = {
+        row["setting"]: {"positive": int(row["count"]),
+                         "negative": int(table[
+                             (table["setting"] == row["setting"])
+                             & (table["turn_sign"] == "negative")]["count"].iloc[0])}
+        for _, row in table[table["turn_sign"] == "positive"].iterrows()
+    }
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_BOTH_HIPS,
+        "title": "The test never checks which way he turns",
+        "band": {
+            "position_group": context["position"],
+            "abs_turn_angle_deg": [context["angle_low"], context["angle_high"]],
+            "rule": "valid turns, left-closed on abs_turn_angle_deg",
+        },
+        "counts": {
+            setting: {
+                "positive": counts[setting]["positive"],
+                "negative": counts[setting]["negative"],
+                "total": context["totals"][setting],
+                "players": context["players"][setting],
+                "turns_per_player_median": context["medians"][setting],
+            }
+            for setting in context["settings"]
+        },
+        "direction": {
+            "sign_convention": context["sign_convention"],
+            "labels": {"positive": context["labels"]["positive"],
+                       "negative": context["labels"]["negative"]},
+            "orientation_check": {
+                "field": "o (game tracking only; absent in the Combine)",
+                "rule": ("both segment ends at or above steady speed and body "
+                         "within the divergence limit of the direction of "
+                         "travel"),
+                "n_plotted_turns": check["n_plotted_turns"],
+                "n_with_both_frames": check["n_with_both_frames"],
+                "n_tested": check["n_tested"],
+                "n_agree": check["n_agree"],
+                "agree_share": check["agree_share"],
+                "steady_speed_yd_s": check["steady_speed_yd_s"],
+                "max_body_heading_divergence_deg":
+                    check["max_body_heading_divergence_deg"],
+                "sign_tracks_orientation": check["sign_tracks_orientation"],
+                "frame_handedness_established":
+                    check["frame_handedness_established"],
+                "resolved": check["resolved"],
+                "reason": check["handedness_reason"],
+            },
+            "why_not_left_right": check["handedness_reason"],
+        },
+        "claim": ("The Combine's shallow-turn band is a handful of incidental "
+                  "fragments (median about one turn per player), so the Combine "
+                  "cannot be testing that a defensive back can break both "
+                  "ways, while games demand both directions about evenly."),
+        "not_claimed": [
+            "That any asymmetry exists in these players' bodies or skills.",
+            "That a 15/11 split of 26 turns from 16 players is evidence of "
+            "anything about a body.",
+            "Any symmetry test, binomial p-value, confidence interval, "
+            "correlation or fitted effect for the split.",
+            "That the sign of turn_angle has been tied to a body side in this "
+            "data.",
+        ],
+        "caveats": [
+            ("Sample data: one session of sample data; nothing here is a "
+             "finding about the 2027 class."),
+            ("Descriptive counts only. The split is not tested for symmetry and "
+             "no p-value is computed anywhere in the figure's code path."),
+            ("The capacity envelope is fitted on |turn_angle| with no direction "
+             "term, so it deliberately cannot model a left/right asymmetry; "
+             "this figure is not a modelled effect."),
+            ("Direction labels come from the recorded orientation check, not "
+             "from convention alone; where a body side could not be "
+             "established the bars are SIDE A / SIDE B."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_BOTH_HIPS}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_BOTH_HIPS}.csv",
     }

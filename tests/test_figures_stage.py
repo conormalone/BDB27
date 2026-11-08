@@ -129,12 +129,27 @@ def _turns_frame() -> pd.DataFrame:
                 retention = 0.92 + 0.11 * (int(lo) // 10 % 5) + 0.02 * (j % 7)
                 apex_retention = max(
                     0.05, 1.02 - 0.0055 * (angle - 30.0) + 0.02 * (j % 5) / 4.0)
+                # Figure 10 needs the SIGNED angle and, for game rows, the
+                # segment's frame range plus a play id, so the orientation
+                # check can find the two ends of each turn in the fixture
+                # tracking file. Signs alternate deterministically; no existing
+                # figure reads `turn_angle`.
+                signed = float(angle) if (j % 2 == 0) else -float(angle)
+                if setting == "combine":
+                    play_id, frame_start, frame_end = None, None, None
+                else:
+                    play_id = 500000 + game_i
+                    frame_start, frame_end = 0, 9
                 rows.append({
                     "setting": setting,
                     "abs_turn_angle": float(angle),
+                    "turn_angle": signed,
                     "position_group": "DB",
                     "nfl_id": nfl[setting][j % len(nfl[setting])],
                     "game_id": game_id,
+                    "play_id": play_id,
+                    "frame_start": frame_start,
+                    "frame_end": frame_end,
                     "snap_type": snap,
                     "drill_name": drill,
                     "entry_speed": float(entry),
@@ -239,6 +254,41 @@ def _variance_frame() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _write_game_tracking(raw: Path, turns: pd.DataFrame) -> None:
+    """A tracking sample covering the fixture's DB *game* turns only.
+
+    Ten frames per turn, ``s`` = 5 yd/s throughout, body orientation ``o``
+    equal to the direction of travel, and ``dir`` swinging by exactly the row's
+    ``turn_angle`` — so the orientation check has something real to agree (and,
+    when flipped, disagree) with.
+    """
+    game = turns[(turns["setting"] == "game")
+                 & (turns["position_group"] == "DB")
+                 & turns["turn_angle"].notna()]
+    rows = []
+    for row in game.itertuples(index=False):
+        start = 90.0
+        end = (start + float(row.turn_angle)) % 360.0
+        for k in range(10):
+            frac = k / 9.0
+            direction = (start + (end - start) * frac) % 360.0
+            rows.append({
+                "game_id": int(row.game_id),
+                "play_id": int(row.play_id),
+                "nfl_id": int(row.nfl_id),
+                "time": f"2023-09-10 18:00:{k // 10:02d}.{k % 10 * 100:03d}",
+                "x": 40.0 + 0.4 * k,
+                "y": 25.0,
+                "s": 5.0,
+                "a": 0.0,
+                "dis": 0.1 * k,
+                "o": direction,
+                "dir": direction,
+                "event": "NA",
+            })
+    pd.DataFrame(rows).to_csv(raw / "game_tracking_2023_sample.csv", index=False)
+
+
 def _write_config(tmp: Path, *, edges=None) -> Path:
     cfg = yaml.safe_load((ROOT / "config.yaml").read_text())
     block = cfg["turn_coverage"]
@@ -256,11 +306,13 @@ def _write_config(tmp: Path, *, edges=None) -> Path:
     (tmp / "outputs").mkdir(parents=True, exist_ok=True)
     (tmp / "outputs" / "thresholds.json").write_text(
         json.dumps({"provenance": "PLACEHOLDER_SAMPLE"}))
-    pd.concat([_turns_frame(), _extra_positions_frame()], ignore_index=True
-              ).to_parquet(tmp / "outputs" / "turns" / "turns.parquet",
+    turns_frame = pd.concat([_turns_frame(), _extra_positions_frame()],
+                            ignore_index=True)
+    turns_frame.to_parquet(tmp / "outputs" / "turns" / "turns.parquet",
                            index=False)
     raw = tmp / "data" / "raw"
     raw.mkdir(parents=True, exist_ok=True)
+    _write_game_tracking(raw, turns_frame)
     pd.DataFrame({"nfl_id": STOPWATCH_IDS, "three_cone": STOPWATCH_TIMES}
                  ).to_csv(raw / "combine_results.csv", index=False)
     _variance_frame().to_csv(
@@ -344,6 +396,8 @@ def rendered(tmp_path_factory):
             "tc_csv": out / "fig_turn_cost.csv",
             "sw_png": out / "fig_stopwatch.png",
             "sw_csv": out / "fig_stopwatch.csv",
+            "bh_png": out / "fig_both_hips.png",
+            "bh_csv": out / "fig_both_hips.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -838,7 +892,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_before_after", "fig_drill_schematic",
                                    "fig_all_positions",
                                    "fig_measurement_limits", "fig_gap_honest",
-                                   "fig_turn_cost", "fig_stopwatch"}
+                                   "fig_turn_cost", "fig_stopwatch",
+                                   "fig_both_hips"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1367,12 +1422,12 @@ def test_measurement_limits_detector_numbers_have_a_stored_source():
         assert token in gate, f"{token} missing from the audit gate"
 
 
-def test_measurement_limits_stage_06_renders_all_nine(rendered):
+def test_measurement_limits_stage_06_renders_all_ten(rendered):
     man = json.loads(rendered["manifest"].read_text())
     assert set(man["figures"]) == {
         "fig_the_hole", "fig_drill_coverage", "fig_before_after",
         "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits",
-        "fig_gap_honest", "fig_turn_cost", "fig_stopwatch"}
+        "fig_gap_honest", "fig_turn_cost", "fig_stopwatch", "fig_both_hips"}
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -2202,3 +2257,294 @@ def test_stopwatch_manifest_entry(rendered):
     assert fig["spread"]["three_cone_s"][0] < fig["spread"]["three_cone_s"][1]
     assert fig["panel_b"]["entry_speed_floor"]["config_key"] == \
         "detector.speed_floor_combine"
+
+
+# ------------- figure 10: the test never checks which way he turns
+BH_KEY = "fig_both_hips"
+
+
+def _bh_population(rendered) -> tuple[pd.DataFrame, "object"]:
+    """The plotted population, rebuilt from the written Parquet with plain masks."""
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    low, high = (float(x) for x in
+                 cfg.get("figures.both_hips.angle_band_deg"))
+    position = str(cfg.get("figures.both_hips.position_group"))
+    settings = [str(s) for s in cfg.get("figures.both_hips.settings")]
+    valid = turns["valid"].fillna(False).astype(bool)
+    sub = turns[valid
+                & (turns["position_group"] == position)
+                & turns["setting"].isin(settings)
+                & (turns["abs_turn_angle"] >= low)
+                & (turns["abs_turn_angle"] < high)].copy()
+    return sub, cfg
+
+
+def _check_bh_csv(csv_df: pd.DataFrame, turns: pd.DataFrame,
+                  cfg) -> None:
+    low, high = (float(x) for x in cfg.get("figures.both_hips.angle_band_deg"))
+    position = str(cfg.get("figures.both_hips.position_group"))
+    settings = [str(s) for s in cfg.get("figures.both_hips.settings")]
+    valid = turns["valid"].fillna(False).astype(bool)
+    sub = turns[valid
+                & (turns["position_group"] == position)
+                & (turns["setting"].isin(settings))
+                & (turns["abs_turn_angle"] >= low)
+                & (turns["abs_turn_angle"] < high)].copy()
+    assert len(csv_df) == 2 * len(settings), "one row per setting x direction"
+    assert set(csv_df["setting"]) == set(settings)
+    for _, row in csv_df.iterrows():
+        part = sub[sub["setting"] == row["setting"]]
+        sign = 1 if row["turn_sign"] == "positive" else -1
+        want = int((np.sign(part["turn_angle"]) == sign).sum())
+        assert int(row["count"]) == want, (
+            f"{row['setting']} {row['turn_sign']}: csv={int(row['count'])} "
+            f"artefact={want}")
+        assert int(row["turns_setting"]) == len(part)
+        assert int(row["n_players_setting"]) == int(part["nfl_id"].nunique())
+        assert np.isclose(float(row["share_within_setting"]),
+                          want / len(part), atol=1e-12)
+        assert np.isclose(float(row["turns_per_player_median"]),
+                          float(part.groupby("nfl_id").size().median()),
+                          atol=1e-12)
+        assert bool(row["orientation_check_resolved"]) is False
+        assert int(row["orientation_check_n_tested"]) == int(
+            row["orientation_check_n_tested"])  # integral
+    assert int(csv_df["count"].sum()) == len(sub), "the bars must sum to the band"
+
+
+def test_both_hips_png_and_csv_exist(rendered):
+    _check_png(rendered["bh_png"])
+    assert rendered["bh_csv"].exists()
+    with Image.open(rendered["bh_png"]) as im:
+        assert im.size[0] >= 1500 and im.size[1] >= 900
+
+
+def test_both_hips_counts_reconcile_to_the_turn_table(rendered):
+    sub, cfg = _bh_population(rendered)
+    csv_df = pd.read_csv(rendered["bh_csv"])
+    _check_bh_csv(csv_df, pd.read_parquet(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet"), cfg)
+
+    # The four bars, and the 2 x 2 structure the figure exists to show.
+    by = csv_df.set_index(["setting", "turn_sign"])["count"]
+    assert set(by.index) == {("combine", "positive"), ("combine", "negative"),
+                             ("game", "positive"), ("game", "negative")}
+    for setting in ("combine", "game"):
+        part = sub[sub["setting"] == setting]
+        assert by[(setting, "positive")] + by[(setting, "negative")] == len(part)
+    assert csv_df[csv_df["setting"] == "combine"]["n_players_setting"].iloc[0] == \
+        sub[sub["setting"] == "combine"]["nfl_id"].nunique()
+
+
+def test_both_hips_labels_follow_the_recorded_check(rendered):
+    """The label set is derived, not hard-coded: no resolution, no LEFT/RIGHT."""
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][BH_KEY]
+    check = fig["direction"]["orientation_check"]
+    labels = fig["direction"]["labels"]
+
+    assert check["resolved"] is False
+    assert labels == {"positive": "SIDE A", "negative": "SIDE B"}
+    csv_df = pd.read_csv(rendered["bh_csv"])
+    assert set(csv_df["direction_label"]) == {"SIDE A", "SIDE B"}
+
+    # The rule itself: resolution is what buys LEFT/RIGHT, and the function is
+    # driven by the check it is handed, not by a constant.
+    assert figures.direction_labels({"resolved": False}) == {
+        "positive": "SIDE A", "negative": "SIDE B"}
+    assert figures.direction_labels({"resolved": True}) == {
+        "positive": "RIGHT", "negative": "LEFT"}
+
+    # The game-only orientation check actually ran on this fixture.
+    assert check["n_tested"] > 0
+    assert check["n_tested"] == check["n_agree"], (
+        "fixture tracking is built so the sign must agree on every tested turn")
+    assert check["sign_tracks_orientation"] is True
+    assert check["frame_handedness_established"] is False
+    assert "mirror" in check["reason"]
+
+
+def test_both_hips_orientation_check_can_fail(rendered):
+    """Flip the fixture's body orientation and the consistency test flips too."""
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.DataFrame({
+        "game_id": [1] * 30,
+        "play_id": list(range(30)),
+        "nfl_id": [7] * 30,
+        "frame_start": [0] * 30,
+        "frame_end": [9] * 30,
+        "turn_angle": [40.0 if i % 2 == 0 else -40.0 for i in range(30)],
+    })
+    frames = pd.DataFrame({
+        "game_id": [1] * 60,
+        "play_id": [p for p in range(30) for _ in (0, 1)],
+        "nfl_id": [7] * 60,
+        "frame_idx": [0, 9] * 30,
+        "s": [5.0] * 60,
+        "dir": [90.0] * 60,
+        "o": [90.0 + (40.0 if (p % 2 == 0) else -40.0) * (1 if f == 9 else 0)
+              for p in range(30) for f in (0, 9)],
+    })
+    ok = figures.orientation_check(turns, frames, cfg)
+    assert ok["n_tested"] == 30 and ok["n_agree"] == 30
+    assert ok["sign_tracks_orientation"] is True
+    assert ok["resolved"] is False
+
+    flipped = frames.copy()
+    flipped["o"] = 90.0 - (flipped["o"] - 90.0)
+    bad = figures.orientation_check(turns, flipped, cfg)
+    assert bad["n_tested"] == 30 and bad["n_agree"] == 0
+    assert bad["sign_tracks_orientation"] is False
+    assert bad["resolved"] is False
+    assert figures.direction_labels(bad) == {"positive": "SIDE A",
+                                             "negative": "SIDE B"}
+
+    # Frames missing at the segment ends are not silently treated as agreeing.
+    absent = figures.orientation_check(turns, frames.iloc[0:0], cfg)
+    assert absent["n_tested"] == 0 and absent["agree_share"] is None
+    assert absent["sign_tracks_orientation"] is False
+
+
+def test_both_hips_computes_no_symmetry_or_p_value(rendered):
+    import inspect
+    from bdb27 import figures
+
+    banned = ("binomtest", "binom_test", "chisquare", "chi2_contingency",
+              "ttest", "fisher_exact", "mcnemar", "p_value", "pvalue",
+              "stderr", "conf_int", "ci_low")
+    for fn in (figures.both_hips_table, figures.orientation_check,
+               figures.direction_labels, figures.plot_both_hips,
+               figures.both_hips_csv_frame, figures.both_hips_manifest_payload):
+        src = inspect.getsource(fn).lower()
+        for token in banned:
+            assert token not in src, f"{fn.__name__} references {token!r}"
+
+    csv_df = pd.read_csv(rendered["bh_csv"])
+    for col in csv_df.columns:
+        assert not any(t in col.lower() for t in banned), (
+            f"CSV column {col!r} looks like a test statistic")
+
+    man = json.loads(rendered["manifest"].read_text())
+    flat = json.dumps(man["figures"][BH_KEY]).lower()
+    assert "no symmetry test" in flat or "not tested for symmetry" in flat
+    for token in ('"p":', '"p_value"', '"chi2"', '"odds_ratio"'):
+        assert token not in flat
+
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    table, context = figures.both_hips_table(
+        pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet"),
+        figures.load_game_orientation(
+            cfg, "sample",
+            pd.read_parquet(rendered["tmp"] / "outputs" / "turns" /
+                            "turns.parquet").query(
+                "setting == 'game'")),
+        cfg)
+    assert set(table.columns) == {
+        "setting", "setting_label", "direction_label", "turn_sign", "count",
+        "share_within_setting", "n_players_setting", "turns_setting",
+        "turns_per_player_median"}
+
+
+def test_both_hips_renders_all_ten_figures(rendered):
+    out = rendered["tmp"] / "outputs" / "figures"
+    pngs = sorted(p.name for p in out.glob("fig_*.png"))
+    assert len(pngs) == 10, f"stage 06 must render ten figures, found {pngs}"
+    assert "fig_both_hips.png" in pngs
+
+
+def test_both_hips_two_runs_are_byte_identical(rendered):
+    before = hashlib.sha256(rendered["bh_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["bh_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 10 differ"
+
+
+def test_both_hips_leaves_figures_1_to_9_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png", "ap_png", "ml_png",
+            "gh_png", "tc_png", "sw_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k], (
+            f"{k} changed: figure 10 must not alter figures 1-9")
+
+
+def test_both_hips_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][BH_KEY]
+    assert fig["figure"] == BH_KEY
+    assert fig["stamp"] == STAMP
+    assert fig["band"]["position_group"] == "DB"
+    assert fig["band"]["abs_turn_angle_deg"] == [30.0, 60.0]
+    assert set(fig["counts"]) == {"combine", "game"}
+    for setting in ("combine", "game"):
+        block = fig["counts"][setting]
+        assert block["positive"] + block["negative"] == block["total"]
+    assert fig["direction"]["orientation_check"]["field"].startswith("o ")
+    assert fig["direction"]["orientation_check"]["resolved"] is False
+    assert "why_not_left_right" in fig["direction"]
+    assert fig["png"].endswith("fig_both_hips.png")
+    assert fig["csv"].endswith("fig_both_hips.csv")
+
+
+def test_both_hips_caption_carries_the_claim_and_the_refusal(rendered):
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    sub, _ = _bh_population(rendered)
+    frames = figures.load_game_orientation(
+        cfg, "sample", sub[sub["setting"] == "game"])
+    table, context = figures.both_hips_table(turns, frames, cfg)
+    fig = figures.plot_both_hips(table, context, cfg).draw()
+    import matplotlib.pyplot as plt
+    try:
+        flat = " ".join(" ".join(t.get_text().split()) for t in fig.texts)
+        assert "NOT A CLAIM ABOUT THESE PLAYERS" in flat
+        assert "not evidence" in flat
+        assert "No symmetry test" in flat and "binomial" in flat
+        assert "SIDE A" in flat and "SIDE B" in flat
+        assert "left/right" in flat
+        assert "resolved = false" in flat
+        assert "NOT A MODELLED EFFECT" in flat and "|turn_angle|" in flat
+        assert f"{context['totals']['combine']} shallow turns" in flat
+        assert f"{context['players']['combine']} players" in flat
+        assert f"{context['check']['n_agree']} of {context['check']['n_tested']}" in flat
+        for _, row in table.iterrows():
+            assert f"{int(row['count'])} {row['direction_label']}" in flat
+    finally:
+        plt.close(fig)
+
+
+def test_both_hips_checks_can_fail(rendered):
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    good = pd.read_csv(rendered["bh_csv"])
+    _check_bh_csv(good, turns, cfg)  # sanity: passes on the real file
+
+    bad = good.copy()
+    idx = bad.index[(bad["setting"] == "combine")
+                    & (bad["turn_sign"] == "positive")][0]
+    bad.loc[idx, "count"] = int(bad.loc[idx, "count"]) + 1
+    with pytest.raises(AssertionError):
+        _check_bh_csv(bad, turns, cfg)
+
+    wrong_players = good.copy()
+    wrong_players.loc[0, "n_players_setting"] = (
+        int(wrong_players.loc[0, "n_players_setting"]) + 1)
+    with pytest.raises(AssertionError):
+        _check_bh_csv(wrong_players, turns, cfg)
+
+    empty = rendered["tmp"] / "empty_bh.png"
+    empty.write_bytes(b"")
+    with pytest.raises(AssertionError):
+        _check_png(empty)

@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-9.
+"""Stage 06 — figures 1-10.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -25,6 +25,12 @@
                           matched player's three-cone is drawn against that
                           time, with those turns' entry speeds beside it.
                           Descriptive only: no association statistic.
+ 10. "The test never checks which way he turns" — the 30-60 degree DB band
+                          split by the sign of the detector's turn angle,
+                          Combine against games. Labels are derived from the
+                          game-only orientation check (LEFT/RIGHT only if a
+                          body side can be established; SIDE A/SIDE B
+                          otherwise). Descriptive counts only.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -266,6 +272,35 @@ def main(argv=None) -> int:
         sw_payload["stamp"] = figures.STAMP
         _write_manifest(sw_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 10: the test never checks which way he turns
+        bh_turns = figures.load_both_hips_turns(turns_path)
+        bh_play = str(cfg.get("figures.both_hips.position_group"))
+        bh_settings = [str(s) for s in cfg.get("figures.both_hips.settings")]
+        bh_low, bh_high = (float(x) for x in
+                           cfg.get("figures.both_hips.angle_band_deg"))
+        bh_valid = bh_turns["valid"].fillna(False).astype(bool)
+        bh_angle = pd.to_numeric(bh_turns["abs_turn_angle"], errors="coerce")
+        bh_game = bh_turns[
+            bh_valid
+            & (bh_turns["position_group"] == bh_play)
+            & (bh_turns["setting"] == "game")
+            & (bh_angle >= bh_low) & (bh_angle < bh_high)].copy()
+        bh_frames = figures.load_game_orientation(cfg, args.mode, bh_game)
+        bh_table, bh_context = figures.both_hips_table(
+            bh_turns, bh_frames, cfg)
+        bh_csv = figures.both_hips_csv_frame(bh_table, bh_context)
+        bh_png = outdir / f"{figures.FIGURE_KEY_BOTH_HIPS}.png"
+        bh_csv_path = outdir / f"{figures.FIGURE_KEY_BOTH_HIPS}.csv"
+        common.write_csv(bh_csv, bh_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_BOTH_HIPS})
+        bh_plot = figures.plot_both_hips(bh_table, bh_context, cfg)
+        figures.render_both_hips(bh_plot, cfg, bh_png)
+        bh_payload = figures.both_hips_manifest_payload(
+            bh_table, bh_context, cfg)
+        bh_payload["stamp"] = figures.STAMP
+        _write_manifest(bh_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -299,7 +334,18 @@ def main(argv=None) -> int:
                         f"{figures.FIGURE_KEY_STOPWATCH}: "
                         f"players={sw_context['n_players']} "
                         f"turns={sw_context['n_turns']} "
-                        f"gate={sw_context['min_players']} ")
+                        f"gate={sw_context['min_players']}; "
+                        f"{figures.FIGURE_KEY_BOTH_HIPS}: "
+                        f"combine={bh_context['totals']['combine']} "
+                        f"({bh_context['players']['combine']} players) "
+                        f"game={bh_context['totals']['game']} "
+                        f"({bh_context['players']['game']} players) "
+                        f"labels={bh_context['labels']['positive']}/"
+                        f"{bh_context['labels']['negative']} "
+                        f"orientation_check="
+                        f"{bh_context['check']['n_agree']}/"
+                        f"{bh_context['check']['n_tested']} "
+                        f"resolved={bh_context['check']['resolved']} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -308,6 +354,7 @@ def main(argv=None) -> int:
           f"{gh_png.name}, {gh_csv_path.name}, "
           f"{tc_png.name}, {tc_csv_path.name}, "
           f"{sw_png.name}, {sw_csv_path.name}, "
+          f"{bh_png.name}, {bh_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -321,7 +368,11 @@ def main(argv=None) -> int:
           f"retention values with {len(tc_context['insufficient'])} band(s) "
           f"marked insufficient; figure 9 matched "
           f"{sw_context['n_players']} of {sw_context['n_via_turns']} three-cone "
-          f"players over {sw_context['n_turns']} turns)")
+          f"players over {sw_context['n_turns']} turns; figure 10 split "
+          f"{bh_context['totals']['combine']}"
+          f"/{bh_context['totals']['game']} turns, labels "
+          f"{bh_context['labels']['positive']}/{bh_context['labels']['negative']}"
+          f")")
     return 0
 
 

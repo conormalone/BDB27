@@ -576,6 +576,39 @@ turn_coverage:
       width_in: 13.6
       height_in: 9.2
 
+    # Stage 06 figure 10 ("The test never checks which way he turns"). Added at
+    # Conor's request (2026-11-08); it is not derived from a TASK.md line.
+    #
+    # Four counts: the 30-60 degree DB band split by the SIGN of the detector's
+    # turn angle, Combine against games. Reporting band only — `bins.turn_angle`
+    # stays frozen for Stages 03/04.
+    #
+    # The labels are NOT configuration: they are derived from
+    # `orientation_check` at render time. If the game-only `o` column shows the
+    # sign tracking a real body rotation AND the field frame's handedness can be
+    # established, the bars read LEFT/RIGHT; otherwise SIDE A/SIDE B. Nothing in
+    # these files records which side of a player +x lies on, so the second
+    # condition is currently never met — see notes/decisions.md.
+    #
+    # `orientation_check` thresholds are the definition of "steady forward
+    # running" for the sign test: both ends of the turn above `steady_speed_yd_s`
+    # and the body within `max_body_heading_divergence_deg` of the direction of
+    # travel. `min_tested` / `min_agree_share` are the bar for calling the sign
+    # test consistent at all; falling below them does not change the labels
+    # (they are already SIDE A/SIDE B), it changes what the caption may say.
+    both_hips:
+      position_group: DB
+      settings: [combine, game]
+      angle_band_deg: [30, 60]
+      orientation_check:
+        steady_speed_yd_s: 4.0
+        max_body_heading_divergence_deg: 45.0
+        min_tested: 20
+        min_agree_share: 0.90
+      dpi: 150
+      width_in: 12.4
+      height_in: 8.2
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).
