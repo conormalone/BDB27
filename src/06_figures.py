@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-7.
+"""Stage 06 — figures 1-8.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -14,6 +14,10 @@
                           raw counts, each setting's own share, and turns per
                           player-appearance, with the stricter stage-04
                           population as a labelled sensitivity note.
+  8. "What a turn costs" — speed retention by reporting band (median and
+                          interquartile spread, both settings on one axis),
+                          with each setting's own turn mix directly beneath so
+                          the substitution is visible.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -221,6 +225,21 @@ def main(argv=None) -> int:
         gh_payload["stamp"] = figures.STAMP
         _write_manifest(gh_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 8: what a turn costs, and who pays for it
+        tc_table, tc_context = figures.turn_cost_table(turns, cfg)
+        tc_csv = figures.turn_cost_csv_frame(tc_table)
+        tc_png = outdir / f"{figures.FIGURE_KEY_TURN_COST}.png"
+        tc_csv_path = outdir / f"{figures.FIGURE_KEY_TURN_COST}.csv"
+        common.write_csv(tc_csv, tc_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_TURN_COST})
+        tc_fig = figures.plot_turn_cost(tc_table, tc_context, cfg)
+        figures.render_turn_cost(tc_fig, cfg, tc_png)
+        tc_payload = figures.turn_cost_manifest_payload(
+            tc_table, tc_context, cfg)
+        tc_payload["stamp"] = figures.STAMP
+        _write_manifest(tc_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -246,7 +265,11 @@ def main(argv=None) -> int:
                         f"{figures.FIGURE_KEY_GAP_HONEST}: "
                         f"headline={gh_context['headline']} "
                         f"ratios="
-                        f"{gh_context['universes'][gh_context['headline']]['ratios']} ")
+                        f"{gh_context['universes'][gh_context['headline']]['ratios']} "
+                        f"{figures.FIGURE_KEY_TURN_COST}: "
+                        f"drawn={tc_context['n_drawn']} "
+                        f"insufficient={len(tc_context['insufficient'])} "
+                        f"floor_removed={tc_context['n_below_speed_floor']} ")
 
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
@@ -254,6 +277,7 @@ def main(argv=None) -> int:
           f"{ap_png.name}, {ap_csv_path.name}, "
           f"{ml_png.name}, {ml_csv_path.name}, "
           f"{gh_png.name}, {gh_csv_path.name}, "
+          f"{tc_png.name}, {tc_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -263,7 +287,9 @@ def main(argv=None) -> int:
           f"{len(ap_context['positions'])} positions; "
           f"{ml_lctx['n_at_boundary']} of {ml_lctx['n_components']} variance "
           f"components at the boundary; figure 7 headline "
-          f"{gh_context['headline']})")
+          f"{gh_context['headline']}; figure 8 drew {tc_context['n_drawn']} "
+          f"retention values with {len(tc_context['insufficient'])} band(s) "
+          f"marked insufficient)")
     return 0
 
 

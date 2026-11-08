@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "c1b562aee086cea7",
-  "generated_utc": "2026-11-08T14:16:46Z",
+  "config_sha": "dfcee84a2dcd00b7",
+  "generated_utc": "2026-11-08T15:32:59Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -3155,6 +3155,176 @@
       ],
       "png": "outputs/figures/fig_gap_honest.png",
       "csv": "outputs/figures/fig_gap_honest.csv",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_turn_cost": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_turn_cost",
+      "title": "What a turn costs, and who pays for it: speed retention by reporting band, and each setting's own turn mix",
+      "measure": {
+        "column": "speed_retention",
+        "definition": "exit_speed / entry_speed (stage 02)",
+        "segmentation_key": "detector.segmentation",
+        "source": "outputs/turns/turns.parquet"
+      },
+      "panel_a": {
+        "encoding": "median with Q1-Q3 whisker, one series per setting, no smoothing and no fitted curve",
+        "bands": [
+          "30\u201345\u00b0",
+          "45\u201360\u00b0",
+          "60\u201390\u00b0",
+          "90\u2013120\u00b0",
+          "120\u2013150\u00b0",
+          "150\u2013180\u00b0"
+        ],
+        "medians": {
+          "combine": {
+            "45\u201360\u00b0": 1.3251019716262817,
+            "60\u201390\u00b0": 1.343435525894165,
+            "90\u2013120\u00b0": 1.124939203262329,
+            "120\u2013150\u00b0": 1.2523421049118042,
+            "150\u2013180\u00b0": 1.3000184297561646
+          },
+          "game": {
+            "30\u201345\u00b0": 1.1801292896270752,
+            "45\u201360\u00b0": 1.190018892288208,
+            "60\u201390\u00b0": 1.1955442428588867,
+            "90\u2013120\u00b0": 1.0794122219085693,
+            "120\u2013150\u00b0": 1.036222219467163,
+            "150\u2013180\u00b0": 1.0491986274719238
+          }
+        },
+        "q1": {
+          "combine": {
+            "45\u201360\u00b0": 1.1925024092197418,
+            "60\u201390\u00b0": 1.0329192876815796,
+            "90\u2013120\u00b0": 0.9941577911376953,
+            "120\u2013150\u00b0": 0.981861025094986,
+            "150\u2013180\u00b0": 0.9732644408941269
+          },
+          "game": {
+            "30\u201345\u00b0": 0.7200939655303955,
+            "45\u201360\u00b0": 0.6479760408401489,
+            "60\u201390\u00b0": 0.8241099268198013,
+            "90\u2013120\u00b0": 0.781889796257019,
+            "120\u2013150\u00b0": 0.7811413258314133,
+            "150\u2013180\u00b0": 0.7570342421531677
+          }
+        },
+        "q3": {
+          "combine": {
+            "45\u201360\u00b0": 1.5124906301498413,
+            "60\u201390\u00b0": 1.667712926864624,
+            "90\u2013120\u00b0": 1.8056246042251587,
+            "120\u2013150\u00b0": 1.6743313074111938,
+            "150\u2013180\u00b0": 1.6859864592552185
+          },
+          "game": {
+            "30\u201345\u00b0": 1.6608436107635498,
+            "45\u201360\u00b0": 1.6729241609573364,
+            "60\u201390\u00b0": 1.6031220853328705,
+            "90\u2013120\u00b0": 1.414252758026123,
+            "120\u2013150\u00b0": 1.3940903544425964,
+            "150\u2013180\u00b0": 1.5358811616897583
+          }
+        },
+        "n_drawn": 11,
+        "min_n_for_median": 20,
+        "insufficient": [
+          {
+            "band": "30\u201345\u00b0",
+            "setting": "combine",
+            "n_retention": 4,
+            "reason": "insufficient: n=4 < min_n=20 (too few turns to carry a median)"
+          }
+        ],
+        "claim_tested": "A 30-45 degree break keeps most of the speed while a 150-180 degree plant gives up a large share of it.",
+        "claim_supported": false,
+        "verdict": "Combine: not reported in 30\u201345\u00b0 (insufficient n) against 1.30 in 150\u2013180\u00b0; peak median 1.34 in 60\u201390\u00b0, low median 1.12 in 90\u2013120\u00b0; Game: 1.18 in 30\u201345\u00b0 against 1.05 in 150\u2013180\u00b0; peak median 1.20 in 60\u201390\u00b0, low median 1.04 in 120\u2013150\u00b0."
+      },
+      "panel_b": {
+        "encoding": "share of each setting's own valid turns per band; counts printed on the bars; reversal class hatched",
+        "shares": {
+          "combine": {
+            "30\u201345\u00b0": 0.0033927056827820186,
+            "45\u201360\u00b0": 0.018659881255301103,
+            "60\u201390\u00b0": 0.2010178117048346,
+            "90\u2013120\u00b0": 0.13486005089058525,
+            "120\u2013150\u00b0": 0.42324003392705684,
+            "150\u2013180\u00b0": 0.1085665818490246,
+            ">180\u00b0": 0.1102629346904156
+          },
+          "game": {
+            "30\u201345\u00b0": 0.04288240495137047,
+            "45\u201360\u00b0": 0.10123784261715296,
+            "60\u201390\u00b0": 0.21043324491600354,
+            "90\u2013120\u00b0": 0.22458001768346597,
+            "120\u2013150\u00b0": 0.20335985853227231,
+            "150\u2013180\u00b0": 0.13572060123784263,
+            ">180\u00b0": 0.08178603006189213
+          }
+        },
+        "counts": {
+          "combine": {
+            "30\u201345\u00b0": 4,
+            "45\u201360\u00b0": 22,
+            "60\u201390\u00b0": 237,
+            "90\u2013120\u00b0": 159,
+            "120\u2013150\u00b0": 499,
+            "150\u2013180\u00b0": 128,
+            ">180\u00b0": 130
+          },
+          "game": {
+            "30\u201345\u00b0": 97,
+            "45\u201360\u00b0": 229,
+            "60\u201390\u00b0": 476,
+            "90\u2013120\u00b0": 508,
+            "120\u2013150\u00b0": 460,
+            "150\u2013180\u00b0": 307,
+            ">180\u00b0": 185
+          }
+        }
+      },
+      "entry_speed_floor": {
+        "combine": {
+          "config_key": "detector.speed_floor_combine",
+          "value_yd_s": 2.5,
+          "n_removed": 0,
+          "n_turns": 1179
+        },
+        "game": {
+          "config_key": "detector.speed_floor_game",
+          "value_yd_s": 2.0,
+          "n_removed": 0,
+          "n_turns": 2262
+        }
+      },
+      "turns_removed_by_floor": 0,
+      "share_removed_by_floor": 0.0,
+      "reversal_class": {
+        "rule": "abs_turn_angle > 180",
+        "n": {
+          "combine": 130,
+          "game": 185
+        },
+        "n_exactly_180": 0,
+        "in_panel_a": "excluded, reason stated on the image",
+        "in_panel_b": "included as a labelled, hatched class"
+      },
+      "n_valid": 3441,
+      "n_by_setting": {
+        "combine": 1179,
+        "game": 2262
+      },
+      "caveats": [
+        "Sample data: nothing here is a finding about the 2027 class.",
+        "speed_retention is exit_speed / entry_speed with the turn window bounded by speed maxima; a ratio above 1 means the exit maximum is faster than the entry maximum, not that the turn is free.",
+        "Descriptive only: no per-player values, no ranking, no p-values, no smoothing or fitted curve.",
+        "Bands are figures.hole.bands, left-closed; the last class is the reversal class and carries no retention value."
+      ],
+      "png": "outputs/figures/fig_turn_cost.png",
+      "csv": "outputs/figures/fig_turn_cost.csv",
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }

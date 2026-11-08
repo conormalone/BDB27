@@ -512,6 +512,33 @@ turn_coverage:
       width_in: 14.5
       height_in: 7.4
 
+    # Stage 06 figure 8 ("What a turn costs, and who pays for it"). Panel (a)
+    # is the median and interquartile spread of `speed_retention` (exit speed /
+    # entry speed, stage 02) per reporting band, one series per setting, on one
+    # axis. Panel (b) is each setting's own share of its turns in those same
+    # bands, so the substitution is visible directly under it. The bands are NOT
+    # repeated here: they are read from `figures.hole.bands`, so figure 8 and
+    # figure 1 cannot drift apart. Nothing is smoothed, fitted or thresholded.
+    #
+    # `min_n_for_median` is the floor below which a band is drawn as
+    # INSUFFICIENT rather than as a median: a quartile from a handful of turns
+    # is not a distribution. DESIGN CHOICE (20 turns), stated on the image.
+    #
+    # `entry_speed_floor_keys` names the detector's own heading-reliability
+    # floors. No new threshold is invented here: below these speeds the heading
+    # is undefined (no turn can be detected), so a retention ratio cannot be
+    # trusted. The keys are recorded as config text so the figure prints them
+    # and a test can prove the values agree with `detector.*`.
+    turn_cost:
+      position_group: DB
+      min_n_for_median: 20
+      entry_speed_floor_keys:
+        combine: detector.speed_floor_combine
+        game: detector.speed_floor_game
+      dpi: 150
+      width_in: 13.4
+      height_in: 9.4
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

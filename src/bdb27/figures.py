@@ -69,6 +69,7 @@ FIGURE_KEY_BEFORE_AFTER = "fig_before_after"
 FIGURE_KEY_ALL_POSITIONS = "fig_all_positions"
 FIGURE_KEY_MEASUREMENT_LIMITS = "fig_measurement_limits"
 FIGURE_KEY_GAP_HONEST = "fig_gap_honest"
+FIGURE_KEY_TURN_COST = "fig_turn_cost"
 
 #: Figure 3 needs only the grid coordinates and the player identity.
 SUPPLY_COLUMNS = [
@@ -103,6 +104,9 @@ TURN_COLUMNS = [
     "entry_speed",
     # Figure 6 plots peak lateral acceleration; figures 1-5 ignore it.
     "peak_lateral_accel_yd_s2",
+    # Figure 8 prices a turn with exit speed / entry speed, stage 02's own
+    # `speed_retention` column. Never recomputed here.
+    "speed_retention",
 ]
 
 DRILL_COLUMNS = [
@@ -3305,3 +3309,634 @@ def gap_honest_manifest_payload(table: pd.DataFrame, context: dict,
         "csv": f"outputs/figures/{FIGURE_KEY_GAP_HONEST}.csv",
     }
     return payload
+
+
+# ------------- figure 8: what a turn costs, and who pays for it
+#: Panel (a) is drawn from the reporting bands only. The last reporting class
+#: (``>= 180``) is the reversal class and is never given a retention value.
+TURN_COST_SETTINGS = ("combine", "game")
+
+
+def turn_cost_table(turns: pd.DataFrame,
+                    cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """Per band x setting: how many turns, and what they cost in speed.
+
+    Two populations are kept deliberately separate and never merged:
+
+    * ``count`` / ``share_within_setting`` — every valid turn in the band. This
+      is panel (b), the substitution view, so the shares sum to 100% per
+      setting.
+    * ``n_retention`` / quartiles — only turns that *can* carry a retention
+      value: entry speed above the detector's heading-reliability floor, a
+      finite ``speed_retention``, and not in the reversal class. This is panel
+      (a). A band below ``min_n_for_median`` usable turns is flagged
+      ``insufficient`` and is never drawn as a median.
+
+    The floors are read from the detector block (their config keys are named in
+    the figure block), so the figure cannot apply a floor the detector did not.
+    """
+    block = "figures.turn_cost"
+    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    overflow_label = str(cfg.get("figures.hole.bands.overflow_label"))
+    position = str(cfg.get(f"{block}.position_group"))
+    min_n = int(cfg.get(f"{block}.min_n_for_median"))
+    if min_n < 1:
+        raise common.StageRefused(
+            f"{STAGE}: figures.turn_cost.min_n_for_median must be >= 1")
+
+    floor_keys = cfg.get(f"{block}.entry_speed_floor_keys") or {}
+    floors: dict[str, dict] = {}
+    for setting in TURN_COST_SETTINGS:
+        key = floor_keys.get(setting)
+        if not key:
+            raise common.StageRefused(
+                f"{STAGE}: figures.turn_cost.entry_speed_floor_keys has no "
+                f"key for {setting!r}; the entry-speed floor must be named")
+        floors[setting] = {"key": str(key), "value": float(cfg.get(str(key)))}
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    df = turns[valid & (turns["position_group"] == position)].copy()
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} turns — nothing to price")
+    missing = [s for s in TURN_COST_SETTINGS if s not in set(df["setting"])]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: turn table has no {position} turns for {missing}; a "
+            "cost comparison needs both settings")
+    df["setting"] = df["setting"].astype(str)
+    df["abs_turn_angle"] = pd.to_numeric(df["abs_turn_angle"], errors="coerce")
+    df["entry_speed"] = pd.to_numeric(df["entry_speed"], errors="coerce")
+    df["speed_retention"] = pd.to_numeric(df["speed_retention"], errors="coerce")
+
+    bands = band_labels(edges, overflow_label)
+    angle = df["abs_turn_angle"]
+    labels = np.full(len(df), None, dtype=object)
+    for i in range(len(edges) - 1):
+        mask = (angle >= edges[i]) & (angle < edges[i + 1])
+        labels[mask.to_numpy()] = bands[i]
+    labels[(angle >= edges[-1]).to_numpy()] = bands[-1]
+    if int(pd.isna(labels).sum()):
+        raise common.StageRefused(
+            f"{STAGE}: {int(pd.isna(labels).sum())} valid {position} turns fall "
+            f"outside the configured bands {edges}")
+    df["band"] = labels
+
+    totals = df.groupby("setting").size().to_dict()
+    n_exactly_180 = int((angle == 180).sum())
+    rows: list[dict] = []
+    for i, band in enumerate(bands):
+        reversal_class = bool(i == len(bands) - 1)
+        for setting in TURN_COST_SETTINGS:
+            part = df[(df["band"] == band) & (df["setting"] == setting)]
+            floor = floors[setting]["value"]
+            count = int(len(part))
+            below_floor = int((part["entry_speed"].isna()
+                               | (part["entry_speed"] <= floor)).sum())
+            above = part[part["entry_speed"].notna()
+                         & (part["entry_speed"] > floor)]
+            no_retention = int(above["speed_retention"].isna().sum())
+            usable = above[above["speed_retention"].notna()]["speed_retention"]
+            n_ret = int(len(usable))
+
+            if reversal_class:
+                q1 = med = q3 = np.nan
+                insufficient = True
+                reason = ("reversal class (>=180 deg): v-omega measures are "
+                          "meaningless, so no retention is reported")
+            else:
+                if n_ret:
+                    q1 = float(usable.quantile(0.25))
+                    med = float(usable.median())
+                    q3 = float(usable.quantile(0.75))
+                else:
+                    q1 = med = q3 = np.nan
+                insufficient = bool(n_ret < min_n)
+                reason = "" if not insufficient else (
+                    f"insufficient: n={n_ret} < min_n={min_n} (too few turns "
+                    "to carry a median)")
+
+            rows.append({
+                "band_index": i + 1,
+                "band": band,
+                "band_low_deg": edges[i] if not reversal_class else edges[-1],
+                "band_high_deg": edges[i + 1] if not reversal_class else np.nan,
+                "is_reversal_class": reversal_class,
+                "setting": setting,
+                "count": count,
+                "setting_total": int(totals[setting]),
+                "share_within_setting": (count / int(totals[setting])
+                                         if int(totals[setting]) else np.nan),
+                "entry_speed_floor_yd_s": floor,
+                "entry_speed_floor_key": floors[setting]["key"],
+                "n_below_speed_floor": below_floor,
+                "n_missing_retention": no_retention,
+                "n_retention": n_ret,
+                "q1_retention": q1,
+                "median_retention": med,
+                "q3_retention": q3,
+                "iqr_retention": (q3 - q1) if n_ret else np.nan,
+                "insufficient": insufficient,
+                "insufficient_reason": reason,
+                # Panel (a) draws a value only for a usable, sufficient,
+                # non-reversal band; everything else is drawn as insufficient
+                # or as the excluded reversal class.
+                "drawn_in_panel_a": bool(n_ret >= min_n and not reversal_class),
+            })
+
+    table = pd.DataFrame(rows)
+    if int(table.loc[~table["is_reversal_class"], "count"].sum()) != int(
+            df[angle < edges[-1]].shape[0]):
+        raise ValueError(
+            f"{STAGE}: banded counts do not reconstruct the non-reversal turn "
+            "population")
+    if int(table["count"].sum()) != int(len(df)):
+        raise ValueError(
+            f"{STAGE}: banded counts sum to {int(table['count'].sum())}, but "
+            f"the table has {len(df)} valid {position} turns")
+
+    drawn = table[table["drawn_in_panel_a"]]
+    insufficient = table[~table["drawn_in_panel_a"]
+                         & ~table["is_reversal_class"]]
+    below_total = int(table["n_below_speed_floor"].sum())
+    context = {
+        "position": position,
+        "bands": bands,
+        "edges": edges,
+        "min_n_for_median": min_n,
+        "floors": floors,
+        "n_valid": int(len(df)),
+        "n_by_setting": {s: int(totals[s]) for s in TURN_COST_SETTINGS},
+        "n_below_speed_floor": below_total,
+        "share_removed_by_floor": below_total / len(df) if len(df) else 0.0,
+        "n_below_speed_floor_by_setting": {
+            s: int(table.loc[table["setting"] == s, "n_below_speed_floor"].sum())
+            for s in TURN_COST_SETTINGS},
+        "n_exactly_180": n_exactly_180,
+        "reversal": {
+            s: int(table.loc[(table["setting"] == s)
+                             & table["is_reversal_class"], "count"].iloc[0])
+            for s in TURN_COST_SETTINGS},
+        "n_drawn": int(len(drawn)),
+        "insufficient": [
+            {"band": str(r["band"]), "setting": str(r["setting"]),
+             "n_retention": int(r["n_retention"]),
+             "reason": str(r["insufficient_reason"])}
+            for _, r in insufficient.iterrows()],
+        "medians": {
+            s: {str(r["band"]): float(r["median_retention"])
+                for _, r in drawn[drawn["setting"] == s].iterrows()}
+            for s in TURN_COST_SETTINGS},
+        "q1": {s: {str(r["band"]): float(r["q1_retention"])
+                   for _, r in drawn[drawn["setting"] == s].iterrows()}
+               for s in TURN_COST_SETTINGS},
+        "q3": {s: {str(r["band"]): float(r["q3_retention"])
+                   for _, r in drawn[drawn["setting"] == s].iterrows()}
+               for s in TURN_COST_SETTINGS},
+    }
+    return table, context
+
+
+def _turn_cost_curve_sentence(context: dict) -> str:
+    """One sentence, generated from the medians actually drawn.
+
+    Written as a generator so the caption cannot describe a curve the data does
+    not have: whichever way the medians run, the sentence carries their numbers.
+    """
+    parts = []
+    for setting in TURN_COST_SETTINGS:
+        med = context["medians"][setting]
+        if not med:
+            parts.append(f"{SETTING_LABELS[setting]}: no band carries a median")
+            continue
+        shallow = med.get(context["bands"][0])
+        deep = med.get(context["bands"][-2])
+        peak_band, peak = max(med.items(), key=lambda kv: kv[1])
+        low_band, low = min(med.items(), key=lambda kv: kv[1])
+        shallow_txt = (f"{shallow:.2f} in {context['bands'][0]}" if shallow
+                       is not None else
+                       f"not reported in {context['bands'][0]} (insufficient n)")
+        deep_txt = (f"{deep:.2f} in {context['bands'][-2]}" if deep is not None
+                    else f"not reported in {context['bands'][-2]}")
+        parts.append(
+            f"{SETTING_LABELS[setting]}: {shallow_txt} against {deep_txt}; peak "
+            f"median {peak:.2f} in {peak_band}, low median {low:.2f} in "
+            f"{low_band}")
+    return "; ".join(parts) + "."
+
+
+def _turn_cost_direction(context: dict) -> str:
+    """The shallowest-to-deepest change, stated only where both are reported."""
+    bits = []
+    for setting in TURN_COST_SETTINGS:
+        med = context["medians"][setting]
+        shallow = med.get(context["bands"][0])
+        deep = med.get(context["bands"][-2])
+        if shallow is None or deep is None:
+            continue
+        change = deep - shallow
+        pct = 100.0 * change / shallow if shallow else float("nan")
+        bits.append(
+            f"{SETTING_LABELS[setting]} {shallow:.2f} → {deep:.2f} "
+            f"({change:+.2f}, {pct:+.0f}%)")
+    if not bits:
+        return ("No setting reports both the shallowest and the deepest band, "
+                "so no shallow-to-deep change is stated.")
+    return ("From the shallowest to the deepest reported band: "
+            + "; ".join(bits) + ".")
+
+
+def plot_turn_cost(table: pd.DataFrame, context: dict,
+                   cfg: common.Config) -> plt.Figure:
+    """Two stacked panels on one shared band axis. Returns the Figure.
+
+    (a) median and interquartile spread of ``speed_retention`` per band, one
+    series per setting; insufficient bands and the reversal class are drawn as
+    such, never as values. (b) each setting's own share of its turns in the same
+    bands, counts printed on the bars, the reversal class hatched.
+    """
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+
+    block = "figures.turn_cost"
+    bands = context["bands"]
+    n_bands = len(bands)
+    min_n = context["min_n_for_median"]
+
+    fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
+                              float(cfg.get(f"{block}.height_in"))))
+    grid = fig.add_gridspec(
+        2, 1, height_ratios=[1.30, 1.0], hspace=0.13,
+        left=0.082, right=0.985, top=0.845, bottom=0.318)
+    ax_a = fig.add_subplot(grid[0])
+    ax_b = fig.add_subplot(grid[1], sharex=ax_a)
+
+    offsets = {"combine": -0.185, "game": 0.185}
+    bar_w = 0.30
+
+    def _fill(colour: str) -> None:
+        for ax in (ax_a, ax_b):
+            ax.set_facecolor("#EBEBEB")
+            ax.grid(axis="y", color="white", linewidth=0.8, zorder=0)
+            for spine in ("top", "right"):
+                ax.spines[spine].set_visible(False)
+            for spine in ("left", "bottom"):
+                ax.spines[spine].set_color("#B3B3B3")
+
+    _fill("#EBEBEB")
+
+    # ---------------------------------------------------------- panel (a)
+    drawn_cells: list[tuple[str, str]] = []
+    insufficient_cells: list[tuple[str, str]] = []
+    for i in range(n_bands - 1):          # the last class is the reversal class
+        for setting in TURN_COST_SETTINGS:
+            row = table[(table["band"] == bands[i])
+                        & (table["setting"] == setting)].iloc[0]
+            x = i + offsets[setting]
+            colour = PALETTE[setting]
+            if row["drawn_in_panel_a"]:
+                ax_a.plot([x, x], [row["q1_retention"], row["q3_retention"]],
+                          color=colour, linewidth=2.6, solid_capstyle="butt",
+                          zorder=3)
+                ax_a.plot([x, x],
+                          [row["q1_retention"] - 0.018,
+                           row["q1_retention"] + 0.018],
+                          color=colour, linewidth=1.4, zorder=3)
+                ax_a.plot([x, x],
+                          [row["q3_retention"] - 0.018,
+                           row["q3_retention"] + 0.018],
+                          color=colour, linewidth=1.4, zorder=3)
+                ax_a.plot([x], [row["median_retention"]],
+                          marker="o" if setting == "combine" else "s",
+                          markersize=6.2, markerfacecolor=colour,
+                          markeredgecolor="white", markeredgewidth=0.7,
+                          linestyle="none", zorder=4)
+                drawn_cells.append((bands[i], setting))
+            else:
+                insufficient_cells.append((bands[i], setting))
+
+    # The reversal class gets one shaded slot in (a), labelled as excluded.
+    rev = context["reversal"]
+    ax_a.axvspan(n_bands - 1 - 0.46, n_bands - 1 + 0.46, color="#6E6E6E",
+                 alpha=0.13, zorder=1)
+    ax_a.text(n_bands - 1, 0.5,
+              "excluded from (a):\nreversal class\n"
+              f"n={rev['combine']} / {rev['game']}\n"
+              "v·ω undefined",
+              transform=ax_a.get_xaxis_transform(), ha="center", va="center",
+              fontsize=6.4, color="#333333", linespacing=1.35, zorder=6)
+
+    drawn_y = [v for s in TURN_COST_SETTINGS
+               for v in list(context["q1"][s].values())
+               + list(context["q3"][s].values())]
+    y_lo = min(0.55, min(drawn_y) - 0.14)
+    y_hi = max(drawn_y) + 0.16
+    ax_a.set_ylim(y_lo, y_hi)
+    ax_a.set_xlim(-0.55, n_bands - 0.45)
+
+    ax_a.axhline(1.0, color="#555555", linewidth=0.9, linestyle=(0, (4, 3)),
+                 zorder=2)
+
+    # Per-band n, published under each side of every band.
+    for i in range(n_bands - 1):
+        for setting in TURN_COST_SETTINGS:
+            row = table[(table["band"] == bands[i])
+                        & (table["setting"] == setting)].iloc[0]
+            x = i + offsets[setting]
+            if row["drawn_in_panel_a"]:
+                ax_a.text(x, y_lo + (y_hi - y_lo) * 0.015,
+                          f"n={int(row['n_retention'])}", ha="center",
+                          va="bottom", fontsize=6.0, color=PALETTE[setting],
+                          zorder=6)
+            else:
+                ax_a.add_patch(plt.Rectangle(
+                    (x - bar_w / 2.0, y_lo),
+                    bar_w, y_hi - y_lo, facecolor="#7A7A7A", alpha=0.16,
+                    edgecolor="none", zorder=1))
+                ax_a.text(x, y_lo + (y_hi - y_lo) * 0.20,
+                          f"n={int(row['n_retention'])}\ninsufficient\n"
+                          f"(min n={min_n})", ha="center", va="bottom",
+                          fontsize=5.8, color="#333333", linespacing=1.3,
+                          zorder=6)
+
+    ax_a.set_title(
+        "(a) What the turn costs in speed — median and interquartile spread of "
+        "exit ÷ entry speed, by reporting band",
+        loc="left", fontsize=9.6, fontweight="bold", color="#1A1A1A", pad=7)
+    ax_a.set_ylabel("Speed retention (exit ÷ entry);\ndashed line = 1.0 "
+                    "(exit speed equals entry speed)",
+                    fontsize=7.6, color="#333333")
+    ax_a.tick_params(axis="x", labelbottom=False, length=0)
+    ax_a.tick_params(axis="y", labelsize=7.0, colors="#333333", length=2)
+
+    # ---------------------------------------------------------- panel (b)
+    b_max = 0.0
+    for i, band in enumerate(bands):
+        for setting in TURN_COST_SETTINGS:
+            row = table[(table["band"] == band)
+                        & (table["setting"] == setting)].iloc[0]
+            share = float(row["share_within_setting"]) * 100.0
+            b_max = max(b_max, share)
+            reversal_class = bool(row["is_reversal_class"])
+            ax_b.bar(i + offsets[setting], share, width=bar_w,
+                     color=PALETTE[setting],
+                     alpha=0.55 if reversal_class else 1.0,
+                     hatch="////" if reversal_class else None,
+                     edgecolor="white", linewidth=0.6, zorder=3)
+            ax_b.text(i + offsets[setting], share + b_max * 0.018,
+                      f"{int(row['count']):,}", ha="center", va="bottom",
+                      fontsize=6.6, color="#1A1A1A", zorder=5)
+    ax_b.set_ylim(0.0, b_max * 1.20)
+    ax_b.set_title(
+        "(b) Who pays it — share of each setting's own turns in those same "
+        "bands, so the reader sees where each setting spends its turns",
+        loc="left", fontsize=9.6, fontweight="bold", color="#1A1A1A", pad=7)
+    ax_b.set_ylabel("Share of that setting's\nown turns (%)",
+                    fontsize=7.6, color="#333333")
+    ticks = []
+    for i, band in enumerate(bands):
+        ticks.append(f"{band}\n(reversal)" if i == n_bands - 1 else band)
+    ax_b.set_xticks(range(n_bands))
+    ax_b.set_xticklabels(ticks, fontsize=7.4, color="#333333")
+    ax_b.tick_params(axis="x", length=2)
+    ax_b.tick_params(axis="y", labelsize=7.0, colors="#333333", length=2)
+    ax_b.set_xlabel("Absolute turn angle (°), left-closed reporting bands",
+                    fontsize=7.6, color="#333333", labelpad=3)
+
+    fig.legend(
+        handles=[
+            Line2D([0], [0], marker="o", color=PALETTE["combine"], linewidth=2.6,
+                   markersize=6.2, markeredgecolor="white",
+                   label="Combine — median and Q1–Q3"),
+            Line2D([0], [0], marker="s", color=PALETTE["game"], linewidth=2.6,
+                   markersize=6.2, markeredgecolor="white",
+                   label="Game — median and Q1–Q3"),
+            Patch(facecolor="#8A8A8A", alpha=0.55, hatch="////",
+                  edgecolor="white", label="reversal class (>=180°) — in (b), "
+                  "excluded from (a)"),
+        ],
+        loc="upper left", bbox_to_anchor=(0.078, 0.905), ncol=3,
+        frameon=False, fontsize=7.6, handlelength=1.6, columnspacing=1.8)
+
+    # ------------------------------------------------------- titles, caption
+    fig.text(0.012, 0.978, "What a turn costs, and who pays for it",
+             fontsize=16.5, fontweight="bold", ha="left", va="top",
+             color="#111111")
+    fig.text(0.012, 0.950,
+             _wrap_text(
+                 "Panel a prices each reporting band with stage 02's own "
+                 "speed_retention (exit speed ÷ entry speed); panel b shows "
+                 "where each setting spends its turns in the same bands. "
+                 "Descriptive distributions only — no fit, no smoothing, no "
+                 "threshold.", 178),
+             fontsize=8.4, ha="left", va="top", color="#333333")
+
+    medians = context["medians"]
+    all_med = [v for s in TURN_COST_SETTINGS for v in medians[s].values()]
+    above_one = sum(1 for v in all_med if v > 1.0)
+    low_setting, low_band, low_value = min(
+        ((s, b, v) for s in TURN_COST_SETTINGS
+         for b, v in medians[s].items()), key=lambda x: x[2])
+    peaks = {s: max(medians[s].items(), key=lambda kv: kv[1])[0]
+             for s in TURN_COST_SETTINGS if medians[s]}
+    if len(set(peaks.values())) == 1:
+        peak_txt = f"both settings peak in {next(iter(peaks.values()))}"
+    else:
+        peak_txt = "; ".join(f"{SETTING_LABELS[s]} peaks in {b}"
+                             for s, b in peaks.items())
+    floor_bits = "; ".join(
+        f"{SETTING_LABELS[s]} > {context['floors'][s]['value']:.1f} yd/s "
+        f"({context['floors'][s]['key']})"
+        for s in TURN_COST_SETTINGS)
+    removed_bits = " and ".join(
+        f"{context['n_below_speed_floor_by_setting'][s]} of "
+        f"{context['n_by_setting'][s]:,} {SETTING_LABELS[s]} turns"
+        for s in TURN_COST_SETTINGS)
+
+    ins = context["insufficient"]
+    ins_txt = ("; ".join(f"{r['band']} {SETTING_LABELS[r['setting']]} "
+                         f"(n={r['n_retention']})" for r in ins)
+               if ins else "none")
+
+    verdict = (
+        "The claim this figure was built to test — a 30–45° break keeps most "
+        "of the speed while a 150–180° plant gives up a large share of it — is "
+        f"not what the sample shows. {_turn_cost_curve_sentence(context)} "
+        f"{_turn_cost_direction(context)} "
+        f"{above_one} of {len(all_med)} drawn medians are above 1.00 (lowest "
+        f"{low_value:.2f}, {SETTING_LABELS[low_setting]} {low_band}), so the "
+        "exit speed maximum is faster than the entry speed maximum in every "
+        "band that carries a median: no band in this sample gives up a large "
+        f"share of its speed. The curve is not monotone in angle — {peak_txt}.")
+
+    caption_lines = [
+        STAMP,
+        "FINDING, AS MEASURED. " + verdict,
+        (f"150–180° is the band the claim calls the plant: "
+         + ", ".join(f"{SETTING_LABELS[s]} median "
+                     f"{medians[s].get(context['bands'][-2], float('nan')):.2f} "
+                     f"(Q1–Q3 "
+                     f"{context['q1'][s].get(context['bands'][-2], float('nan')):.2f}–"
+                     f"{context['q3'][s].get(context['bands'][-2], float('nan')):.2f})"
+                     for s in TURN_COST_SETTINGS)
+         + ". A ratio above 1.0 is not a free turn: a turn window runs from one "
+           "speed maximum to another (detector.segmentation), so the ratio "
+           "compares the exit maximum with the entry maximum, and some "
+           "re-acceleration is included at the exit."),
+        (f"Published n per band. Any band with fewer than "
+         f"{context['min_n_for_median']} usable turns is drawn as INSUFFICIENT, "
+         f"never as a median: {ins_txt}."),
+        (f"Entry-speed floor = the detector's own heading-reliability floor "
+         f"({floor_bits}). It removes {removed_bits} "
+         f"({100.0 * context['share_removed_by_floor']:.1f}% in total) because "
+         "stage 02 already refuses turns below it."),
+        (f"The reversal class (abs_turn_angle > 180°, {context['n_exactly_180']} "
+         f"turns sitting exactly on 180°) is kept in panel b as a labelled, "
+         f"hatched class ({context['reversal']['combine']} Combine / "
+         f"{context['reversal']['game']} game) and excluded from panel a "
+         "with the reason stated there, because v·ω is physically meaningless "
+         "for a full heading reversal."),
+        ("Counts, shares and quartiles are recomputed at render time from "
+         "outputs/turns/turns.parquet (valid turns, stage 02); every value is "
+         "in outputs/figures/fig_turn_cost.csv. Bands are the reporting bands "
+         "of figures 1, 3 and 5 (figures.hole.bands), left-closed. Descriptive "
+         "only: no per-player values, no ranking, no p-values. Sample data: "
+         "nothing here is a finding about the 2027 class."),
+    ]
+    wrapped: list[str] = []
+    for line in caption_lines:
+        wrapped.extend(_wrap_text(line, 168).split("\n"))
+    fig.text(0.012, 0.252, "\n".join(wrapped), fontsize=6.25,
+             ha="left", va="top", color="#333333", linespacing=1.40)
+
+    fig.text(0.988, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+
+    # Draw audit: what was drawn as a value, and what was not. A test can read
+    # this instead of counting artists, and the figure raises if it disagrees
+    # with the table.
+    expected_drawn = int(table["drawn_in_panel_a"].sum())
+    expected_drawn_insufficient = int(
+        (~table["drawn_in_panel_a"] & ~table["is_reversal_class"]).sum())
+    if len(drawn_cells) != expected_drawn:
+        raise ValueError(
+            f"{STAGE}: drew {len(drawn_cells)} retention values, but the table "
+            f"flags {expected_drawn}")
+    if len(insufficient_cells) != expected_drawn_insufficient:
+        raise ValueError(
+            f"{STAGE}: drew {len(insufficient_cells)} insufficient cells, but "
+            f"the table flags {expected_drawn_insufficient}")
+    fig.bdb27_draw_audit = {
+        "drawn_in_panel_a": sorted(drawn_cells),
+        "insufficient_in_panel_a": sorted(insufficient_cells),
+        "reversal_slot_drawn": True,
+        "min_n_for_median": int(min_n),
+    }
+    return fig
+
+
+def render_turn_cost(fig: plt.Figure, cfg: common.Config,
+                     out_png: Path) -> Path:
+    """Save figure 8 once with fixed metadata, so two runs are identical."""
+    dpi = int(cfg.get("figures.turn_cost.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    return out_png
+
+
+def turn_cost_csv_frame(table: pd.DataFrame) -> pd.DataFrame:
+    """Every band's n, floor accounting and quartiles, per setting."""
+    out = table.copy()
+    out["share_pct"] = out["share_within_setting"] * 100.0
+    out["setting_order"] = out["setting"].map(
+        {"combine": 0, "game": 1}).fillna(2).astype(int)
+    out = out.sort_values(["band_index", "setting_order"]).reset_index(drop=True)
+    return out[[
+        "band_index", "band", "band_low_deg", "band_high_deg",
+        "is_reversal_class", "setting", "count", "setting_total",
+        "share_within_setting", "share_pct", "entry_speed_floor_yd_s",
+        "entry_speed_floor_key", "n_below_speed_floor", "n_missing_retention",
+        "n_retention", "q1_retention", "median_retention", "q3_retention",
+        "iqr_retention", "insufficient", "insufficient_reason",
+        "drawn_in_panel_a"]]
+
+
+def turn_cost_manifest_payload(table: pd.DataFrame, context: dict,
+                               cfg: common.Config) -> dict:
+    medians = context["medians"]
+    claim_supported = all(
+        medians[s].get(context["bands"][0], float("nan"))
+        > medians[s].get(context["bands"][-2], float("nan"))
+        for s in TURN_COST_SETTINGS)
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_TURN_COST,
+        "title": ("What a turn costs, and who pays for it: speed retention by "
+                  "reporting band, and each setting's own turn mix"),
+        "measure": {
+            "column": "speed_retention",
+            "definition": "exit_speed / entry_speed (stage 02)",
+            "segmentation_key": "detector.segmentation",
+            "source": "outputs/turns/turns.parquet",
+        },
+        "panel_a": {
+            "encoding": ("median with Q1-Q3 whisker, one series per setting, "
+                         "no smoothing and no fitted curve"),
+            "bands": context["bands"][:-1],
+            "medians": medians,
+            "q1": context["q1"],
+            "q3": context["q3"],
+            "n_drawn": context["n_drawn"],
+            "min_n_for_median": context["min_n_for_median"],
+            "insufficient": context["insufficient"],
+            "claim_tested": ("A 30-45 degree break keeps most of the speed "
+                             "while a 150-180 degree plant gives up a large "
+                             "share of it."),
+            "claim_supported": bool(claim_supported),
+            "verdict": _turn_cost_curve_sentence(context),
+        },
+        "panel_b": {
+            "encoding": ("share of each setting's own valid turns per band; "
+                         "counts printed on the bars; reversal class hatched"),
+            "shares": {
+                s: {str(r["band"]): float(r["share_within_setting"])
+                    for _, r in table[table["setting"] == s].iterrows()}
+                for s in TURN_COST_SETTINGS},
+            "counts": {
+                s: {str(r["band"]): int(r["count"])
+                    for _, r in table[table["setting"] == s].iterrows()}
+                for s in TURN_COST_SETTINGS},
+        },
+        "entry_speed_floor": {
+            s: {"config_key": context["floors"][s]["key"],
+                "value_yd_s": context["floors"][s]["value"],
+                "n_removed": context["n_below_speed_floor_by_setting"][s],
+                "n_turns": context["n_by_setting"][s]}
+            for s in TURN_COST_SETTINGS},
+        "turns_removed_by_floor": context["n_below_speed_floor"],
+        "share_removed_by_floor": context["share_removed_by_floor"],
+        "reversal_class": {
+            "rule": "abs_turn_angle > 180",
+            "n": context["reversal"],
+            "n_exactly_180": context["n_exactly_180"],
+            "in_panel_a": "excluded, reason stated on the image",
+            "in_panel_b": "included as a labelled, hatched class",
+        },
+        "n_valid": context["n_valid"],
+        "n_by_setting": context["n_by_setting"],
+        "caveats": [
+            ("Sample data: nothing here is a finding about the 2027 class."),
+            ("speed_retention is exit_speed / entry_speed with the turn window "
+             "bounded by speed maxima; a ratio above 1 means the exit maximum "
+             "is faster than the entry maximum, not that the turn is free."),
+            ("Descriptive only: no per-player values, no ranking, no p-values, "
+             "no smoothing or fitted curve."),
+            ("Bands are figures.hole.bands, left-closed; the last class is the "
+             "reversal class and carries no retention value."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_TURN_COST}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_TURN_COST}.csv",
+    }

@@ -97,6 +97,10 @@ def _turns_frame() -> pd.DataFrame:
                             ("OTHER" if game_i < 1111 + 1121 else "PASS_RUSH"))
                     game_i += 1
                     drill, entry = np.nan, 4.0
+                # Figure 8 needs a retention per turn. Deterministic and
+                # monotone enough to give every drawn band a real spread; the
+                # figure-8 tests recompute the quartiles from this column.
+                retention = 0.92 + 0.11 * (int(lo) // 10 % 5) + 0.02 * (j % 7)
                 rows.append({
                     "setting": setting,
                     "abs_turn_angle": float(angle),
@@ -106,6 +110,7 @@ def _turns_frame() -> pd.DataFrame:
                     "snap_type": snap,
                     "drill_name": drill,
                     "entry_speed": float(entry),
+                    "speed_retention": float(retention),
                     # Figure 6 needs a real acceleration per turn. Monotone in
                     # angle with a deterministic ripple; assertions recompute
                     # the medians and p95 from this written table.
@@ -147,6 +152,8 @@ def _extra_positions_frame() -> pd.DataFrame:
                         "drill_name": ("BOX_DRILL" if setting == "combine"
                                        else np.nan),
                         "entry_speed": float(3.0 + (j % 5) * 0.8),
+                        "speed_retention": float(1.02 + 0.03 * band_index
+                                                 + 0.01 * (j % 5)),
                         "peak_lateral_accel_yd_s2": float(
                             4.4 + 0.065 * angle + 0.7 * ((j * 5 + i) % 5) / 5.0),
                         "event_id": f"{position}{setting[0]}{band_index}_{j}",
@@ -295,6 +302,8 @@ def rendered(tmp_path_factory):
             "ml_csv": out / "fig_measurement_limits.csv",
             "gh_png": out / "fig_gap_honest.png",
             "gh_csv": out / "fig_gap_honest.csv",
+            "tc_png": out / "fig_turn_cost.png",
+            "tc_csv": out / "fig_turn_cost.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -788,7 +797,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
     assert set(man["figures"]) == {"fig_the_hole", "fig_drill_coverage",
                                    "fig_before_after", "fig_drill_schematic",
                                    "fig_all_positions",
-                                   "fig_measurement_limits", "fig_gap_honest"}
+                                   "fig_measurement_limits", "fig_gap_honest",
+                                   "fig_turn_cost"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1317,12 +1327,12 @@ def test_measurement_limits_detector_numbers_have_a_stored_source():
         assert token in gate, f"{token} missing from the audit gate"
 
 
-def test_measurement_limits_stage_06_renders_all_seven(rendered):
+def test_measurement_limits_stage_06_renders_all_eight(rendered):
     man = json.loads(rendered["manifest"].read_text())
     assert set(man["figures"]) == {
         "fig_the_hole", "fig_drill_coverage", "fig_before_after",
         "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits",
-        "fig_gap_honest"}
+        "fig_gap_honest", "fig_turn_cost"}
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -1602,3 +1612,338 @@ def test_gap_honest_checks_can_fail(rendered):
     mixed.loc[idx, "ratio"] = float(mixed.loc[idx, "ratio"]) + 0.5
     with pytest.raises(AssertionError):
         _check_gh_csv(mixed, turns, cfg)
+
+
+# ------------- figure 8: what a turn costs, and who pays for it
+TC_KEY = "fig_turn_cost"
+
+
+def _tc_expected(turns: pd.DataFrame, cfg) -> pd.DataFrame:
+    """Recompute every band's n, floor accounting and quartiles from scratch.
+
+    Deliberately independent of ``figures.turn_cost_table``: the banding is
+    redone here with plain masks, and the quartiles with numpy's linear
+    interpolation, so a bug in the module cannot agree with itself.
+    """
+    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    overflow = str(cfg.get("figures.hole.bands.overflow_label"))
+    from bdb27 import figures as _fig
+    bands = _fig.band_labels(edges, overflow)
+    position = str(cfg.get("figures.turn_cost.position_group"))
+    min_n = int(cfg.get("figures.turn_cost.min_n_for_median"))
+    floors = {s: float(cfg.get(cfg.get(
+        f"figures.turn_cost.entry_speed_floor_keys.{s}")))
+        for s in ("combine", "game")}
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    df = turns[valid & (turns["position_group"] == position)].copy()
+    df["setting"] = df["setting"].astype(str)
+    df["abs_turn_angle"] = pd.to_numeric(df["abs_turn_angle"], errors="coerce")
+    df["entry_speed"] = pd.to_numeric(df["entry_speed"], errors="coerce")
+    df["speed_retention"] = pd.to_numeric(df["speed_retention"], errors="coerce")
+    totals = df.groupby("setting").size().to_dict()
+
+    rows = []
+    for i, band in enumerate(bands):
+        if i < len(bands) - 1:
+            mask = ((df["abs_turn_angle"] >= edges[i])
+                    & (df["abs_turn_angle"] < edges[i + 1]))
+        else:
+            mask = df["abs_turn_angle"] >= edges[-1]
+        for setting in ("combine", "game"):
+            part = df[mask & (df["setting"] == setting)]
+            floor = floors[setting]
+            below = int((part["entry_speed"].isna()
+                         | (part["entry_speed"] <= floor)).sum())
+            usable = part[part["entry_speed"].notna()
+                          & (part["entry_speed"] > floor)
+                          & part["speed_retention"].notna()]["speed_retention"]
+            n_ret = int(len(usable))
+            rows.append({
+                "band_index": i + 1,
+                "band": band,
+                "is_reversal_class": i == len(bands) - 1,
+                "setting": setting,
+                "count": int(len(part)),
+                "setting_total": int(totals[setting]),
+                "share_within_setting": int(len(part)) / int(totals[setting]),
+                "entry_speed_floor_yd_s": floor,
+                "n_below_speed_floor": below,
+                "n_retention": n_ret,
+                "q1_retention": (float(np.percentile(usable, 25))
+                                 if n_ret else np.nan),
+                "median_retention": (float(np.percentile(usable, 50))
+                                     if n_ret else np.nan),
+                "q3_retention": (float(np.percentile(usable, 75))
+                                 if n_ret else np.nan),
+            })
+    return pd.DataFrame(rows)
+
+
+def _check_tc_csv(csv_df: pd.DataFrame, turns: pd.DataFrame, cfg) -> None:
+    """Counts reconcile to the turn table; quartiles recompute; flags follow."""
+    expected = _tc_expected(turns, cfg)
+    min_n = int(cfg.get("figures.turn_cost.min_n_for_median"))
+    assert len(csv_df) == len(expected) == 14, "7 bands x 2 settings"
+    for _, row in csv_df.iterrows():
+        match = expected[(expected["band"] == row["band"])
+                         & (expected["setting"] == row["setting"])]
+        assert len(match) == 1, f"unexpected row {row['band']} {row['setting']}"
+        match = match.iloc[0]
+        assert int(row["count"]) == int(match["count"]), (
+            f"{row['band']} {row['setting']} count")
+        assert int(row["setting_total"]) == int(match["setting_total"])
+        assert int(row["n_below_speed_floor"]) == int(
+            match["n_below_speed_floor"])
+        assert int(row["n_retention"]) == int(match["n_retention"])
+        assert np.isclose(float(row["share_within_setting"]),
+                          float(match["share_within_setting"]), atol=1e-12)
+        assert np.isclose(float(row["entry_speed_floor_yd_s"]),
+                          float(match["entry_speed_floor_yd_s"]), atol=1e-12)
+        if match["is_reversal_class"]:
+            assert bool(row["is_reversal_class"]) is True
+            assert pd.isna(row["median_retention"]), (
+                "the reversal class must carry no retention value")
+            assert bool(row["insufficient"]) is True
+            assert bool(row["drawn_in_panel_a"]) is False
+            assert "reversal" in str(row["insufficient_reason"])
+            continue
+        assert bool(row["is_reversal_class"]) is False
+        for col in ("q1_retention", "median_retention", "q3_retention"):
+            assert np.isclose(float(row[col]), float(match[col]), atol=1e-9), (
+                f"{row['band']} {row['setting']} {col} does not recompute")
+        assert float(row["q1_retention"]) <= float(row["median_retention"]) \
+            <= float(row["q3_retention"]), "quartiles are out of order"
+        assert np.isclose(float(row["iqr_retention"]),
+                          float(match["q3_retention"])
+                          - float(match["q1_retention"]), atol=1e-9)
+        assert bool(row["insufficient"]) == bool(
+            int(row["n_retention"]) < min_n), "insufficient flag ignores min_n"
+        assert bool(row["drawn_in_panel_a"]) == bool(
+            int(row["n_retention"]) >= min_n)
+        reason = ("" if pd.isna(row["insufficient_reason"])
+                  else str(row["insufficient_reason"]))
+        if row["insufficient"]:
+            assert "insufficient" in reason.lower()
+        else:
+            assert reason == ""
+    for setting in ("combine", "game"):
+        part = csv_df[csv_df["setting"] == setting]
+        assert np.isclose(float(part["share_within_setting"].sum()), 1.0,
+                          atol=1e-12), "shares must sum to 100% of own turns"
+        assert int(part["count"].sum()) == int(part["setting_total"].iloc[0])
+
+
+def _tc_build(rendered, cfg_path=None):
+    """Rebuild figure 8 from the fixture artefacts (no re-run needed)."""
+    import matplotlib.pyplot as plt
+
+    from bdb27 import common, figures
+    cfg = common.load_config(cfg_path or rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = figures.turn_cost_table(turns, cfg)
+    fig = figures.plot_turn_cost(table, context, cfg)
+    return fig, table, context, turns, cfg, plt
+
+
+def test_turn_cost_png_and_csv_exist(rendered):
+    _check_png(rendered["tc_png"])
+    assert rendered["tc_csv"].exists()
+    with Image.open(rendered["tc_png"]) as im:
+        assert im.size[1] > 0
+
+
+def test_turn_cost_counts_and_quartiles_reconcile(rendered):
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    _check_tc_csv(pd.read_csv(rendered["tc_csv"]), turns, cfg)
+
+
+def test_turn_cost_floor_is_the_detector_heading_floor(rendered):
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    csv_df = pd.read_csv(rendered["tc_csv"])
+    for setting, key in (("combine", "detector.speed_floor_combine"),
+                         ("game", "detector.speed_floor_game")):
+        rows = csv_df[csv_df["setting"] == setting]
+        assert set(rows["entry_speed_floor_key"]) == {key}
+        assert set(rows["entry_speed_floor_yd_s"]) == {float(cfg.get(key))}
+
+
+def test_turn_cost_insufficient_band_is_drawn_as_insufficient(rendered):
+    """A band below min_n is labelled, not plotted as a value."""
+    fig, table, context, turns, cfg, plt = _tc_build(rendered)
+    try:
+        csv_df = pd.read_csv(rendered["tc_csv"])
+        flagged = csv_df[(~csv_df["is_reversal_class"])
+                         & (csv_df["insufficient"])]
+        drawn = {tuple(x) for x in fig.bdb27_draw_audit["drawn_in_panel_a"]}
+        insufficient = {tuple(x)
+                        for x in fig.bdb27_draw_audit[
+                            "insufficient_in_panel_a"]}
+        assert insufficient == {(str(r["band"]), str(r["setting"]))
+                                for _, r in flagged.iterrows()}
+        assert drawn.isdisjoint(insufficient)
+        assert len(drawn) == int(csv_df["drawn_in_panel_a"].sum())
+        assert len(flagged) >= 1, "fixture must contain an unusable band"
+        for band, setting in insufficient:
+            n = int(csv_df[(csv_df["band"] == band)
+                           & (csv_df["setting"] == setting)]["n_retention"].iloc[0])
+            assert n < int(cfg.get("figures.turn_cost.min_n_for_median"))
+        texts = " ".join(t.get_text() for ax in fig.axes for t in ax.texts)
+        assert "insufficient" in texts.lower(), (
+            "the image must say a band is insufficient")
+        assert f"min n={int(cfg.get('figures.turn_cost.min_n_for_median'))}" \
+            in texts
+    finally:
+        plt.close(fig)
+
+
+def test_turn_cost_reversal_class_excluded_from_a_but_present_in_b(rendered):
+    fig, table, context, turns, cfg, plt = _tc_build(rendered)
+    try:
+        audit = fig.bdb27_draw_audit
+        assert not any(band == table["band"].iloc[-1]
+                       for band, _ in audit["drawn_in_panel_a"])
+        texts = " ".join(t.get_text() for ax in fig.axes for t in ax.texts)
+        assert "excluded from (a)" in texts
+        assert "reversal class" in texts
+        # Panel (b) draws both settings in every band, reversal class included.
+        ax_b = fig.axes[1]
+        bars = [p for p in ax_b.patches if p.get_height() > 0]
+        assert len(bars) == 14, f"panel b drew {len(bars)} bars, expected 14"
+        hatched = [p for p in bars if p.get_hatch()]
+        assert len(hatched) == 2, "the reversal class must be hatched in (b)"
+        csv_df = pd.read_csv(rendered["tc_csv"])
+        rev = csv_df[csv_df["is_reversal_class"]]
+        assert set(rev["setting"]) == {"combine", "game"}
+        assert (rev["count"] > 0).all()
+        # The reversal class carries no retention value anywhere in (a).
+        assert rev["median_retention"].isna().all()
+    finally:
+        plt.close(fig)
+
+
+def test_turn_cost_entry_speed_floor_removes_turns_when_raised(rendered):
+    """The floor is applied, not decorative: raising it removes turns."""
+    from bdb27 import common, figures
+    raw = yaml.safe_load(rendered["cfg"].read_text())
+    block = raw["turn_coverage"]["figures"]["turn_cost"]
+    block["entry_speed_floor_keys"] = {
+        "combine": "detector.speed_floor_combine",
+        "game": "detector.speed_floor_game"}
+    raw["turn_coverage"]["detector"]["speed_floor_combine"] = 3.5
+    raw["turn_coverage"]["detector"]["speed_floor_game"] = 4.5
+    path = rendered["tmp"] / "config_tc_floor.yaml"
+    path.write_text(yaml.safe_dump(raw, sort_keys=False))
+    cfg = common.load_config(path)
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = figures.turn_cost_table(turns, cfg)
+    assert context["n_below_speed_floor"] > 0
+    expected = _tc_expected(turns, cfg)
+    assert int(table["n_below_speed_floor"].sum()) == int(
+        expected["n_below_speed_floor"].sum())
+    # Every game turn at 4.0 yd/s is now below the 4.5 floor: nothing to draw.
+    assert not table[table["setting"] == "game"]["drawn_in_panel_a"].any()
+    assert context["medians"]["game"] == {}
+
+
+def test_turn_cost_two_runs_are_byte_identical(rendered):
+    before = hashlib.sha256(rendered["tc_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["tc_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 8 differ"
+
+
+def test_turn_cost_leaves_figures_1_to_7_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png", "ap_png", "ml_png",
+            "gh_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k], (
+            f"{k} changed: figure 8 must not alter figures 1-7")
+
+
+def test_turn_cost_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][TC_KEY]
+    assert fig["figure"] == TC_KEY
+    assert fig["stamp"] == STAMP
+    assert fig["measure"]["column"] == "speed_retention"
+    assert fig["measure"]["definition"] == "exit_speed / entry_speed (stage 02)"
+    assert fig["panel_a"]["min_n_for_median"] == 20
+    assert len(fig["panel_a"]["medians"]) == 2
+    assert set(fig["entry_speed_floor"]) == {"combine", "game"}
+    for setting, key in (("combine", "detector.speed_floor_combine"),
+                         ("game", "detector.speed_floor_game")):
+        assert fig["entry_speed_floor"][setting]["config_key"] == key
+    assert fig["reversal_class"]["rule"] == "abs_turn_angle > 180"
+    assert isinstance(fig["panel_a"]["claim_supported"], bool)
+    assert fig["png"].endswith("fig_turn_cost.png")
+    assert fig["csv"].endswith("fig_turn_cost.csv")
+    assert "no per-player values" in " ".join(fig["caveats"]).lower()
+
+
+def test_turn_cost_caption_reports_the_curve_it_drew(rendered):
+    """The caption is generated from the medians, and says the claim failed."""
+    fig, table, context, turns, cfg, plt = _tc_build(rendered)
+    try:
+        text = " ".join(t.get_text() for t in fig.texts)
+        flat = " ".join(text.split())
+        assert "FINDING, AS MEASURED" in flat
+        assert "not what the sample shows" in flat
+        for setting in ("combine", "game"):
+            med = context["medians"][setting]
+            # The sentence quotes the peak and the low median, and the next
+            # caption line quotes the 150-180 degree band: each must appear
+            # with the number actually drawn.
+            for value in (max(med.values()), min(med.values()),
+                          med[context["bands"][-2]]):
+                assert f"{value:.2f}" in flat, (
+                    f"caption omits the {setting} median {value:.2f}")
+        assert "INSUFFICIENT" in flat
+        assert "detector.speed_floor_combine" in flat
+        assert "detector.speed_floor_game" in flat
+        assert "detector.segmentation" in flat
+        assert "0 turns" in flat or "0.0%" in flat
+    finally:
+        plt.close(fig)
+
+
+def test_turn_cost_checks_can_fail(rendered):
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    good = pd.read_csv(rendered["tc_csv"])
+    _check_tc_csv(good, turns, cfg)  # sanity: passes on the real file
+
+    bad = good.copy()
+    idx = bad.index[(bad["band"] == "60–90°") & (bad["setting"] == "game")][0]
+    bad.loc[idx, "count"] = int(bad.loc[idx, "count"]) + 1
+    with pytest.raises(AssertionError):
+        _check_tc_csv(bad, turns, cfg)
+
+    wrong_q = good.copy()
+    idx = wrong_q.index[(wrong_q["band"] == "60–90°")
+                        & (wrong_q["setting"] == "combine")][0]
+    wrong_q.loc[idx, "median_retention"] = (
+        float(wrong_q.loc[idx, "median_retention"]) + 0.05)
+    with pytest.raises(AssertionError):
+        _check_tc_csv(wrong_q, turns, cfg)
+
+    quiet = good.copy()
+    idx = quiet.index[(quiet["band"] == "30–45°")
+                      & (quiet["setting"] == "combine")][0]
+    quiet.loc[idx, "insufficient"] = False
+    with pytest.raises(AssertionError):
+        _check_tc_csv(quiet, turns, cfg)
+
+    empty = rendered["tmp"] / "empty_tc.png"
+    empty.write_bytes(b"")
+    with pytest.raises(AssertionError):
+        _check_png(empty)
