@@ -28,7 +28,8 @@ matplotlib.use("Agg")  # deterministic, headless
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.patches import Arc
+from matplotlib.patches import Arc, Patch
+from matplotlib.ticker import LogLocator, NullFormatter
 from plotnine import (
     aes,
     coord_cartesian,
@@ -6040,4 +6041,529 @@ def shallow_sources_manifest_payload(table: pd.DataFrame, context: dict,
         ],
         "png": f"outputs/figures/{FIGURE_KEY_SHALLOW_SOURCES}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_SHALLOW_SOURCES}.csv",
+    }
+
+
+# ------------- figure 12: the ninety-second ledger
+#: Added at Conor's request (2026-11-08); it is not derived from a TASK.md line.
+#:
+#: A LEDGER, not a chart. Three rows on one shared axis, the count printed at
+#: each bar end and nothing else drawn: what games demand in the 30-45 degree
+#: DB band (measured), what the Combine supplies in that band (measured), and
+#: what six reps per measured DB would be (arithmetic). The projection is
+#: hatched and labelled on the bar as arithmetic, the same measured/projected
+#: distinction as figure 3's right panel, so it cannot be read as an observed
+#: count.
+#:
+#: Every measured number is recounted from `turns.parquet` at render time. The
+#: projection is `reps` x the number of distinct Combine DBs in the table, and
+#: the multiplication is asserted rather than trusted.
+#:
+#: The axis is logarithmic only because the 4 is otherwise invisible beside the
+#: 732. The axis label says so and the caption forbids reading bar length as
+#: proportion, so the spacing cannot imply the projection is commensurable with
+#: the measurements.
+#:
+#: Nothing is subtracted. The rows count turns, not players; a difference
+#: between two rows is never drawn and never called a gap in players.
+FIGURE_KEY_LEDGER = "fig_ledger"
+
+LEDGER_COLUMNS = [
+    "setting",
+    "abs_turn_angle",
+    "position_group",
+    "nfl_id",
+    "game_id",
+    "valid",
+]
+
+
+def load_ledger_turns(path: Path) -> pd.DataFrame:
+    """Read the columns figure 12 needs; the same table every figure reads."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the per-turn table is absent ({path}) — run 02_turns first")
+    df = pd.read_parquet(path, columns=LEDGER_COLUMNS)
+    if df.empty:
+        raise common.StageRefused(f"{STAGE}: turns.parquet is empty")
+    return df
+
+
+def _ledger_band(part: pd.DataFrame, rule_min: int) -> dict:
+    """Per-player reliability counts for one band: exactly one, and above the floor."""
+    per = part.groupby("nfl_id").size()
+    return {
+        "turns": int(len(part)),
+        "players": int(per.size),
+        "players_at_exactly_one": int((per == 1).sum()),
+        "players_at_or_above_rule": int((per >= rule_min).sum()),
+        "max_turns_player": int(per.max()) if per.size else 0,
+    }
+
+
+def ledger_table(turns: pd.DataFrame,
+                 cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """The three ledger rows, each count recomputed from the turn table.
+
+    Row 1 (games) and row 2 (Combine) are measured counts of valid DB turns in
+    the band. Row 3 is arithmetic: the number of DBs the Combine measures once,
+    times the configured reps. It is marked `hatch` and `projected` here, and
+    the CSV/manifest carry the same flag, so no downstream reader has to infer
+    which bar was observed.
+    """
+    block = "figures.ledger"
+    position = str(cfg.get(f"{block}.position_group"))
+    low, high = (float(x) for x in cfg.get(f"{block}.angle_band_deg"))
+    rel_low, rel_high = (float(x) for x in
+                         cfg.get(f"{block}.reliability_band_deg"))
+    reps = int(cfg.get(f"{block}.reps"))
+    rule_key = str(cfg.get(f"{block}.rule_key"))
+    rule_min = int(cfg.get(rule_key))
+    if high <= low:
+        raise common.StageRefused(
+            f"{STAGE}: figures.ledger.angle_band_deg must be increasing")
+    if rel_high <= rel_low or rel_low > low or rel_high < high:
+        raise common.StageRefused(
+            f"{STAGE}: figures.ledger.reliability_band_deg must be increasing "
+            "and enclose the ledger band")
+    if reps < 1:
+        raise common.StageRefused(
+            f"{STAGE}: figures.ledger.reps is {reps}; a projection of zero or "
+            "fewer reps cannot be drawn")
+    if rule_min < 1:
+        raise common.StageRefused(
+            f"{STAGE}: {rule_key} is {rule_min}; a turns-per-player floor below "
+            "1 cannot be stated as reliability")
+    missing = [c for c in LEDGER_COLUMNS if c not in turns.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet has no {missing} column(s); the ledger "
+            "cannot be counted")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    scope = valid & (turns["position_group"] == position) & angle.notna()
+    band = turns[scope & (angle >= low) & (angle < high)].copy()
+    wide = turns[scope & (angle >= rel_low) & (angle < rel_high)].copy()
+    if band.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} turns in [{low:g}, {high:g}) — "
+            "nothing to count")
+    for setting in ("combine", "game"):
+        if not (band["setting"] == setting).any():
+            raise common.StageRefused(
+                f"{STAGE}: no valid {position} {setting} turns in "
+                f"[{low:g}, {high:g}) — a three-row ledger cannot be drawn with "
+                "a measured row missing")
+
+    combine_all = turns[scope & (turns["setting"] == "combine")]
+    combine_dbs = int(combine_all["nfl_id"].nunique())
+    if combine_dbs < 1:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} Combine players — the six-rep "
+            "projection has no denominator")
+
+    game_band = band[band["setting"] == "game"]
+    comb_band = band[band["setting"] == "combine"]
+    reliability = _ledger_band(comb_band, rule_min)
+    wide_combine = wide[wide["setting"] == "combine"]
+    wide_rel = _ledger_band(wide_combine, rule_min)
+    game_players = int(game_band["nfl_id"].nunique())
+    game_player_games = int(game_band.groupby(["nfl_id", "game_id"]).ngroups)
+    projection = combine_dbs * reps
+
+    rows = [
+        {
+            "row": "game_demand",
+            "row_order": 0,
+            "row_label": "Game demand",
+            "setting": "game",
+            "count": int(len(game_band)),
+            "source_kind": "measured",
+            "hatch": False,
+            "derivation": (f"counted: valid {position} game turns with "
+                           f"abs_turn_angle in [{low:g}, {high:g})"),
+            "players": game_players,
+            "player_games": game_player_games,
+            "combine_dbs": np.nan,
+            "band_low_deg": low,
+            "band_high_deg": high,
+        },
+        {
+            "row": "combine_supply",
+            "row_order": 1,
+            "row_label": "Combine supply",
+            "setting": "combine",
+            "count": int(len(comb_band)),
+            "source_kind": "measured",
+            "hatch": False,
+            "derivation": (f"counted: valid {position} Combine turns with "
+                           f"abs_turn_angle in [{low:g}, {high:g})"),
+            "players": reliability["players"],
+            "player_games": np.nan,
+            "combine_dbs": combine_dbs,
+            "band_low_deg": low,
+            "band_high_deg": high,
+        },
+        {
+            "row": "six_reps",
+            "row_order": 2,
+            "row_label": "Six reps per player",
+            "setting": "combine",
+            "count": projection,
+            "source_kind": "projected",
+            "hatch": True,
+            "derivation": (f"{combine_dbs} DBs x {reps} reps = {projection:,} "
+                           "turns (arithmetic, not measured)"),
+            "players": combine_dbs,
+            "player_games": np.nan,
+            "combine_dbs": combine_dbs,
+            "band_low_deg": low,
+            "band_high_deg": high,
+        },
+    ]
+    table = pd.DataFrame(rows)
+
+    if int(table.loc[table["row"] == "game_demand", "count"].iloc[0]) != int(
+            len(game_band)):
+        raise ValueError(f"{STAGE}: the game row does not match its population")
+    if int(table.loc[table["row"] == "combine_supply", "count"].iloc[0]) != int(
+            len(comb_band)):
+        raise ValueError(f"{STAGE}: the Combine row does not match its "
+                         "population")
+    if projection != combine_dbs * reps:  # pragma: no cover - asserted anyway
+        raise ValueError(f"{STAGE}: the projection is not {combine_dbs} x {reps}")
+    if int(table["hatch"].sum()) != 1:
+        raise ValueError(f"{STAGE}: exactly one ledger row must be hatched")
+
+    context = {
+        "position": position,
+        "angle_low": low,
+        "angle_high": high,
+        "rel_low": rel_low,
+        "rel_high": rel_high,
+        "reps": reps,
+        "rule_key": rule_key,
+        "rule_min": rule_min,
+        "combine_dbs": combine_dbs,
+        "projection": projection,
+        "game_turns": int(len(game_band)),
+        "game_players": game_players,
+        "game_player_games": game_player_games,
+        "combine_turns": int(len(comb_band)),
+        "reliability": reliability,
+        "wide_reliability": wide_rel,
+        "log_axis": True,
+    }
+    return table, context
+
+
+def _ledger_caption(table: pd.DataFrame, context: dict) -> str:
+    """The ledger's caption, with every count taken from the rendered table."""
+    g = context["game_turns"]
+    g_pl = context["game_players"]
+    g_pg = context["game_player_games"]
+    c = context["combine_turns"]
+    dbs = context["combine_dbs"]
+    reps = context["reps"]
+    proj = context["projection"]
+    rule_min = context["rule_min"]
+    rule_key = context["rule_key"]
+    rel = context["reliability"]
+    wide = context["wide_reliability"]
+    low, high = context["angle_low"], context["angle_high"]
+    wl, wh = context["rel_low"], context["rel_high"]
+    return "\n".join([
+        STAMP,
+        ("WHAT THIS IS. Three counts of DB turns in the "
+         f"{low:g}–{high:g}° band on one shared axis, each count printed at "
+         "its bar end. Two bars are MEASURED from outputs/turns/turns.parquet "
+         "at render time; the third is ARITHMETIC on a drill that does not "
+         "exist in this sample."),
+        (f"GAME DEMAND — MEASURED. {g} valid DB game turns of "
+         f"{low:g}–{high:g}°: {g_pl} players across {g_pg} player-games."),
+        (f"COMBINE SUPPLY — MEASURED. {c} valid Combine DB turns of "
+         f"{low:g}–{high:g}°, produced by {rel['players']} of the {dbs} DBs "
+         "measured once."),
+        (f"SIX REPS — PROJECTED, NOT MEASURED. {dbs} DBs × {reps} reps = "
+         f"{proj:,} turns, hatched and labelled on the bar as arithmetic. It "
+         "assumes every rep yields exactly one valid turn in the band. Set "
+         f"beside a measured bar it is a projection-to-measurement "
+         "comparison; it is never a count that was observed."),
+        ("LOG AXIS. A linear axis draws the 4 as a sliver beside 732, so the x "
+         "axis is logarithmic. Bar lengths are therefore NOT proportional to "
+         "the counts: read the printed numbers. The log spacing does not make "
+         "the projection commensurable with the measurements — it is "
+         "arithmetic standing beside two counts."),
+        (f"THE OVERSAMPLING OBJECTION. {proj:,} is more turns than the {g} "
+         "games produce, and that is not what six reps are for: they buy "
+         "RELIABILITY PER PLAYER, not volume. The capacity envelope requires "
+         f"{rule_min} usable turns per player (`{rule_key}`) before it will "
+         f"form a per-player estimate at all. In {wl:g}–{wh:g}° the Combine "
+         f"yields {wide['turns']} turns from {wide['players']} players, "
+         f"{wide['players_at_exactly_one']} of them with exactly one. The "
+         f"{low:g}–{high:g}° band is thinner: {rel['turns']} turns from "
+         f"{rel['players']} players, {rel['players_at_exactly_one']} with "
+         f"exactly one, so {rel['players_at_or_above_rule']} of "
+         f"{rel['players']} clear the {rule_min}-turn floor. Six reps are "
+         "about moving players off one-turn counts; they are not about "
+         "matching game volume."),
+        (f"WHAT IS NOT DRAWN. The bars are not subtracted: {g} − {c} would be a "
+         "difference in recorded turns, not in how many players can turn, and "
+         "no such difference is drawn or interpreted. No player names appear. "
+         "Sample data: one session of sample data; nothing here is a finding "
+         "about the 2027 class."),
+    ])
+
+
+def plot_ledger(table: pd.DataFrame, context: dict,
+                cfg: common.Config) -> plt.Figure:
+    """Three horizontal bars on one log axis, counts at the bar ends."""
+    block = "figures.ledger"
+    fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
+                              float(cfg.get(f"{block}.height_in"))))
+    ax = fig.add_subplot(1, 1, 1)
+    fig.subplots_adjust(left=0.205, right=0.975, top=0.845, bottom=0.375)
+
+    ax.set_facecolor("#EBEBEB")
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color("#B3B3B3")
+    ax.tick_params(labelsize=8.2, colors="#333333", length=2)
+
+    rows = table.sort_values("row_order")
+    for _, row in rows.iterrows():
+        y = float(2 - int(row["row_order"]))
+        count = int(row["count"])
+        if bool(row["hatch"]):
+            ax.barh(y, count, height=0.46, color=PROJECT_FILL,
+                    edgecolor=PROJECT_EDGE, hatch="////", linewidth=1.0,
+                    zorder=3)
+        else:
+            ax.barh(y, count, height=0.46,
+                    color=PALETTE[str(row["setting"])],
+                    edgecolor="white", linewidth=0.6, zorder=3)
+        ax.text(float(count) * 1.14, y, f"{count:,}", ha="left", va="center",
+                fontsize=11.0, fontweight="bold", color="#1A1A1A", zorder=5)
+
+    proj_y = float(2 - int(rows.loc[rows["row"] == "six_reps",
+                                    "row_order"].iloc[0]))
+    ax.text(1.16, proj_y,
+            f"{context['combine_dbs']} DBs × {context['reps']} reps — "
+            "arithmetic projection, not measured",
+            ha="left", va="center", fontsize=8.0, color="#4A3F00", zorder=6,
+            bbox=dict(facecolor="#FFFDF0", edgecolor="none", pad=1.8,
+                      alpha=0.92))
+
+    ax.set_xscale("log")
+    ax.set_xlim(0.9, 6000.0)
+    ax.set_xticks([1, 10, 100, 1000])
+    ax.set_xticklabels(["1", "10", "100", "1,000"])
+    ax.xaxis.set_minor_locator(LogLocator(base=10.0, subs="auto"))
+    ax.xaxis.set_minor_formatter(NullFormatter())
+    ax.grid(axis="x", which="major", color="white", linewidth=0.9, zorder=0)
+    ax.grid(axis="x", which="minor", color="white", linewidth=0.4, alpha=0.7,
+            zorder=0)
+    ax.set_axisbelow(True)
+
+    ax.set_yticks([2.0, 1.0, 0.0])
+    ax.set_yticklabels([
+        "Game demand\nmeasured",
+        "Combine supply\nmeasured",
+        "Six reps per player\nprojected",
+    ], fontsize=8.6, color="#222222")
+    ax.set_ylim(-0.55, 2.55)
+    ax.set_xlabel(
+        f"Turns recorded in the {context['angle_low']:g}–"
+        f"{context['angle_high']:g}° band (count) — LOG scale: bar length is "
+        "log(count), not count",
+        fontsize=8.4, color="#333333", labelpad=4)
+
+    handles = [
+        Patch(facecolor=PALETTE["game"], edgecolor="white",
+              label="measured — games"),
+        Patch(facecolor=PALETTE["combine"], edgecolor="white",
+              label="measured — Combine"),
+        Patch(facecolor=PROJECT_FILL, edgecolor=PROJECT_EDGE, hatch="////",
+              label="arithmetic projection — not measured"),
+    ]
+    ax.legend(handles=handles, loc="upper right", frameon=False, fontsize=8.4,
+              handlelength=1.7, borderaxespad=0.4)
+
+    fig.text(0.010, 0.968, "The ninety-second ledger",
+             fontsize=17.0, fontweight="bold", ha="left", va="top",
+             color="#111111")
+    fig.text(0.010, 0.930,
+             _wrap_text(
+                 "What games ask, what the Combine supplies, what six reps buy "
+                 f"— valid DB turns of {context['angle_low']:g}–"
+                 f"{context['angle_high']:g}°, one shared axis. Two bars are "
+                 "counted; the third is arithmetic, hatched and labelled as "
+                 "such.", 186),
+             fontsize=8.8, ha="left", va="top", color="#333333")
+
+    caption = "\n".join(_wrap_text(line, 240)
+                        for line in _ledger_caption(table, context).split("\n"))
+    fig.text(0.010, 0.014, caption, ha="left", va="bottom", fontsize=6.0,
+             color="#333333", linespacing=1.32)
+    return fig
+
+
+def render_ledger(fig: plt.Figure, cfg: common.Config,
+                  out_png: Path) -> Path:
+    """Save figure 12 once with fixed metadata, so two runs are identical."""
+    dpi = int(cfg.get("figures.ledger.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def ledger_csv_frame(table: pd.DataFrame, context: dict) -> pd.DataFrame:
+    """Three rows: the count, its source, and the reliability counts."""
+    out = table.copy()
+    out["position_group"] = context["position"]
+    out["band_low_deg"] = context["angle_low"]
+    out["band_high_deg"] = context["angle_high"]
+    out["counted_band_turns"] = context["combine_turns"]
+    out["counted_band_players"] = context["reliability"]["players"]
+    out["counted_band_players_at_exactly_one"] = \
+        context["reliability"]["players_at_exactly_one"]
+    out["counted_band_players_at_or_above_rule"] = \
+        context["reliability"]["players_at_or_above_rule"]
+    out["reliability_band_low_deg"] = context["rel_low"]
+    out["reliability_band_high_deg"] = context["rel_high"]
+    out["reliability_turns"] = context["wide_reliability"]["turns"]
+    out["reliability_players"] = context["wide_reliability"]["players"]
+    out["reliability_players_at_exactly_one"] = \
+        context["wide_reliability"]["players_at_exactly_one"]
+    out["reliability_players_at_or_above_rule"] = \
+        context["wide_reliability"]["players_at_or_above_rule"]
+    out["rule_key"] = context["rule_key"]
+    out["rule_min_turns_per_player"] = context["rule_min"]
+    out["reps"] = context["reps"]
+    out["log_axis"] = context["log_axis"]
+    columns = ["row", "row_label", "count", "source_kind", "hatch", "derivation",
+               "players", "player_games", "combine_dbs", "position_group",
+               "band_low_deg", "band_high_deg", "counted_band_turns",
+               "counted_band_players", "counted_band_players_at_exactly_one",
+               "counted_band_players_at_or_above_rule",
+               "reliability_band_low_deg", "reliability_band_high_deg",
+               "reliability_turns", "reliability_players",
+               "reliability_players_at_exactly_one",
+               "reliability_players_at_or_above_rule", "rule_key",
+               "rule_min_turns_per_player", "reps", "log_axis"]
+    return out[columns].reset_index(drop=True)
+
+
+def ledger_manifest_payload(table: pd.DataFrame, context: dict,
+                            cfg: common.Config) -> dict:
+    """The ledger's manifest entry, including the arithmetic it must satisfy."""
+    proj_row = table[table["row"] == "six_reps"].iloc[0]
+    projection = int(proj_row["count"])
+    verified = projection == context["combine_dbs"] * context["reps"]
+    if not verified:  # pragma: no cover - the table already asserts this
+        raise ValueError(f"{STAGE}: the six-rep projection does not multiply out")
+    rows = []
+    for _, row in table.sort_values("row_order").iterrows():
+        rows.append({
+            "row": str(row["row"]),
+            "label": str(row["row_label"]),
+            "count": int(row["count"]),
+            "source_kind": str(row["source_kind"]),
+            "hatch": bool(row["hatch"]),
+            "derivation": str(row["derivation"]),
+            "players": None if pd.isna(row["players"]) else int(row["players"]),
+            "player_games": (None if pd.isna(row["player_games"])
+                             else int(row["player_games"])),
+            "combine_dbs": (None if pd.isna(row["combine_dbs"])
+                            else int(row["combine_dbs"])),
+        })
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_LEDGER,
+        "title": "The ninety-second ledger",
+        "band": {
+            "position_group": context["position"],
+            "abs_turn_angle_deg": [context["angle_low"], context["angle_high"]],
+            "rule": "valid turns, left-closed on abs_turn_angle_deg",
+        },
+        "rows": rows,
+        "arithmetic": {
+            "reps": context["reps"],
+            "combine_dbs": context["combine_dbs"],
+            "projected_turns": projection,
+            "expression": (f"{context['combine_dbs']} × {context['reps']} = "
+                           f"{projection:,}"),
+            "verified": True,
+            "is_measurement": False,
+        },
+        "log_axis": {
+            "used": True,
+            "why": ("a linear axis draws the 4 as a sliver beside 732"),
+            "warning": ("bar length is log(count), not count; the log spacing "
+                        "does not make the projection commensurable with the "
+                        "measurements"),
+        },
+        "reliability": {
+            "rule": {
+                "key": context["rule_key"],
+                "value": context["rule_min"],
+                "meaning": ("the capacity envelope's minimum usable turns per "
+                            "player before it forms a per-player estimate; "
+                            "carried in from the envelope, not chosen here"),
+            },
+            "band": {
+                "abs_turn_angle_deg": [context["angle_low"],
+                                       context["angle_high"]],
+                **context["reliability"],
+            },
+            "wide_band": {
+                "abs_turn_angle_deg": [context["rel_low"], context["rel_high"]],
+                **context["wide_reliability"],
+            },
+        },
+        "comparison_rule": ("Any comparison between the projected row and a "
+                            "measured row is projection-to-measurement and is "
+                            "stated as such; the rows are never subtracted and "
+                            "no turn difference is read as a player difference."),
+        "claim": (f"Games produced {context['game_turns']} valid DB turns of "
+                  f"{context['angle_low']:g}-{context['angle_high']:g}° from "
+                  f"{context['game_players']} players across "
+                  f"{context['game_player_games']} player-games; the Combine "
+                  f"produced {context['combine_turns']} from "
+                  f"{context['reliability']['players']} of the "
+                  f"{context['combine_dbs']} DBs measured once. Six reps per DB "
+                  f"is {projection:,} turns by arithmetic — more than the games' "
+                  "count, but aimed at reliability per player, not at matching "
+                  "game volume."),
+        "not_claimed": [
+            "That the projected turns are comparable to the measured turns; "
+            "the projection is arithmetic, not observation.",
+            "That the difference between the two measured bars is a difference "
+            "in how many players can turn.",
+            "That six reps would make any player's turn estimate reliable in "
+            "this sample.",
+            "Anything about the 2027 class; this is one session of sample data.",
+        ],
+        "caveats": [
+            ("Sample data: one session of sample data; nothing here is a "
+             "finding about the 2027 class."),
+            ("The projection assumes every rep yields exactly one valid turn "
+             "in the band, which the sample cannot verify because the drill "
+             "does not exist."),
+            ("The axis is logarithmic: bar lengths are not proportional to the "
+             "counts and the printed numbers are the evidence."),
+            ("Player names are outside this figure: only counts and player "
+             "counts appear."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_LEDGER}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_LEDGER}.csv",
     }

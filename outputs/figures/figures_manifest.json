@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "fdfeed6b69a8547e",
-  "generated_utc": "2026-11-08T19:24:53Z",
+  "config_sha": "41c9c93ce16122f7",
+  "generated_utc": "2026-11-08T20:27:30Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -3769,6 +3769,114 @@
       ],
       "png": "outputs/figures/fig_shallow_sources.png",
       "csv": "outputs/figures/fig_shallow_sources.csv",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_ledger": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_ledger",
+      "title": "The ninety-second ledger",
+      "band": {
+        "position_group": "DB",
+        "abs_turn_angle_deg": [
+          30.0,
+          45.0
+        ],
+        "rule": "valid turns, left-closed on abs_turn_angle_deg"
+      },
+      "rows": [
+        {
+          "row": "game_demand",
+          "label": "Game demand",
+          "count": 97,
+          "source_kind": "measured",
+          "hatch": false,
+          "derivation": "counted: valid DB game turns with abs_turn_angle in [30, 45)",
+          "players": 25,
+          "player_games": 80,
+          "combine_dbs": null
+        },
+        {
+          "row": "combine_supply",
+          "label": "Combine supply",
+          "count": 4,
+          "source_kind": "measured",
+          "hatch": false,
+          "derivation": "counted: valid DB Combine turns with abs_turn_angle in [30, 45)",
+          "players": 3,
+          "player_games": null,
+          "combine_dbs": 122
+        },
+        {
+          "row": "six_reps",
+          "label": "Six reps per player",
+          "count": 732,
+          "source_kind": "projected",
+          "hatch": true,
+          "derivation": "122 DBs x 6 reps = 732 turns (arithmetic, not measured)",
+          "players": 122,
+          "player_games": null,
+          "combine_dbs": 122
+        }
+      ],
+      "arithmetic": {
+        "reps": 6,
+        "combine_dbs": 122,
+        "projected_turns": 732,
+        "expression": "122 \u00d7 6 = 732",
+        "verified": true,
+        "is_measurement": false
+      },
+      "log_axis": {
+        "used": true,
+        "why": "a linear axis draws the 4 as a sliver beside 732",
+        "warning": "bar length is log(count), not count; the log spacing does not make the projection commensurable with the measurements"
+      },
+      "reliability": {
+        "rule": {
+          "key": "envelope.tau2_min_turns_per_player",
+          "value": 2,
+          "meaning": "the capacity envelope's minimum usable turns per player before it forms a per-player estimate; carried in from the envelope, not chosen here"
+        },
+        "band": {
+          "abs_turn_angle_deg": [
+            30.0,
+            45.0
+          ],
+          "turns": 4,
+          "players": 3,
+          "players_at_exactly_one": 2,
+          "players_at_or_above_rule": 1,
+          "max_turns_player": 2
+        },
+        "wide_band": {
+          "abs_turn_angle_deg": [
+            30.0,
+            60.0
+          ],
+          "turns": 26,
+          "players": 16,
+          "players_at_exactly_one": 11,
+          "players_at_or_above_rule": 5,
+          "max_turns_player": 4
+        }
+      },
+      "comparison_rule": "Any comparison between the projected row and a measured row is projection-to-measurement and is stated as such; the rows are never subtracted and no turn difference is read as a player difference.",
+      "claim": "Games produced 97 valid DB turns of 30-45\u00b0 from 25 players across 80 player-games; the Combine produced 4 from 3 of the 122 DBs measured once. Six reps per DB is 732 turns by arithmetic \u2014 more than the games' count, but aimed at reliability per player, not at matching game volume.",
+      "not_claimed": [
+        "That the projected turns are comparable to the measured turns; the projection is arithmetic, not observation.",
+        "That the difference between the two measured bars is a difference in how many players can turn.",
+        "That six reps would make any player's turn estimate reliable in this sample.",
+        "Anything about the 2027 class; this is one session of sample data."
+      ],
+      "caveats": [
+        "Sample data: one session of sample data; nothing here is a finding about the 2027 class.",
+        "The projection assumes every rep yields exactly one valid turn in the band, which the sample cannot verify because the drill does not exist.",
+        "The axis is logarithmic: bar lengths are not proportional to the counts and the printed numbers are the evidence.",
+        "Player names are outside this figure: only counts and player counts appear."
+      ],
+      "png": "outputs/figures/fig_ledger.png",
+      "csv": "outputs/figures/fig_ledger.csv",
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }

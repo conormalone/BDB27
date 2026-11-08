@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-11.
+"""Stage 06 — figures 1-12.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -36,6 +36,13 @@
                           many he produced, Combine above games on one shared
                           axis, with the envelope's minimum-turns-per-player
                           floor drawn and labelled. No mean, no box, no test.
+ 12. "The ninety-second ledger" — three horizontal bars on one shared (log)
+                          axis: measured game demand, measured Combine supply
+                          in the 30-45 degree DB band, and the arithmetic of
+                          six reps per measured DB drawn hatched and labelled
+                          as a projection. Counts at the bar ends, no
+                          subtraction; the caption answers the oversampling
+                          objection with the envelope's turns-per-player floor.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -346,6 +353,21 @@ def main(argv=None) -> int:
         ss_payload["stamp"] = figures.STAMP
         _write_manifest(ss_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 12: the ninety-second ledger
+        lg_turns = figures.load_ledger_turns(turns_path)
+        lg_table, lg_context = figures.ledger_table(lg_turns, cfg)
+        lg_csv = figures.ledger_csv_frame(lg_table, lg_context)
+        lg_png = outdir / f"{figures.FIGURE_KEY_LEDGER}.png"
+        lg_csv_path = outdir / f"{figures.FIGURE_KEY_LEDGER}.csv"
+        common.write_csv(lg_csv, lg_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_LEDGER})
+        lg_fig = figures.plot_ledger(lg_table, lg_context, cfg)
+        figures.render_ledger(lg_fig, cfg, lg_png)
+        lg_payload = figures.ledger_manifest_payload(lg_table, lg_context, cfg)
+        lg_payload["stamp"] = figures.STAMP
+        _write_manifest(lg_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -400,7 +422,17 @@ def main(argv=None) -> int:
                         f"game={ss_context['totals']['game']} "
                         f"({ss_context['players']['game']} players, median "
                         f"{ss_context['medians']['game']:g}) "
-                        f"rule={ss_context['rule_min']} ")
+                        f"rule={ss_context['rule_min']}; "
+                        f"{figures.FIGURE_KEY_LEDGER}: "
+                        f"game={lg_context['game_turns']} "
+                        f"({lg_context['game_players']} players) "
+                        f"combine={lg_context['combine_turns']} "
+                        f"projected={lg_context['projection']:,} "
+                        f"({lg_context['combine_dbs']} DBs x "
+                        f"{lg_context['reps']} reps) "
+                        f"band_players_at_one="
+                        f"{lg_context['reliability']['players_at_exactly_one']}/"
+                        f"{lg_context['reliability']['players']} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -411,6 +443,7 @@ def main(argv=None) -> int:
           f"{sw_png.name}, {sw_csv_path.name}, "
           f"{bh_png.name}, {bh_csv_path.name}, "
           f"{ss_png.name}, {ss_csv_path.name}, "
+          f"{lg_png.name}, {lg_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -432,6 +465,9 @@ def main(argv=None) -> int:
           f"{ss_context['totals']['combine']} + {ss_context['totals']['game']} "
           f"turns from {ss_context['players']['combine']} + "
           f"{ss_context['players']['game']} players"
+          f"; figure 12 ledger "
+          f"{lg_context['game_turns']}/{lg_context['combine_turns']}/"
+          f"{lg_context['projection']} turns"
           f")")
     return 0
 

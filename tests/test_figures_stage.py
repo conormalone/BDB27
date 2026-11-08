@@ -400,6 +400,8 @@ def rendered(tmp_path_factory):
             "bh_csv": out / "fig_both_hips.csv",
             "ss_png": out / "fig_shallow_sources.png",
             "ss_csv": out / "fig_shallow_sources.csv",
+            "lg_png": out / "fig_ledger.png",
+            "lg_csv": out / "fig_ledger.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -895,7 +897,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_all_positions",
                                    "fig_measurement_limits", "fig_gap_honest",
                                    "fig_turn_cost", "fig_stopwatch",
-                                   "fig_both_hips", "fig_shallow_sources"}
+                                   "fig_both_hips", "fig_shallow_sources",
+                                   "fig_ledger"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1430,7 +1433,8 @@ def test_stage_06_manifest_lists_every_figure(rendered):
         "fig_the_hole", "fig_drill_coverage", "fig_before_after",
         "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits",
         "fig_gap_honest", "fig_turn_cost", "fig_stopwatch", "fig_both_hips",
-        "fig_shallow_sources"}
+        "fig_shallow_sources", "fig_ledger"}
+    assert len(man["figures"]) == 12
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -2561,7 +2565,7 @@ def test_both_hips_computes_no_symmetry_or_p_value(rendered):
 def test_both_hips_renders_every_figure(rendered):
     out = rendered["tmp"] / "outputs" / "figures"
     pngs = sorted(p.name for p in out.glob("fig_*.png"))
-    assert len(pngs) == 11, f"stage 06 must render eleven figures, found {pngs}"
+    assert len(pngs) == 12, f"stage 06 must render twelve figures, found {pngs}"
     assert "fig_both_hips.png" in pngs
 
 
@@ -2972,6 +2976,214 @@ def test_shallow_sources_refuses_and_checks_can_fail(rendered):
         figures.shallow_sources_table(only_combine, cfg)
 
     empty_png = rendered["tmp"] / "empty_ss.png"
+    empty_png.write_bytes(b"")
+    with pytest.raises(AssertionError):
+        _check_png(empty_png)
+
+
+# --------------------------------------------------------------------------
+# Figure 12: the ninety-second ledger
+# --------------------------------------------------------------------------
+LG_KEY = "fig_ledger"
+
+
+def _lg_build(rendered):
+    """Rebuild the ledger from the written Parquet with the repo's own code."""
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    turns = figures.load_ledger_turns(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = figures.ledger_table(turns, cfg)
+    fig = figures.plot_ledger(table, context, cfg)
+    return fig, table, context, cfg, turns
+
+
+def _lg_population(turns: pd.DataFrame, cfg):
+    """Plain-mask recount of the three ledger denominators, no figure code."""
+    position = str(cfg.get("figures.ledger.position_group"))
+    low, high = (float(x) for x in cfg.get("figures.ledger.angle_band_deg"))
+    rel_low, rel_high = (float(x) for x in
+                         cfg.get("figures.ledger.reliability_band_deg"))
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    scope = valid & (turns["position_group"] == position) & angle.notna()
+    band = turns[scope & (angle >= low) & (angle < high)]
+    wide = turns[scope & (angle >= rel_low) & (angle < rel_high)]
+    dbs = int(turns[scope & (turns["setting"] == "combine")]["nfl_id"].nunique())
+    game = band[band["setting"] == "game"]
+    return {
+        "game_turns": int(len(game)),
+        "game_players": int(game["nfl_id"].nunique()),
+        "game_player_games": int(game.groupby(["nfl_id", "game_id"]).ngroups),
+        "combine_turns": int(len(band[band["setting"] == "combine"])),
+        "combine_players": int(
+            band[band["setting"] == "combine"]["nfl_id"].nunique()),
+        "combine_dbs": dbs,
+        "band": band,
+        "wide": wide,
+    }
+
+
+def test_ledger_png_and_csv_exist(rendered):
+    _check_png(rendered["lg_png"])
+    assert rendered["lg_csv"].exists()
+    csv_df = pd.read_csv(rendered["lg_csv"])
+    assert len(csv_df) == 3
+
+
+def test_ledger_counts_reconcile_to_the_turn_table(rendered):
+    _, table, context, cfg, turns = _lg_build(rendered)
+    want = _lg_population(turns, cfg)
+    reps = int(cfg.get("figures.ledger.reps"))
+    assert reps >= 1
+    csv_df = pd.read_csv(rendered["lg_csv"])
+    by_row = csv_df.set_index("row")
+
+    assert int(by_row.loc["game_demand", "count"]) == want["game_turns"]
+    assert int(by_row.loc["game_demand", "players"]) == want["game_players"]
+    assert int(by_row.loc["game_demand", "player_games"]) == \
+        want["game_player_games"]
+    assert int(by_row.loc["combine_supply", "count"]) == want["combine_turns"]
+    assert int(by_row.loc["combine_supply", "combine_dbs"]) == \
+        want["combine_dbs"]
+
+    projection = int(by_row.loc["six_reps", "count"])
+    assert projection == want["combine_dbs"] * reps
+    assert projection == context["projection"]
+
+    # The reliability counts the caption leans on, recounted independently.
+    per = want["band"][want["band"]["setting"] == "combine"].groupby(
+        "nfl_id").size()
+    assert int(by_row.loc["six_reps", "counted_band_players"]) == int(per.size)
+    assert int(by_row.loc["six_reps",
+                          "counted_band_players_at_exactly_one"]) == \
+        int((per == 1).sum())
+
+
+def test_ledger_hatch_flag_is_true_only_for_the_projection(rendered):
+    csv_df = pd.read_csv(rendered["lg_csv"])
+    hatched = csv_df[csv_df["hatch"].astype(str).str.lower() == "true"]
+    assert list(hatched["row"]) == ["six_reps"]
+    assert list(hatched["source_kind"]) == ["projected"]
+    measured = csv_df[csv_df["row"] != "six_reps"]
+    assert measured["source_kind"].eq("measured").all()
+    assert not measured["hatch"].astype(str).str.lower().eq("true").any()
+
+
+def test_ledger_never_ratios_across_the_hatch(rendered):
+    csv_df = pd.read_csv(rendered["lg_csv"])
+    banned = [c for c in csv_df.columns
+              if any(word in c.lower()
+                     for word in ("ratio", "share", "per_appearance", "gap"))]
+    assert banned == [], f"a cross-setting ratio column appeared: {banned}"
+    man = json.loads(rendered["manifest"].read_text())["figures"][LG_KEY]
+    assert "projection-to-measurement" in man["comparison_rule"]
+    assert man["arithmetic"]["is_measurement"] is False
+    assert man["arithmetic"]["verified"] is True
+    # Three rows only: no subtracted fourth bar.
+    assert [r["row"] for r in man["rows"]] == [
+        "game_demand", "combine_supply", "six_reps"]
+
+
+def test_ledger_caption_answers_the_oversampling_objection(rendered):
+    fig, table, context, cfg, _ = _lg_build(rendered)
+    try:
+        text = _all_text(fig)
+    finally:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+    rel = context["reliability"]
+    wide = context["wide_reliability"]
+    assert "OVERSAMPLING OBJECTION" in text
+    assert "RELIABILITY PER PLAYER" in text
+    assert context["rule_key"] in text
+    assert str(context["rule_min"]) in text
+    assert f"{wide['turns']} turns from {wide['players']} players" in text
+    assert f"{wide['players_at_exactly_one']} of them with exactly one" in text
+    assert f"{rel['turns']} turns from {rel['players']} players" in text
+    assert f"{rel['players_at_exactly_one']} with exactly one" in text
+    assert rel["players_at_exactly_one"] <= rel["players"]
+    assert rel["players_at_or_above_rule"] <= rel["players"]
+    assert "LOG AXIS" in text and "not proportional" in text.lower()
+    assert "2027 class" in text
+    assert "not in how many players can turn" in text
+
+
+def test_ledger_projection_is_labelled_arithmetic_on_the_image(rendered):
+    fig, table, context, cfg, _ = _lg_build(rendered)
+    try:
+        text = _all_text(fig)
+    finally:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+    assert "arithmetic projection, not measured" in text
+    assert f"{context['combine_dbs']} DBs × {context['reps']} reps" in text
+    assert f"{context['projection']:,}" in text
+
+
+def test_ledger_two_runs_are_byte_identical(rendered):
+    before = hashlib.sha256(rendered["lg_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["lg_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 12 differ"
+
+
+def test_ledger_leaves_figures_1_to_11_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png", "ap_png", "ml_png",
+            "gh_png", "tc_png", "sw_png", "bh_png", "ss_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k], (
+            f"{k} changed: figure 12 must not alter figures 1-11")
+
+
+def test_ledger_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][LG_KEY]
+    assert fig["figure"] == LG_KEY
+    assert fig["stamp"] == STAMP
+    assert fig["band"]["position_group"] == "DB"
+    assert fig["band"]["abs_turn_angle_deg"] == [30.0, 45.0]
+    assert fig["log_axis"]["used"] is True
+    assert "log(count)" in fig["log_axis"]["warning"]
+    assert fig["reliability"]["rule"]["key"] == \
+        "envelope.tau2_min_turns_per_player"
+    assert fig["reliability"]["rule"]["value"] == 2
+    for band in ("band", "wide_band"):
+        block = fig["reliability"][band]
+        assert block["players_at_exactly_one"] <= block["players"]
+        assert block["turns"] >= block["players"]
+    assert fig["png"].endswith("fig_ledger.png")
+    assert fig["csv"].endswith("fig_ledger.csv")
+    assert any("projection" in c for c in fig["not_claimed"])
+
+
+def test_ledger_refuses_and_checks_can_fail(rendered):
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    _, _, _, _, turns = _lg_build(rendered)
+
+    empty = turns.copy()
+    empty["abs_turn_angle"] = 200.0
+    with pytest.raises(common.StageRefused):
+        figures.ledger_table(empty, cfg)
+
+    only_combine = turns[turns["setting"] == "combine"].copy()
+    with pytest.raises(common.StageRefused):
+        figures.ledger_table(only_combine, cfg)
+
+    cfg_zero = yaml.safe_load(rendered["cfg"].read_text())
+    cfg_zero["turn_coverage"]["figures"]["ledger"]["reps"] = 0
+    bad_path = rendered["tmp"] / "config_zero_reps.yaml"
+    bad_path.write_text(yaml.safe_dump(cfg_zero, sort_keys=False))
+    with pytest.raises(common.StageRefused):
+        figures.ledger_table(turns, common.load_config(bad_path))
+
+    empty_png = rendered["tmp"] / "empty_lg.png"
     empty_png.write_bytes(b"")
     with pytest.raises(AssertionError):
         _check_png(empty_png)

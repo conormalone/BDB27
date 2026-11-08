@@ -673,6 +673,36 @@ turn_coverage:
       width_in: 12.4
       height_in: 9.0
 
+    # Stage 06 figure 12 ("The ninety-second ledger"). Added at Conor's
+    # request (2026-11-08); it is not derived from a TASK.md line.
+    #
+    # A LEDGER, not a chart: three counts of DB turns in the 30-45 degree band,
+    # drawn on one shared axis with the counts printed at the bar ends and no
+    # other decoration. Two rows are MEASURED (games, Combine); the third is
+    # ARITHMETIC (`reps` x the number of DBs the Combine measures once) and is
+    # drawn hatched, the same measured/projected distinction as figure 3's
+    # right panel. Nothing is subtracted: these are counts of turns, not a
+    # supply-versus-demand budget, and the rows are never combined.
+    #
+    # The x axis is log because a linear axis draws the 4 as a sliver beside
+    # the 732. The axis is labelled as log on the image and the caption says
+    # the bar lengths are not proportional to the counts, so the spacing can
+    # never imply the projection is commensurable with the measurements.
+    #
+    # `reliability_band_deg` is counted from the same table because the caption
+    # must answer the oversampling objection: six reps buy usable turns per
+    # PLAYER, not volume that competes with game demand. Both are REPORTING
+    # bands only; `bins.turn_angle` stays frozen for Stages 03/04.
+    ledger:
+      position_group: DB
+      angle_band_deg: [30, 45]
+      reliability_band_deg: [30, 60]
+      reps: 6
+      rule_key: envelope.tau2_min_turns_per_player
+      dpi: 150
+      width_in: 12.6
+      height_in: 8.4
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).
