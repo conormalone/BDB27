@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "45e1a9cab2b40715",
-  "generated_utc": "2026-11-08T00:50:06Z",
+  "config_sha": "7038f889f46d1168",
+  "generated_utc": "2026-11-08T10:28:19Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -386,6 +386,549 @@
       ],
       "png": "outputs/figures/fig_drill_coverage.png",
       "csv": "outputs/figures/fig_drill_coverage.csv",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_before_after": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_before_after",
+      "title": "Before and after: a 30\u201345\u00b0 hole, and the drill that would fill it",
+      "claim": "Measured DB Combine supply is 1,179 turns across 7 \u00d7 6 angle \u00d7 entry-speed cells, with only 4 turn(s) in the 30\u201345\u00b0 band; the proposed drill would add 732 projected turns to that band.",
+      "sources": [
+        "outputs/turns/turns.parquet"
+      ],
+      "panels": {
+        "left": "measured Combine DB supply",
+        "right": "measured supply + arithmetic projection (hatched)"
+      },
+      "grid": {
+        "angle_edges_deg": [
+          30.0,
+          45.0,
+          60.0,
+          90.0,
+          120.0,
+          150.0,
+          180.0
+        ],
+        "angle_bands": [
+          "30\u201345\u00b0",
+          "45\u201360\u00b0",
+          "60\u201390\u00b0",
+          "90\u2013120\u00b0",
+          "120\u2013150\u00b0",
+          "150\u2013180\u00b0",
+          ">180\u00b0"
+        ],
+        "speed_edges_yd_s": [
+          0.0,
+          2.0,
+          4.0,
+          6.0,
+          8.0,
+          10.0,
+          12.0
+        ],
+        "speed_bands": [
+          "0\u20132",
+          "2\u20134",
+          "4\u20136",
+          "6\u20138",
+          "8\u201310",
+          "10\u201312"
+        ],
+        "shape": [
+          7,
+          6
+        ],
+        "empty_cells": 20
+      },
+      "projection": {
+        "arithmetic": "6 reps \u00d7 122 DBs = 732",
+        "total_turns": 732,
+        "n_players": 122,
+        "reps_per_player": 6,
+        "angle_deg": 40.0,
+        "entry_speed_window_yd_s": [
+          2.0,
+          6.0
+        ],
+        "cells_covered": 2,
+        "per_cell_split": null
+      },
+      "caveats": [
+        "The right panel is arithmetic, not measurement: it repeats the measured supply and adds a hatched projection of 6 reps \u00d7 122 DBs.",
+        "The 2\u20136 yd/s window is split by the grid's 4 yd/s edge and the drill spec has no per-cell split, so the total is carried once on the region and never divided between cells.",
+        "Exposure: Combine supply is 122 players \u00d7 one session; the projection is 6 reps per player. Turn counts are not comparable samples of behaviour.",
+        "Blank cells are real zeros; the CSV records every grid cell, including empty ones."
+      ],
+      "position_group": "DB",
+      "counts": [
+        {
+          "angle_idx": 1,
+          "speed_idx": 1,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "speed_band": "0\u20132",
+          "speed_low_yd_s": 0.0,
+          "speed_high_yd_s": 2.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 1,
+          "speed_idx": 2,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "speed_band": "2\u20134",
+          "speed_low_yd_s": 2.0,
+          "speed_high_yd_s": 4.0,
+          "count": 4
+        },
+        {
+          "angle_idx": 1,
+          "speed_idx": 3,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "speed_band": "4\u20136",
+          "speed_low_yd_s": 4.0,
+          "speed_high_yd_s": 6.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 1,
+          "speed_idx": 4,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "speed_band": "6\u20138",
+          "speed_low_yd_s": 6.0,
+          "speed_high_yd_s": 8.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 1,
+          "speed_idx": 5,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "speed_band": "8\u201310",
+          "speed_low_yd_s": 8.0,
+          "speed_high_yd_s": 10.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 1,
+          "speed_idx": 6,
+          "band": "30\u201345\u00b0",
+          "band_low_deg": 30.0,
+          "band_high_deg": 45.0,
+          "speed_band": "10\u201312",
+          "speed_low_yd_s": 10.0,
+          "speed_high_yd_s": 12.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 2,
+          "speed_idx": 1,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "speed_band": "0\u20132",
+          "speed_low_yd_s": 0.0,
+          "speed_high_yd_s": 2.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 2,
+          "speed_idx": 2,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "speed_band": "2\u20134",
+          "speed_low_yd_s": 2.0,
+          "speed_high_yd_s": 4.0,
+          "count": 12
+        },
+        {
+          "angle_idx": 2,
+          "speed_idx": 3,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "speed_band": "4\u20136",
+          "speed_low_yd_s": 4.0,
+          "speed_high_yd_s": 6.0,
+          "count": 8
+        },
+        {
+          "angle_idx": 2,
+          "speed_idx": 4,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "speed_band": "6\u20138",
+          "speed_low_yd_s": 6.0,
+          "speed_high_yd_s": 8.0,
+          "count": 2
+        },
+        {
+          "angle_idx": 2,
+          "speed_idx": 5,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "speed_band": "8\u201310",
+          "speed_low_yd_s": 8.0,
+          "speed_high_yd_s": 10.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 2,
+          "speed_idx": 6,
+          "band": "45\u201360\u00b0",
+          "band_low_deg": 45.0,
+          "band_high_deg": 60.0,
+          "speed_band": "10\u201312",
+          "speed_low_yd_s": 10.0,
+          "speed_high_yd_s": 12.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 3,
+          "speed_idx": 1,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "speed_band": "0\u20132",
+          "speed_low_yd_s": 0.0,
+          "speed_high_yd_s": 2.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 3,
+          "speed_idx": 2,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "speed_band": "2\u20134",
+          "speed_low_yd_s": 2.0,
+          "speed_high_yd_s": 4.0,
+          "count": 159
+        },
+        {
+          "angle_idx": 3,
+          "speed_idx": 3,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "speed_band": "4\u20136",
+          "speed_low_yd_s": 4.0,
+          "speed_high_yd_s": 6.0,
+          "count": 24
+        },
+        {
+          "angle_idx": 3,
+          "speed_idx": 4,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "speed_band": "6\u20138",
+          "speed_low_yd_s": 6.0,
+          "speed_high_yd_s": 8.0,
+          "count": 41
+        },
+        {
+          "angle_idx": 3,
+          "speed_idx": 5,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "speed_band": "8\u201310",
+          "speed_low_yd_s": 8.0,
+          "speed_high_yd_s": 10.0,
+          "count": 13
+        },
+        {
+          "angle_idx": 3,
+          "speed_idx": 6,
+          "band": "60\u201390\u00b0",
+          "band_low_deg": 60.0,
+          "band_high_deg": 90.0,
+          "speed_band": "10\u201312",
+          "speed_low_yd_s": 10.0,
+          "speed_high_yd_s": 12.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 4,
+          "speed_idx": 1,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "speed_band": "0\u20132",
+          "speed_low_yd_s": 0.0,
+          "speed_high_yd_s": 2.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 4,
+          "speed_idx": 2,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "speed_band": "2\u20134",
+          "speed_low_yd_s": 2.0,
+          "speed_high_yd_s": 4.0,
+          "count": 66
+        },
+        {
+          "angle_idx": 4,
+          "speed_idx": 3,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "speed_band": "4\u20136",
+          "speed_low_yd_s": 4.0,
+          "speed_high_yd_s": 6.0,
+          "count": 32
+        },
+        {
+          "angle_idx": 4,
+          "speed_idx": 4,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "speed_band": "6\u20138",
+          "speed_low_yd_s": 6.0,
+          "speed_high_yd_s": 8.0,
+          "count": 57
+        },
+        {
+          "angle_idx": 4,
+          "speed_idx": 5,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "speed_band": "8\u201310",
+          "speed_low_yd_s": 8.0,
+          "speed_high_yd_s": 10.0,
+          "count": 4
+        },
+        {
+          "angle_idx": 4,
+          "speed_idx": 6,
+          "band": "90\u2013120\u00b0",
+          "band_low_deg": 90.0,
+          "band_high_deg": 120.0,
+          "speed_band": "10\u201312",
+          "speed_low_yd_s": 10.0,
+          "speed_high_yd_s": 12.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 5,
+          "speed_idx": 1,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "speed_band": "0\u20132",
+          "speed_low_yd_s": 0.0,
+          "speed_high_yd_s": 2.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 5,
+          "speed_idx": 2,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "speed_band": "2\u20134",
+          "speed_low_yd_s": 2.0,
+          "speed_high_yd_s": 4.0,
+          "count": 279
+        },
+        {
+          "angle_idx": 5,
+          "speed_idx": 3,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "speed_band": "4\u20136",
+          "speed_low_yd_s": 4.0,
+          "speed_high_yd_s": 6.0,
+          "count": 195
+        },
+        {
+          "angle_idx": 5,
+          "speed_idx": 4,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "speed_band": "6\u20138",
+          "speed_low_yd_s": 6.0,
+          "speed_high_yd_s": 8.0,
+          "count": 24
+        },
+        {
+          "angle_idx": 5,
+          "speed_idx": 5,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "speed_band": "8\u201310",
+          "speed_low_yd_s": 8.0,
+          "speed_high_yd_s": 10.0,
+          "count": 1
+        },
+        {
+          "angle_idx": 5,
+          "speed_idx": 6,
+          "band": "120\u2013150\u00b0",
+          "band_low_deg": 120.0,
+          "band_high_deg": 150.0,
+          "speed_band": "10\u201312",
+          "speed_low_yd_s": 10.0,
+          "speed_high_yd_s": 12.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 6,
+          "speed_idx": 1,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "speed_band": "0\u20132",
+          "speed_low_yd_s": 0.0,
+          "speed_high_yd_s": 2.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 6,
+          "speed_idx": 2,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "speed_band": "2\u20134",
+          "speed_low_yd_s": 2.0,
+          "speed_high_yd_s": 4.0,
+          "count": 62
+        },
+        {
+          "angle_idx": 6,
+          "speed_idx": 3,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "speed_band": "4\u20136",
+          "speed_low_yd_s": 4.0,
+          "speed_high_yd_s": 6.0,
+          "count": 63
+        },
+        {
+          "angle_idx": 6,
+          "speed_idx": 4,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "speed_band": "6\u20138",
+          "speed_low_yd_s": 6.0,
+          "speed_high_yd_s": 8.0,
+          "count": 3
+        },
+        {
+          "angle_idx": 6,
+          "speed_idx": 5,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "speed_band": "8\u201310",
+          "speed_low_yd_s": 8.0,
+          "speed_high_yd_s": 10.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 6,
+          "speed_idx": 6,
+          "band": "150\u2013180\u00b0",
+          "band_low_deg": 150.0,
+          "band_high_deg": 180.0,
+          "speed_band": "10\u201312",
+          "speed_low_yd_s": 10.0,
+          "speed_high_yd_s": 12.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 7,
+          "speed_idx": 1,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "speed_band": "0\u20132",
+          "speed_low_yd_s": 0.0,
+          "speed_high_yd_s": 2.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 7,
+          "speed_idx": 2,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "speed_band": "2\u20134",
+          "speed_low_yd_s": 2.0,
+          "speed_high_yd_s": 4.0,
+          "count": 53
+        },
+        {
+          "angle_idx": 7,
+          "speed_idx": 3,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "speed_band": "4\u20136",
+          "speed_low_yd_s": 4.0,
+          "speed_high_yd_s": 6.0,
+          "count": 76
+        },
+        {
+          "angle_idx": 7,
+          "speed_idx": 4,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "speed_band": "6\u20138",
+          "speed_low_yd_s": 6.0,
+          "speed_high_yd_s": 8.0,
+          "count": 1
+        },
+        {
+          "angle_idx": 7,
+          "speed_idx": 5,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "speed_band": "8\u201310",
+          "speed_low_yd_s": 8.0,
+          "speed_high_yd_s": 10.0,
+          "count": 0
+        },
+        {
+          "angle_idx": 7,
+          "speed_idx": 6,
+          "band": ">180\u00b0",
+          "band_low_deg": 180.0,
+          "band_high_deg": null,
+          "speed_band": "10\u201312",
+          "speed_low_yd_s": 10.0,
+          "speed_high_yd_s": 12.0,
+          "count": 0
+        }
+      ],
+      "png": "outputs/figures/fig_before_after.png",
+      "csv": "outputs/figures/fig_before_after.csv",
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }

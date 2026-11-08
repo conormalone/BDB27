@@ -372,6 +372,32 @@ turn_coverage:
       width_in: 11.5
       height_in: 7.4
 
+    # Stage 06 figure 3 ("Before and After"): the same turn-angle x entry-speed
+    # grid, measured supply today versus supply with the settled drill added.
+    # DESIGN CHOICE, recorded as D165 in notes/decisions.md.
+    #
+    # The angle edges repeat figure 1's reporting bands: `bins.turn_angle` has
+    # no 45 edge and is FROZEN for Stages 03/04, so the case's bands live here.
+    # The speed edges are `bins.entry_speed` unchanged (the grid the rest of the
+    # pipeline already reports on), which is why the grid is 7 x 6 and not 6 x 6:
+    # six angle bands plus the >=180 overflow class, six 2-yd/s speed bands.
+    before_after:
+      position_group: DB
+      angle_edges_deg: [30, 45, 60, 90, 120, 150, 180]
+      overflow_label: ">180"
+      speed_edges_yd_s: [0, 2, 4, 6, 8, 10, 12]
+      # The settled drill (Conor): one 40 degree tempo break, 30-45 degree band,
+      # 2-6 yd/s entry, 6 reps per player. Players are COUNTED from the turn
+      # table at render time; only reps_per_player is a design number.
+      projected:
+        angle_deg: 40.0
+        entry_speed_yd_s: 4.0
+        entry_speed_window_yd_s: [2, 6]
+        reps_per_player: 6
+      dpi: 150
+      width_in: 12.6
+      height_in: 7.0
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

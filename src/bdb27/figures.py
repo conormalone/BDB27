@@ -39,13 +39,17 @@ from plotnine import (
     geom_rect,
     geom_segment,
     geom_text,
+    geom_tile,
     ggplot,
     labs,
     position_dodge,
     scale_colour_manual,
+    scale_fill_gradientn,
     scale_fill_manual,
     scale_shape_manual,
     scale_x_discrete,
+    scale_x_continuous,
+    scale_y_continuous,
     theme,
     theme_bw,
 )
@@ -56,6 +60,17 @@ STAGE = "06_figures"
 ARTEFACT_VERSION = 1
 FIGURE_KEY = "fig_the_hole"
 FIGURE_KEY_DRILLS = "fig_drill_coverage"
+FIGURE_KEY_BEFORE_AFTER = "fig_before_after"
+
+#: Figure 3 needs only the grid coordinates and the player identity.
+SUPPLY_COLUMNS = [
+    "setting",
+    "abs_turn_angle",
+    "entry_speed",
+    "position_group",
+    "nfl_id",
+    "valid",
+]
 
 STAMP = f"{common.PROVENANCE_SAMPLE} — {common.SAMPLE_LABEL}"
 
@@ -744,4 +759,437 @@ def drill_manifest_payload(table: pd.DataFrame, context: dict) -> dict:
         "drills": table.to_dict(orient="records"),
         "png": f"outputs/figures/{FIGURE_KEY_DRILLS}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_DRILLS}.csv",
+    }
+
+
+# ------------------------------------- figure 3: "Before and After"
+#: Panel labels. The left panel is MEASURED; the right panel is the measured
+#: supply plus an ARITHMETIC projection. The wording is part of the honesty
+#: contract, so it lives in one place and the caption repeats it verbatim.
+PANEL_MEASURED = "(a) Before: measured Combine supply"
+PANEL_PROJECTED = "(b) After: measured supply + proposed drill"
+
+#: Sequential, colour-blind-safe ramp (ColorBrewer Blues). Two panels share it.
+BLUES = ["#F7FBFF", "#C6DBEF", "#6BAED6", "#2171B5", "#08306B"]
+PROJECT_FILL = "#F0E442"
+PROJECT_EDGE = "#8C7A00"
+
+
+def supply_grid(turns: pd.DataFrame, angle_edges: list[float],
+                overflow_label: str, speed_edges: list[float],
+                position: str) -> tuple[pd.DataFrame, dict]:
+    """Count valid Combine turns of ``position`` on the full angle x speed grid.
+
+    Returns one row per grid cell (including empty cells, which the PNG leaves
+    blank but the CSV records as a real zero) plus the context the caption
+    quotes. Raises rather than dropping a turn that cannot be placed: a silent
+    omission would make every plotted cell a lie.
+    """
+    angle_edges = [float(e) for e in angle_edges]
+    speed_edges = [float(e) for e in speed_edges]
+    for name, edges in (("angle", angle_edges), ("speed", speed_edges)):
+        if len(edges) < 2 or any(b <= a for a, b in zip(edges, edges[1:])):
+            raise ValueError(
+                f"{STAGE}: {name} edges must be strictly increasing, got {edges}")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    df = turns[valid & (turns["position_group"] == position)
+               & (turns["setting"] == "combine")].copy()
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid Combine {position} turns — nothing to plot")
+
+    df["abs_turn_angle"] = pd.to_numeric(df["abs_turn_angle"], errors="coerce")
+    df["entry_speed"] = pd.to_numeric(df["entry_speed"], errors="coerce")
+    unusable = df["abs_turn_angle"].isna() | df["entry_speed"].isna()
+    if int(unusable.sum()):
+        raise common.StageRefused(
+            f"{STAGE}: {int(unusable.sum())} valid Combine {position} turns have "
+            "no angle or no entry speed — they cannot be placed on the grid, and "
+            "dropping them would understate supply")
+
+    a_bands = band_labels(angle_edges, overflow_label)
+    s_bands = [f"{_deg(lo)}–{_deg(hi)}" for lo, hi in
+               zip(speed_edges[:-1], speed_edges[1:])]
+
+    def _place(values: pd.Series, edges: list[float]) -> pd.Series:
+        out = pd.Series([None] * len(values), index=values.index, dtype=object)
+        for i in range(len(edges) - 1):
+            mask = (values >= edges[i]) & (values < edges[i + 1])
+            out[mask] = i
+        out[values >= edges[-1]] = len(edges) - 1
+        return out
+
+    df["angle_idx"] = _place(df["abs_turn_angle"], angle_edges)
+    df["speed_idx"] = _place(df["entry_speed"], speed_edges)
+    if df["angle_idx"].isna().any() or df["speed_idx"].isna().any():
+        raise ValueError(
+            f"{STAGE}: valid Combine {position} turns fall outside the configured "
+            "grid (angle below the first edge or speed below the first edge) — "
+            "fix figures.before_after")
+
+    counts = (df.groupby(["angle_idx", "speed_idx"]).size()
+                .rename("count").reset_index())
+
+    rows = []
+    for a in range(len(a_bands)):
+        for s in range(len(s_bands)):
+            n = int(counts.loc[(counts["angle_idx"] == a)
+                               & (counts["speed_idx"] == s), "count"].sum())
+            rows.append({
+                "angle_idx": a + 1,
+                "speed_idx": s + 1,
+                "band": a_bands[a],
+                "band_low_deg": angle_edges[a],
+                "band_high_deg": (angle_edges[a + 1]
+                                  if a + 1 < len(angle_edges) else None),
+                "speed_band": s_bands[s],
+                "speed_low_yd_s": speed_edges[s],
+                "speed_high_yd_s": speed_edges[s + 1],
+                "count": n,
+            })
+    table = pd.DataFrame(rows)
+
+    if int(table["count"].sum()) != len(df):
+        raise ValueError(
+            f"{STAGE}: gridded counts sum to {int(table['count'].sum())}, but the "
+            f"table has {len(df)} valid Combine {position} turns")
+
+    context = {
+        "position": position,
+        "n_turns": int(len(df)),
+        "n_players": int(df["nfl_id"].nunique()),
+        "angle_bands": a_bands,
+        "speed_bands": s_bands,
+        "angle_edges": angle_edges,
+        "speed_edges": speed_edges,
+        "grid_shape": (len(a_bands), len(s_bands)),
+        "vmax": int(table["count"].max()),
+        "n_empty": int((table["count"] == 0).sum()),
+    }
+    return table, context
+
+
+def load_supply_turns(path: Path) -> pd.DataFrame:
+    """Read the columns figure 3 needs; refuse loudly if the table is absent."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the per-turn table is absent ({path}) — run 02_turns first")
+    return pd.read_parquet(path, columns=SUPPLY_COLUMNS)
+
+
+def projected_block(table: pd.DataFrame, context: dict,
+                    cfg: common.Config) -> dict:
+    """The settled drill as an ARITHMETIC block on the same grid.
+
+    The drill is fixed (Conor): 40 degrees, 30-45 band, 2-6 yd/s entry, 6 reps
+    per player. Players are counted from the turn table; only the reps are a
+    design number. The block is reported as a REGION: the 2-6 yd/s window is
+    split by the grid's 4 yd/s edge, and no per-cell split exists in the
+    specification, so inventing one would be a fabrication. The total is
+    carried once on the region.
+    """
+    block = "figures.before_after.projected"
+    angle = float(cfg.get(f"{block}.angle_deg"))
+    reps = int(cfg.get(f"{block}.reps_per_player"))
+    win_lo, win_hi = (float(x) for x in cfg.get(f"{block}.entry_speed_window_yd_s"))
+
+    angle_edges = context["angle_edges"]
+    speed_edges = context["speed_edges"]
+
+    a_idx = None
+    for i in range(len(angle_edges) - 1):
+        if angle_edges[i] <= angle < angle_edges[i + 1]:
+            a_idx = i
+    if a_idx is None:
+        raise ValueError(
+            f"{STAGE}: projected angle {angle:g} is outside the angle bands "
+            f"{angle_edges}")
+
+    s_idx = [i for i in range(len(speed_edges) - 1)
+             if speed_edges[i] >= win_lo and speed_edges[i + 1] <= win_hi]
+    if not s_idx:
+        raise ValueError(
+            f"{STAGE}: the projected speed window {win_lo:g}-{win_hi:g} covers no "
+            "whole grid cell")
+
+    n_players = context["n_players"]
+    total = n_players * reps
+    return {
+        "angle_idx": a_idx + 1,
+        "speed_idx": [i + 1 for i in s_idx],
+        "speed_window": (win_lo, win_hi),
+        "angle": angle,
+        "reps": reps,
+        "n_players": n_players,
+        "total": int(total),
+        "n_cells": len(s_idx),
+        "label": f"projected: {reps} reps × {n_players} DBs = {total:,}",
+    }
+
+
+def before_after_plot_frame(table: pd.DataFrame, proj: dict) -> dict:
+    """Split the table into what each geom draws.
+
+    Measured cells are the grid cells that hold at least one turn: empty cells
+    are dropped on purpose so they stay BLANK, never zero-grey. The projected
+    region is a separate rectangle, hatched, drawn on the right panel only.
+    """
+    measured = table[table["count"] > 0].copy()
+    measured["panel"] = PANEL_MEASURED
+    measured["panel"] = pd.Categorical(measured["panel"],
+                                       categories=[PANEL_MEASURED, PANEL_PROJECTED],
+                                       ordered=True)
+    measured["share_of_supply"] = measured["count"] / int(table["count"].sum())
+
+    right = measured.copy()
+    right["panel"] = PANEL_PROJECTED
+
+    x_lo = proj["angle_idx"] - 0.5
+    x_hi = proj["angle_idx"] + 0.5
+    y_lo = min(proj["speed_idx"]) - 0.5
+    y_hi = max(proj["speed_idx"]) + 0.5
+    rect = pd.DataFrame([{"xmin": x_lo, "xmax": x_hi, "ymin": y_lo,
+                          "ymax": y_hi, "panel": PANEL_PROJECTED}])
+    rect["panel"] = pd.Categorical(rect["panel"],
+                                   categories=[PANEL_MEASURED, PANEL_PROJECTED],
+                                   ordered=True)
+    label = pd.DataFrame([{
+        # Sit the label on the higher-speed cell of the block: the lower cell
+        # still holds the one measured turn and must keep its own count visible.
+        "x": proj["angle_idx"], "y": float(max(proj["speed_idx"])),
+        "panel": PANEL_PROJECTED,
+        "label": ("projected\n"
+                  f"{proj['reps']} reps × {proj['n_players']} DBs\n"
+                  f"= {proj['total']:,}"),
+    }])
+    label["panel"] = pd.Categorical(label["panel"],
+                                    categories=[PANEL_MEASURED, PANEL_PROJECTED],
+                                    ordered=True)
+    return {"cells": pd.concat([measured, right], ignore_index=True),
+            "rect": rect, "label": label}
+
+
+def _hatch_segments(xmin: float, xmax: float, ymin: float, ymax: float,
+                    step: float = 0.30) -> pd.DataFrame:
+    """Deterministic 45 degree hatching, clipped exactly to the rectangle."""
+    rows = []
+    c = ymin - xmax
+    while c <= ymax - xmin + 1e-9:
+        lo = max(xmin, ymin - c)
+        hi = min(xmax, ymax - c)
+        if hi - lo > 1e-9:
+            rows.append({"x": lo, "xend": hi, "y": lo + c, "yend": hi + c})
+        c += step
+    return pd.DataFrame(rows)
+
+
+def plot_before_after(table: pd.DataFrame, context: dict, proj: dict,
+                      cfg: common.Config) -> ggplot:
+    block = "figures.before_after"
+    frames = before_after_plot_frame(table, proj)
+    cells, rect, label = frames["cells"], frames["rect"], frames["label"]
+    hatch = _hatch_segments(float(rect["xmin"].iloc[0]), float(rect["xmax"].iloc[0]),
+                            float(rect["ymin"].iloc[0]), float(rect["ymax"].iloc[0]))
+    hatch["panel"] = PANEL_PROJECTED
+    hatch["panel"] = pd.Categorical(hatch["panel"],
+                                    categories=[PANEL_MEASURED, PANEL_PROJECTED],
+                                    ordered=True)
+
+    # Label colour follows the tile's position on the shared ramp.
+    ramp_frac = np.sqrt(np.clip(cells["count"] / max(context["vmax"], 1), 0, 1))
+    cells["text_colour"] = np.where(ramp_frac > 0.62, "#FFFFFF", "#1A1A1A")
+
+    n = context["n_turns"]
+    players = context["n_players"]
+    empty = context["n_empty"]
+    a_lo, a_hi = (context["angle_edges"][0], context["angle_edges"][1])
+    title = "Before and after: a 30–45° hole, and the drill that would fill it"
+    subtitle = (f"Valid DB turns on one angle × entry-speed grid — left: today's "
+                f"Combine supply ({n:,} turns, {players} players); right: the same "
+                f"supply with the proposed drill added. Grid "
+                f"{context['grid_shape'][0]} × {context['grid_shape'][1]}.")
+    caption = "\n".join([
+        STAMP,
+        (f"LEFT is MEASURED: every valid DB Combine turn in "
+         f"outputs/turns/turns.parquet, counted at render time. RIGHT is the same "
+         f"measured supply PLUS an ARITHMETIC projection: {proj['reps']} reps × "
+         f"{proj['n_players']} DBs = {proj['total']:,} turns, drawn hatched and "
+         "never coloured as if measured."),
+        (f"The projection is placed in the {proj['angle']:g}° band at the drill's "
+         f"{proj['speed_window'][0]:g}–{proj['speed_window'][1]:g} yd/s entry "
+         "window. The grid's 4 yd/s edge splits that window into two cells and the "
+         "drill spec has no per-cell split, so the total is carried on the region "
+         "once; it is not divided between cells."),
+        (f"Only {int(table.loc[table['band'] == context['angle_bands'][0], 'count'].sum()):,}"
+         f" measured turns sit in 30–45° and {empty} of "
+         f"{context['grid_shape'][0] * context['grid_shape'][1]} cells are empty: "
+         "blank cells are real zeros, not missing data — that emptiness is the "
+         "figure's point."),
+        (f"Exposure caveat: Combine supply is {players} players × one session, "
+         "while the projection is 6 reps per player; the two panels count turns, "
+         "not comparable samples of behaviour."),
+        ("Colour ramp is shared and square-root scaled (Blues) so small measured "
+         "cells stay visible beside the largest. Bands are left-closed; the final "
+         "angle class is >180°. Source: outputs/turns/turns.parquet (valid DB "
+         "Combine turns), stage 02."),
+    ])
+
+    x_breaks = list(range(1, context["grid_shape"][0] + 1))
+    y_breaks = list(range(1, context["grid_shape"][1] + 1))
+
+    plot = (
+        ggplot(cells, aes(x="angle_idx", y="speed_idx", fill="count"))
+        + geom_tile(width=1.0, height=1.0, colour="white", size=0.45)
+        + geom_rect(data=rect, mapping=aes(xmin="xmin", xmax="xmax", ymin="ymin",
+                                           ymax="ymax"),
+                    inherit_aes=False, fill=PROJECT_FILL, alpha=0.28,
+                    colour=PROJECT_EDGE, linetype="dashed", size=0.6)
+        + geom_segment(data=hatch, mapping=aes(x="x", xend="xend", y="y",
+                                               yend="yend"),
+                       inherit_aes=False, colour=PROJECT_EDGE, size=0.45,
+                       alpha=0.85)
+        + geom_text(aes(label="count", colour="text_colour"), size=2.55,
+                    show_legend=False)
+        + geom_text(data=label, mapping=aes(x="x", y="y", label="label"),
+                    inherit_aes=False, size=2.6, colour="#4A3F00",
+                    fontweight="bold", ha="center", va="center")
+        + scale_colour_manual(values=["#1A1A1A", "#FFFFFF"], guide=None)
+        + scale_fill_gradientn(colors=BLUES, limits=(0, max(context["vmax"], 1)),
+                               trans="sqrt", name="DB turns")
+        + scale_x_continuous(breaks=x_breaks, labels=context["angle_bands"],
+                             limits=(0.5, context["grid_shape"][0] + 0.5),
+                             expand=(0, 0))
+        + scale_y_continuous(breaks=y_breaks, labels=context["speed_bands"],
+                             limits=(0.5, context["grid_shape"][1] + 0.5),
+                             expand=(0, 0))
+        + facet_wrap("~ panel", nrow=1)
+        + labs(title=title, subtitle=subtitle, caption=caption,
+               x="Absolute turn angle (band)", y="Entry speed (yd/s)")
+        + theme_bw(base_size=9)
+        + theme(
+            figure_size=(float(cfg.get(f"{block}.width_in")),
+                         float(cfg.get(f"{block}.height_in"))),
+            panel_background=element_rect(fill="#E4E4E4", colour=None),
+            panel_grid_major=element_blank(),
+            panel_grid_minor=element_blank(),
+            panel_border=element_rect(colour="#B3B3B3", linewidth=0.4),
+            strip_background=element_rect(fill="#D9D9D9", colour="#B3B3B3"),
+            strip_text=element_text(weight="bold", size=9.5),
+            plot_title=element_text(size=14.5, weight="bold"),
+            plot_subtitle=element_text(size=8.8, colour="#333333"),
+            plot_caption=element_text(size=6.7, colour="#333333", ha="left",
+                                      linespacing=1.35),
+            axis_title_x=element_text(size=9.0),
+            axis_title_y=element_text(size=9.0),
+            axis_text_x=element_text(size=7.8, angle=0),
+            axis_text_y=element_text(size=8.0),
+            legend_position="right",
+            legend_title=element_text(size=8.4),
+            legend_key=element_rect(fill="#E4E4E4", colour=None),
+        )
+    )
+    return plot
+
+
+def before_after_csv_frame(table: pd.DataFrame, proj: dict) -> pd.DataFrame:
+    """CSV = every grid cell for the measured panel (zeros included) plus the
+    projected region rows, each labelled with its panel.
+
+    Measured rows carry a real zero for an empty cell: the PNG leaves the cell
+    blank, and the CSV is where "blank means zero" is documented. Projected
+    rows carry ``count`` as NaN because the region is NOT split across its two
+    grid cells; the single region total is in ``region_count``.
+    """
+    measured = table.copy()
+    measured["panel"] = "measured"
+    measured["count_kind"] = "measured cell"
+    measured["region_id"] = None
+    measured["region_count"] = None
+
+    rows = []
+    for s_idx in proj["speed_idx"]:
+        band_row = table[(table["angle_idx"] == proj["angle_idx"])
+                         & (table["speed_idx"] == s_idx)]
+        rows.append({
+            "angle_idx": proj["angle_idx"],
+            "speed_idx": s_idx,
+            "band": band_row["band"].iloc[0],
+            "band_low_deg": band_row["band_low_deg"].iloc[0],
+            "band_high_deg": band_row["band_high_deg"].iloc[0],
+            "speed_band": band_row["speed_band"].iloc[0],
+            "speed_low_yd_s": band_row["speed_low_yd_s"].iloc[0],
+            "speed_high_yd_s": band_row["speed_high_yd_s"].iloc[0],
+            "count": np.nan,
+            "panel": "projected",
+            "count_kind": "projected region (not split across cells)",
+            "region_id": "proj_30-45_2-6",
+            "region_count": proj["total"],
+        })
+    projected = pd.DataFrame(rows)
+
+    out = pd.concat([measured, projected], ignore_index=True)
+    out["share_of_supply"] = out["count"] / int(table["count"].sum())
+    return out[["panel", "count_kind", "band", "band_low_deg", "band_high_deg",
+                "speed_band", "speed_low_yd_s", "speed_high_yd_s", "count",
+                "share_of_supply", "region_id", "region_count"]]
+
+
+def before_after_manifest_payload(table: pd.DataFrame, context: dict,
+                                  proj: dict) -> dict:
+    n = context["n_turns"]
+    hole = int(table[(table["band"] == context["angle_bands"][0])]["count"].sum())
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_BEFORE_AFTER,
+        "title": ("Before and after: a 30–45° hole, and the drill that would "
+                  "fill it"),
+        "claim": (f"Measured DB Combine supply is {n:,} turns across "
+                  f"{context['grid_shape'][0]} × {context['grid_shape'][1]} "
+                  f"angle × entry-speed cells, with only {hole} turn(s) in the "
+                  f"30–45° band; the proposed drill would add "
+                  f"{proj['total']:,} projected turns to that band."),
+        "sources": ["outputs/turns/turns.parquet"],
+        "panels": {
+            "left": "measured Combine DB supply",
+            "right": "measured supply + arithmetic projection (hatched)",
+        },
+        "grid": {
+            "angle_edges_deg": context["angle_edges"],
+            "angle_bands": context["angle_bands"],
+            "speed_edges_yd_s": context["speed_edges"],
+            "speed_bands": context["speed_bands"],
+            "shape": list(context["grid_shape"]),
+            "empty_cells": context["n_empty"],
+        },
+        "projection": {
+            "arithmetic": (f"{proj['reps']} reps × {proj['n_players']} DBs = "
+                           f"{proj['total']}"),
+            "total_turns": proj["total"],
+            "n_players": proj["n_players"],
+            "reps_per_player": proj["reps"],
+            "angle_deg": proj["angle"],
+            "entry_speed_window_yd_s": list(proj["speed_window"]),
+            "cells_covered": proj["n_cells"],
+            "per_cell_split": None,
+        },
+        "caveats": [
+            ("The right panel is arithmetic, not measurement: it repeats the "
+             "measured supply and adds a hatched projection of "
+             f"{proj['reps']} reps × {proj['n_players']} DBs."),
+            ("The 2–6 yd/s window is split by the grid's 4 yd/s edge and the "
+             "drill spec has no per-cell split, so the total is carried once on "
+             "the region and never divided between cells."),
+            (f"Exposure: Combine supply is {context['n_players']} players × one "
+             "session; the projection is 6 reps per player. Turn counts are not "
+             "comparable samples of behaviour."),
+            ("Blank cells are real zeros; the CSV records every grid cell, "
+             "including empty ones."),
+        ],
+        "position_group": context["position"],
+        "counts": table.to_dict(orient="records"),
+        "png": f"outputs/figures/{FIGURE_KEY_BEFORE_AFTER}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_BEFORE_AFTER}.csv",
     }

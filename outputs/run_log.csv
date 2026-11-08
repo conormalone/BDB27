@@ -86,3 +86,11 @@ LINE 4:                    sum(CASE WHEN pp.time_to_pressure IS NULL THEN 1 ELSE
 2026-11-08T00:42:01Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,1.866,197.1,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179
 2026-11-08T00:50:02Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,2.526,197.6,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179
 2026-11-08T00:50:06Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,2.631,197.5,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179
+2026-11-08T10:10:34Z,06_figures,sample,PLACEHOLDER_SAMPLE,ERROR,2.283,198.3,0,'entry_speed'
+2026-11-08T10:11:10Z,06_figures,sample,PLACEHOLDER_SAMPLE,ERROR,2.602,198.8,0,scale_fill_gradientn.__init__() got an unexpected keyword argument 'colours'. Did you mean 'colors'?
+2026-11-08T10:11:18Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,4.281,209.8,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179; fig_before_after: grid=7x6 turns=1179 projected=732
+2026-11-08T10:11:24Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,3.184,209.2,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179; fig_before_after: grid=7x6 turns=1179 projected=732
+2026-11-08T10:14:25Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,3.843,208.9,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179; fig_before_after: grid=7x6 turns=1179 projected=732
+2026-11-08T10:18:09Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,3.841,209.9,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179; fig_before_after: grid=7x6 turns=1179 projected=732
+2026-11-08T10:28:14Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,3.935,210.3,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179; fig_before_after: grid=7x6 turns=1179 projected=732
+2026-11-08T10:28:19Z,06_figures,sample,PLACEHOLDER_SAMPLE,OK,3.511,209.8,3441,fig_the_hole: bands=7 valid_DB=3441; fig_drill_coverage: drills=10 turns=1179; fig_before_after: grid=7x6 turns=1179 projected=732

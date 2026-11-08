@@ -60,7 +60,9 @@ def _drill_sequence() -> list[str]:
 
 def _turns_frame() -> pd.DataFrame:
     rows = []
-    nfl = {"combine": [1001, 1002, 1003, 1004, 1005],
+    # 122 Combine players mirrors the real table, so the figure-3 projection
+    # arithmetic under test is 6 reps x 122 DBs = 732, not a toy number.
+    nfl = {"combine": list(range(1001, 1123)),
            "game": [2001, 2002, 2003]}
     drills = _drill_sequence()
     k = 0
@@ -179,6 +181,8 @@ def rendered(tmp_path_factory):
             "csv": out / "fig_the_hole.csv",
             "drill_png": out / "fig_drill_coverage.png",
             "drill_csv": out / "fig_drill_coverage.csv",
+            "ba_png": out / "fig_before_after.png",
+            "ba_csv": out / "fig_before_after.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -351,6 +355,175 @@ def test_drill_checks_can_fail(rendered):
         _check_drill_csv(bad_cell, turns)
 
     empty = rendered["tmp"] / "empty_drill.png"
+    empty.write_bytes(b"")
+    with pytest.raises(AssertionError):
+        _check_png(empty)
+
+
+# ------------------------------------------- figure 3: before and after
+BA_ANGLE_EDGES = [30.0, 45.0, 60.0, 90.0, 120.0, 150.0, 180.0]
+BA_SPEED_EDGES = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
+BA_PANEL_A = "(a) Before: measured Combine supply"
+BA_PANEL_B = "(b) After: measured supply + proposed drill"
+
+
+def _ba_cells(turns: pd.DataFrame):
+    from bdb27 import figures
+    return figures.supply_grid(turns, BA_ANGLE_EDGES, ">180", BA_SPEED_EDGES, "DB")
+
+
+def _cfg_obj(path: Path):
+    from bdb27 import common
+    return common.load_config(path)
+
+
+def _check_ba_csv(csv_df: pd.DataFrame, turns: pd.DataFrame) -> None:
+    """Every measured cell must reconcile to the Parquet it was rendered from."""
+    valid = turns["valid"].fillna(False).astype(bool)
+    db = turns[valid & (turns["position_group"] == "DB")
+               & (turns["setting"] == "combine")]
+
+    measured = csv_df[csv_df["panel"] == "measured"]
+    # 6 angle bands + the >=180 overflow class, 6 speed bands: 7 x 6.
+    assert len(measured) == (len(BA_ANGLE_EDGES)) * (len(BA_SPEED_EDGES) - 1) == 42
+
+    for _, row in measured.iterrows():
+        lo_a, hi_a = float(row["band_low_deg"]), row["band_high_deg"]
+        lo_s, hi_s = float(row["speed_low_yd_s"]), float(row["speed_high_yd_s"])
+        amask = (db["abs_turn_angle"] >= lo_a)
+        if pd.notna(hi_a):
+            amask = amask & (db["abs_turn_angle"] < float(hi_a))
+        else:  # the >= last edge overflow class
+            amask = amask & (db["abs_turn_angle"] >= BA_ANGLE_EDGES[-1])
+        smask = (db["entry_speed"] >= lo_s) & (db["entry_speed"] < hi_s)
+        want = int((amask & smask).sum())
+        assert int(row["count"]) == want, (
+            f"{row['band']} x {row['speed_band']}: csv={int(row['count'])} "
+            f"artefact={want}")
+
+    assert int(measured["count"].sum()) == len(db)
+
+    projected = csv_df[csv_df["panel"] == "projected"]
+    assert len(projected) == 2
+    assert projected["count"].isna().all(), "the region must not be split per cell"
+    assert projected["region_count"].nunique() == 1
+    assert float(projected["region_count"].iloc[0]) == 732.0
+    assert projected["region_id"].nunique() == 1
+    assert set(projected["band"]) == {"30–45°"}
+    assert set(projected["speed_band"]) == {"2–4", "4–6"}
+
+
+def test_before_after_png_exists_non_empty_and_wide(rendered):
+    _check_png(rendered["ba_png"])
+
+
+def test_before_after_csv_matches_artefact_counts(rendered):
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    csv_df = pd.read_csv(rendered["ba_csv"])
+    _check_ba_csv(csv_df, turns)
+
+
+def test_before_after_blank_cells_stay_blank_not_zero_grey(rendered):
+    """The CSV records every grid cell; the heatmap plots only non-empty ones."""
+    from bdb27 import figures
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    csv_df = pd.read_csv(rendered["ba_csv"])
+    measured = csv_df[csv_df["panel"] == "measured"]
+    assert (measured["count"] == 0).any(), "fixture must contain empty cells"
+
+    table, context = _ba_cells(turns)
+    proj = figures.projected_block(table, context,
+                                   _cfg_obj(rendered["cfg"]))
+    frames = figures.before_after_plot_frame(table, proj)
+    assert (frames["cells"]["count"] > 0).all(), "empty cells must not be drawn"
+    assert len(frames["cells"]) == 2 * int((table["count"] > 0).sum())
+    assert (table["count"] == 0).sum() == context["n_empty"]
+
+
+def test_before_after_projection_is_arithmetic_and_not_split(rendered):
+    from bdb27 import figures
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = _ba_cells(turns)
+    proj = figures.projected_block(table, context, _cfg_obj(rendered["cfg"]))
+    assert proj["n_players"] == 122
+    assert proj["reps"] == 6
+    assert proj["total"] == 122 * 6 == 732
+    assert proj["n_cells"] == 2
+    assert proj["angle"] == 40.0
+    assert proj["speed_window"] == (2.0, 6.0)
+
+
+def test_before_after_two_runs_are_byte_identical(rendered):
+    first = hashlib.sha256(rendered["ba_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    second = hashlib.sha256(rendered["ba_png"].read_bytes()).hexdigest()
+    assert first == second
+
+
+def test_before_after_provenance_stamp_present(rendered):
+    from bdb27 import figures
+    csv_df = pd.read_csv(rendered["ba_csv"])
+    assert csv_df["stamp"].eq(STAMP).all()
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"]["fig_before_after"]
+    assert fig["stamp"] == STAMP
+    assert man["provenance"] == "PLACEHOLDER_SAMPLE"
+    # the stamp is also on the image itself (caption text of the drawn plot)
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = _ba_cells(turns)
+    proj = figures.projected_block(table, context, _cfg_obj(rendered["cfg"]))
+    plot = figures.plot_before_after(table, context, proj,
+                                     _cfg_obj(rendered["cfg"]))
+    assert STAMP in plot.labels.get("caption", "")
+
+
+def test_before_after_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"]["fig_before_after"]
+    assert fig["grid"]["shape"] == [7, 6]
+    assert fig["grid"]["angle_edges_deg"] == BA_ANGLE_EDGES
+    assert fig["grid"]["speed_edges_yd_s"] == BA_SPEED_EDGES
+    assert fig["projection"]["total_turns"] == 732
+    assert fig["projection"]["per_cell_split"] is None
+    assert fig["panels"]["left"] == "measured Combine DB supply"
+    assert "arithmetic projection" in fig["panels"]["right"]
+    assert fig["figure"] == "fig_before_after"
+    assert fig["counts"] and len(fig["counts"]) == 42
+
+
+def test_before_after_edges_come_from_config(rendered, tmp_path):
+    cfg = _write_config(tmp_path)
+    raw = yaml.safe_load(cfg.read_text())
+    raw["turn_coverage"]["figures"]["before_after"]["angle_edges_deg"] = \
+        [30.0, 45.0, 90.0, 180.0]
+    cfg.write_text(yaml.safe_dump(raw, sort_keys=False))
+    res = _run(cfg)
+    assert res.returncode == 0, res.stderr
+    csv_df = pd.read_csv(tmp_path / "outputs" / "figures" / "fig_before_after.csv")
+    measured = csv_df[csv_df["panel"] == "measured"]
+    assert len(measured) == 4 * 6
+    assert set(measured["band"]) == {"30–45°", "45–90°", "90–180°", ">180°"}
+
+
+def test_before_after_checks_can_fail(rendered):
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    good = pd.read_csv(rendered["ba_csv"])
+    _check_ba_csv(good, turns)
+
+    bad = good.copy()
+    idx = bad.index[(bad["panel"] == "measured") & (bad["band"] == "30–45°")
+                    & (bad["speed_band"] == "4–6")][0]
+    bad.loc[idx, "count"] = 1  # that cell is genuinely empty
+    with pytest.raises(AssertionError):
+        _check_ba_csv(bad, turns)
+
+    split = good.copy()
+    split.loc[split.index[split["panel"] == "projected"], "count"] = 366
+    with pytest.raises(AssertionError):
+        _check_ba_csv(split, turns)
+
+    empty = rendered["tmp"] / "empty_ba.png"
     empty.write_bytes(b"")
     with pytest.raises(AssertionError):
         _check_png(empty)

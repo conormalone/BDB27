@@ -1,7 +1,12 @@
-"""Stage 06 — figure 1, "The Hole" (DB turn supply vs demand).
+"""Stage 06 — figures 1-3.
 
-Renders one figure only. The other deliverables (figures 2-3) are deliberately
-out of scope for this run; stage 06 grows here, one committed figure at a time.
+  1. "The Hole"         — DB supply vs demand by turn-angle band.
+  2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
+  3. "Before and After" — measured supply vs supply + the proposed drill, on
+                          one angle x entry-speed grid.
+
+Stage 06 grows one committed figure at a time; each figure writes a PNG, a
+CSV beside it, and one entry in outputs/figures/figures_manifest.json.
 
 Usage:
     python src/06_figures.py --mode sample
@@ -117,16 +122,48 @@ def main(argv=None) -> int:
         drill_payload["stamp"] = figures.STAMP
         _write_manifest(drill_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 3: before and after (measured supply vs supply + drill)
+        ba_block = "figures.before_after"
+        ba_angle = [float(x) for x in cfg.get(f"{ba_block}.angle_edges_deg")]
+        ba_speed = [float(x) for x in cfg.get(f"{ba_block}.speed_edges_yd_s")]
+        ba_overflow = str(cfg.get(f"{ba_block}.overflow_label"))
+        ba_position = str(cfg.get(f"{ba_block}.position_group"))
+
+        supply_turns = figures.load_supply_turns(turns_path)
+        ba_table, ba_context = figures.supply_grid(
+            supply_turns, ba_angle, ba_overflow, ba_speed, ba_position)
+        ba_proj = figures.projected_block(ba_table, ba_context, cfg)
+        ba_csv = figures.before_after_csv_frame(ba_table, ba_proj)
+        ba_png = outdir / f"{figures.FIGURE_KEY_BEFORE_AFTER}.png"
+        ba_csv_path = outdir / f"{figures.FIGURE_KEY_BEFORE_AFTER}.csv"
+        common.write_csv(ba_csv, ba_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_BEFORE_AFTER})
+        ba_plot = figures.plot_before_after(ba_table, ba_context, ba_proj, cfg)
+        figures.render(ba_plot, cfg, ba_png, block="before_after")
+        ba_payload = figures.before_after_manifest_payload(
+            ba_table, ba_context, ba_proj)
+        ba_payload["stamp"] = figures.STAMP
+        _write_manifest(ba_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
                         f"{figures.FIGURE_KEY_DRILLS}: "
                         f"drills={drill_context['n_drills']} "
-                        f"turns={drill_context['n_turns']}")
+                        f"turns={drill_context['n_turns']}; "
+                        f"{figures.FIGURE_KEY_BEFORE_AFTER}: "
+                        f"grid={ba_context['grid_shape'][0]}x"
+                        f"{ba_context['grid_shape'][1]} "
+                        f"turns={ba_context['n_turns']} "
+                        f"projected={ba_proj['total']}")
 
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
-          f"{drill_png.name}, {drill_csv_path.name}, {manifest_path.name} "
-          f"({context['n_valid']} valid {position} turns)")
+          f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
+          f"{ba_csv_path.name}, {manifest_path.name} "
+          f"({context['n_valid']} valid {position} turns; "
+          f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
+          f"{ba_context['grid_shape'][0]}x{ba_context['grid_shape'][1]} grid)")
     return 0
 
 

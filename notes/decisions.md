@@ -5851,3 +5851,41 @@ looking at this figure's counts, not a tuned cut.
 **Evidence.** `config.yaml` §`figures.hole`; `src/bdb27/figures.py`
 (`band_table` refuses to plot if any valid turn falls outside the bands);
 `tests/test_figures_stage.py::test_band_edges_come_from_config`.
+
+## D165 — Figure 3 ("Before and After") reuses the reporting bands on a 7 × 6 grid, and carries the drill projection as an unsplit region · 2026-11-08
+**Decision.** Figure 3 plots the same angle × entry-speed grid twice: left =
+measured valid DB Combine turns from `outputs/turns/turns.parquet`, right = the
+same measured supply plus the settled drill (40°, 30–45° band, 2–6 yd/s entry,
+6 reps per player) as a hatched, explicitly-labelled projection. The angle
+edges are `figures.before_after.angle_edges_deg = [30, 45, 60, 90, 120, 150,
+180]` — figure 1's reporting bands (D164), **not** an edit to the frozen
+`bins.turn_angle`. The speed edges are `bins.entry_speed` unchanged
+(`[0, 2, 4, 6, 8, 10, 12]`). The grid is therefore **7 × 6**: six angle bands plus
+the `>= 180` overflow class, and six 2-yd/s speed bands. Players in the
+projection are counted from the table at render time (122 on the sample); only
+`reps_per_player = 6` is a design number, so 6 × 122 = 732.
+**Why the region is not split.** The drill's entry window (2–6 yd/s) is cut by
+the grid's 4 yd/s edge into two cells, and the drill specification says nothing
+about how six reps divide between them. Splitting 732 into 366 + 366 would be an
+invented number dressed as arithmetic, so the total is carried once on the
+region: the PNG draws one hatched block across both cells with the label
+"6 reps × 122 DBs = 732", and the CSV carries both cells with `count` blank and
+the single total in `region_count` (`region_id = proj_30-45_2-6`). The 40° edge
+is likewise not added to the angle grid: the drill sits in the 30–45° band, and
+adding a 40 edge would only shrink that band without adding information.
+**Why blank, not zero-grey.** 20 of the 42 grid cells hold no measured turn. A
+zero-grey cell would read as a measured shortage of exactly zero; the point of
+the figure is that the cell was never tested. So empty cells are left as panel
+background and the CSV records the real zero, which is where "blank means zero"
+is documented. The colour ramp is shared and square-root scaled (Blues) so the
+4-turn cell stays visible beside the 279-turn cell; the projection is hatched
+and never drawn on the ramp, because it is arithmetic rather than measurement.
+**Why.** The two panels are the case in one image: today's supply has a live hole
+at 30–45°, and six reps per player would put 732 turns into it. Keeping the
+measured and projected marks visually distinct (colour vs hatch) is what stops
+the right panel being read as new data.
+**Evidence.** `config.yaml` §`figures.before_after`; `src/bdb27/figures.py`
+(`supply_grid`, `projected_block`, `before_after_plot_frame`,
+`plot_before_after`); `tests/test_figures_stage.py::test_before_after_*`
+(42 measured cells sum to 1,179; 20 empty cells; projection 732 with
+`per_cell_split: null`; byte-identical re-render; config-driven edges).
