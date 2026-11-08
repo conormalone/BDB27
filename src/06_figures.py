@@ -275,19 +275,43 @@ def main(argv=None) -> int:
         # ---- figure 10: the test never checks which way he turns
         bh_turns = figures.load_both_hips_turns(turns_path)
         bh_play = str(cfg.get("figures.both_hips.position_group"))
-        bh_settings = [str(s) for s in cfg.get("figures.both_hips.settings")]
         bh_low, bh_high = (float(x) for x in
                            cfg.get("figures.both_hips.angle_band_deg"))
         bh_valid = bh_turns["valid"].fillna(False).astype(bool)
         bh_angle = pd.to_numeric(bh_turns["abs_turn_angle"], errors="coerce")
-        bh_game = bh_turns[
+        bh_plot_turns = bh_turns[
             bh_valid
             & (bh_turns["position_group"] == bh_play)
             & (bh_turns["setting"] == "game")
             & (bh_angle >= bh_low) & (bh_angle < bh_high)].copy()
-        bh_frames = figures.load_game_orientation(cfg, args.mode, bh_game)
+        bh_frames = figures.load_game_frames(cfg, args.mode, bh_plot_turns)
+
+        bh_route_turns = figures.load_route_turns(bh_turns, cfg)
+        route = {"turns": bh_route_turns, "frames": pd.DataFrame(),
+                 "plays": pd.DataFrame(), "targets": pd.DataFrame()}
+        pp_path = cfg.raw_file(args.mode, "player_play")
+        if pp_path.exists() and len(bh_route_turns):
+            bh_plays = pd.read_csv(
+                pp_path,
+                usecols=["game_id", "play_id", "nfl_id", "route_ran",
+                         "play_direction", "play_description", "target"])
+            keys = bh_route_turns[["game_id", "play_id", "nfl_id"]].copy()
+            bh_route_turns = bh_route_turns.merge(
+                bh_plays[["game_id", "play_id", "nfl_id", "route_ran",
+                          "play_direction"]],
+                on=["game_id", "play_id", "nfl_id"], how="left")
+            route["turns"] = bh_route_turns
+            route["frames"] = figures.load_game_frames(
+                cfg, args.mode, bh_route_turns)
+            targets = bh_plays[bh_plays["target"].fillna(False).astype(bool)]
+            target_frames = figures.load_game_frames(
+                cfg, args.mode,
+                targets[["game_id", "play_id", "nfl_id"]].drop_duplicates())
+            route["plays"] = bh_plays
+            route["targets"] = target_frames
+        bh_check, bh_route_table = figures.both_hips_checks(route, cfg)
         bh_table, bh_context = figures.both_hips_table(
-            bh_turns, bh_frames, cfg)
+            bh_turns, bh_frames, bh_check, cfg)
         bh_csv = figures.both_hips_csv_frame(bh_table, bh_context)
         bh_png = outdir / f"{figures.FIGURE_KEY_BOTH_HIPS}.png"
         bh_csv_path = outdir / f"{figures.FIGURE_KEY_BOTH_HIPS}.csv"
@@ -342,9 +366,11 @@ def main(argv=None) -> int:
                         f"({bh_context['players']['game']} players) "
                         f"labels={bh_context['labels']['positive']}/"
                         f"{bh_context['labels']['negative']} "
-                        f"orientation_check="
-                        f"{bh_context['check']['n_agree']}/"
-                        f"{bh_context['check']['n_tested']} "
+                        f"chirality="
+                        f"{bh_context['check']['chirality']['n_agree']}/"
+                        f"{bh_context['check']['chirality']['n_plays']} "
+                        f"route_carried="
+                        f"{len(bh_context['check']['route']['families_carried'])} "
                         f"resolved={bh_context['check']['resolved']} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "

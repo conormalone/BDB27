@@ -5961,46 +5961,62 @@ sources; threshold read from config and refused when off-grid; byte-identical
 re-render; figures 1–5 unchanged; all six figures render; detector numbers have
 a stored source).
 
-## D168 — Figure 10 splits the 30–60° DB band by turn sign, and refuses to name a body side · 2026-11-08
+## D168 — Figure 10 splits the 30–60° DB band by turn sign, and names the side only when vendor semantics pin it · 2026-11-08
 
-**Decision.** Figure 10 draws four counts: the 30–60° DB band split by the
-sign of `turn_angle`, Combine against game, one shared axis,
-`figures.both_hips` in `config.yaml`. The bars are labelled from an explicit
-orientation check on the game-only `o` column, never from convention alone.
+**Decision.** Figure 10 draws four counts: the 30–60° DB band split by the sign
+of `turn_angle`, Combine against game, one shared axis, from
+`figures.both_hips` in `config.yaml`. On this sample the bars read **LEFT
+(negative) 11 / RIGHT (positive) 15** for the Combine's 26 turns from 16
+players, and **154 / 172** for the games' 326 turns from 30 players.
 
 **Sign convention as found.** `kinematics.heading_deg` is
-`degrees(arctan2(vx, vy)) % 360`, i.e. 0 = +y with the angle increasing
-clockwise; `detect_turns` stores `unwrapped[hi] - unwrapped[lo]` as
-`turn_angle`. A positive turn is therefore a clockwise heading change.
+`degrees(arctan2(vx, vy)) % 360` (0 = +y, increasing clockwise) and
+`detect_turns` stores `unwrapped[hi] - unwrapped[lo]`, so a positive
+`turn_angle` is a clockwise heading change.
 
-**Why that is still not left/right.** Naming a body side also needs the field
-frame's handedness: whether +x lies to a player's right when he faces +y. No
-field in the Combine or game files records it, and `o` lives in the same frame
-as `heading`, so a mirrored or y-flipped frame would flip both together and
-cannot be seen from inside the data. The check therefore tests consistency, not
-handedness: on the 326 plotted game turns, 28 clear "steady forward running"
-(both ends ≥ 4.0 yd/s, body within 45° of travel) and 27 of 28 (96%) have the
-sign of Δ`o` agree with the sign of `turn_angle`. `resolved` stays false, so the
-bars read SIDE A (positive) / SIDE B (negative), and the caption says direction
-could not be tied to a body side in this data. `direction_labels` is the single
-place that turns the recorded check into names, and it returns RIGHT/LEFT only
-when the check reports `resolved`.
+**Why "clockwise" still is not "right".** Naming a body side needs the field
+frame's handedness: which side of a player +x lies on when he faces +y. Three
+checks run at render time and the labels are derived from them:
+
+1. **Chirality (decisive).** `player_play.play_description` gives a
+   body-relative side ("deep left", "short right"). Across 468 tracked targeted
+   passes the description's side matched the target's side of the field in
+   **98.3%**, and the mapping flips between `play_direction` left and right
+   exactly as a body-relative label must (99.1 / 98.5 / 99.1 / 96.1 per cell).
+   That pins +y to the offence's left when the offence moves toward +x, so
+   negative = LEFT and positive = RIGHT. Route labels alone could not do this:
+   "toward the nearest sideline" is a y-statement and survives a mirror; a
+   body-relative pass direction does not.
+2. **Route semantics, per family × starting side.** OUT / IN / SLANT / POST /
+   CORNER imply a lateral break; the expected sign is built from the observed
+   entry velocity plus the label's lateral sign (ideal exit keeps the observed
+   downfield component). Cells: IN 90/94%, OUT 87/91%, SLANT 80/84% — carried;
+   CORNER 82/69% and POST 74/78% — below the 80% floor and reported as not
+   carried. A family carries only if BOTH sides clear the floor, so a pooled
+   rate can never hide one side (pooled 86%, used for information only).
+3. **Orientation (supporting only).** 27 of 28 steady-forward game turns have
+   the sign of the change in `o` agree with the sign of the turn. It cannot pin
+   a side by itself: `o` lives in the same frame as `heading`.
+
+`resolved` = chirality resolved AND ≥2 route families carried. Both hold here,
+so the bars are LEFT/RIGHT. If either fails, `direction_labels` returns SIDE A
+(positive) / SIDE B (negative) and the caption names the failing check; the
+fixture (no route labels) exercises exactly that path.
 
 **What the figure may claim.** The Combine's 26 shallow turns come from 16
-players (median 1 per player): they are incidental fragments, so the Combine
-cannot be testing that a DB can break both ways, while games demand both
-directions about evenly (172 / 154). It may not claim any asymmetry in these
-players — 15/11 on 26 turns from 16 players is not evidence about a body — and
-no symmetry test, binomial p-value or interval on the split exists anywhere in
-the code path (a source-token test enforces that). The envelope is fitted on
-`|turn_angle|` with no direction term, so it deliberately cannot model a
-left/right asymmetry; the caption says so.
+players (median 1 per player): incidental fragments, so the Combine cannot be
+testing that a DB can break both ways, while games demand both directions about
+evenly (172 / 154). It may not claim any asymmetry in these players — 15/11 on
+26 turns from 16 players is not evidence about a body — and no symmetry test,
+binomial p-value or interval on the split exists anywhere in the code path (a
+source-token test enforces that). The envelope is fitted on `|turn_angle|` with
+no direction term, so it deliberately cannot model a left/right asymmetry.
 
 **Evidence.** `config.yaml` §`figures.both_hips`; `src/bdb27/figures.py`
-(`orientation_check`, `direction_labels`, `both_hips_table`,
-`plot_both_hips`, `both_hips_csv_frame`, `both_hips_manifest_payload`);
+(`chirality_check`, `route_direction_check`, `orientation_check`,
+`both_hips_checks`, `direction_labels`, `both_hips_table`, `plot_both_hips`);
 `tests/test_figures_stage.py::test_both_hips_*` (counts reconcile to the
-Parquet; labels follow the recorded check and flip to RIGHT/LEFT only on a
-resolved check; the check itself fails when `o` is flipped or the frames are
-missing; no symmetry/p-value token in the path; byte-identical re-render;
+Parquet; the synthetic route world resolves to RIGHT/LEFT and a mirrored y axis
+fails both checks and falls back; the per-cell table is emitted in CSV and
+manifest; no symmetry/p-value token in the path; byte-identical re-render;
 figures 1–9 unchanged; all ten figures render).

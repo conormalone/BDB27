@@ -600,14 +600,46 @@ turn_coverage:
       position_group: DB
       settings: [combine, game]
       angle_band_deg: [30, 60]
-      orientation_check:
-        steady_speed_yd_s: 4.0
-        max_body_heading_divergence_deg: 45.0
-        min_tested: 20
-        min_agree_share: 0.90
+      # The labels are NOT configuration: they are derived at render time from
+      # the two checks below. LEFT/RIGHT only if the frame's handedness is
+      # pinned AND the route check is consistent on both sides of the field;
+      # otherwise SIDE A/SIDE B.
+      #
+      # Chirality is the decisive check: `play_description` gives a
+      # body-relative side ("deep left", "short right"), which no coordinate
+      # mirror can fake, and the mapping must flip between play_direction left
+      # and right if it really is body-relative. `min_agree_share` is the
+      # certainty required before any bar is called left or right.
+      #
+      # The route check is per family x starting side. A family counts only if
+      # BOTH side cells clear `min_cell` turns and `min_agree_share`; a pooled
+      # rate is reported but never decides. `min_families` says how many
+      # families must carry it before the route side of the decision passes.
+      direction_check:
+        chirality:
+          field_mid_y: 26.65          # 53.3-yd field width halved
+          min_plays: 100
+          min_agree_share: 0.95
+        route:
+          field_mid_y: 26.65
+          families:
+            OUT: outward
+            IN: inward
+            SLANT: inward
+            POST: inward
+            CORNER: outward
+          min_cell: 20
+          min_agree_share: 0.80
+          min_families: 2
+        # Supporting only: o shares the heading frame, so it cannot pin a side.
+        orientation:
+          steady_speed_yd_s: 4.0
+          max_body_heading_divergence_deg: 45.0
+          min_tested: 20
+          min_agree_share: 0.90
       dpi: 150
       width_in: 12.4
-      height_in: 8.2
+      height_in: 8.6
 
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type

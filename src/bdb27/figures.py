@@ -17,6 +17,7 @@ Design rules honoured here:
 
 from __future__ import annotations
 
+import re
 import textwrap
 from pathlib import Path
 
@@ -4518,23 +4519,35 @@ def stopwatch_manifest_payload(table: pd.DataFrame, context: dict,
 
 # ------------- figure 10: the test never checks which way he turns
 #: Added at Conor's request (2026-11-08); it is not derived from a TASK.md line.
-#: The demand claim behind the whole case is that a game DB must break both
-#: ways. The Combine's shallow-turn band is the one place a test *could* check
-#: that, so this figure shows the same band split by the SIGN of the detector's
-#: turn angle, Combine against games.
+#: The demand claim behind the case is that a game DB must break both ways. The
+#: Combine's shallow-turn band is the one place a test *could* check that, so
+#: this figure shows the same band split by the SIGN of the detector's turn
+#: angle, Combine against games.
 #:
-#: The sign is not self-interpreting. ``turn_angle`` is a heading change, and
+#: The sign is not self-interpreting. ``turn_angle`` is a heading change and
 #: ``heading_deg`` is ``atan2(vx, vy)`` (0 = +y, increasing clockwise). Turning
-#: that into "left" and "right" needs the field frame's handedness, which no
-#: field in these files records. So the figure runs an explicit check against
-#: the game-only orientation column ``o`` and *derives* its labels from the
-#: result: LEFT/RIGHT only when a body side can actually be established,
-#: SIDE A/SIDE B otherwise. The labels are never hard-coded here.
+#: that into LEFT/RIGHT needs the field frame's handedness — which side of a
+#: player +x lies on when he faces +y. Three checks run at render time and the
+#: labels are DERIVED from them, never hard-coded:
+#:
+#:   1. chirality (decisive): vendor play descriptions say which side of the
+#:      offence a pass went to ("deep left", "short right"), a body-relative
+#:      label that is independent of the coordinate frame. The mapping from that
+#:      label to the y half of the field, computed separately for both
+#:      ``play_direction`` values, pins which way +y points relative to a player.
+#:   2. route semantics (per side): OUT / IN / SLANT / POST / CORNER imply a
+#:      lateral break; the sign of ``turn_angle`` is tested against it in each
+#:      route family x starting-side cell, so one side failing cannot hide in a
+#:      pooled rate.
+#:   3. orientation (supporting): at steady forward running the sign of the turn
+#:      agrees with the sign of the change in the game-only ``o`` column.
+#:
+#: LEFT/RIGHT is used only when (1) resolves and (2) is consistent on both sides;
+#: otherwise the bars are SIDE A / SIDE B and the caption says which check failed.
 #:
 #: The figure is descriptive by construction: four counts and two player counts.
 #: No symmetry test, no binomial p-value, no interval on the split — a 15/11
-#: split of 26 turns from 16 players is not evidence about anybody's body, and
-#: the caption says so in those words.
+#: split of 26 turns from 16 players is not evidence about anybody's body.
 BOTH_HIPS_COLUMNS = [
     "setting",
     "abs_turn_angle",
@@ -4545,10 +4558,11 @@ BOTH_HIPS_COLUMNS = [
     "play_id",
     "frame_start",
     "frame_end",
+    "snap_type",
     "valid",
 ]
 
-#: Human-facing direction names, chosen by ``direction_labels`` from the check.
+#: Names used when the direction check does not resolve.
 SIDE_POSITIVE = "SIDE A"
 SIDE_NEGATIVE = "SIDE B"
 
@@ -4556,22 +4570,20 @@ SIDE_NEGATIVE = "SIDE B"
 SIGN_CONVENTION = (
     "turn_angle = unwrapped heading change over the turn segment, end minus "
     "start; heading = atan2(vx, vy) in degrees mod 360, i.e. 0 = +y with the "
-    "angle increasing clockwise (kinematics.heading_deg). A POSITIVE turn_angle "
-    "is therefore a clockwise heading change and a NEGATIVE one is "
-    "counter-clockwise. Direction of rotation is not the same as a body side: "
-    "calling it left/right also needs to know whether +x lies to the player's "
-    "right when he faces +y, and no field in these files records that."
+    "angle increasing clockwise (kinematics.heading_deg). Turning left is "
+    "therefore a NEGATIVE turn_angle and turning right a POSITIVE one, once it "
+    "is known which side of a player +y lies on; that is what the checks below "
+    "decide, not assume."
 )
 
-#: Why the orientation check alone cannot name a body side. Stated on the image,
-#: in the CSV and in the manifest so the reader is never left guessing.
-HANDEDNESS_REASON = (
-    "the orientation column o is expressed in the same frame as heading, so an "
-    "agreement between the sign of the turn and the sign of the change in o "
-    "proves the turn is a real body rotation in a consistent sense, but a "
-    "mirrored (or y-flipped) frame would flip both together and cannot be "
-    "detected from inside the data. Nothing in the Combine or game files records "
-    "which side of a player +x lies on, so no body side is named"
+#: Why a check is unavailable, when it is.
+NO_ROUTE_DATA = (
+    "no valid game ROUTE turns joined to a route label, so the route check "
+    "could not be run on this data"
+)
+NO_CHIRALITY_DATA = (
+    "no tracked targeted receiver with a body-relative pass direction in the "
+    "play description, so the frame's handedness could not be pinned"
 )
 
 
@@ -4583,26 +4595,40 @@ def load_both_hips_turns(path: Path) -> pd.DataFrame:
     return df
 
 
-def load_game_orientation(cfg: common.Config, mode: str,
-                          turns: pd.DataFrame) -> pd.DataFrame:
-    """Frames for the plotted game turns only, straight from the raw CSV.
-
-    DuckDB filters on ``nfl_id`` (>= 30 ids), so the full tracking file is never
-    loaded into pandas. ``frame_idx`` reproduces the period ordering stage 02
-    used: the row number within ``(game_id, play_id, nfl_id)`` by ``time``.
-    """
-    keys = turns[["game_id", "play_id", "nfl_id"]].dropna().copy()
-    if keys.empty:
-        return pd.DataFrame(columns=["game_id", "play_id", "nfl_id",
-                                     "frame_idx", "s", "o", "dir"])
+def load_route_turns(turns: pd.DataFrame, cfg: common.Config) -> pd.DataFrame:
+    """Every valid game ROUTE turn: the population the route check can use."""
+    valid = turns["valid"].fillna(False).astype(bool)
+    df = turns[valid & (turns["setting"] == "game")
+               & (turns["snap_type"] == "ROUTE")].copy()
     for col in ("game_id", "play_id", "nfl_id"):
-        keys[col] = pd.to_numeric(keys[col], errors="coerce")
-    keys = keys.dropna().astype("int64").drop_duplicates()
-    ids = sorted(int(i) for i in keys["nfl_id"].unique())
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df[df["game_id"].notna() & df["play_id"].notna()
+              & df["nfl_id"].notna()].copy()
+
+
+def load_game_frames(cfg: common.Config, mode: str,
+                     keys: pd.DataFrame) -> pd.DataFrame:
+    """Tracking frames for the given ``(game, play, player)`` keys only.
+
+    DuckDB filters on ``nfl_id``, so the full tracking file is never loaded into
+    pandas. ``frame_idx`` reproduces the period ordering stage 02 used: the row
+    number within ``(game_id, play_id, nfl_id)`` by ``time``.
+    """
+    empty = pd.DataFrame(columns=["game_id", "play_id", "nfl_id", "frame_idx",
+                                  "s", "o", "dir", "x", "y"])
+    if keys is None or len(keys) == 0:
+        return empty
+    work = keys[["game_id", "play_id", "nfl_id"]].copy()
+    for col in ("game_id", "play_id", "nfl_id"):
+        work[col] = pd.to_numeric(work[col], errors="coerce")
+    work = work.dropna().astype("int64").drop_duplicates()
+    if work.empty:
+        return empty
+    ids = sorted(int(i) for i in work["nfl_id"].unique())
     con = common.connect(cfg)
     try:
         sql = (
-            "SELECT game_id, play_id, nfl_id, s, o, dir, "
+            "SELECT game_id, play_id, nfl_id, s, o, dir, x, y, "
             "CAST(row_number() OVER (PARTITION BY game_id, play_id, nfl_id "
             "ORDER BY time) - 1 AS BIGINT) AS frame_idx "
             f"FROM {common.raw_csv_sql(cfg, mode, 'game_tracking')} "
@@ -4611,8 +4637,8 @@ def load_game_orientation(cfg: common.Config, mode: str,
         frames = con.execute(sql).df()
     finally:
         con.close()
-    frames = frames.merge(keys, on=["game_id", "play_id", "nfl_id"], how="inner")
-    for col in ("s", "o", "dir"):
+    frames = frames.merge(work, on=["game_id", "play_id", "nfl_id"], how="inner")
+    for col in ("s", "o", "dir", "x", "y"):
         frames[col] = pd.to_numeric(frames[col], errors="coerce")
     return frames
 
@@ -4622,46 +4648,51 @@ def _wrap180(deg: float) -> float:
     return (float(deg) + 180.0) % 360.0 - 180.0
 
 
+def _heading(vx: float, vy: float) -> float:
+    """The detector's heading convention: 0 = +y, increasing clockwise."""
+    return float(np.degrees(np.arctan2(vx, vy)))
+
+
+def _frames_index(frames: pd.DataFrame) -> dict[tuple[int, int, int, int], tuple]:
+    lookup: dict[tuple[int, int, int, int], tuple] = {}
+    if frames is None or len(frames) == 0:
+        return lookup
+    work = frames.copy()
+    for col in ("game_id", "play_id", "nfl_id", "frame_idx"):
+        work[col] = pd.to_numeric(work[col], errors="coerce")
+    work = work.dropna(subset=["game_id", "play_id", "nfl_id", "frame_idx",
+                               "x", "y"])
+    work = work.drop_duplicates(subset=["game_id", "play_id", "nfl_id",
+                                        "frame_idx"], keep="first")
+    for row in work.itertuples(index=False):
+        lookup[(int(row.game_id), int(row.play_id), int(row.nfl_id),
+                int(row.frame_idx))] = (float(row.x), float(row.y),
+                                        float(row.s), float(row.o),
+                                        float(row.dir))
+    return lookup
+
+
 def orientation_check(turns: pd.DataFrame, frames: pd.DataFrame,
                       cfg: common.Config) -> dict:
-    """Test the turn-angle sign against the game-only orientation column ``o``.
+    """Supporting check: does the sign of the turn track the change in ``o``?
 
-    Population: the plotted game turns. A turn is TESTED only where both ends of
-    its segment are present in the tracking sample, both ends are at or above
-    ``steady_speed_yd_s``, and the body is facing the direction of travel at both
-    ends (``|o - dir|`` within ``max_body_heading_divergence_deg``). Those are
-    the "steady forward running" frames where a heading change and a body
-    rotation must have the same sign.
-
-    The check is a CONSISTENCY test, not a handedness test: it can show that a
-    positive turn angle is a body rotating one way rather than a numerical
-    artefact, and it cannot show which side of the body that is (see
-    ``HANDEDNESS_REASON``).
+    Tested at steady forward running only (both segment ends at or above
+    ``steady_speed_yd_s`` and body within ``max_body_heading_divergence_deg`` of
+    the direction of travel). It shows the turn is a real body rotation; on its
+    own it cannot pin handedness, because ``o`` lives in the same frame as
+    ``heading`` and a mirrored frame would flip both together.
     """
-    block = "figures.both_hips.orientation_check"
+    block = "figures.both_hips.direction_check.orientation"
     steady = float(cfg.get(f"{block}.steady_speed_yd_s"))
     max_div = float(cfg.get(f"{block}.max_body_heading_divergence_deg"))
     min_tested = int(cfg.get(f"{block}.min_tested"))
     min_share = float(cfg.get(f"{block}.min_agree_share"))
     if steady <= 0 or max_div <= 0 or min_tested < 1 or not 0 < min_share <= 1:
         raise common.StageRefused(
-            f"{STAGE}: figures.both_hips.orientation_check values are unusable")
+            f"{STAGE}: figures.both_hips.direction_check.orientation values "
+            "are unusable")
 
-    lookup: dict[tuple[int, int, int, int], tuple[float, float, float]] = {}
-    empty = frames is None or len(frames) == 0
-    if not empty:
-        work = frames.copy()
-        for col in ("game_id", "play_id", "nfl_id", "frame_idx"):
-            work[col] = pd.to_numeric(work[col], errors="coerce")
-        work = work.dropna(subset=["game_id", "play_id", "nfl_id", "frame_idx",
-                                   "s", "o", "dir"])
-        work = work.drop_duplicates(subset=["game_id", "play_id", "nfl_id",
-                                            "frame_idx"], keep="first")
-        for row in work.itertuples(index=False):
-            lookup[(int(row.game_id), int(row.play_id), int(row.nfl_id),
-                    int(row.frame_idx))] = (float(row.s), float(row.o),
-                                            float(row.dir))
-
+    lookup = _frames_index(frames)
     n_testable = 0
     n_tested = 0
     n_agree = 0
@@ -4676,59 +4707,313 @@ def orientation_check(turns: pd.DataFrame, frames: pd.DataFrame,
         if lo is None or hi is None:
             continue
         n_testable += 1
-        if lo[0] < steady or hi[0] < steady:
+        if lo[2] < steady or hi[2] < steady:
             continue
-        if abs(_wrap180(lo[1] - lo[2])) > max_div:
+        if abs(_wrap180(lo[3] - lo[4])) > max_div:
             continue
-        if abs(_wrap180(hi[1] - hi[2])) > max_div:
+        if abs(_wrap180(hi[3] - hi[4])) > max_div:
             continue
-        delta_o = _wrap180(hi[1] - lo[1])
+        delta_o = _wrap180(hi[3] - lo[3])
         if abs(delta_o) < 1e-9 or abs(float(row.turn_angle)) < 1e-9:
             continue
         n_tested += 1
         if np.sign(delta_o) == np.sign(float(row.turn_angle)):
             n_agree += 1
 
-    share = (n_agree / n_tested) if n_tested else float("nan")
-    tracks = bool(n_tested >= min_tested and np.isfinite(share)
+    share = (n_agree / n_tested) if n_tested else None
+    tracks = bool(n_tested >= min_tested and share is not None
                   and share >= min_share)
-    # No datum in these files fixes the frame's handedness, so a body side can
-    # never be named from this data; see HANDEDNESS_REASON.
-    handedness_known = False
-    resolved = bool(tracks and handedness_known)
     return {
-        "tracking_available": not empty,
+        "available": bool(len(lookup)),
         "n_plotted_turns": int(len(turns)),
         "n_with_both_frames": int(n_testable),
         "n_tested": int(n_tested),
         "n_agree": int(n_agree),
-        "n_disagree": int(n_tested - n_agree),
-        "agree_share": float(share) if np.isfinite(share) else None,
+        "agree_share": share,
         "steady_speed_yd_s": steady,
         "max_body_heading_divergence_deg": max_div,
         "min_tested": min_tested,
         "min_agree_share": min_share,
         "sign_tracks_orientation": tracks,
-        "frame_handedness_established": handedness_known,
-        "handedness_reason": HANDEDNESS_REASON,
-        "resolved": resolved,
     }
 
 
-def direction_labels(check: dict) -> dict[str, str]:
-    """Map the sign of ``turn_angle`` to a label, from the recorded check.
+def _pass_side(description) -> str | None:
+    """The body-relative side a pass went to, from the vendor description."""
+    if not isinstance(description, str):
+        return None
+    match = re.search(r"\bpass\b[^.]*?\b(left|right|middle)\b", description,
+                      flags=re.IGNORECASE)
+    return match.group(1).lower() if match else None
 
-    LEFT/RIGHT only when ``check['resolved']`` — i.e. the sign was shown to track
-    real body rotation AND a body side could be established. Otherwise the two
-    signs are SIDE A (positive) and SIDE B (negative). Nothing here may assume
-    an outcome: the caller passes the check it actually ran.
+
+def chirality_check(plays: pd.DataFrame, targets: pd.DataFrame,
+                    cfg: common.Config) -> dict:
+    """Pin the field frame's handedness with body-relative vendor semantics.
+
+    ``play_description`` says "deep left" / "short right" / "deep middle" — a
+    label about the offence's *body* side, not about a coordinate. The target
+    receiver's tracked y half then says which side of the field that is. Because
+    the field does not rotate with the offence, the mapping must FLIP between
+    ``play_direction == 'right'`` and ``'left'``; a screen-relative reading
+    would not flip, and a mirrored frame would show a systematic one-sided
+    failure. Passing both checks is what pins +y to a body side.
+    """
+    block = "figures.both_hips.direction_check.chirality"
+    mid = float(cfg.get(f"{block}.field_mid_y"))
+    min_plays = int(cfg.get(f"{block}.min_plays"))
+    min_share = float(cfg.get(f"{block}.min_agree_share"))
+    if not (0 < mid < 120) or min_plays < 1 or not 0 < min_share <= 1:
+        raise common.StageRefused(
+            f"{STAGE}: figures.both_hips.direction_check.chirality values are "
+            "unusable")
+
+    empty = {"available": False, "reason": NO_CHIRALITY_DATA, "n_plays": 0,
+             "n_agree": 0, "agree_share": None, "resolved": False,
+             "field_mid_y": mid, "min_plays": min_plays,
+             "min_agree_share": min_share, "by_cell": [],
+             "left_is_positive_y_when_play_direction_right": None}
+    if plays is None or len(plays) == 0 or targets is None or len(targets) == 0:
+        return empty
+
+    work = plays.copy()
+    work["side"] = work["play_description"].map(_pass_side)
+    work = work[(work["target"].fillna(False).astype(bool))
+                & work["side"].isin(["left", "right"])
+                & work["play_direction"].isin(["left", "right"])]
+    if work.empty:
+        return empty
+    for col in ("game_id", "play_id", "nfl_id"):
+        work[col] = pd.to_numeric(work[col], errors="coerce")
+    work = work.dropna(subset=["game_id", "play_id", "nfl_id"])
+    work = work.drop_duplicates(subset=["game_id", "play_id"], keep="first")
+    if work.empty:
+        return empty
+
+    frames = targets.copy()
+    for col in ("game_id", "play_id", "nfl_id", "y"):
+        frames[col] = pd.to_numeric(frames[col], errors="coerce")
+    frames = frames.dropna(subset=["game_id", "play_id", "nfl_id", "y"])
+    if frames.empty:
+        return empty
+    mean_y = frames.groupby(["game_id", "play_id"])["y"].mean().rename("mean_y")
+    joined = work.merge(mean_y, on=["game_id", "play_id"], how="inner")
+    if joined.empty:
+        return empty
+    joined["high"] = joined["mean_y"] > mid
+    joined["expected_high"] = ((joined["side"] == "left")
+                               == (joined["play_direction"] == "right"))
+    joined["agree"] = joined["high"] == joined["expected_high"]
+
+    cells = []
+    for (direction, side), part in joined.groupby(["play_direction", "side"],
+                                                  sort=True):
+        cells.append({
+            "play_direction": direction,
+            "pass_side": side,
+            "n_plays": int(len(part)),
+            "n_agree": int(part["agree"].sum()),
+            "agree_share": float(part["agree"].mean()),
+        })
+    n_plays = int(len(joined))
+    n_agree = int(joined["agree"].sum())
+    share = n_agree / n_plays if n_plays else None
+    resolved = bool(n_plays >= min_plays and share is not None
+                    and share >= min_share)
+    return {
+        "available": True,
+        "reason": None,
+        "n_plays": n_plays,
+        "n_agree": n_agree,
+        "agree_share": share,
+        "resolved": resolved,
+        "field_mid_y": mid,
+        "min_plays": min_plays,
+        "min_agree_share": min_share,
+        "by_cell": cells,
+        "left_is_positive_y_when_play_direction_right": True,
+    }
+
+
+def route_direction_check(turns: pd.DataFrame, frames: pd.DataFrame,
+                          plays: pd.DataFrame, cfg: common.Config
+                          ) -> tuple[pd.DataFrame, dict]:
+    """Per route family x starting side: does the turn sign match the break?
+
+    The expected sign comes from the observed entry velocity and the lateral
+    direction the label requires: the break takes the velocity toward an exit
+    velocity that keeps the observed downfield component and takes the lateral
+    sign the route family implies (OUT / CORNER outward, IN / SLANT / POST
+    inward, relative to the receiver's starting half of the field). The label
+    supplies only the lateral sign; nothing else is modelled.
+
+    A family CARRIES the check only if BOTH side cells clear ``min_cell`` turns
+    and ``min_agree_share``. That is deliberate: a pooled rate can hide one side
+    being wrong, and a wrong side is a frame or convention problem, not noise.
+    """
+    block = "figures.both_hips.direction_check.route"
+    families = {str(k).upper(): str(v).lower()
+                for k, v in cfg.get(f"{block}.families").items()}
+    mid = float(cfg.get(f"{block}.field_mid_y"))
+    min_cell = int(cfg.get(f"{block}.min_cell"))
+    min_share = float(cfg.get(f"{block}.min_agree_share"))
+    min_families = int(cfg.get(f"{block}.min_families"))
+    if not families or min_cell < 1 or not 0 < min_share <= 1:
+        raise common.StageRefused(
+            f"{STAGE}: figures.both_hips.direction_check.route values are "
+            "unusable")
+
+    columns = ["route_ran", "start_side", "n_turns_checked", "n_agree",
+               "agreement_rate"]
+    empty_summary = {
+        "available": False, "reason": NO_ROUTE_DATA,
+        "families": sorted(families), "families_carried": [],
+        "families_not_carried": [], "n_turns_checked": 0, "n_agree": 0,
+        "pooled_rate": None, "min_cell": min_cell,
+        "min_agree_share": min_share, "min_families": min_families,
+        "consistent": False,
+    }
+    if turns is None or len(turns) == 0 or plays is None or len(plays) == 0:
+        return pd.DataFrame(columns=columns), empty_summary
+
+    work = turns.copy()
+    work["route_ran"] = work["route_ran"].astype("string").str.upper()
+    work = work[work["route_ran"].isin(list(families))]
+    if work.empty:
+        return pd.DataFrame(columns=columns), empty_summary
+
+    lookup = _frames_index(frames)
+    rows = []
+    for row in work.itertuples(index=False):
+        lo_idx = getattr(row, "frame_start", None)
+        hi_idx = getattr(row, "frame_end", None)
+        if pd.isna(lo_idx) or pd.isna(hi_idx):
+            continue
+        key = (int(row.game_id), int(row.play_id), int(row.nfl_id))
+        lo = lookup.get(key + (int(lo_idx),))
+        hi = lookup.get(key + (int(hi_idx),))
+        prev = lookup.get(key + (int(lo_idx) - 2,))
+        if lo is None or hi is None or prev is None:
+            continue
+        _, y0, _, _, _ = lo
+        side = int(np.sign(y0 - mid))
+        if side == 0:
+            continue
+        family = str(row.route_ran).upper()
+        outward = families[family] == "outward"
+        lateral = side if outward else -side  # +1 = break toward higher y
+        vx0 = (lo[0] - prev[0]) / 2.0
+        vy0 = (lo[1] - prev[1]) / 2.0
+        prev1 = lookup.get(key + (int(hi_idx) - 1,))
+        if prev1 is None:
+            continue
+        vx1 = hi[0] - prev1[0]
+        vy1 = hi[1] - prev1[1]
+        if abs(vx0) + abs(vy0) < 1e-9 or abs(vx1) + abs(vy1) < 1e-9:
+            continue
+        expected = np.sign(_wrap180(
+            _heading(vx1, abs(vy1) * lateral) - _heading(vx0, vy0)))
+        observed = np.sign(float(row.turn_angle))
+        if expected == 0 or observed == 0:
+            continue
+        rows.append({
+            "route_ran": family,
+            "start_side": "y_above_mid" if side > 0 else "y_below_mid",
+            "expected_sign": int(expected),
+            "observed_sign": int(observed),
+            "agree": bool(expected == observed),
+        })
+    if not rows:
+        return pd.DataFrame(columns=columns), empty_summary
+
+    detail = pd.DataFrame(rows)
+    table = (detail.groupby(["route_ran", "start_side"])
+             .agg(n_turns_checked=("agree", "size"),
+                  n_agree=("agree", "sum"))
+             .reset_index())
+    table["agreement_rate"] = table["n_agree"] / table["n_turns_checked"]
+    table = table.sort_values(["route_ran", "start_side"],
+                              kind="mergesort").reset_index(drop=True)
+
+    carried: list[str] = []
+    not_carried: list[dict] = []
+    for family in sorted(families):
+        part = table[table["route_ran"] == family]
+        sides = set(part["start_side"])
+        if sides != {"y_above_mid", "y_below_mid"}:
+            not_carried.append({
+                "family": family,
+                "reason": "a starting side has no tested turns",
+                "cells": part.to_dict("records"),
+            })
+            continue
+        if (part["n_turns_checked"] >= min_cell).all() and \
+                (part["agreement_rate"] >= min_share).all():
+            carried.append(family)
+        else:
+            cells = part.to_dict("records")
+            detail = "; ".join(
+                f"{c['start_side']} {int(c['n_agree'])}/"
+                f"{int(c['n_turns_checked'])} ({c['agreement_rate'] * 100:.0f}%)"
+                for c in cells)
+            not_carried.append({
+                "family": family,
+                "reason": (f"below the {min_share:.0%} floor or n={min_cell} on "
+                           f"at least one side: {detail}"),
+                "cells": cells,
+            })
+
+    n_turns_checked = int(table["n_turns_checked"].sum())
+    n_agree = int(table["n_agree"].sum())
+    summary = {
+        "available": True,
+        "reason": None,
+        "families": sorted(families),
+        "families_carried": carried,
+        "families_not_carried": not_carried,
+        "n_turns_checked": n_turns_checked,
+        "n_agree": n_agree,
+        "pooled_rate": (n_agree / n_turns_checked) if n_turns_checked else None,
+        "min_cell": min_cell,
+        "min_agree_share": min_share,
+        "min_families": min_families,
+        "consistent": bool(len(carried) >= min_families),
+    }
+    return table, summary
+
+
+def direction_labels(check: dict) -> dict[str, str]:
+    """Map the sign of ``turn_angle`` to a label, from the recorded checks.
+
+    LEFT/RIGHT only when the recorded checks say the frame's handedness is
+    pinned AND the route check is consistent on both sides. Otherwise the two
+    signs are SIDE A (positive) and SIDE B (negative). Nothing here assumes an
+    outcome: the caller passes the checks it actually ran.
     """
     if check.get("resolved"):
         return {"positive": "RIGHT", "negative": "LEFT"}
     return {"positive": SIDE_POSITIVE, "negative": SIDE_NEGATIVE}
 
 
-def both_hips_table(turns: pd.DataFrame, frames: pd.DataFrame,
+def both_hips_checks(route: dict, cfg: common.Config
+                     ) -> tuple[dict, pd.DataFrame]:
+    """Run the two direction checks that decide the bar labels."""
+    chirality = chirality_check(route.get("plays"), route.get("targets"), cfg)
+    route_table, route_summary = route_direction_check(
+        route.get("turns"), route.get("frames"), route.get("plays"), cfg)
+    route_summary["route_table"] = route_table
+    check = {
+        "chirality": chirality,
+        "route": route_summary,
+        "route_table": route_table,
+        "frame_handedness_established": bool(chirality["resolved"]),
+        "route_check_consistent": bool(route_summary["consistent"]),
+        "resolved": bool(chirality["resolved"] and route_summary["consistent"]),
+    }
+    return check, route_table
+
+
+def both_hips_table(turns: pd.DataFrame, frames: pd.DataFrame, check: dict,
                     cfg: common.Config) -> tuple[pd.DataFrame, dict]:
     """Four counts: setting x sign of the turn, inside the configured band."""
     block = "figures.both_hips"
@@ -4762,9 +5047,18 @@ def both_hips_table(turns: pd.DataFrame, frames: pd.DataFrame,
             f"{STAGE}: no valid {position} turns in [{low:g}, {high:g}) with a "
             "signed angle — nothing to show")
 
-    check = orientation_check(
+    orientation = orientation_check(
         df[df["setting"] == "game"].copy(), frames, cfg)
+    check = dict(check)
+    check["orientation"] = orientation
     labels = direction_labels(check)
+
+    # LEFT then RIGHT reads naturally once a side is known; SIDE A first when it
+    # is not (A is the positive sign by definition).
+    order = [(-1, labels["negative"]), (1, labels["positive"])]
+    if not check["resolved"]:
+        order = [(1, labels["positive"]), (-1, labels["negative"])]
+    check["bar_order"] = [label for _, label in order]
 
     rows = []
     for setting in settings:
@@ -4776,7 +5070,7 @@ def both_hips_table(turns: pd.DataFrame, frames: pd.DataFrame,
                 "one empty group")
         total = int(len(part))
         per_player = part.groupby("nfl_id").size()
-        for sign, label in ((1, labels["positive"]), (-1, labels["negative"])):
+        for sign, label in order:
             sub = part[np.sign(part["turn_angle"]) == sign]
             count = int(len(sub))
             rows.append({
@@ -4798,7 +5092,6 @@ def both_hips_table(turns: pd.DataFrame, frames: pd.DataFrame,
     totals = {s: int((df["setting"] == s).sum()) for s in settings}
     medians = {s: float(df[df["setting"] == s].groupby("nfl_id").size().median())
                for s in settings}
-    coverage = df["nfl_id"].nunique()
 
     if int(table["count"].sum()) != int(len(df)):
         raise ValueError(
@@ -4818,7 +5111,7 @@ def both_hips_table(turns: pd.DataFrame, frames: pd.DataFrame,
         "players": players,
         "totals": totals,
         "medians": medians,
-        "n_players": int(coverage),
+        "n_players": int(df["nfl_id"].nunique()),
         "n_turns": int(len(df)),
         "sign_convention": SIGN_CONVENTION,
     }
@@ -4831,6 +5124,54 @@ def both_hips_plot_frame(table: pd.DataFrame) -> pd.DataFrame:
     frame["x"] = frame["setting_label"]
     frame["lab_y"] = frame["count"] + 0.0
     return frame
+
+
+def _bh_direction_sentence(context: dict) -> str:
+    """The caption's account of what fixed the labels, or why nothing did."""
+    check = context["check"]
+    chir = check["chirality"]
+    route = check["route"]
+    labels = context["labels"]
+    if check["resolved"]:
+        carried = ", ".join(route["families_carried"])
+        table = route["route_table"]
+        worst = float(table[table["route_ran"].isin(route["families_carried"])]
+                      ["agreement_rate"].min())
+        return (
+            f"Direction is named, not assumed. Vendor play descriptions are "
+            f"body-relative ('deep left', 'short right'): across "
+            f"{chir['n_plays']} tracked passes the side named in the "
+            f"description matched the target's side of the field in "
+            f"{chir['agree_share'] * 100:.1f}% of them, and the mapping flips "
+            f"with play_direction exactly as a body-relative label must. That "
+            f"pins +y to the offence's left when the offence moves toward +x, "
+            f"so a negative turn_angle is a turn to the player's LEFT and a "
+            f"positive one to his RIGHT. The route check agrees on both sides "
+            f"of the field for {carried} (worst cell "
+            f"{worst * 100:.1f}%), at a "
+            f"floor of {route['min_agree_share'] * 100:.0f}% per cell and "
+            f"n>={route['min_cell']} per cell."
+        )
+    reasons = []
+    if not chir["resolved"]:
+        reasons.append(
+            "the handedness check did not resolve (" +
+            (chir["reason"] if not chir["available"] else
+             f"{chir['n_plays']} plays, {chir['agree_share'] * 100:.1f}% "
+             f"agreement, floor {chir['min_agree_share'] * 100:.0f}%") + ")")
+    if not route["consistent"]:
+        reasons.append(
+            "the route check was not consistent on both sides (" +
+            (route["reason"] if not route["available"] else
+             f"{len(route['families_carried'])} famil"
+             f"{'y' if len(route['families_carried']) == 1 else 'ies'} carried "
+             f"the check, {route['min_families']} required") + ")")
+    return (
+        "Direction is NOT named. " + "; ".join(reasons) + ". The bars are "
+        f"{labels['positive']} (positive turn_angle, clockwise heading change) "
+        f"and {labels['negative']} (negative), and no side of the body is "
+        "claimed."
+    )
 
 
 def plot_both_hips(table: pd.DataFrame, context: dict,
@@ -4848,28 +5189,30 @@ def plot_both_hips(table: pd.DataFrame, context: dict,
                      f"{context['players'][s]} players · "
                      f"{context['totals'][s]} turns")
 
-    cpos = table[(table["setting"] == "combine")
-                 & (table["turn_sign"] == "positive")]["count"].iloc[0]
-    cneg = table[(table["setting"] == "combine")
-                 & (table["turn_sign"] == "negative")]["count"].iloc[0]
-    gpos = table[(table["setting"] == "game")
-                 & (table["turn_sign"] == "positive")]["count"].iloc[0]
-    gneg = table[(table["setting"] == "game")
-                 & (table["turn_sign"] == "negative")]["count"].iloc[0]
+    def _count(setting: str, sign: str) -> int:
+        part = table[(table["setting"] == setting)
+                     & (table["turn_sign"] == sign)]["count"]
+        return int(part.iloc[0])
+
+    cpos, cneg = _count("combine", "positive"), _count("combine", "negative")
+    gpos, gneg = _count("game", "positive"), _count("game", "negative")
     check = context["check"]
     pos_label = context["labels"]["positive"]
     neg_label = context["labels"]["negative"]
-    n_tested = check["n_tested"]
-    agree = check["n_agree"]
-    share = check["agree_share"]
+    orient = check["orientation"]
+    n_tested = orient["n_tested"]
+    agree = orient["n_agree"]
+    share = orient["agree_share"]
     share_txt = f"{share * 100:.0f}%" if share is not None else "n/a"
+    labels_order = list(check["bar_order"])
 
     title = "The test never checks which way he turns"
     subtitle = (
         f"Valid {context['position']} turns of {context['angle_low']:g}–"
         f"{context['angle_high']:g}°, split by the sign of the detector's turn "
-        "angle — Combine (one session) against games. Four bars, one axis, "
-        "counts on the bars.")
+        f"angle and named {labels_order[0]} / {labels_order[1]} on the "
+        "direction checks — Combine (one session) against games. Four bars, one "
+        "axis, counts on the bars.")
 
     caption_lines = [
         STAMP,
@@ -4882,8 +5225,8 @@ def plot_both_hips(table: pd.DataFrame, context: dict,
          f"{context['totals']['game']} such turns across "
          f"{context['players']['game']} players ({gpos} {pos_label} / "
          f"{gneg} {neg_label}). The game demands both directions about evenly, "
-         "so any test of a defensive back's ability to break both ways would "
-         "have to be a test the Combine does not run — with a median of "
+         "so a test of a defensive back's ability to break both ways would have "
+         "to be a test the Combine does not run — with a median of "
          f"{context['medians']['combine']:.0f} shallow turn per Combine player, "
          "the Combine cannot be checking it."),
         ("NOT A CLAIM ABOUT THESE PLAYERS. "
@@ -4893,25 +5236,30 @@ def plot_both_hips(table: pd.DataFrame, context: dict,
          "this population, or that anything about a body is asymmetric. No "
          "symmetry test, no binomial p-value and no confidence interval on the "
          "split is computed, printed or implied: descriptive counts only."),
-        ("WHAT THE BARS MEAN. " + context["sign_convention"] + " " +
-         f"Labels are {pos_label} / {neg_label}, not left/right, because " +
-         HANDEDNESS_REASON + "."),
-        (f"ORIENTATION CHECK (game only; o does not exist in the Combine). "
-         f"Using the same {context['totals']['game']} game turns, {n_tested} "
-         "were tested at steady forward running (both segment ends at or above "
-         f"{check['steady_speed_yd_s']:.1f} yd/s and body within "
-         f"{check['max_body_heading_divergence_deg']:.0f}° of the direction of "
-         f"travel); {agree} of {n_tested} ({share_txt}) had the sign of the "
-         "heading change agree with the sign of the change in o. That shows the "
-         "sign is a real body rotation, and it does not name a side: "
-         f"check resolved = {'true' if check['resolved'] else 'false'}."),
+        ("WHAT THE BARS MEAN. " + context["sign_convention"]),
+        ("HOW THE LABELS WERE FIXED. " + _bh_direction_sentence(context) + " "
+         f"The game-only orientation check adds that the sign tracks the body: "
+         f"{agree} of {n_tested} steady-forward turns ({share_txt}) had the sign "
+         "of the heading change agree with the sign of the change in o. On its "
+         "own that check cannot pin a side — o lives in the same frame as "
+         "heading — which is why the vendor check above is the one that decides."),
+        ("FAMILIES THAT DID NOT CARRY IT. " + (
+            "Every family cleared the floor on both sides."
+            if check["route"]["available"]
+            and not check["route"]["families_not_carried"] else
+            ("The route check could not be run: " + str(check["route"]["reason"])
+             + "." if not check["route"]["available"] else
+             "; ".join(f"{c['family']} ({c['reason']})"
+                       for c in check["route"]["families_not_carried"]) + "."
+             ))),
         ("NOT A MODELLED EFFECT. The capacity envelope is fitted on "
          "|turn_angle| with no direction term, so it deliberately cannot "
          "produce a left/right asymmetry; nothing in this figure is a modelled "
          "effect, an estimate, or an input to the envelope."),
         ("Counts are recomputed at render time from outputs/turns/turns.parquet "
-         "(valid turns) and the raw game tracking sample; every value shown is "
-         "in outputs/figures/fig_both_hips.csv. Sample data: this says what the "
+         "(valid turns), the raw game tracking sample and data/raw/"
+         "player_play.csv; every value shown is in "
+         "outputs/figures/fig_both_hips.csv. Sample data: this says what the "
          "Combine does and does not test, not what any player can do."),
     ]
     wrapped: list[str] = []
@@ -4928,10 +5276,12 @@ def plot_both_hips(table: pd.DataFrame, context: dict,
                                 group="direction_label"),
                     position=dodge, size=4.0, colour="#1A1A1A", va="bottom",
                     fontweight="bold", show_legend=False)
-        + scale_fill_manual(values=[PALETTE["combine"], PALETTE["game"]],
-                            labels=[f"{pos_label} (positive turn_angle)",
-                                    f"{neg_label} (negative turn_angle)"],
-                            name=None)
+        + scale_fill_manual(
+            values={labels_order[0]: PALETTE["combine"],
+                    labels_order[1]: PALETTE["game"]},
+            labels=[f"{label} ({'positive' if label == pos_label else 'negative'} turn_angle)"
+                    for label in labels_order],
+            name=None)
         + scale_x_discrete(limits=x_order, labels=ticks)
         + scale_y_continuous(
             limits=(0.0, float(frame["count"].max()) * 1.16),
@@ -4948,8 +5298,8 @@ def plot_both_hips(table: pd.DataFrame, context: dict,
             panel_border=element_rect(colour="#B3B3B3", linewidth=0.4),
             plot_title=element_text(size=15, weight="bold"),
             plot_subtitle=element_text(size=9.0, colour="#333333"),
-            plot_caption=element_text(size=6.3, colour="#333333", ha="left",
-                                      linespacing=1.35),
+            plot_caption=element_text(size=6.1, colour="#333333", ha="left",
+                                      linespacing=1.32),
             axis_title_y=element_text(size=8.4, colour="#333333"),
             axis_text_x=element_text(size=9.0, colour="#222222"),
             axis_text_y=element_text(size=8.0),
@@ -4976,38 +5326,72 @@ def render_both_hips(plot: ggplot, cfg: common.Config, out_png: Path) -> Path:
 
 
 def both_hips_csv_frame(table: pd.DataFrame, context: dict) -> pd.DataFrame:
-    """One row per bar, plus the convention and the check that fixed the names."""
-    out = table.copy()
-    out["angle_low_deg"] = context["angle_low"]
-    out["angle_high_deg"] = context["angle_high"]
-    out["sign_convention"] = context["sign_convention"]
+    """Bar rows plus the route-check agreement table, one file.
+
+    ``row_kind`` separates them: ``bar`` rows carry the four counts, and
+    ``route_check`` rows carry one route family x starting side cell each, so a
+    side that disagrees cannot be read as a pooled number.
+    """
     check = context["check"]
-    out["orientation_check_n_tested"] = check["n_tested"]
-    out["orientation_check_n_agree"] = check["n_agree"]
-    out["orientation_check_agree_share"] = check["agree_share"]
-    out["orientation_check_resolved"] = check["resolved"]
-    out["orientation_check_tracks_sign"] = check["sign_tracks_orientation"]
-    out["label_basis"] = (
-        f"resolved={check['resolved']}; " + HANDEDNESS_REASON)
-    return out[["setting", "setting_label", "direction_label", "turn_sign",
-                "count", "share_within_setting", "turns_setting",
-                "n_players_setting", "turns_per_player_median",
-                "angle_low_deg", "angle_high_deg", "sign_convention",
-                "orientation_check_n_tested", "orientation_check_n_agree",
-                "orientation_check_agree_share", "orientation_check_resolved",
-                "orientation_check_tracks_sign", "label_basis"]]
+    chir = check["chirality"]
+    route = check["route"]
+    bars = table.copy()
+    bars["row_kind"] = "bar"
+    bars["angle_low_deg"] = context["angle_low"]
+    bars["angle_high_deg"] = context["angle_high"]
+    bars["sign_convention"] = context["sign_convention"]
+    bars["chirality_n_plays"] = chir["n_plays"]
+    bars["chirality_agree_share"] = chir["agree_share"]
+    bars["chirality_resolved"] = chir["resolved"]
+    bars["route_n_turns_checked"] = route["n_turns_checked"]
+    bars["route_pooled_rate"] = route["pooled_rate"]
+    bars["route_families_carried"] = ",".join(route["families_carried"])
+    bars["route_check_consistent"] = route["consistent"]
+    bars["orientation_n_tested"] = check["orientation"]["n_tested"]
+    bars["orientation_n_agree"] = check["orientation"]["n_agree"]
+    bars["direction_resolved"] = check["resolved"]
+
+    detail = route.get("route_table")
+    frames = []
+    if detail is not None and len(detail):
+        cells = detail.copy()
+        cells["row_kind"] = "route_check"
+        cells = cells.rename(columns={"start_side": "alignment_side"})
+        frames.append(cells)
+    out = pd.concat([bars] + frames, ignore_index=True)
+
+    columns = ["row_kind", "setting", "setting_label", "direction_label",
+               "turn_sign", "count", "share_within_setting", "turns_setting",
+               "n_players_setting", "turns_per_player_median",
+               "angle_low_deg", "angle_high_deg", "route_ran",
+               "alignment_side", "n_turns_checked", "n_agree",
+               "agreement_rate", "sign_convention", "chirality_n_plays",
+               "chirality_agree_share", "chirality_resolved",
+               "route_n_turns_checked", "route_pooled_rate",
+               "route_families_carried", "route_check_consistent",
+               "orientation_n_tested", "orientation_n_agree",
+               "direction_resolved"]
+    for col in columns:
+        if col not in out.columns:
+            out[col] = np.nan
+    return out[columns]
 
 
 def both_hips_manifest_payload(table: pd.DataFrame, context: dict,
                                cfg: common.Config) -> dict:
     check = context["check"]
-    counts = {
-        row["setting"]: {"positive": int(row["count"]),
-                         "negative": int(table[
-                             (table["setting"] == row["setting"])
-                             & (table["turn_sign"] == "negative")]["count"].iloc[0])}
-        for _, row in table[table["turn_sign"] == "positive"].iterrows()
-    }
+    chir = check["chirality"]
+    route = check["route"]
+    counts = {}
+    for setting in context["settings"]:
+        part = table[table["setting"] == setting]
+        counts[setting] = {
+            "positive": int(part[part["turn_sign"] == "positive"]["count"].iloc[0]),
+            "negative": int(part[part["turn_sign"] == "negative"]["count"].iloc[0]),
+            "total": context["totals"][setting],
+            "players": context["players"][setting],
+            "turns_per_player_median": context["medians"][setting],
+        }
     return {
         "stage": STAGE,
         "artefact_version": ARTEFACT_VERSION,
@@ -5018,40 +5402,55 @@ def both_hips_manifest_payload(table: pd.DataFrame, context: dict,
             "abs_turn_angle_deg": [context["angle_low"], context["angle_high"]],
             "rule": "valid turns, left-closed on abs_turn_angle_deg",
         },
-        "counts": {
-            setting: {
-                "positive": counts[setting]["positive"],
-                "negative": counts[setting]["negative"],
-                "total": context["totals"][setting],
-                "players": context["players"][setting],
-                "turns_per_player_median": context["medians"][setting],
-            }
-            for setting in context["settings"]
-        },
+        "counts": counts,
         "direction": {
             "sign_convention": context["sign_convention"],
             "labels": {"positive": context["labels"]["positive"],
                        "negative": context["labels"]["negative"]},
+            "resolved": check["resolved"],
+            "chirality_check": {
+                "field": "play_description (body-relative pass direction)",
+                "rule": ("targeted receiver's tracked side of y = field_mid_y "
+                         "must match the side named in the description, with "
+                         "the mapping flipping between play_direction left and "
+                         "right"),
+                "n_plays": chir["n_plays"],
+                "n_agree": chir["n_agree"],
+                "agree_share": chir["agree_share"],
+                "min_plays": chir["min_plays"],
+                "min_agree_share": chir["min_agree_share"],
+                "resolved": chir["resolved"],
+                "reason": chir["reason"],
+                "by_cell": chir["by_cell"],
+            },
+            "route_check": {
+                "field": "player_play.route_ran",
+                "families": route["families"],
+                "min_cell": route["min_cell"],
+                "min_agree_share": route["min_agree_share"],
+                "min_families": route["min_families"],
+                "n_turns_checked": route["n_turns_checked"],
+                "n_agree": route["n_agree"],
+                "pooled_rate": route["pooled_rate"],
+                "families_carried": route["families_carried"],
+                "families_not_carried": route["families_not_carried"],
+                "consistent": route["consistent"],
+                "reason": route["reason"],
+                "table": ([] if route.get("route_table") is None else
+                          route["route_table"].to_dict("records")),
+            },
             "orientation_check": {
                 "field": "o (game tracking only; absent in the Combine)",
-                "rule": ("both segment ends at or above steady speed and body "
-                         "within the divergence limit of the direction of "
-                         "travel"),
-                "n_plotted_turns": check["n_plotted_turns"],
-                "n_with_both_frames": check["n_with_both_frames"],
-                "n_tested": check["n_tested"],
-                "n_agree": check["n_agree"],
-                "agree_share": check["agree_share"],
-                "steady_speed_yd_s": check["steady_speed_yd_s"],
-                "max_body_heading_divergence_deg":
-                    check["max_body_heading_divergence_deg"],
-                "sign_tracks_orientation": check["sign_tracks_orientation"],
-                "frame_handedness_established":
-                    check["frame_handedness_established"],
-                "resolved": check["resolved"],
-                "reason": check["handedness_reason"],
+                "n_plotted_turns": check["orientation"]["n_plotted_turns"],
+                "n_with_both_frames": check["orientation"]["n_with_both_frames"],
+                "n_tested": check["orientation"]["n_tested"],
+                "n_agree": check["orientation"]["n_agree"],
+                "agree_share": check["orientation"]["agree_share"],
+                "sign_tracks_orientation":
+                    check["orientation"]["sign_tracks_orientation"],
+                "role": ("supporting only: o shares the heading frame, so it "
+                         "cannot pin handedness by itself"),
             },
-            "why_not_left_right": check["handedness_reason"],
         },
         "claim": ("The Combine's shallow-turn band is a handful of incidental "
                   "fragments (median about one turn per player), so the Combine "
@@ -5063,8 +5462,6 @@ def both_hips_manifest_payload(table: pd.DataFrame, context: dict,
             "anything about a body.",
             "Any symmetry test, binomial p-value, confidence interval, "
             "correlation or fitted effect for the split.",
-            "That the sign of turn_angle has been tied to a body side in this "
-            "data.",
         ],
         "caveats": [
             ("Sample data: one session of sample data; nothing here is a "
@@ -5074,9 +5471,9 @@ def both_hips_manifest_payload(table: pd.DataFrame, context: dict,
             ("The capacity envelope is fitted on |turn_angle| with no direction "
              "term, so it deliberately cannot model a left/right asymmetry; "
              "this figure is not a modelled effect."),
-            ("Direction labels come from the recorded orientation check, not "
-             "from convention alone; where a body side could not be "
-             "established the bars are SIDE A / SIDE B."),
+            ("Direction labels come from the recorded chirality and route "
+             "checks, not from convention alone; where either fails the bars "
+             "fall back to SIDE A / SIDE B."),
         ],
         "png": f"outputs/figures/{FIGURE_KEY_BOTH_HIPS}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_BOTH_HIPS}.csv",
