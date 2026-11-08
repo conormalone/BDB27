@@ -66,6 +66,7 @@ FIGURE_KEY = "fig_the_hole"
 FIGURE_KEY_DRILLS = "fig_drill_coverage"
 FIGURE_KEY_BEFORE_AFTER = "fig_before_after"
 FIGURE_KEY_ALL_POSITIONS = "fig_all_positions"
+FIGURE_KEY_MEASUREMENT_LIMITS = "fig_measurement_limits"
 
 #: Figure 3 needs only the grid coordinates and the player identity.
 SUPPLY_COLUMNS = [
@@ -98,6 +99,8 @@ TURN_COLUMNS = [
     # Figure 5 needs the entry-speed floor note for the DL panel; figure 1
     # ignores the column. Reading it once here keeps stage 06 to one pass.
     "entry_speed",
+    # Figure 6 plots peak lateral acceleration; figures 1-5 ignore it.
+    "peak_lateral_accel_yd_s2",
 ]
 
 DRILL_COLUMNS = [
@@ -2171,4 +2174,666 @@ def all_positions_manifest_payload(table: pd.DataFrame, context: dict,
                 orient="records"),
         "png": f"outputs/figures/{FIGURE_KEY_ALL_POSITIONS}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_ALL_POSITIONS}.csv",
+    }
+
+
+# ------------------------- figure 6: the measurement limits (slot e)
+#: Slot (e) of TASK.md §1: "measurement limits, i.e. why per-player ranking is
+#: not supported". Two panels, one claim. Everything plotted is read from
+#: ``outputs/envelope/variance_components.csv`` and ``outputs/turns/turns.parquet``
+#: at render time; the only design numbers are the config thresholds.
+VARIANCE_COLUMNS = [
+    "provenance",
+    "setting",
+    "position_group",
+    "measure",
+    "n_players",
+    "tau2",
+    "tau2_p05",
+    "tau2_p95",
+    "tau2_status",
+]
+
+LATERAL_COLUMNS = [
+    "valid",
+    "setting",
+    "abs_turn_angle",
+    "peak_lateral_accel_yd_s2",
+]
+
+MEASURE_ORDER = ["arc_capacity", "plant_retention", "plant_regain"]
+MEASURE_LABELS = {
+    "arc_capacity": "Arc capacity",
+    "plant_retention": "Plant retention",
+    "plant_regain": "Plant regain",
+}
+SETTING_ORDER = ["combine", "game", "combined"]
+SETTING_LABELS = {"combine": "Combine", "game": "Game", "combined": "Both"}
+
+#: Statuses the envelope stage writes. A missing/unknown status refuses rather
+#: than being drawn as either a boundary row or a real estimate.
+TAU2_STATUSES = {"AT_BOUNDARY", "INTERIOR"}
+
+#: Detector accuracy quoted in the caption as the counterweight. These are
+#: carried from the repo's own artefacts — ``notes/phase2-turns.md`` (synthetic
+#: recovery: 3.1 deg MAE over 48 planted turns) and ``outputs/audit/gate.json``
+#: (three-cone real-schema gate: precision 0.915, recall 0.931). A test asserts
+#: both source strings still exist, so the caption cannot drift from its source.
+DETECTOR_EVIDENCE = {
+    "angle_mae_deg": 3.1,
+    "angle_mae_n": 48,
+    "precision": 0.915,
+    "recall": 0.931,
+    "drill": "THREE_CONE_DRILL",
+}
+DETECTOR_SOURCE_NOTES = "notes/phase2-turns.md"
+DETECTOR_SOURCE_GATE = "outputs/audit/gate.json"
+
+#: Presentation only: colour per setting, and the boundary alert colour.
+ML_PALETTE = {"combine": "#0072B2", "game": "#D55E00", "combined": "#4D4D4D"}
+ML_BOUNDARY_COLOUR = "#7A1F1F"
+
+
+# --------------------------------------------------------------------- data
+def load_variance_components(path: Path) -> pd.DataFrame:
+    """Read the envelope's variance components; refuse if the file is absent."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the variance components are absent ({path}) — run "
+            "03_envelope first")
+    df = pd.read_csv(path)
+    missing = [c for c in VARIANCE_COLUMNS if c not in df.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: variance components are missing columns: "
+            f"{', '.join(missing)}")
+    return df
+
+
+def variance_table(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """One row per setting x position x measure, with its boundary status.
+
+    Refuses if a status is unknown, if a component is duplicated, if an
+    ``AT_BOUNDARY`` row carries a non-zero point estimate, or if the grid is
+    ragged (a silently missing component would read as "not measured" and
+    change the count the figure prints).
+    """
+    df = df.copy()
+    for col in ("tau2", "tau2_p05", "tau2_p95"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df["setting"] = df["setting"].astype(str)
+    df["position_group"] = df["position_group"].astype(str)
+    df["measure"] = df["measure"].astype(str)
+    df["tau2_status"] = df["tau2_status"].astype(str)
+
+    unknown = sorted(set(df["tau2_status"]) - TAU2_STATUSES)
+    if unknown:
+        raise common.StageRefused(
+            f"{STAGE}: unknown tau2_status value(s) {unknown} — expected "
+            f"{sorted(TAU2_STATUSES)}")
+    if df.duplicated(["setting", "position_group", "measure"]).any():
+        dup = df[df.duplicated(["setting", "position_group", "measure"],
+                               keep=False)]
+        raise common.StageRefused(
+            f"{STAGE}: duplicate variance components for "
+            f"{dup[['setting', 'position_group', 'measure']].drop_duplicates()
+               .to_dict(orient='records')}")
+
+    boundary = df["tau2_status"] == "AT_BOUNDARY"
+    off_zero = df[boundary & (df["tau2"].fillna(0.0).abs() > 1e-12)]
+    if not off_zero.empty:
+        raise common.StageRefused(
+            f"{STAGE}: {len(off_zero)} component(s) are AT_BOUNDARY but carry "
+            "a non-zero tau2 — the boundary mark would lie")
+
+    # A ragged grid is a data loss, not an empty cell: name it. Every measure
+    # must cover the same positions within a setting, otherwise a missing
+    # component would be drawn as a blank row and silently leave the count.
+    for measure in MEASURE_ORDER:
+        if not (df["measure"] == measure).any():
+            raise common.StageRefused(
+                f"{STAGE}: no variance components for measure {measure!r}")
+    for setting in SETTING_ORDER:
+        part = df[df["setting"] == setting]
+        if part.empty:
+            continue
+        by_measure = {m: set(g["position_group"])
+                      for m, g in part.groupby("measure")}
+        reference = next(iter(by_measure.values()))
+        for measure, positions in by_measure.items():
+            if positions != reference:
+                raise common.StageRefused(
+                    f"{STAGE}: ragged variance grid for setting {setting!r}, "
+                    f"measure {measure!r} — missing "
+                    f"{sorted(reference - positions)}")
+
+    settings = [s for s in SETTING_ORDER if s in set(df["setting"])]
+    if not settings:
+        raise common.StageRefused(f"{STAGE}: no settings in the variance table")
+    positions = sorted(set(df["position_group"]))
+    if not positions:
+        raise common.StageRefused(f"{STAGE}: no positions in the variance table")
+
+    positions_by_setting = {
+        s: sorted(set(df.loc[df["setting"] == s, "position_group"]))
+        for s in settings}
+    row_keys = [(s, p) for s in settings for p in positions_by_setting[s]]
+    df["y_row"] = [row_keys.index((s, p))
+                   for s, p in zip(df["setting"], df["position_group"])]
+    df["setting_label"] = df["setting"].map(SETTING_LABELS)
+    df["measure_label"] = df["measure"].map(MEASURE_LABELS)
+    df = df.sort_values(["measure", "y_row"]).reset_index(drop=True)
+
+    n_components = int(len(df))
+    n_boundary = int(boundary.sum())
+    context = {
+        "n_components": n_components,
+        "n_at_boundary": n_boundary,
+        "n_interior": n_components - n_boundary,
+        "settings": settings,
+        "positions": positions,
+        "row_keys": row_keys,
+        "measures": [m for m in MEASURE_ORDER if m in set(df["measure"])],
+        "provenance": sorted(set(df["provenance"].astype(str)))
+        if "provenance" in df else [],
+        "tau2_max": float(df["tau2"].max()),
+        "p95_max": float(df["tau2_p95"].max()),
+        "n_players_total": int(df["n_players"].sum())
+        if "n_players" in df else None,
+    }
+    return df, context
+
+
+def lateral_table(turns: pd.DataFrame, cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """Binned median and p95 peak lateral acceleration per turn-angle band.
+
+    The reversal threshold must be one of the bin edges: a threshold inside a
+    band would shade an arbitrary fraction of a plotted point. The stage
+    refuses instead of guessing.
+    """
+    block = "figures.measurement_limits"
+    edges = [float(x) for x in cfg.get(f"{block}.angle_bins_deg")]
+    overflow = str(cfg.get(f"{block}.overflow_label"))
+    threshold = float(cfg.get(f"{block}.reversal_zone_deg"))
+    g = float(cfg.get(f"{block}.g_yd_s2"))
+    if threshold not in edges:
+        raise common.StageRefused(
+            f"{STAGE}: {block}.reversal_zone_deg={threshold:g} is not one of "
+            f"the angle bin edges {edges} — the greyed zone would not align "
+            "with a plotted band")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    df = turns.loc[valid, ["setting", "abs_turn_angle",
+                           "peak_lateral_accel_yd_s2"]].copy()
+    df["abs_turn_angle"] = pd.to_numeric(df["abs_turn_angle"], errors="coerce")
+    df["peak_lateral_accel_yd_s2"] = pd.to_numeric(
+        df["peak_lateral_accel_yd_s2"], errors="coerce")
+    n_before = int(len(df))
+    df = df[df["abs_turn_angle"].notna()
+            & df["peak_lateral_accel_yd_s2"].notna()].copy()
+    n_dropped = n_before - int(len(df))
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid turns with angle and lateral acceleration — "
+            "nothing to plot on the right panel")
+
+    bands = band_labels(edges, overflow)
+    labels = np.full(len(df), None, dtype=object)
+    angle = df["abs_turn_angle"]
+    for i in range(len(edges) - 1):
+        lo, hi = edges[i], edges[i + 1]
+        labels[((angle >= lo) & (angle < hi)).to_numpy()] = bands[i]
+    labels[(angle >= edges[-1]).to_numpy()] = bands[-1]
+    if int(pd.isna(labels).sum()):
+        raise ValueError(
+            f"{STAGE}: {int(pd.isna(labels).sum())} valid turns fall outside "
+            f"the configured angle bins {edges} — fix "
+            f"{block}.angle_bins_deg")
+    df["angle_band"] = labels
+
+    rows = []
+    for i, band in enumerate(bands):
+        part = df[df["angle_band"] == band]["peak_lateral_accel_yd_s2"]
+        if part.empty:
+            raise common.StageRefused(
+                f"{STAGE}: angle band {band} has no valid turns with lateral "
+                "acceleration — the plotted line would have a hole")
+        lo = edges[i]
+        hi = edges[i + 1] if i + 1 < len(edges) else None
+        rows.append({
+            "band_index": i + 1,
+            "angle_band": band,
+            "angle_low_deg": lo,
+            "angle_high_deg": hi,
+            "n_turns": int(len(part)),
+            "median_lateral_accel_yd_s2": float(part.median()),
+            "p95_lateral_accel_yd_s2": float(part.quantile(0.95)),
+            "median_lateral_accel_g": float(part.median()) / g,
+            "p95_lateral_accel_g": float(part.quantile(0.95)) / g,
+            "in_reversal_zone": bool(lo >= threshold),
+        })
+    table = pd.DataFrame(rows)
+    if int(table["n_turns"].sum()) != int(len(df)):
+        raise ValueError(
+            f"{STAGE}: binned lateral-acceleration counts sum to "
+            f"{int(table['n_turns'].sum())}, but {len(df)} valid turns have "
+            "both fields")
+
+    reversal = table[table["in_reversal_zone"]]
+    rev_turns = float(reversal["n_turns"].sum())
+    # Pooled over every turn in the zone, not an average of band medians.
+    zone_mask = df["angle_band"].isin(set(reversal["angle_band"]))
+    rev_median = float(df.loc[zone_mask, "peak_lateral_accel_yd_s2"].median()) \
+        if rev_turns else float("nan")
+    rev_p95 = float(df.loc[zone_mask,
+                            "peak_lateral_accel_yd_s2"].quantile(0.95)) \
+        if rev_turns else float("nan")
+
+    context = {
+        "n_turns": int(len(df)),
+        "n_dropped_missing": int(n_dropped),
+        "n_by_setting": df["setting"].value_counts().to_dict(),
+        "median_yd_s2": float(df["peak_lateral_accel_yd_s2"].median()),
+        "p95_yd_s2": float(df["peak_lateral_accel_yd_s2"].quantile(0.95)),
+        "median_g": float(df["peak_lateral_accel_yd_s2"].median()) / g,
+        "p95_g": float(df["peak_lateral_accel_yd_s2"].quantile(0.95)) / g,
+        "reversal": {
+            "threshold_deg": threshold,
+            "n_turns": int(rev_turns),
+            "median_yd_s2": rev_median,
+            "p95_yd_s2": rev_p95,
+            "median_g": rev_median / g,
+            "p95_g": rev_p95 / g,
+        },
+        "g_yd_s2": g,
+        "edges": edges,
+        "bands": bands,
+        "threshold_key": f"{block}.reversal_zone_deg",
+    }
+    return table, context
+
+
+# --------------------------------------------------------------------- plot
+def _ml_boundary_shape(df: pd.DataFrame) -> pd.DataFrame:
+    """Rows the left panel draws as EMPTY bars rather than estimates."""
+    return df[df["tau2_status"] == "AT_BOUNDARY"]
+
+
+def build_measurement_limits(left: pd.DataFrame, right: pd.DataFrame,
+                             context: dict, cfg: common.Config) -> plt.Figure:
+    """Compose the two-panel figure. Returns the matplotlib Figure.
+
+    Left: one dot-and-whisker row per variance component (tau2 with its
+    p05-p95 span), three measure columns sharing one row axis. AT_BOUNDARY
+    components are drawn as zero-width bars with a dark outline plus a hollow
+    point on the baseline — visibly empty, never dropped and never shortened
+    into a positive bar. Right: binned median and p95 peak lateral acceleration
+    against turn angle, with the reversal zone greyed and struck through.
+    """
+    block = "figures.measurement_limits"
+    lctx = context["left"]
+    rctx = context["right"]
+    n_rows = len(lctx["row_keys"])
+    measures = lctx["measures"]
+
+    fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
+                              float(cfg.get(f"{block}.height_in"))))
+    outer = fig.add_gridspec(
+        1, 2, width_ratios=[3.0, 1.5], wspace=0.34,
+        left=0.105, right=0.985, top=0.845, bottom=0.305)
+    left_grid = outer[0].subgridspec(1, len(measures), wspace=0.10)
+
+    # ------------------------------------------------------------- left panel
+    left_axes = []
+    p95_max = max(lctx["p95_max"], 1e-9)
+    x_max = p95_max * 1.12
+    boundary_drawn = 0
+    for j, measure in enumerate(measures):
+        ax = fig.add_subplot(left_grid[0, j], sharey=left_axes[0]
+                             if left_axes else None)
+        left_axes.append(ax)
+        ax.set_facecolor("#EBEBEB")
+        ax.set_xlim(0.0, x_max)
+        ax.set_ylim(n_rows - 0.5, -0.5)
+        ax.grid(axis="x", color="white", linewidth=0.7, zorder=0)
+        ax.axvline(0.0, color="#8A8A8A", linewidth=0.7, zorder=1)
+        part = left[left["measure"] == measure]
+        for _, row in part.iterrows():
+            y = float(row["y_row"])
+            colour = ML_PALETTE.get(str(row["setting"]), "#4D4D4D")
+            if row["tau2_status"] == "AT_BOUNDARY":
+                boundary_drawn += 1
+                # Zero-width bar: an outline standing on the baseline, not a
+                # short positive bar and not an omission.
+                ax.plot([0.0, 0.0], [y - 0.30, y + 0.30],
+                        color=ML_BOUNDARY_COLOUR, linewidth=4.6,
+                        solid_capstyle="butt", zorder=3)
+                ax.plot([0.0], [y], marker="o", markersize=4.6,
+                        markerfacecolor="white",
+                        markeredgecolor=ML_BOUNDARY_COLOUR,
+                        markeredgewidth=1.0, linestyle="none", zorder=4)
+            else:
+                p05 = float(row["tau2_p05"])
+                p95 = float(row["tau2_p95"])
+                ax.plot([p05, p95], [y, y], color="#9A9A9A", linewidth=2.6,
+                        solid_capstyle="butt", zorder=2)
+                ax.plot([float(row["tau2"])], [y], marker="o", markersize=4.8,
+                        color=colour, markeredgecolor="white",
+                        markeredgewidth=0.5, linestyle="none", zorder=4)
+        ax.set_title(MEASURE_LABELS.get(measure, measure), fontsize=8.4,
+                     fontweight="bold", color="#222222", pad=5)
+        ax.tick_params(axis="x", labelsize=6.6, colors="#333333", length=2)
+        for spine in ("top", "right", "left"):
+            ax.spines[spine].set_visible(False)
+        ax.spines["bottom"].set_color("#B3B3B3")
+        if j == 0:
+            ax.set_yticks(range(n_rows))
+            ax.set_yticklabels(
+                [f"{SETTING_LABELS.get(s, s)} · {p}"
+                 for s, p in lctx["row_keys"]], fontsize=6.5)
+            ax.tick_params(axis="y", length=0)
+        else:
+            ax.tick_params(axis="y", left=False, labelleft=False)
+
+    if boundary_drawn != lctx["n_at_boundary"]:
+        raise ValueError(
+            f"{STAGE}: left panel drew {boundary_drawn} boundary bars, but the "
+            f"source has {lctx['n_at_boundary']} AT_BOUNDARY components")
+
+    # Legend for the left panel: three encodings, no more.
+    from matplotlib.lines import Line2D
+    handles = [
+        Line2D([0], [0], marker="o", color="none", markerfacecolor="#0072B2",
+               markeredgecolor="white", markersize=4.8,
+               label="estimate (draws tau2)"),
+        Line2D([0], [0], color="#9A9A9A", linewidth=2.6,
+               label="p05–p95 span"),
+        Line2D([0], [0], marker="o", color="none",
+               markerfacecolor="white", markeredgecolor=ML_BOUNDARY_COLOUR,
+               markeredgewidth=1.0, markersize=4.6,
+               label="AT_BOUNDARY (empty bar)"),
+    ]
+    left_axes[-1].legend(handles=handles, loc="lower right", fontsize=5.9,
+                         frameon=False, handlelength=1.6, borderaxespad=0.4)
+
+    # ------------------------------------------------------------ right panel
+    ax = fig.add_subplot(outer[1])
+    ax.set_facecolor("#EBEBEB")
+    x = np.arange(len(right))
+    zone = right["in_reversal_zone"].to_numpy()
+    zone_start = float(x[zone].min()) - 0.5
+    zone_end = float(x[zone].max()) + 0.5
+    ax.axvspan(zone_start, zone_end, color="#C9C9C9", alpha=0.85, zorder=0)
+    ax.grid(axis="y", color="white", linewidth=0.7, zorder=1)
+    ax.set_axisbelow(True)
+
+    median = right["median_lateral_accel_yd_s2"].to_numpy()
+    p95 = right["p95_lateral_accel_yd_s2"].to_numpy()
+    ax.fill_between(x, median, p95, color="#7F7F7F", alpha=0.18, zorder=2,
+                    linewidth=0)
+    ax.plot(x, p95, color="#7F7F7F", linewidth=1.3, linestyle=(0, (4, 2)),
+            zorder=3)
+    ax.plot(x, median, color=ML_PALETTE["combine"], linewidth=1.9,
+            marker="o", markersize=4.0, markerfacecolor="white",
+            markeredgewidth=1.1, zorder=4)
+
+    ax.set_yscale("log")
+    y_top = float(max(p95)) * 1.55
+    ax.set_ylim(3.0, y_top)
+    ax.set_xlim(-0.55, len(right) - 0.45)
+    ax.set_xticks(x)
+    ax.set_xticklabels(list(right["angle_band"]), fontsize=6.6,
+                       rotation=0)
+    ax.set_yticks([4, 6, 10, 20, 40, 80])
+    ax.set_yticklabels(["4", "6", "10", "20", "40", "80"], fontsize=6.8)
+    ax.minorticks_off()
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    ax.spines["left"].set_color("#B3B3B3")
+    ax.spines["bottom"].set_color("#B3B3B3")
+    ax.tick_params(colors="#333333", length=2)
+
+    # Median value at each band, printed on the point.
+    for xi, yi in zip(x, median):
+        ax.annotate(f"{yi:.1f}", (xi, yi), textcoords="offset points",
+                    xytext=(0, -9), ha="center", va="top", fontsize=5.5,
+                    color="#1A1A1A")
+    # n per band along the floor of the panel (no bars on counts).
+    for xi, n in zip(x, right["n_turns"]):
+        ax.annotate(f"n={int(n):,}", (xi, 3.05), textcoords="offset points",
+                    xytext=(0, 4), ha="center", va="bottom", fontsize=5.2,
+                    color="#555555")
+
+    # Struck-through "not physical" label inside the greyed zone.
+    zone_mid = (zone_start + zone_end) / 2.0
+    strike_y = y_top / 1.75
+    ax.text(zone_mid, strike_y, "NOT PHYSICAL", ha="center", va="center",
+            fontsize=8.2, fontweight="bold", color="#2B2B2B", zorder=6)
+    ax.plot([zone_mid - 0.95, zone_mid + 0.95], [strike_y, strike_y],
+            color="#2B2B2B", linewidth=1.5, zorder=7)
+    ax.text(zone_mid, strike_y / 2.35,
+            "reversal class:\nmeasured as a plant\n(apex, exit, regain),\n"
+            "never as v·ω",
+            ha="center", va="center", fontsize=6.2, color="#2B2B2B",
+            linespacing=1.25, zorder=6)
+    ax.text(zone_mid, 4.55, f"≥{rctx['reversal']['threshold_deg']:g}°",
+            ha="center", va="bottom", fontsize=6.0, color="#2B2B2B",
+            fontweight="bold", zorder=6)
+
+    ax.set_title("(b) The physics that must not be scored", loc="left",
+                 fontsize=9.6, fontweight="bold", color="#1A1A1A", pad=7)
+    ax.set_xlabel("Absolute turn angle (°)", fontsize=7.4, color="#333333",
+                  labelpad=3)
+    ax.set_ylabel(f"Peak lateral acceleration (yd/s²)\n"
+                  f"1 g ≈ {rctx['g_yd_s2']:.3f} yd/s²",
+                  fontsize=7.2, color="#333333")
+
+    # ------------------------------------------------------ titles and stamp
+    fig.text(0.012, 0.972,
+             "The measurement limits: why this data cannot rank players",
+             fontsize=15.5, fontweight="bold", ha="left", va="top",
+             color="#111111")
+    fig.text(0.012, 0.932,
+             _wrap_text(
+                 f"Left: one row per setting × position × measure "
+                 f"({lctx['n_components']} components) — between-player "
+                 "variance τ² with its p05–p95 span. Right: each angle band's "
+                 "median (solid) and p95 (dashed) peak lateral acceleration "
+                 f"over {rctx['n_turns']:,} valid turns.", 165),
+             fontsize=8.2, ha="left", va="top", color="#333333")
+    fig.text(0.012, 0.893,
+             f"(a) Between-player variance — the boundary is the finding: "
+             f"{lctx['n_at_boundary']} of {lctx['n_components']} components "
+             "sit at the boundary",
+             fontsize=9.6, fontweight="bold", ha="left", va="top",
+             color=ML_BOUNDARY_COLOUR)
+    fig.text(0.105, 0.245,
+             "Between-player variance τ² (measure-specific units; 0 = at the "
+             "floor)",
+             fontsize=7.4, ha="left", va="top", color="#333333")
+    # ------------------------------------------------------------- caption
+    d = DETECTOR_EVIDENCE
+    caption_lines = [
+        STAMP,
+        (f"AT_BOUNDARY means the between-player variance is at the floor of "
+         f"the envelope's grid to the precision this data supports: {lctx['n_at_boundary']} "
+         f"of {lctx['n_components']} components, drawn as empty bars on the "
+         "baseline. It is a finding about the data, not an error, and it is "
+         "why no per-player ranking is offered: this sample cannot tell these "
+         "players apart on these measures."),
+        (f"Right: peak lateral acceleration is pooled over both settings and "
+         f"rises from {right.loc[0, 'median_lateral_accel_yd_s2']:.1f} yd/s² "
+         f"in {right.loc[0, 'angle_band']} to "
+         f"{rctx['reversal']['median_yd_s2']:.1f} yd/s² "
+         f"({rctx['reversal']['median_g']:.1f} g) beyond "
+         f"{rctx['reversal']['threshold_deg']:g}°; that zone is greyed and "
+         "struck through because reversal-class turns are plant mechanics — "
+         "apex, exit, regain — not v·ω capacity, so they are never scored. "
+         f"Pooled median {rctx['median_yd_s2']:.1f} yd/s² "
+         f"({rctx['median_g']:.1f} g); p95 {rctx['p95_yd_s2']:.1f} yd/s² "
+         f"({rctx['p95_g']:.1f} g)."),
+        (f"Counterweight, so this is not read as \"the measurement is broken\": "
+         f"the detector recovers planted 45° turns at {d['angle_mae_deg']:.1f}° "
+         f"MAE ({d['angle_mae_n']} turns) and, on three-cone geometry, at "
+         f"precision {d['precision']:.3f} / recall {d['recall']:.3f} — the band "
+         "is measurable. The boundary is a reporting width on between-player "
+         "spread, not detector noise swamping the signal. "
+         f"Sources: {DETECTOR_SOURCE_NOTES}; {DETECTOR_SOURCE_GATE}."),
+        ("Descriptive only: no per-player ranking, no player names, no scores, "
+         "no p-values, no error bars on counts. Sources: "
+         "outputs/envelope/variance_components.csv (stage 03) and "
+         "outputs/turns/turns.parquet (valid turns, stage 02); every plotted "
+         "value is recomputed at render time. The reversal threshold is "
+         f"{rctx['threshold_key']} = {rctx['reversal']['threshold_deg']:g}°."),
+    ]
+    wrapped = []
+    for line in caption_lines:
+        wrapped.extend(_wrap_text(line, 168).split("\n"))
+    fig.text(0.012, 0.195, "\n".join(wrapped), fontsize=6.35,
+             ha="left", va="top", color="#333333", linespacing=1.42)
+
+    fig.text(0.988, 0.985, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+    return fig
+
+
+def render_measurement_limits(fig: plt.Figure, cfg: common.Config,
+                              out_png: Path) -> Path:
+    """Save figure 6 once with fixed metadata, so two runs are identical."""
+    dpi = int(cfg.get("figures.measurement_limits.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    return out_png
+
+
+# ------------------------------------------------------------------ outputs
+def measurement_limits_csv_frame(left: pd.DataFrame, right: pd.DataFrame,
+                                 lctx: dict, rctx: dict) -> pd.DataFrame:
+    """Every plotted value for both panels in one long table.
+
+    ``tau2_status`` is populated on the left-panel rows (the value it qualifies)
+    and left blank on the right-panel rows, where no variance component exists.
+    """
+    left_rows = pd.DataFrame({
+        "panel": "left_variance",
+        "setting": left["setting"],
+        "position_group": left["position_group"],
+        "measure": left["measure"],
+        "y_row": left["y_row"].astype(int),
+        "tau2": left["tau2"],
+        "tau2_p05": left["tau2_p05"],
+        "tau2_p95": left["tau2_p95"],
+        "tau2_status": left["tau2_status"],
+        "n_players": left["n_players"],
+        "drawn_as": np.where(left["tau2_status"] == "AT_BOUNDARY",
+                             "empty_bar_at_baseline", "dot_with_p05_p95_span"),
+    })
+    right_rows = pd.DataFrame({
+        "panel": "right_lateral_accel",
+        "angle_band": right["angle_band"],
+        "angle_low_deg": right["angle_low_deg"],
+        "angle_high_deg": right["angle_high_deg"],
+        "n_turns": right["n_turns"],
+        "median_lateral_accel_yd_s2": right["median_lateral_accel_yd_s2"],
+        "p95_lateral_accel_yd_s2": right["p95_lateral_accel_yd_s2"],
+        "median_lateral_accel_g": right["median_lateral_accel_g"],
+        "p95_lateral_accel_g": right["p95_lateral_accel_g"],
+        "in_reversal_zone": right["in_reversal_zone"],
+        "reversal_zone_deg": rctx["reversal"]["threshold_deg"],
+    })
+    out = pd.concat([left_rows, right_rows], ignore_index=True)
+    columns = [
+        "panel", "setting", "position_group", "measure", "y_row",
+        "tau2", "tau2_p05", "tau2_p95", "tau2_status", "n_players",
+        "drawn_as", "angle_band", "angle_low_deg", "angle_high_deg",
+        "n_turns", "median_lateral_accel_yd_s2", "p95_lateral_accel_yd_s2",
+        "median_lateral_accel_g", "p95_lateral_accel_g",
+        "in_reversal_zone", "reversal_zone_deg",
+    ]
+    return out[columns]
+
+
+def measurement_limits_manifest_payload(left: pd.DataFrame, right: pd.DataFrame,
+                                        lctx: dict, rctx: dict,
+                                        cfg: common.Config) -> dict:
+    d = DETECTOR_EVIDENCE
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_MEASUREMENT_LIMITS,
+        "title": "The measurement limits: why this data cannot rank players",
+        "claim": (
+            f"{lctx['n_at_boundary']} of {lctx['n_components']} between-player "
+            "variance components sit at the boundary of the envelope's grid, "
+            "so a per-player ranking is not supported by this data; and "
+            "reversal-class turns carry non-physical lateral accelerations, "
+            "so they are measured as plants rather than as v·ω. The boundary "
+            "is a finding about the data, not an error, and the detector "
+            "still recovers planted turns at "
+            f"{d['angle_mae_deg']:.1f}° MAE / precision {d['precision']:.3f} "
+            f"/ recall {d['recall']:.3f}."),
+        "sources": [
+            "outputs/envelope/variance_components.csv",
+            "outputs/turns/turns.parquet",
+        ],
+        "boundary": {
+            "n_at_boundary": int(lctx["n_at_boundary"]),
+            "n_components": int(lctx["n_components"]),
+            "n_interior": int(lctx["n_interior"]),
+            "status_counts": left["tau2_status"].value_counts().to_dict(),
+            "encoding": ("zero-width empty bar outlined on the baseline with "
+                         "a hollow point; never shortened to a positive bar "
+                         "and never omitted"),
+            "meaning": ("between-player variance at the floor of the grid to "
+                        "the precision this data supports — a limit of the "
+                        "data, not a bug"),
+        },
+        "reversal_zone": {
+            "threshold_deg": float(rctx["reversal"]["threshold_deg"]),
+            "config_key": rctx["threshold_key"],
+            "reason": ("reversal-class turns are measured as plants (apex, "
+                       "exit, regain), never as v·ω; their lateral "
+                       "accelerations are not physical capacity"),
+            "greyed_and_struck_through": True,
+        },
+        "lateral_accel": {
+            "n_turns": int(rctx["n_turns"]),
+            "g_yd_s2": float(rctx["g_yd_s2"]),
+            "median_yd_s2": float(rctx["median_yd_s2"]),
+            "p95_yd_s2": float(rctx["p95_yd_s2"]),
+            "median_g": float(rctx["median_g"]),
+            "p95_g": float(rctx["p95_g"]),
+            "reversal_median_yd_s2": float(rctx["reversal"]["median_yd_s2"]),
+            "reversal_p95_yd_s2": float(rctx["reversal"]["p95_yd_s2"]),
+            "reversal_median_g": float(rctx["reversal"]["median_g"]),
+            "reversal_p95_g": float(rctx["reversal"]["p95_g"]),
+        },
+        "detector_evidence": {
+            **{k: d[k] for k in ("angle_mae_deg", "angle_mae_n", "precision",
+                                 "recall", "drill")},
+            "sources": [DETECTOR_SOURCE_NOTES, DETECTOR_SOURCE_GATE],
+            "note": ("The MAE is the synthetic planted-corner recovery; the "
+                     "precision/recall are the real-schema three-cone gate. "
+                     "They are quoted together as the counterweight to the "
+                     "boundary, not as one combined test."),
+        },
+        "components": left[[
+            "setting", "position_group", "measure", "tau2", "tau2_p05",
+            "tau2_p95", "tau2_status", "n_players"]].to_dict(orient="records"),
+        "lateral_bands": right.to_dict(orient="records"),
+        "caveats": [
+            ("AT_BOUNDARY is a finding about the data, not a model failure; "
+             "it is drawn, counted, and never silently dropped."),
+            ("No per-player ranking, player names, scores, p-values or error "
+             "bars on counts appear in this figure."),
+            ("Lateral acceleration is pooled across settings; the panel "
+             "describes the physics of turn types, not a setting comparison."),
+            ("The reversal threshold is configured, not inferred from the "
+             "plot: figures.measurement_limits.reversal_zone_deg."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_MEASUREMENT_LIMITS}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_MEASUREMENT_LIMITS}.csv",
     }

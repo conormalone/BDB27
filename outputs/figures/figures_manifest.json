@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "eb8e227ef5d38b5d",
-  "generated_utc": "2026-11-08T12:25:43Z",
+  "config_sha": "733f31c2b4a139b3",
+  "generated_utc": "2026-11-08T13:14:23Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -2369,6 +2369,665 @@
       ],
       "png": "outputs/figures/fig_all_positions.png",
       "csv": "outputs/figures/fig_all_positions.csv",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_measurement_limits": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_measurement_limits",
+      "title": "The measurement limits: why this data cannot rank players",
+      "claim": "43 of 51 between-player variance components sit at the boundary of the envelope's grid, so a per-player ranking is not supported by this data; and reversal-class turns carry non-physical lateral accelerations, so they are measured as plants rather than as v\u00b7\u03c9. The boundary is a finding about the data, not an error, and the detector still recovers planted turns at 3.1\u00b0 MAE / precision 0.915 / recall 0.931.",
+      "sources": [
+        "outputs/envelope/variance_components.csv",
+        "outputs/turns/turns.parquet"
+      ],
+      "boundary": {
+        "n_at_boundary": 43,
+        "n_components": 51,
+        "n_interior": 8,
+        "status_counts": {
+          "AT_BOUNDARY": 43,
+          "INTERIOR": 8
+        },
+        "encoding": "zero-width empty bar outlined on the baseline with a hollow point; never shortened to a positive bar and never omitted",
+        "meaning": "between-player variance at the floor of the grid to the precision this data supports \u2014 a limit of the data, not a bug"
+      },
+      "reversal_zone": {
+        "threshold_deg": 150.0,
+        "config_key": "figures.measurement_limits.reversal_zone_deg",
+        "reason": "reversal-class turns are measured as plants (apex, exit, regain), never as v\u00b7\u03c9; their lateral accelerations are not physical capacity",
+        "greyed_and_struck_through": true
+      },
+      "lateral_accel": {
+        "n_turns": 12673,
+        "g_yd_s2": 10.724,
+        "median_yd_s2": 9.4739351272583,
+        "p95_yd_s2": 53.05070343017576,
+        "median_g": 0.8834329659882787,
+        "p95_g": 4.946913784984685,
+        "reversal_median_yd_s2": 29.070274353027344,
+        "reversal_p95_yd_s2": 73.85272903442382,
+        "reversal_median_g": 2.7107678434378353,
+        "reversal_p95_g": 6.886677455653097
+      },
+      "detector_evidence": {
+        "angle_mae_deg": 3.1,
+        "angle_mae_n": 48,
+        "precision": 0.915,
+        "recall": 0.931,
+        "drill": "THREE_CONE_DRILL",
+        "sources": [
+          "notes/phase2-turns.md",
+          "outputs/audit/gate.json"
+        ],
+        "note": "The MAE is the synthetic planted-corner recovery; the precision/recall are the real-schema three-cone gate. They are quoted together as the counterweight to the boundary, not as one combined test."
+      },
+      "components": [
+        {
+          "setting": "combine",
+          "position_group": "DB",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 121
+        },
+        {
+          "setting": "combine",
+          "position_group": "DL",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 118
+        },
+        {
+          "setting": "combine",
+          "position_group": "OL",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 105
+        },
+        {
+          "setting": "combine",
+          "position_group": "TE",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 39
+        },
+        {
+          "setting": "combine",
+          "position_group": "WR",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 107
+        },
+        {
+          "setting": "game",
+          "position_group": "DB",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.4638485272239932,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 32
+        },
+        {
+          "setting": "game",
+          "position_group": "DL",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.3309756185778796,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 24
+        },
+        {
+          "setting": "game",
+          "position_group": "OL",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.9584773929599724,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 31
+        },
+        {
+          "setting": "game",
+          "position_group": "OTHER",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.2284433106008452,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 9
+        },
+        {
+          "setting": "game",
+          "position_group": "TE",
+          "measure": "arc_capacity",
+          "tau2": 3.442942048382996,
+          "tau2_p05": 0.3401938740470907,
+          "tau2_p95": 5.277002231468278,
+          "tau2_status": "INTERIOR",
+          "n_players": 12
+        },
+        {
+          "setting": "game",
+          "position_group": "WR",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.6071635220196523,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 35
+        },
+        {
+          "setting": "combined",
+          "position_group": "DB",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 121
+        },
+        {
+          "setting": "combined",
+          "position_group": "DL",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0226811080455127,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 109
+        },
+        {
+          "setting": "combined",
+          "position_group": "OL",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 110
+        },
+        {
+          "setting": "combined",
+          "position_group": "OTHER",
+          "measure": "arc_capacity",
+          "tau2": 0.1961860268454175,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.5504293841652601,
+          "tau2_status": "INTERIOR",
+          "n_players": 9
+        },
+        {
+          "setting": "combined",
+          "position_group": "TE",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 41
+        },
+        {
+          "setting": "combined",
+          "position_group": "WR",
+          "measure": "arc_capacity",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 106
+        },
+        {
+          "setting": "combine",
+          "position_group": "DB",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 122
+        },
+        {
+          "setting": "combine",
+          "position_group": "DL",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 118
+        },
+        {
+          "setting": "combine",
+          "position_group": "OL",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 117
+        },
+        {
+          "setting": "combine",
+          "position_group": "TE",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0356746631446333,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 39
+        },
+        {
+          "setting": "combine",
+          "position_group": "WR",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 106
+        },
+        {
+          "setting": "game",
+          "position_group": "DB",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 32
+        },
+        {
+          "setting": "game",
+          "position_group": "DL",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 25
+        },
+        {
+          "setting": "game",
+          "position_group": "OL",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 33
+        },
+        {
+          "setting": "game",
+          "position_group": "OTHER",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 9
+        },
+        {
+          "setting": "game",
+          "position_group": "TE",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 12
+        },
+        {
+          "setting": "game",
+          "position_group": "WR",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 34
+        },
+        {
+          "setting": "combined",
+          "position_group": "DB",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 122
+        },
+        {
+          "setting": "combined",
+          "position_group": "DL",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 109
+        },
+        {
+          "setting": "combined",
+          "position_group": "OL",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 118
+        },
+        {
+          "setting": "combined",
+          "position_group": "OTHER",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 9
+        },
+        {
+          "setting": "combined",
+          "position_group": "TE",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 41
+        },
+        {
+          "setting": "combined",
+          "position_group": "WR",
+          "measure": "plant_regain",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 106
+        },
+        {
+          "setting": "combine",
+          "position_group": "DB",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 122
+        },
+        {
+          "setting": "combine",
+          "position_group": "DL",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 118
+        },
+        {
+          "setting": "combine",
+          "position_group": "OL",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0010858019314783,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 118
+        },
+        {
+          "setting": "combine",
+          "position_group": "TE",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0052082082704379,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 40
+        },
+        {
+          "setting": "combine",
+          "position_group": "WR",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 107
+        },
+        {
+          "setting": "game",
+          "position_group": "DB",
+          "measure": "plant_retention",
+          "tau2": 0.007686983572607,
+          "tau2_p05": 0.0002042252643369,
+          "tau2_p95": 0.0163059946956957,
+          "tau2_status": "INTERIOR",
+          "n_players": 32
+        },
+        {
+          "setting": "game",
+          "position_group": "DL",
+          "measure": "plant_retention",
+          "tau2": 0.0015043702367074,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0087269704583017,
+          "tau2_status": "INTERIOR",
+          "n_players": 25
+        },
+        {
+          "setting": "game",
+          "position_group": "OL",
+          "measure": "plant_retention",
+          "tau2": 0.007273278437491,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0209878067608184,
+          "tau2_status": "INTERIOR",
+          "n_players": 35
+        },
+        {
+          "setting": "game",
+          "position_group": "OTHER",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 9
+        },
+        {
+          "setting": "game",
+          "position_group": "TE",
+          "measure": "plant_retention",
+          "tau2": 0.0146675180724703,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0420294788843975,
+          "tau2_status": "INTERIOR",
+          "n_players": 12
+        },
+        {
+          "setting": "game",
+          "position_group": "WR",
+          "measure": "plant_retention",
+          "tau2": 0.0045130186133615,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0241764091249879,
+          "tau2_status": "INTERIOR",
+          "n_players": 36
+        },
+        {
+          "setting": "combined",
+          "position_group": "DB",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 122
+        },
+        {
+          "setting": "combined",
+          "position_group": "DL",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 109
+        },
+        {
+          "setting": "combined",
+          "position_group": "OL",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0071961958104262,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 118
+        },
+        {
+          "setting": "combined",
+          "position_group": "OTHER",
+          "measure": "plant_retention",
+          "tau2": 0.000327770791774,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0043571174085565,
+          "tau2_status": "INTERIOR",
+          "n_players": 9
+        },
+        {
+          "setting": "combined",
+          "position_group": "TE",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0199481173258473,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 42
+        },
+        {
+          "setting": "combined",
+          "position_group": "WR",
+          "measure": "plant_retention",
+          "tau2": 0.0,
+          "tau2_p05": 0.0,
+          "tau2_p95": 0.0,
+          "tau2_status": "AT_BOUNDARY",
+          "n_players": 106
+        }
+      ],
+      "lateral_bands": [
+        {
+          "band_index": 1,
+          "angle_band": "30\u201345\u00b0",
+          "angle_low_deg": 30.0,
+          "angle_high_deg": 45.0,
+          "n_turns": 323,
+          "median_lateral_accel_yd_s2": 5.613500595092773,
+          "p95_lateral_accel_yd_s2": 14.686775016784647,
+          "median_lateral_accel_g": 0.5234521256147682,
+          "p95_lateral_accel_g": 1.3695239665036039,
+          "in_reversal_zone": false
+        },
+        {
+          "band_index": 2,
+          "angle_band": "45\u201360\u00b0",
+          "angle_low_deg": 45.0,
+          "angle_high_deg": 60.0,
+          "n_turns": 891,
+          "median_lateral_accel_yd_s2": 5.349402904510498,
+          "p95_lateral_accel_yd_s2": 12.761842727661133,
+          "median_lateral_accel_g": 0.4988253361162344,
+          "p95_lateral_accel_g": 1.1900263640116684,
+          "in_reversal_zone": false
+        },
+        {
+          "band_index": 3,
+          "angle_band": "60\u201390\u00b0",
+          "angle_low_deg": 60.0,
+          "angle_high_deg": 90.0,
+          "n_turns": 3154,
+          "median_lateral_accel_yd_s2": 5.603471755981445,
+          "p95_lateral_accel_yd_s2": 12.188847970962524,
+          "median_lateral_accel_g": 0.5225169485249389,
+          "p95_lateral_accel_g": 1.136595297553387,
+          "in_reversal_zone": false
+        },
+        {
+          "band_index": 4,
+          "angle_band": "90\u2013120\u00b0",
+          "angle_low_deg": 90.0,
+          "angle_high_deg": 120.0,
+          "n_turns": 2508,
+          "median_lateral_accel_yd_s2": 7.827130317687988,
+          "p95_lateral_accel_yd_s2": 28.361910343170184,
+          "median_lateral_accel_g": 0.7298704138090254,
+          "p95_lateral_accel_g": 2.6447137582217626,
+          "in_reversal_zone": false
+        },
+        {
+          "band_index": 5,
+          "angle_band": "120\u2013150\u00b0",
+          "angle_low_deg": 120.0,
+          "angle_high_deg": 150.0,
+          "n_turns": 2613,
+          "median_lateral_accel_yd_s2": 12.769414901733398,
+          "p95_lateral_accel_yd_s2": 45.57874450683594,
+          "median_lateral_accel_g": 1.1907324600646585,
+          "p95_lateral_accel_g": 4.250162673147701,
+          "in_reversal_zone": false
+        },
+        {
+          "band_index": 6,
+          "angle_band": "150\u2013180\u00b0",
+          "angle_low_deg": 150.0,
+          "angle_high_deg": 180.0,
+          "n_turns": 1772,
+          "median_lateral_accel_yd_s2": 24.27727508544922,
+          "p95_lateral_accel_yd_s2": 69.05853271484372,
+          "median_lateral_accel_g": 2.2638264719740038,
+          "p95_lateral_accel_g": 6.43962446054119,
+          "in_reversal_zone": true
+        },
+        {
+          "band_index": 7,
+          "angle_band": ">180\u00b0",
+          "angle_low_deg": 180.0,
+          "angle_high_deg": null,
+          "n_turns": 1412,
+          "median_lateral_accel_yd_s2": 35.016761779785156,
+          "p95_lateral_accel_yd_s2": 77.33532371520997,
+          "median_lateral_accel_g": 3.265270587447329,
+          "p95_lateral_accel_g": 7.211425187915887,
+          "in_reversal_zone": true
+        }
+      ],
+      "caveats": [
+        "AT_BOUNDARY is a finding about the data, not a model failure; it is drawn, counted, and never silently dropped.",
+        "No per-player ranking, player names, scores, p-values or error bars on counts appear in this figure.",
+        "Lateral acceleration is pooled across settings; the panel describes the physics of turn types, not a setting comparison.",
+        "The reversal threshold is configured, not inferred from the plot: figures.measurement_limits.reversal_zone_deg."
+      ],
+      "png": "outputs/figures/fig_measurement_limits.png",
+      "csv": "outputs/figures/fig_measurement_limits.csv",
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }

@@ -5920,3 +5920,43 @@ approach cones, the boundary between the walk-in and the 2-yd run-up, and the
 yd, approach within 8–10 yd, mirror symmetry, every printed number traceable to
 a config constant, byte-identical re-render, badge present, figures 1–3
 unchanged).
+
+## D167 — Figure 6 draws the measurement limits: boundary components are drawn empty, and the reversal zone is config-driven · 2026-11-08
+**Decision.** Figure 6 ("The measurement limits: why this data cannot rank
+players", Stage 06, TASK.md slot (e)) has two panels. Left: one component per
+`setting × position_group × measure` from
+`outputs/envelope/variance_components.csv`, showing `tau2` with its
+`tau2_p05`–`tau2_p95` span. Components whose `tau2_status` is `AT_BOUNDARY` are
+drawn as **zero-width empty bars outlined on the baseline with a hollow point**,
+and the image prints the count ("43 of 51 components sit at the boundary").
+They are never shortened into a positive bar and never omitted. Right: binned
+median and p95 `peak_lateral_accel_yd_s2` against `abs_turn_angle`, with the
+zone at or above `figures.measurement_limits.reversal_zone_deg` (150°) greyed
+and struck through as "NOT PHYSICAL", because reversal-class turns are measured
+as plants (apex, exit, regain), never as v·ω.
+**Why the boundary is drawn, not dropped.** `AT_BOUNDARY` is a finding about
+the data — the between-player variance is at the floor of the envelope's grid
+to the precision this sample supports — not an error and not a zero to be
+hidden. Dropping those rows would make the panel look like eight estimable
+components and would erase the reason no per-player ranking is offered.
+**Why the threshold is config, not code.** The grey zone must align with a
+plotted band, so the stage refuses unless `reversal_zone_deg` equals one of
+`angle_bins_deg`. A threshold inside a band would shade an arbitrary fraction
+of a plotted point and invite a reader to read a number off a grey edge.
+**Why matplotlib for this figure.** The two panels have different coordinate
+systems and a three-column shared-row layout; composing them directly avoids
+faking a shared facet scale. As with figure 4, only presentation is
+matplotlib; every plotted value comes from the two source files at render time.
+**The counterweight stays in the caption.** The figure must not read as "the
+measurement is broken, so the paper is". The caption therefore quotes the
+detector's own stored evidence — planted 45° turns recovered at 3.1° MAE (48
+turns, `notes/phase2-turns.md`) and three-cone precision 0.915 / recall 0.931
+(`notes/phase2-turns.md`, `outputs/audit/gate.json`) — and states that the
+boundary is a reporting width on between-player spread, not detector noise.
+**Evidence.** `config.yaml` §`figures.measurement_limits`; `src/bdb27/figures.py`
+(`variance_table`, `lateral_table`, `build_measurement_limits`);
+`tests/test_figures_stage.py::test_measurement_limits_*` (boundary count on the
+image equals the CSV and the source file; both panels reconcile to their
+sources; threshold read from config and refused when off-grid; byte-identical
+re-render; figures 1–5 unchanged; all six figures render; detector numbers have
+a stored source).

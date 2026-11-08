@@ -31,3 +31,24 @@ OUTPUT`. Two runs produce a byte-identical PNG.
 
 **Deliberately not built in this run:** figures 2–3 (position comparison and
 the drill spec). Stage 06 stays narrow until figure 1 is accepted.
+
+## Figure 6 — "The measurement limits" (slot e)
+`outputs/figures/fig_measurement_limits.png` (1980 × 1290 px, 150 dpi) plus
+`fig_measurement_limits.csv` and a manifest entry. Two panels against two
+source files: `outputs/envelope/variance_components.csv` (left) and
+`outputs/turns/turns.parquet` (right, valid turns). Left: `tau2` with its
+p05–p95 span, one row per setting × position × measure; **43 of 51** components
+are `AT_BOUNDARY` and are drawn as zero-width empty bars on the baseline with a
+hollow point, counted on the image. Right: binned median (solid) and p95
+(dashed) peak lateral acceleration by angle; bands at or above 150° are greyed
+and struck through as "not physical" because reversal-class turns are plant
+measurements, not v·ω. The threshold is
+`figures.measurement_limits.reversal_zone_deg` and must be a bin edge.
+
+Sample values recomputed at render time: pooled median lateral acceleration
+9.5 yd/s², p95 53.1; reversal zone (≥150°) median 29.1 yd/s² (2.7 g), p95 73.9
+(6.9 g) over 3,184 turns. The caption carries the counterweight: 3.1° MAE on
+planted 45° turns (48 turns) and three-cone precision 0.915 / recall 0.931,
+sourced from `notes/phase2-turns.md` and `outputs/audit/gate.json`.
+No per-player ranking, player names, scores, p-values or error bars on counts
+appear anywhere in the figure, CSV or manifest.

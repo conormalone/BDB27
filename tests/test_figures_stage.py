@@ -106,6 +106,11 @@ def _turns_frame() -> pd.DataFrame:
                     "snap_type": snap,
                     "drill_name": drill,
                     "entry_speed": float(entry),
+                    # Figure 6 needs a real acceleration per turn. Monotone in
+                    # angle with a deterministic ripple; assertions recompute
+                    # the medians and p95 from this written table.
+                    "peak_lateral_accel_yd_s2": float(
+                        4.2 + 0.07 * angle + 0.9 * ((j * 13 + int(lo)) % 7) / 7.0),
                     "event_id": f"{setting[0]}{lo:g}_{j}",
                     "attempt": 1.0,
                     "valid": True,
@@ -142,10 +147,54 @@ def _extra_positions_frame() -> pd.DataFrame:
                         "drill_name": ("BOX_DRILL" if setting == "combine"
                                        else np.nan),
                         "entry_speed": float(3.0 + (j % 5) * 0.8),
+                        "peak_lateral_accel_yd_s2": float(
+                            4.4 + 0.065 * angle + 0.7 * ((j * 5 + i) % 5) / 5.0),
                         "event_id": f"{position}{setting[0]}{band_index}_{j}",
                         "attempt": 1.0,
                         "valid": True,
                     })
+    return pd.DataFrame(rows)
+
+
+#: The real file's 8 INTERIOR components, by (setting, position, measure). The
+#: other 43 of the 51 synthetic components sit AT_BOUNDARY with tau2 = 0, so the
+#: fixture reproduces the population the figure's count is written against.
+INTERIOR_COMPONENTS = {
+    ("game", "TE", "arc_capacity"),
+    ("game", "DB", "plant_retention"),
+    ("game", "DL", "plant_retention"),
+    ("game", "OL", "plant_retention"),
+    ("game", "TE", "plant_retention"),
+    ("game", "WR", "plant_retention"),
+    ("combined", "OTHER", "arc_capacity"),
+    ("combined", "OTHER", "plant_retention"),
+}
+
+ML_POSITIONS = {"combine": ["DB", "DL", "OL", "TE", "WR"],
+                "game": ["DB", "DL", "OL", "OTHER", "TE", "WR"],
+                "combined": ["DB", "DL", "OL", "OTHER", "TE", "WR"]}
+ML_MEASURES = ["arc_capacity", "plant_retention", "plant_regain"]
+
+
+def _variance_frame() -> pd.DataFrame:
+    """A 51-component variance table with exactly 43 AT_BOUNDARY rows."""
+    rows = []
+    for setting, positions in ML_POSITIONS.items():
+        for i, position in enumerate(positions):
+            for j, measure in enumerate(ML_MEASURES):
+                interior = (setting, position, measure) in INTERIOR_COMPONENTS
+                tau2 = 0.0 if not interior else 0.15 + 0.02 * (i * 3 + j)
+                rows.append({
+                    "provenance": "PLACEHOLDER_SAMPLE",
+                    "setting": setting,
+                    "position_group": position,
+                    "measure": measure,
+                    "n_players": 20 + i + j,
+                    "tau2": tau2,
+                    "tau2_p05": 0.0 if not interior else tau2 * 0.5,
+                    "tau2_p95": 0.0 if not interior else tau2 * 1.6,
+                    "tau2_status": "INTERIOR" if interior else "AT_BOUNDARY",
+                })
     return pd.DataFrame(rows)
 
 
@@ -154,6 +203,7 @@ def _write_config(tmp: Path, *, edges=None) -> Path:
     block = cfg["turn_coverage"]
     block["paths"]["outputs"] = str(tmp / "outputs")
     block["paths"]["turns"] = str(tmp / "outputs" / "turns")
+    block["paths"]["envelope"] = str(tmp / "outputs" / "envelope")
     block["paths"]["figures"] = str(tmp / "outputs" / "figures")
     block["paths"]["thresholds"] = str(tmp / "outputs" / "thresholds.json")
     block["paths"]["prereg"] = str(tmp / "notes" / "prereg.md")
@@ -161,12 +211,15 @@ def _write_config(tmp: Path, *, edges=None) -> Path:
     if edges is not None:
         block["figures"]["hole"]["bands"]["turn_angle_deg"] = edges
     (tmp / "outputs" / "turns").mkdir(parents=True, exist_ok=True)
+    (tmp / "outputs" / "envelope").mkdir(parents=True, exist_ok=True)
     (tmp / "outputs").mkdir(parents=True, exist_ok=True)
     (tmp / "outputs" / "thresholds.json").write_text(
         json.dumps({"provenance": "PLACEHOLDER_SAMPLE"}))
     pd.concat([_turns_frame(), _extra_positions_frame()], ignore_index=True
               ).to_parquet(tmp / "outputs" / "turns" / "turns.parquet",
                            index=False)
+    _variance_frame().to_csv(
+        tmp / "outputs" / "envelope" / "variance_components.csv", index=False)
     path = tmp / "config.yaml"
     path.write_text(yaml.safe_dump(cfg, sort_keys=False))
     return path
@@ -238,6 +291,8 @@ def rendered(tmp_path_factory):
             "ds_csv": out / "fig_drill_schematic.csv",
             "ap_png": out / "fig_all_positions.png",
             "ap_csv": out / "fig_all_positions.csv",
+            "ml_png": out / "fig_measurement_limits.png",
+            "ml_csv": out / "fig_measurement_limits.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -730,7 +785,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
     man = json.loads(rendered["manifest"].read_text())
     assert set(man["figures"]) == {"fig_the_hole", "fig_drill_coverage",
                                    "fig_before_after", "fig_drill_schematic",
-                                   "fig_all_positions"}
+                                   "fig_all_positions",
+                                   "fig_measurement_limits"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1026,6 +1082,255 @@ def test_all_positions_checks_can_fail(rendered):
         _check_ap_csv(dropped, turns)
 
     empty = rendered["tmp"] / "empty_ap.png"
+    empty.write_bytes(b"")
+    with pytest.raises(AssertionError):
+        _check_png(empty)
+
+
+# --------------------------- figure 6: the measurement limits (slot e)
+ML_KEY = "fig_measurement_limits"
+ML_THRESHOLD_KEY = "figures.measurement_limits.reversal_zone_deg"
+
+
+def _ml_build(rendered, threshold=None):
+    """Rebuild figure 6 from the fixture artefacts (no re-run needed)."""
+    import matplotlib.pyplot as plt
+
+    from bdb27 import common, figures
+    cfg_path = rendered["cfg"]
+    if threshold is not None:
+        raw = yaml.safe_load(cfg_path.read_text())
+        raw["turn_coverage"]["figures"]["measurement_limits"][
+            "reversal_zone_deg"] = threshold
+        cfg_path = rendered["tmp"] / "config_ml_test.yaml"
+        cfg_path.write_text(yaml.safe_dump(raw, sort_keys=False))
+    cfg = common.load_config(cfg_path)
+    vpath = rendered["tmp"] / "outputs" / "envelope" / "variance_components.csv"
+    left, lctx = figures.variance_table(
+        figures.load_variance_components(vpath))
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    right, rctx = figures.lateral_table(turns, cfg)
+    fig = figures.build_measurement_limits(
+        left, right, {"left": lctx, "right": rctx}, cfg)
+    return fig, left, right, lctx, rctx, cfg, plt
+
+
+def _ml_texts(fig) -> str:
+    texts = [t.get_text() for t in fig.texts]
+    for ax in fig.axes:
+        texts.extend(t.get_text() for t in ax.texts)
+        texts.append(ax.get_title())
+        texts.append(ax.get_xlabel())
+        texts.append(ax.get_ylabel())
+    return "\n".join(texts)
+
+
+def test_measurement_limits_png_exists_non_empty_and_wide(rendered):
+    _check_png(rendered["ml_png"])
+
+
+def test_measurement_limits_boundary_count_on_image_equals_csv(rendered):
+    fig, left, right, lctx, rctx, cfg, plt = _ml_build(rendered)
+    try:
+        csv_df = pd.read_csv(rendered["ml_csv"])
+        left_csv = csv_df[csv_df["panel"] == "left_variance"]
+        n_csv = int((left_csv["tau2_status"] == "AT_BOUNDARY").sum())
+        m_csv = int(len(left_csv))
+        assert (n_csv, m_csv) == (43, 51), (n_csv, m_csv)
+        assert n_csv == lctx["n_at_boundary"]
+        assert m_csv == lctx["n_components"]
+        # The count printed on the image must be the CSV count.
+        assert f"{n_csv} of {m_csv} components" in _ml_texts(fig)
+        # Every boundary component is drawn, not dropped.
+        csv_pairs = set(zip(left_csv["setting"], left_csv["position_group"],
+                           left_csv["measure"]))
+        drawn_pairs = set(zip(left["setting"], left["position_group"],
+                              left["measure"]))
+        assert csv_pairs == drawn_pairs
+    finally:
+        plt.close(fig)
+
+
+def _check_ml_left(csv_df: pd.DataFrame, src: pd.DataFrame) -> None:
+    left = csv_df[csv_df["panel"] == "left_variance"].copy()
+    assert len(left) == len(src) == 51
+    merged = left.merge(src, on=["setting", "position_group", "measure"],
+                        suffixes=("_fig", "_src"), validate="one_to_one")
+    assert len(merged) == 51
+    for col in ("tau2", "tau2_p05", "tau2_p95"):
+        assert np.allclose(merged[f"{col}_fig"], merged[f"{col}_src"],
+                           atol=1e-12, rtol=0)
+    assert (merged["tau2_status_fig"] == merged["tau2_status_src"]).all()
+
+
+def test_measurement_limits_left_reconciles_to_variance_file(rendered):
+    src = pd.read_csv(rendered["tmp"] / "outputs" / "envelope"
+                      / "variance_components.csv")
+    _check_ml_left(pd.read_csv(rendered["ml_csv"]), src)
+
+
+def test_measurement_limits_right_reconciles_to_turn_table(rendered):
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    valid = turns[turns["valid"].fillna(False).astype(bool)]
+    right = pd.read_csv(rendered["ml_csv"])
+    right = right[right["panel"] == "right_lateral_accel"]
+    edges = [30.0, 45.0, 60.0, 90.0, 120.0, 150.0, 180.0]
+    total = 0
+    for _, row in right.iterrows():
+        lo = float(row["angle_low_deg"])
+        hi = row["angle_high_deg"]
+        mask = (valid["abs_turn_angle"] >= lo)
+        if pd.isna(hi):
+            mask &= valid["abs_turn_angle"] >= edges[-1]
+        else:
+            mask &= valid["abs_turn_angle"] < float(hi)
+        part = valid.loc[mask, "peak_lateral_accel_yd_s2"].dropna()
+        assert int(row["n_turns"]) == len(part)
+        assert np.isclose(float(row["median_lateral_accel_yd_s2"]),
+                          float(part.median()), atol=1e-9)
+        assert np.isclose(float(row["p95_lateral_accel_yd_s2"]),
+                          float(part.quantile(0.95)), atol=1e-9)
+        total += int(row["n_turns"])
+    assert total == len(valid)
+
+
+def test_measurement_limits_reversal_threshold_comes_from_config(rendered):
+    # Threshold 120 is a bin edge, so bands 120-150, 150-180 and >180 are in.
+    fig, left, right, lctx, rctx, cfg, plt = _ml_build(rendered, threshold=120.0)
+    try:
+        assert rctx["reversal"]["threshold_deg"] == 120.0
+        lit = right[right["in_reversal_zone"]]
+        assert list(lit["angle_band"]) == ["120–150°", "150–180°", ">180°"]
+        assert "≥120°" in _ml_texts(fig)
+        assert ML_THRESHOLD_KEY in _ml_texts(fig)
+    finally:
+        plt.close(fig)
+
+    # A threshold that is not a bin edge refuses instead of shading a fraction.
+    from bdb27 import figures
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    from bdb27 import common
+    raw = yaml.safe_load(rendered["cfg"].read_text())
+    raw["turn_coverage"]["figures"]["measurement_limits"][
+        "reversal_zone_deg"] = 140.0
+    cfg_path = rendered["tmp"] / "config_ml_bad.yaml"
+    cfg_path.write_text(yaml.safe_dump(raw, sort_keys=False))
+    with pytest.raises(common.StageRefused):
+        figures.lateral_table(turns, common.load_config(cfg_path))
+
+
+def test_measurement_limits_two_runs_are_byte_identical(rendered):
+    first = hashlib.sha256(rendered["ml_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    second = hashlib.sha256(rendered["ml_png"].read_bytes()).hexdigest()
+    assert first == second
+
+
+def test_measurement_limits_leaves_figures_1_to_5_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png", "ap_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k], (
+            f"{k} changed: figure 6 must not alter figures 1-5")
+
+
+def test_measurement_limits_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][ML_KEY]
+    assert fig["figure"] == ML_KEY
+    assert fig["boundary"]["n_at_boundary"] == 43
+    assert fig["boundary"]["n_components"] == 51
+    assert "empty" in fig["boundary"]["encoding"].lower()
+    assert fig["reversal_zone"]["threshold_deg"] == 150.0
+    assert fig["reversal_zone"]["config_key"] == ML_THRESHOLD_KEY
+    assert fig["reversal_zone"]["greyed_and_struck_through"] is True
+    assert len(fig["components"]) == 51
+    assert len(fig["lateral_bands"]) == 7
+    assert fig["detector_evidence"]["angle_mae_deg"] == 3.1
+    assert fig["detector_evidence"]["precision"] == 0.915
+    assert fig["detector_evidence"]["recall"] == 0.931
+    assert fig["detector_evidence"]["sources"] == [
+        "notes/phase2-turns.md", "outputs/audit/gate.json"]
+    # No per-player artefact may appear anywhere in this entry.
+    flat = json.dumps(fig).lower()
+    for banned in ("player_name", "nfl_id", "ranking of", "p_value"):
+        assert banned not in flat
+
+
+def test_measurement_limits_caption_carries_the_counterweight(rendered):
+    fig, left, right, lctx, rctx, cfg, plt = _ml_build(rendered)
+    try:
+        text = _ml_texts(fig)
+        assert "3.1° MAE" in text
+        assert "precision 0.915" in text
+        assert "recall 0.931" in text
+        assert "not detector noise" in text
+        assert "planted 45° turns" in text
+        assert "apex, exit, regain" in text
+        assert "not an error" in text
+    finally:
+        plt.close(fig)
+
+
+def test_measurement_limits_detector_numbers_have_a_stored_source():
+    """The caption's accuracy numbers must still exist in the repo's artefacts."""
+    import re
+    notes = (ROOT / "notes" / "phase2-turns.md").read_text()
+    gate = (ROOT / "outputs" / "audit" / "gate.json").read_text()
+    assert re.search(r"\*\*3\.1°\*\*", notes), "3.1° MAE source line is gone"
+    for token in ("0.915", "0.931"):
+        assert token in notes, f"{token} missing from {notes[:20]}..."
+        assert token in gate, f"{token} missing from the audit gate"
+
+
+def test_measurement_limits_stage_06_renders_all_six(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    assert set(man["figures"]) == {
+        "fig_the_hole", "fig_drill_coverage", "fig_before_after",
+        "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits"}
+    out = rendered["tmp"] / "outputs" / "figures"
+    for key in man["figures"]:
+        assert (out / f"{key}.png").exists(), f"{key}.png missing"
+        assert (out / f"{key}.csv").exists(), f"{key}.csv missing"
+
+
+def test_measurement_limits_checks_can_fail(rendered):
+    fig, left, right, lctx, rctx, cfg, plt = _ml_build(rendered)
+    try:
+        assert f"{lctx['n_at_boundary']} of {lctx['n_components']} components" \
+            in _ml_texts(fig)
+    finally:
+        plt.close(fig)
+
+    src = pd.read_csv(rendered["tmp"] / "outputs" / "envelope"
+                      / "variance_components.csv")
+    good = pd.read_csv(rendered["ml_csv"])
+    _check_ml_left(good, src)  # sanity: the checker passes on the real file
+
+    bad = good.copy()
+    left_idx = bad.index[bad["panel"] == "left_variance"][0]
+    bad.loc[left_idx, "tau2"] = 9.99
+    with pytest.raises(AssertionError):
+        _check_ml_left(bad, src)
+
+    mislabelled = good.copy()
+    mislabelled.loc[left_idx, "tau2_status"] = "INTERIOR"
+    with pytest.raises(AssertionError):
+        _check_ml_left(mislabelled, src)
+
+    dropped = pd.concat([
+        good[good["panel"] != "left_variance"],
+        good[(good["panel"] == "left_variance")
+             & (good["tau2_status"] != "AT_BOUNDARY")],
+    ], ignore_index=True)
+    with pytest.raises(AssertionError):
+        _check_ml_left(dropped, src)
+
+    empty = rendered["tmp"] / "empty_ml.png"
     empty.write_bytes(b"")
     with pytest.raises(AssertionError):
         _check_png(empty)

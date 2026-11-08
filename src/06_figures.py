@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-5.
+"""Stage 06 — figures 1-6.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -7,6 +7,9 @@
   4. "Tempo break"      — the proposed drill drawn to scale (a diagram).
   5. "Same hole"        — figure 1's paired share panel repeated for DB, WR,
                           TE, OL and DL on one identical axis.
+  6. "Measurement limits" — why per-player ranking is not supported: variance
+                          components at the boundary, and the reversal zone
+                          that is not physical capacity.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -87,7 +90,8 @@ def main(argv=None) -> int:
     check_provenance(cfg, args.mode)
 
     turns_path = cfg.repo_path("turns") / "turns.parquet"
-    common.require_inputs([turns_path], stage=STAGE)
+    variance_path = cfg.repo_path("envelope") / "variance_components.csv"
+    common.require_inputs([turns_path, variance_path], stage=STAGE)
 
     edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
     overflow = str(cfg.get("figures.hole.bands.overflow_label"))
@@ -178,6 +182,26 @@ def main(argv=None) -> int:
         ap_payload["stamp"] = figures.STAMP
         _write_manifest(ap_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 6: the measurement limits (slot e)
+        ml_components = figures.load_variance_components(
+            cfg.repo_path("envelope") / "variance_components.csv")
+        ml_left, ml_lctx = figures.variance_table(ml_components)
+        ml_right, ml_rctx = figures.lateral_table(turns, cfg)
+        ml_table = figures.measurement_limits_csv_frame(
+            ml_left, ml_right, ml_lctx, ml_rctx)
+        ml_png = outdir / f"{figures.FIGURE_KEY_MEASUREMENT_LIMITS}.png"
+        ml_csv_path = outdir / f"{figures.FIGURE_KEY_MEASUREMENT_LIMITS}.csv"
+        common.write_csv(ml_table, ml_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_MEASUREMENT_LIMITS})
+        ml_fig = figures.build_measurement_limits(
+            ml_left, ml_right, {"left": ml_lctx, "right": ml_rctx}, cfg)
+        figures.render_measurement_limits(ml_fig, cfg, ml_png)
+        ml_payload = figures.measurement_limits_manifest_payload(
+            ml_left, ml_right, ml_lctx, ml_rctx, cfg)
+        ml_payload["stamp"] = figures.STAMP
+        _write_manifest(ml_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -195,19 +219,26 @@ def main(argv=None) -> int:
                         f"annotations={ds_context['n_annotations']}; "
                         f"{figures.FIGURE_KEY_ALL_POSITIONS}: "
                         f"positions={len(ap_context['positions'])} "
-                        f"turns={ap_context['n_turns']} ")
+                        f"turns={ap_context['n_turns']}; "
+                        f"{figures.FIGURE_KEY_MEASUREMENT_LIMITS}: "
+                        f"components={ml_lctx['n_components']} "
+                        f"at_boundary={ml_lctx['n_at_boundary']} "
+                        f"turns={ml_rctx['n_turns']} ")
 
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
           f"{ap_png.name}, {ap_csv_path.name}, "
+          f"{ml_png.name}, {ml_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
           f"{ba_context['grid_shape'][0]}x{ba_context['grid_shape'][1]} grid; "
           f"drill schematic status {ds_context['status']}; "
           f"{ap_context['n_turns']} valid turns across "
-          f"{len(ap_context['positions'])} positions)")
+          f"{len(ap_context['positions'])} positions; "
+          f"{ml_lctx['n_at_boundary']} of {ml_lctx['n_components']} variance "
+          f"components at the boundary)")
     return 0
 
 
