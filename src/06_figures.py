@@ -146,6 +146,16 @@ def main(argv=None) -> int:
         ba_payload["stamp"] = figures.STAMP
         _write_manifest(ba_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 4: the tempo-break drill, drawn (a diagram, no data)
+        ds_table, ds_context = figures.drill_schematic_geometry(cfg)
+        ds_png = outdir / f"{figures.FIGURE_KEY_DRILL_SCHEMATIC}.png"
+        ds_csv_path = outdir / f"{figures.FIGURE_KEY_DRILL_SCHEMATIC}.csv"
+        figures.write_drill_schematic_csv(ds_table, ds_csv_path, cfg)
+        ds_fig = figures.plot_drill_schematic(ds_table, ds_context, cfg)
+        figures.render_schematic(ds_fig, cfg, ds_png)
+        ds_payload = figures.drill_schematic_manifest_payload(ds_table, ds_context)
+        _write_manifest(ds_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -156,14 +166,20 @@ def main(argv=None) -> int:
                         f"grid={ba_context['grid_shape'][0]}x"
                         f"{ba_context['grid_shape'][1]} "
                         f"turns={ba_context['n_turns']} "
-                        f"projected={ba_proj['total']}")
+                        f"projected={ba_proj['total']}; "
+                        f"{figures.FIGURE_KEY_DRILL_SCHEMATIC}: "
+                        f"status={ds_context['status']} "
+                        f"elements={ds_context['n_elements']} "
+                        f"annotations={ds_context['n_annotations']}")
 
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
-          f"{ba_csv_path.name}, {manifest_path.name} "
+          f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
+          f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
-          f"{ba_context['grid_shape'][0]}x{ba_context['grid_shape'][1]} grid)")
+          f"{ba_context['grid_shape'][0]}x{ba_context['grid_shape'][1]} grid; "
+          f"drill schematic status {ds_context['status']})")
     return 0
 
 

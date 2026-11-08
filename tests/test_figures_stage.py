@@ -183,6 +183,8 @@ def rendered(tmp_path_factory):
             "drill_csv": out / "fig_drill_coverage.csv",
             "ba_png": out / "fig_before_after.png",
             "ba_csv": out / "fig_before_after.csv",
+            "ds_png": out / "fig_drill_schematic.png",
+            "ds_csv": out / "fig_drill_schematic.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -527,3 +529,181 @@ def test_before_after_checks_can_fail(rendered):
     empty.write_bytes(b"")
     with pytest.raises(AssertionError):
         _check_png(empty)
+
+
+# ------------------------------------- figure 4: the drill schematic
+#: The figure is a PROPOSAL: drawn from notes/drill-proposal.md section 2, not
+#: from data. These tests pin the geometry to the config block and pin the
+#: status stamp — they never treat this figure as a measurement.
+DS_STAMP = "PROPOSED DRILL — not part of the task spec, awaiting sign-off"
+DS_PREFIX = "figures.drill_schematic."
+
+
+def _ds_block(cfg_path: Path) -> dict:
+    raw = yaml.safe_load(cfg_path.read_text())
+    return raw["turn_coverage"]["figures"]["drill_schematic"]
+
+
+def _ds_rows(csv_df: pd.DataFrame) -> dict:
+    return {row["element"]: row for _, row in csv_df.iterrows()}
+
+
+def _check_schematic(csv_df: pd.DataFrame, block: dict) -> None:
+    """Every drawn dimension must equal the configured (proposal) dimension."""
+    assert set(csv_df["status"]) == {"PROPOSAL"}
+    assert set(csv_df["status_stamp"]) == {DS_STAMP}
+    rows = _ds_rows(csv_df)
+
+    approach = rows["approach_line"]
+    lo, hi = (float(x) for x in block["approach_length_yd"])
+    drawn = float(approach["length_yd"])
+    assert lo <= drawn <= hi, f"approach {drawn} yd is outside {lo}-{hi} yd"
+    assert np.isclose(float(approach["x"]), -drawn)
+    assert np.isclose(float(approach["y"]), 0.0)
+    assert np.isclose(float(approach["y_end"]), 0.0)
+
+    gate = float(block["gate_distance_yd"])
+    angle = float(block["break_angle_deg"])
+    for side in ("left", "right"):
+        seg = rows[f"exit_{side}"]
+        assert np.isclose(float(seg["length_yd"]), gate)
+        assert np.isclose(abs(float(seg["angle_deg"])), angle)
+        assert np.isclose(float(seg["x"]), 0.0) and np.isclose(float(seg["y"]), 0.0)
+        mark = rows[f"gate_{side}"]
+        assert np.isclose(np.hypot(float(mark["x"]), float(mark["y"])), gate)
+
+    # both sides symmetric about the approach line
+    left, right = rows["exit_left"], rows["exit_right"]
+    assert np.isclose(float(left["x_end"]), float(right["x_end"]))
+    assert np.isclose(float(left["y_end"]), -float(right["y_end"]))
+    assert np.isclose(float(rows["gate_left"]["y"]), -float(rows["gate_right"]["y"]))
+
+    # the plant is the break cone, at the end of the approach
+    assert np.isclose(float(rows["plant"]["x"]), 0.0)
+    assert np.isclose(float(rows["plant"]["y"]), 0.0)
+    assert np.isclose(float(rows["cone_break"]["x"]), 0.0)
+
+    # every printed number resolves to a config constant, and is printed
+    ann = csv_df[csv_df["row_kind"] == "annotation"]
+    for _, row in ann.iterrows():
+        key = str(row["source_constant"])
+        assert key.startswith(DS_PREFIX), f"untraceable annotation source {key}"
+        want = block[key[len(DS_PREFIX):]]
+        if not pd.isna(row["value_low"]):
+            assert [float(row["value_low"]), float(row["value_high"])] == [
+                float(x) for x in want]
+        elif not pd.isna(row["value"]):
+            assert np.isclose(float(row["value"]), float(want)), (
+                f"{row['element']}: printed {row['value']} but config says {want}")
+            assert f"{float(row['value']):g}" in str(row["text"])
+
+
+def test_drill_schematic_png_exists_non_empty_and_wide(rendered):
+    _check_png(rendered["ds_png"])
+
+
+def test_drill_schematic_geometry_matches_config(rendered):
+    csv_df = pd.read_csv(rendered["ds_csv"])
+    _check_schematic(csv_df, _ds_block(rendered["cfg"]))
+    rows = _ds_rows(csv_df)
+    assert np.isclose(float(rows["exit_left"]["angle_deg"]), 40.0)
+    assert np.isclose(float(rows["gate_left"]["length_yd"]), 5.0)
+    assert 8.0 <= float(rows["approach_line"]["length_yd"]) <= 10.0
+
+
+def test_drill_schematic_is_not_stamped_as_sample_data(rendered):
+    raw = rendered["ds_csv"].read_text()
+    assert "PLACEHOLDER_SAMPLE" not in raw
+    assert "UNVALIDATED SAMPLE OUTPUT" not in raw
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"]["fig_drill_schematic"]
+    assert fig["status"] == "PROPOSAL"
+    assert fig["stamp"] == DS_STAMP
+    assert fig["provenance_applied"] is False
+    assert "deliberately NOT stamped" in fig["provenance_note"].lower() or \
+        "Deliberately NOT stamped" in fig["provenance_note"]
+    assert fig["spec"]["break_angle_deg"] == 40
+    assert fig["spec"]["gate_distance_yd"] == 5
+    assert fig["spec"]["approach_length_yd"] == [8, 10]
+    assert fig["scale"]["to_scale"] is True
+    assert fig["omitted_not_specified"], "omissions must be listed"
+    assert any("Gate width" in t for t in fig["omitted_not_specified"])
+
+
+def test_drill_schematic_badge_is_drawn(rendered):
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    table, context = figures.drill_schematic_geometry(cfg)
+    fig = figures.plot_drill_schematic(table, context, cfg)
+    texts = [t.get_text() for t in fig.texts] + [t.get_text()
+                                                for t in fig.axes[0].texts]
+    assert any(DS_STAMP in t for t in texts), "the proposal badge is not drawn"
+    assert any("not part of the task spec" in t for t in texts)
+    import matplotlib.pyplot as plt
+    plt.close(fig)
+
+
+def test_drill_schematic_two_runs_are_byte_identical(rendered):
+    first = hashlib.sha256(rendered["ds_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    second = hashlib.sha256(rendered["ds_png"].read_bytes()).hexdigest()
+    assert first == second
+
+
+def test_drill_schematic_numbers_are_all_traceable(rendered):
+    """No number may appear in an annotation without a config source."""
+    csv_df = pd.read_csv(rendered["ds_csv"])
+    block = _ds_block(rendered["cfg"])
+    _check_schematic(csv_df, block)
+    texts = " ".join(str(t) for t in csv_df.loc[
+        csv_df["row_kind"] == "annotation", "text"])
+    # the figure-3 projection must NOT be repeated here
+    assert "732" not in texts
+    assert "97" not in texts
+
+
+def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
+    keys = ["png", "drill_png", "ba_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k]
+    assert len(pd.read_csv(rendered["csv"])) == 14
+    assert len(pd.read_csv(rendered["drill_csv"])) == 11
+    assert len(pd.read_csv(rendered["ba_csv"])) == 44
+    man = json.loads(rendered["manifest"].read_text())
+    assert set(man["figures"]) == {"fig_the_hole", "fig_drill_coverage",
+                                   "fig_before_after", "fig_drill_schematic"}
+
+
+def test_drill_schematic_checks_can_fail(rendered):
+    csv_df = pd.read_csv(rendered["ds_csv"])
+    block = _ds_block(rendered["cfg"])
+    _check_schematic(csv_df, block)  # sanity: passes on the real drawing
+
+    wrong_gate = csv_df.copy()
+    idx = wrong_gate.index[wrong_gate["element"] == "exit_left"][0]
+    wrong_gate.loc[idx, "length_yd"] = 4.0
+    with pytest.raises(AssertionError):
+        _check_schematic(wrong_gate, block)
+
+    wrong_angle = csv_df.copy()
+    idx = wrong_angle.index[wrong_angle["element"] == "exit_right"][0]
+    wrong_angle.loc[idx, "angle_deg"] = -35.0
+    with pytest.raises(AssertionError):
+        _check_schematic(wrong_angle, block)
+
+    asymmetric = csv_df.copy()
+    idx = asymmetric.index[asymmetric["element"] == "gate_right"][0]
+    asymmetric.loc[idx, "y"] = float(asymmetric.loc[idx, "y"]) * 0.9
+    with pytest.raises(AssertionError):
+        _check_schematic(asymmetric, block)
+
+    invented = csv_df.copy()
+    idx = invented.index[invented["row_kind"] == "annotation"][0]
+    invented.loc[idx, "source_constant"] = "figures.not_a_constant"
+    with pytest.raises(AssertionError):
+        _check_schematic(invented, block)

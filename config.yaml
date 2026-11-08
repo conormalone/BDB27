@@ -398,6 +398,48 @@ turn_coverage:
       width_in: 12.6
       height_in: 7.0
 
+    # Stage 06 figure 4 ("The tempo-break drill, drawn"): a GEOMETRY drawing,
+    # not a data plot. Every dimension below is copied verbatim from
+    # notes/drill-proposal.md section 2, which is status PROPOSAL — not part of
+    # TASK.md and not a finding. Nothing here is measured, and no dimension may
+    # be added that the proposal does not state. The figure carries its own
+    # status badge; it is deliberately NOT stamped with the sample-data
+    # provenance banner used by figures 1-3 (see the manifest payload).
+    drill_schematic:
+      status: PROPOSAL
+      status_stamp: "PROPOSED DRILL — not part of the task spec, awaiting sign-off"
+      source_note: "notes/drill-proposal.md §2"
+      # "Approach line marked by two cones, 8-10 yd apart."
+      approach_length_yd: [8, 10]
+      # Drawing placement only: the midpoint of the stated 8-10 yd range. The
+      # image labels the approach "8-10 yd"; 9.0 is never claimed as a spec.
+      approach_drawn_yd: 9.0
+      # "Walk-in, 2-yd run-up" — the run-up length is stated; its start is not.
+      runup_length_yd: 2
+      # "...break 40 deg" / "Two exit gates 5 yd from the break cone, at 40 deg
+      # either side of the approach line."
+      break_angle_deg: 40
+      gate_distance_yd: 5
+      # "Re-accelerate 5 yd through the gate" — the same 5 yd, drawn once.
+      reaccel_length_yd: 5
+      # "Reach 3-5 yd/s at the break cone."
+      entry_speed_yd_s: [3, 5]
+      # "Reps 6 total: 3 left, 3 right, alternating."
+      reps_total: 6
+      reps_per_side: 3
+      reps_alternating: true
+      # "Single plant" — one plant per rep.
+      plants_per_rep: 1
+      # "Duration ~90 s per player."
+      duration_s: 90
+      footprint: "Same cones and footprint as the 3-cone drill; no new station."
+      # Scale bar: a drawing device, honest only because the axes are drawn in
+      # yards with equal aspect. 5 yd is the proposal's own gate distance.
+      scale_bar_yd: 5.0
+      dpi: 150
+      width_in: 11.5
+      height_in: 7.0
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

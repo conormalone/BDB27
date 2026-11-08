@@ -26,6 +26,7 @@ matplotlib.use("Agg")  # deterministic, headless
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.patches import Arc
 from plotnine import (
     aes,
     coord_cartesian,
@@ -1192,4 +1193,573 @@ def before_after_manifest_payload(table: pd.DataFrame, context: dict,
         "counts": table.to_dict(orient="records"),
         "png": f"outputs/figures/{FIGURE_KEY_BEFORE_AFTER}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_BEFORE_AFTER}.csv",
+    }
+
+
+# ------------------------------- figure 4: the tempo-break drill, drawn
+#: A DIAGRAM, not a data plot. Every dimension is copied from
+#: ``notes/drill-proposal.md`` §2 (status PROPOSAL). Nothing on this figure is
+#: measured, so it is deliberately NOT stamped with ``STAMP`` (the sample-data
+#: provenance banner): it carries its own proposal badge instead, and the
+#: manifest records that choice.
+FIGURE_KEY_DRILL_SCHEMATIC = "fig_drill_schematic"
+PROPOSAL_STAMP = ("PROPOSED DRILL — not part of the task spec, awaiting sign-off")
+
+DRILL_SCHEMATIC_COLUMNS = [
+    "row_kind", "element", "kind", "text", "value", "value_low", "value_high",
+    "unit", "x", "y", "x_end", "y_end", "length_yd", "angle_deg", "radius_yd",
+    "source_constant", "source_quote",
+]
+
+#: Styling only: sizes and label offsets in yards (or points) used to make the
+#: drawing readable. No drawn DIMENSION comes from here — every length and
+#: angle on the image comes from ``figures.drill_schematic``.
+SCHEMATIC_STYLE = {
+    "approach_lw": 3.0,
+    "exit_lw": 2.6,
+    "arc_radius_yd": 1.5,        # visual arc radius, not a drill dimension
+    "arc_lw": 1.4,
+    "gate_tick_half_yd": 0.45,   # symbolic tick; gate WIDTH is not specified
+    "cone_size": 15.0,
+    "plant_size": 46.0,
+    "arc_label_offset_yd": 0.62,
+    "gate_label_offset_yd": 0.70,
+}
+
+#: Okabe-Ito: left and right are the same movement, so the colours are for
+#: legibility only, never a category.
+SCHEMATIC_COLOURS = {
+    "approach": "#333333",
+    "left": "#0072B2",
+    "right": "#D55E00",
+    "cone": "#E69F00",
+    "gate": "#1A1A1A",
+    "arc": "#666666",
+    "rule": "#B3B3B3",
+}
+
+
+def _schematic_row(**kw) -> dict:
+    row = {c: None for c in DRILL_SCHEMATIC_COLUMNS}
+    row.update(kw)
+    return row
+
+
+def drill_schematic_geometry(cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """Build the drawn geometry, in yards, from the proposal's own numbers.
+
+    Coordinates: the break cone (and the single plant) sits at the origin; the
+    approach runs along -x to the start cone; the two exits leave at +/- the
+    configured break angle and run the configured gate distance. Returns one
+    row per drawn element (segments, points) or annotation, each carrying the
+    config constant it came from and the proposal sentence it quotes.
+    """
+    block = "figures.drill_schematic"
+    status = str(cfg.get(f"{block}.status"))
+    status_stamp = str(cfg.get(f"{block}.status_stamp"))
+    source_note = str(cfg.get(f"{block}.source_note"))
+    approach_range = [float(x) for x in cfg.get(f"{block}.approach_length_yd")]
+    approach = float(cfg.get(f"{block}.approach_drawn_yd"))
+    runup = float(cfg.get(f"{block}.runup_length_yd"))
+    angle = float(cfg.get(f"{block}.break_angle_deg"))
+    gate = float(cfg.get(f"{block}.gate_distance_yd"))
+    reaccel = float(cfg.get(f"{block}.reaccel_length_yd"))
+    speed = [float(x) for x in cfg.get(f"{block}.entry_speed_yd_s")]
+    reps_total = int(cfg.get(f"{block}.reps_total"))
+    reps_side = int(cfg.get(f"{block}.reps_per_side"))
+    reps_alt = bool(cfg.get(f"{block}.reps_alternating"))
+    plants = int(cfg.get(f"{block}.plants_per_rep"))
+    duration = float(cfg.get(f"{block}.duration_s"))
+    footprint = str(cfg.get(f"{block}.footprint"))
+    scale_bar = float(cfg.get(f"{block}.scale_bar_yd"))
+
+    # ---- the drawing may not contradict the note it is drawn from
+    lo, hi = approach_range
+    if not (0 < lo <= approach <= hi):
+        raise ValueError(
+            f"{STAGE}: approach_drawn_yd={approach:g} is outside the proposed "
+            f"8-10 yd range {approach_range} — the drawing would misplace the "
+            "break cone")
+    if not 0 < angle < 90:
+        raise ValueError(f"{STAGE}: break_angle_deg must be in (0, 90), got {angle}")
+    if reps_side * 2 != reps_total:
+        raise ValueError(
+            f"{STAGE}: reps must be {reps_side} left + {reps_side} right = "
+            f"{reps_total}; config has reps_total={reps_total}")
+    if gate != reaccel:
+        raise ValueError(
+            f"{STAGE}: gate_distance_yd={gate:g} and reaccel_length_yd={reaccel:g} "
+            "differ, but the proposal draws one 5 yd exit through the gate")
+    if not 0 < speed[0] < speed[1]:
+        raise ValueError(f"{STAGE}: entry_speed_yd_s must be an increasing window")
+
+    rad = np.deg2rad(angle)
+    gate_left = (gate * np.cos(rad), gate * np.sin(rad))
+    gate_right = (gate * np.cos(rad), -gate * np.sin(rad))
+
+    rows = [
+        # ---- approach
+        _schematic_row(
+            row_kind="geometry", element="approach_line", kind="segment",
+            x=-approach, y=0.0, x_end=0.0, y_end=0.0, length_yd=approach,
+            angle_deg=0.0,
+            source_constant=f"{block}.approach_drawn_yd",
+            source_quote="Approach line marked by two cones, 8-10 yd apart."),
+        _schematic_row(
+            row_kind="geometry", element="cone_start", kind="point",
+            x=-approach, y=0.0,
+            source_constant=f"{block}.approach_length_yd",
+            source_quote="Approach line marked by two cones, 8-10 yd apart."),
+        _schematic_row(
+            row_kind="geometry", element="cone_break", kind="point",
+            x=0.0, y=0.0,
+            source_constant=f"{block}.approach_length_yd",
+            source_quote="Break cone at the end of the approach."),
+        _schematic_row(
+            row_kind="geometry", element="plant", kind="point",
+            x=0.0, y=0.0, value=float(plants), unit="count",
+            source_constant=f"{block}.plants_per_rep",
+            source_quote="Single plant, break 40 deg, re-accelerate 5 yd "
+                         "through the gate."),
+        # ---- exits (symmetric by construction; the test checks the mirror)
+        _schematic_row(
+            row_kind="geometry", element="exit_left", kind="segment",
+            x=0.0, y=0.0, x_end=gate_left[0], y_end=gate_left[1],
+            length_yd=gate, angle_deg=angle,
+            source_constant=f"{block}.break_angle_deg",
+            source_quote="Two exit gates 5 yd from the break cone, at 40 deg "
+                         "either side of the approach line."),
+        _schematic_row(
+            row_kind="geometry", element="exit_right", kind="segment",
+            x=0.0, y=0.0, x_end=gate_right[0], y_end=gate_right[1],
+            length_yd=gate, angle_deg=-angle,
+            source_constant=f"{block}.break_angle_deg",
+            source_quote="Two exit gates 5 yd from the break cone, at 40 deg "
+                         "either side of the approach line."),
+        _schematic_row(
+            row_kind="geometry", element="gate_left", kind="point",
+            x=gate_left[0], y=gate_left[1], length_yd=gate,
+            source_constant=f"{block}.gate_distance_yd",
+            source_quote="Two exit gates 5 yd from the break cone."),
+        _schematic_row(
+            row_kind="geometry", element="gate_right", kind="point",
+            x=gate_right[0], y=gate_right[1], length_yd=gate,
+            source_constant=f"{block}.gate_distance_yd",
+            source_quote="Two exit gates 5 yd from the break cone."),
+        # ---- annotations: every number printed on the image is here
+        _schematic_row(
+            row_kind="annotation", element="approach_range", kind="text",
+            text=f"acceleration phase · {lo:g}–{hi:g} yd",
+            value_low=lo, value_high=hi, unit="yd",
+            source_constant=f"{block}.approach_length_yd",
+            source_quote="two cones, 8-10 yd apart; accelerate over 8-10 yd."),
+        _schematic_row(
+            row_kind="annotation", element="runup", kind="text",
+            text=f"{runup:g}-yd run-up", value=runup, unit="yd",
+            source_constant=f"{block}.runup_length_yd",
+            source_quote="Walk-in, 2-yd run-up."),
+        _schematic_row(
+            row_kind="annotation", element="gate_distance", kind="text",
+            text=f"{gate:g} yd", value=gate, unit="yd",
+            source_constant=f"{block}.gate_distance_yd",
+            source_quote="Two exit gates 5 yd from the break cone."),
+        _schematic_row(
+            row_kind="annotation", element="reaccel", kind="text",
+            text=f"re-accelerate {reaccel:g} yd through the gate",
+            value=reaccel, unit="yd",
+            source_constant=f"{block}.reaccel_length_yd",
+            source_quote="Re-accelerate 5 yd through the gate."),
+        _schematic_row(
+            row_kind="annotation", element="angle_left", kind="text",
+            text=f"{angle:g}°", value=angle, unit="deg",
+            source_constant=f"{block}.break_angle_deg",
+            source_quote="Break 40 deg, either side of the approach line."),
+        _schematic_row(
+            row_kind="annotation", element="angle_right", kind="text",
+            text=f"{angle:g}°", value=angle, unit="deg",
+            source_constant=f"{block}.break_angle_deg",
+            source_quote="Break 40 deg, either side of the approach line."),
+        _schematic_row(
+            row_kind="annotation", element="entry_speed", kind="text",
+            text=f"{speed[0]:g}–{speed[1]:g} yd/s at the plant",
+            value_low=speed[0], value_high=speed[1], unit="yd/s",
+            source_constant=f"{block}.entry_speed_yd_s",
+            source_quote="Reach 3-5 yd/s at the break cone."),
+        _schematic_row(
+            row_kind="annotation", element="reps_total", kind="text",
+            text=f"{reps_total} reps total",
+            value=float(reps_total), unit="reps",
+            source_constant=f"{block}.reps_total",
+            source_quote="Reps 6 total: 3 left, 3 right, alternating."),
+        _schematic_row(
+            row_kind="annotation", element="reps_per_side", kind="text",
+            text=f"{reps_side} left / {reps_side} right, alternating",
+            value=float(reps_side), unit="reps",
+            source_constant=f"{block}.reps_per_side",
+            source_quote="3 left, 3 right, alternating."),
+        _schematic_row(
+            row_kind="annotation", element="reps_sequence", kind="text",
+            text="  ".join(["L", "R"] * reps_side),
+            source_constant=f"{block}.reps_alternating",
+            source_quote="6 total: 3 left, 3 right, alternating."),
+        _schematic_row(
+            row_kind="annotation", element="duration", kind="text",
+            text=f"~{duration:g} s per player", value=duration, unit="s",
+            source_constant=f"{block}.duration_s",
+            source_quote="Duration ~90 s per player."),
+        _schematic_row(
+            row_kind="annotation", element="status", kind="text",
+            text=status_stamp, source_constant=f"{block}.status_stamp",
+            source_quote="notes/drill-proposal.md status line."),
+        _schematic_row(
+            row_kind="annotation", element="footprint", kind="text",
+            text=footprint, source_constant=f"{block}.footprint",
+            source_quote="Space: same cones and footprint as the 3-cone; no "
+                         "new station."),
+        _schematic_row(
+            row_kind="annotation", element="scale_bar", kind="text",
+            text=f"{scale_bar:g} yd", value=scale_bar, unit="yd",
+            source_constant=f"{block}.scale_bar_yd",
+            source_quote="Scale bar, drawn to scale in yards."),
+    ]
+    table = pd.DataFrame(rows, columns=DRILL_SCHEMATIC_COLUMNS)
+
+    # ---- hard checks: the drawn table may not disagree with itself
+    left = table.loc[table["element"] == "exit_left"].iloc[0]
+    right = table.loc[table["element"] == "exit_right"].iloc[0]
+    if not np.isclose(float(left["length_yd"]), gate) or not np.isclose(
+            float(right["length_yd"]), gate):
+        raise ValueError(f"{STAGE}: drawn exit length is not the gate distance")
+    if not np.isclose(np.hypot(float(left["x_end"]), float(left["y_end"])), gate):
+        raise ValueError(f"{STAGE}: left gate is not {gate:g} yd from the break cone")
+    if not np.isclose(np.hypot(float(right["x_end"]), float(right["y_end"])), gate):
+        raise ValueError(f"{STAGE}: right gate is not {gate:g} yd from the break cone")
+    if not np.isclose(approach, np.hypot(
+            float(table.loc[table["element"] == "cone_start", "x"].iloc[0]), 0.0)):
+        raise ValueError(f"{STAGE}: start cone is not on the drawn approach")
+
+    omissions = [
+        ("Gate width (the opening between gate posts) is not stated in the "
+         "proposal, so each exit gate is drawn as a single transverse tick "
+         "marking where the player crosses — not as a measured opening."),
+        ("The proposal lists exactly two approach cones 8-10 yd apart and puts "
+         "the break cone at the end of the approach; it does not describe any "
+         "further cone. Only those two cones are drawn."),
+        ("Where the walk-in ends and where the 2-yd run-up sits relative to the "
+         "8-10 yd approach is not specified, so no phase boundary is drawn: the "
+         "phases are labelled in one line, and only the approach itself (8-10 "
+         "yd) is measured on the image."),
+        ("The 3-cone footprint the new drill reuses is not dimensioned in the "
+         "proposal, so no footprint outline is drawn — the claim is stated in "
+         "words only."),
+        ("Lane width, station size and cone spacing beyond the two approach "
+         "cones are not specified and are not drawn."),
+    ]
+
+    context = {
+        "status": status,
+        "status_stamp": status_stamp,
+        "source_note": source_note,
+        "approach_range": (lo, hi),
+        "approach_drawn": approach,
+        "runup": runup,
+        "break_angle": angle,
+        "gate_distance": gate,
+        "reaccel": reaccel,
+        "entry_speed": (speed[0], speed[1]),
+        "reps_total": reps_total,
+        "reps_per_side": reps_side,
+        "reps_alternating": reps_alt,
+        "plants_per_rep": plants,
+        "duration_s": duration,
+        "footprint": footprint,
+        "scale_bar_yd": scale_bar,
+        "to_scale": True,
+        "gate_left": gate_left,
+        "gate_right": gate_right,
+        "omissions": omissions,
+        "n_elements": int((table["row_kind"] == "geometry").sum()),
+        "n_annotations": int((table["row_kind"] == "annotation").sum()),
+    }
+    return table, context
+
+
+def _schematic_text(table: pd.DataFrame, element: str) -> str:
+    row = table[(table["row_kind"] == "annotation")
+                & (table["element"] == element)]
+    if len(row) != 1:
+        raise ValueError(f"{STAGE}: schematic annotation {element!r} is not unique")
+    return str(row["text"].iloc[0])
+
+
+def plot_drill_schematic(table: pd.DataFrame, context: dict,
+                         cfg: common.Config) -> plt.Figure:
+    """Draw the plan view. Units are yards; the aspect is equal, so the 5 yd
+    scale bar is a real scale bar. Text positions are styling."""
+    block = "figures.drill_schematic"
+    style = SCHEMATIC_STYLE
+    colour = SCHEMATIC_COLOURS
+
+    approach = float(context["approach_drawn"])
+    angle = float(context["break_angle"])
+    gate = float(context["gate_distance"])
+    rad = np.deg2rad(angle)
+
+    # The axes box is sized to the data window so that equal aspect needs no
+    # adjustment (and emits no warning). Whitespace lives in the figure margin.
+    x_lo, x_hi = -approach - 1.5, gate * np.cos(rad) + 2.0
+    y_lo, y_hi = -4.55, 3.95
+    ratio = (x_hi - x_lo) / (y_hi - y_lo)
+    fig_w = float(cfg.get(f"{block}.width_in"))
+    fig_h = float(cfg.get(f"{block}.height_in"))
+    ax_h = 0.70
+    ax_w = (ax_h * fig_h * ratio) / fig_w
+
+    fig = plt.figure(figsize=(fig_w, fig_h),
+                     dpi=int(cfg.get(f"{block}.dpi")), facecolor="white")
+    ax = fig.add_axes([(1.0 - ax_w) / 2.0, 0.145, ax_w, ax_h])
+    ax.set_xlim(x_lo, x_hi)
+    ax.set_ylim(y_lo, y_hi)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    def geo(element: str) -> pd.Series:
+        return table.loc[table["element"] == element].iloc[0]
+
+    left = geo("exit_left")
+    right = geo("exit_right")
+
+    # ---- movement: two exits, then the approach arrow
+    ax.annotate("", xy=(left["x_end"], left["y_end"]), xytext=(0.0, 0.0),
+                arrowprops=dict(arrowstyle="-|>", lw=style["exit_lw"],
+                                color=colour["left"], shrinkA=4, shrinkB=2))
+    ax.annotate("", xy=(right["x_end"], right["y_end"]), xytext=(0.0, 0.0),
+                arrowprops=dict(arrowstyle="-|>", lw=style["exit_lw"],
+                                color=colour["right"], shrinkA=4, shrinkB=2))
+    ax.annotate("", xy=(-0.32, 0.0), xytext=(-approach, 0.0),
+                arrowprops=dict(arrowstyle="-|>", lw=style["approach_lw"],
+                                color=colour["approach"], shrinkA=8,
+                                shrinkB=0))
+
+    # ---- break-angle arcs, one per side, labelled with the configured angle
+    r = style["arc_radius_yd"]
+    for theta1, theta2 in ((0.0, angle), (-angle, 0.0)):
+        ax.add_patch(Arc((0.0, 0.0), 2 * r, 2 * r, theta1=theta1,
+                         theta2=theta2, color=colour["arc"],
+                         lw=style["arc_lw"]))
+    label_r = r + style["arc_label_offset_yd"]
+    for sign, element in ((1.0, "angle_left"), (-1.0, "angle_right")):
+        mid = np.deg2rad(sign * angle / 2.0)
+        ax.text(label_r * np.cos(mid), label_r * np.sin(mid),
+                _schematic_text(table, element), fontsize=11,
+                fontweight="bold", color="#333333", ha="center", va="center")
+
+    # ---- gate marks: one transverse tick per exit, perpendicular to travel
+    half = style["gate_tick_half_yd"]
+    for sign, col in ((1.0, colour["left"]), (-1.0, colour["right"])):
+        px, py = gate * np.cos(rad), sign * gate * np.sin(rad)
+        perp = (-np.sin(sign * rad), np.cos(sign * rad))
+        ax.plot([px - half * perp[0], px + half * perp[0]],
+                [py - half * perp[1], py + half * perp[1]],
+                color=col, lw=3.4, solid_capstyle="butt")
+        off = style["gate_label_offset_yd"]
+        ax.text(px + off * np.cos(rad), py + off * np.sin(sign * rad),
+                "gate\n" + _schematic_text(table, "gate_distance"),
+                fontsize=9.4, color=col, ha="center", va="center",
+                fontweight="bold", linespacing=1.2)
+
+    # ---- the exit itself: re-accelerate 5 yd through the gate
+    d = np.array([np.cos(rad), np.sin(rad)])
+    p = np.array([-np.sin(rad), np.cos(rad)])
+    mid = 0.62 * gate * d + 0.48 * p
+    ax.text(mid[0], mid[1], _schematic_text(table, "reaccel"), fontsize=8.8,
+            color=colour["left"], ha="center", va="center",
+            rotation=angle, rotation_mode="anchor")
+
+    # ---- cones and the single plant
+    ax.plot([-approach], [0.0], marker="^", markersize=style["cone_size"],
+            color=colour["cone"], markeredgecolor="#1A1A1A",
+            markeredgewidth=1.0, linestyle="none", zorder=5)
+    ax.plot([0.0], [0.0], marker="^", markersize=style["cone_size"] + 4.0,
+            color=colour["cone"], markeredgecolor="#1A1A1A",
+            markeredgewidth=1.2, linestyle="none", zorder=5)
+    ax.plot([0.0], [0.0], marker="o", markersize=style["plant_size"] ** 0.5,
+            color="#1A1A1A", linestyle="none", zorder=6)
+
+    # ---- callouts: labels sit left of the break cone, exits go right
+    ax.text(-0.55, 0.55, "break cone\nsingle plant", fontsize=10.5,
+            color="#1A1A1A", fontweight="bold", ha="right", va="bottom",
+            linespacing=1.25)
+    ax.text(-0.55, -0.55, _schematic_text(table, "entry_speed"), fontsize=10.5,
+            color="#1A1A1A", ha="right", va="top")
+    ax.text(-approach, 0.62, "cone", fontsize=9.5, color="#5A4600",
+            ha="center", va="bottom")
+
+    # ---- the approach, its measured length, and the acceleration phase
+    ax.annotate("", xy=(-approach, -0.62), xytext=(0.0, -0.62),
+                arrowprops=dict(arrowstyle="<->", lw=0.9,
+                                color="#5A5A5A", shrinkA=0, shrinkB=0))
+    ax.text(-approach / 2.0, -1.02, _schematic_text(table, "approach_range"),
+            fontsize=10.0, color="#333333", ha="center", va="top",
+            fontweight="bold")
+    ax.text(-approach / 2.0, 0.30,
+            "walk-in  →  " + _schematic_text(table, "runup")
+            + "  →  accelerate over the approach",
+            fontsize=9.6, color="#333333", ha="center", va="bottom")
+
+    # ---- reps: what they are, in the order they run
+    sequence = _schematic_text(table, "reps_sequence")
+    ax.text(-approach + 0.25, 3.45,
+            _schematic_text(table, "reps_total") + "\n"
+            + _schematic_text(table, "reps_per_side") + "\n" + sequence,
+            fontsize=10.4, color="#1A1A1A", ha="left", va="top",
+            linespacing=1.4,
+            bbox=dict(boxstyle="round,pad=0.42", facecolor="#F2F2F2",
+                      edgecolor="#8C8C8C", linewidth=0.8))
+
+    # ---- honest scale bar (equal aspect, yards on both axes)
+    sb = float(context["scale_bar_yd"])
+    y0 = -4.35
+    ax.plot([-approach - 0.6, -approach - 0.6 + sb], [y0, y0],
+            color="#1A1A1A", lw=2.6, solid_capstyle="butt")
+    for edge in (-approach - 0.6, -approach - 0.6 + sb):
+        ax.plot([edge, edge], [y0 - 0.14, y0 + 0.14], color="#1A1A1A", lw=1.2)
+    ax.text(-approach - 0.6 + sb / 2.0, y0 + 0.22,
+            _schematic_text(table, "scale_bar"), fontsize=9.2,
+            color="#1A1A1A", ha="center", va="bottom")
+
+
+    # ---- header and footer (figure-level text; not axes text)
+    fig.text(0.022, 0.955,
+             f"The tempo break: a {angle:g}° cut at speed, both sides",
+             fontsize=16.5, fontweight="bold", color="#1A1A1A", va="top")
+    fig.text(0.022, 0.895,
+             "Top-down plan view of the proposed DB drill. Schematic drawing: "
+             "nothing on this figure is measured.",
+             fontsize=9.6, color="#333333", va="top")
+    fig.text(0.978, 0.952, context["status_stamp"], fontsize=9.4,
+             fontweight="bold", color=ALERT, ha="right", va="top",
+             bbox=dict(boxstyle="round,pad=0.45", facecolor="#FDE7E9",
+                       edgecolor=ALERT, linewidth=1.2))
+
+    footer = "\n".join([
+        f"{context['footprint']}  {_schematic_text(table, 'duration')}",
+        ("Drawn to scale in yards (equal aspect) with a 5 yd scale bar; the "
+         "approach is drawn at the midpoint of the proposed "
+         f"{context['approach_range'][0]:g}–{context['approach_range'][1]:g} yd "
+         "range. No dimension on this image comes from data."),
+        (f"Source: {context['source_note']} — status {context['status']}: not part "
+         "of the task spec and not a finding. Gate width and any cone beyond the "
+         "two approach cones are not specified in the note and are not drawn."),
+    ])
+    fig.text(0.022, 0.105, footer, fontsize=7.6, color="#333333", va="top",
+             linespacing=1.45)
+    return fig
+
+
+def render_schematic(fig: plt.Figure, cfg: common.Config, out_png: Path) -> Path:
+    """Save the drawing once with fixed metadata, so re-runs are identical.
+
+    PNG metadata carries no timestamp (the volatile fields live in the JSON
+    manifest), which is what makes two renders byte-identical.
+    """
+    dpi = int(cfg.get("figures.drill_schematic.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def drill_schematic_csv_frame(table: pd.DataFrame) -> pd.DataFrame:
+    """Every drawn segment/point and every printed number, with its source."""
+    out = table.copy()
+    out.insert(0, "status", "PROPOSAL")
+    out.insert(1, "status_stamp", PROPOSAL_STAMP)
+    out.insert(2, "source_note", "notes/drill-proposal.md §2")
+    return out[["status", "status_stamp", "source_note"] + DRILL_SCHEMATIC_COLUMNS]
+
+
+def write_drill_schematic_csv(table: pd.DataFrame, path: Path,
+                              cfg: common.Config) -> Path:
+    """Write the geometry CSV WITHOUT the sample-data provenance columns.
+
+    ``common.write_csv`` prefixes every row with ``PLACEHOLDER_SAMPLE`` /
+    ``UNVALIDATED SAMPLE OUTPUT`` because it writes data artefacts. This figure
+    is a drawing: nothing on it is measured, so stamping it as sample data
+    would be a false provenance claim. The proposal status is the correct
+    stamp, and it is written into the leading columns instead.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out = drill_schematic_csv_frame(table)
+    out.insert(3, "config_sha", common.config_fingerprint(cfg))
+    out.to_csv(path, index=False)
+    return path
+
+
+def drill_schematic_manifest_payload(table: pd.DataFrame,
+                                     context: dict) -> dict:
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_DRILL_SCHEMATIC,
+        "figure_kind": "diagram (geometry drawing, not a data plot)",
+        "title": (f"The tempo break: a {context['break_angle']:g}° cut at "
+                  "speed, both sides"),
+        "status": context["status"],
+        "status_stamp": context["status_stamp"],
+        "stamp": PROPOSAL_STAMP,
+        "provenance_applied": False,
+        "provenance_note": (
+            "Deliberately NOT stamped with the PLACEHOLDER_SAMPLE / "
+            "UNVALIDATED SAMPLE OUTPUT banner used by figures 1-3: this is a "
+            "schematic of a proposed drill, not a data artefact, and nothing on "
+            "it is measured. The proposal status in notes/drill-proposal.md is "
+            "the correct stamp."),
+        "claim": (
+            "A proposed Combine drill: walk in, accelerate over an 8-10 yd "
+            "approach to 3-5 yd/s, single plant, break 40 degrees either side, "
+            "re-accelerate 5 yd through an exit gate; 6 reps (3 left, 3 right, "
+            "alternating) in ~90 s per player on the existing 3-cone footprint."),
+        "sources": ["notes/drill-proposal.md"],
+        "source_note": context["source_note"],
+        "spec": {
+            "approach_length_yd": list(context["approach_range"]),
+            "approach_drawn_yd": context["approach_drawn"],
+            "runup_length_yd": context["runup"],
+            "break_angle_deg": context["break_angle"],
+            "gate_distance_yd": context["gate_distance"],
+            "reaccel_length_yd": context["reaccel"],
+            "entry_speed_yd_s": list(context["entry_speed"]),
+            "reps_total": context["reps_total"],
+            "reps_per_side": context["reps_per_side"],
+            "reps_alternating": context["reps_alternating"],
+            "plants_per_rep": context["plants_per_rep"],
+            "duration_s": context["duration_s"],
+            "footprint": context["footprint"],
+        },
+        "scale": {
+            "to_scale": context["to_scale"],
+            "units": "yards",
+            "scale_bar_yd": context["scale_bar_yd"],
+            "note": ("Axes are drawn in yards with equal aspect and a 5 yd "
+                     "scale bar, so the drawn layout is to scale. The approach "
+                     "is placed at 9 yd (the midpoint of the stated 8-10 yd "
+                     "range); the image labels it 8-10 yd and 9 yd is never "
+                     "claimed as the specification."),
+        },
+        "omitted_not_specified": list(context["omissions"]),
+        "drawn_elements": table.to_dict(orient="records"),
+        "caveats": [
+            ("This is a PROPOSAL, not a finding: notes/drill-proposal.md is not "
+             "part of TASK.md and needs sign-off before it appears in a writeup."),
+            ("The drawing is schematic. It shows layout and sequence only; no "
+             "speed, time or load on this figure is measured."),
+            ("No data counts appear here. The 732-turn projection and the "
+             "demand counts belong to figure 3 and are deliberately not repeated."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_DRILL_SCHEMATIC}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_DRILL_SCHEMATIC}.csv",
     }

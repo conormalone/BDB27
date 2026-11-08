@@ -5889,3 +5889,34 @@ the right panel being read as new data.
 `plot_before_after`); `tests/test_figures_stage.py::test_before_after_*`
 (42 measured cells sum to 1,179; 20 empty cells; projection 732 with
 `per_cell_split: null`; byte-identical re-render; config-driven edges).
+
+## D166 — Figure 4 is a proposal-stamped geometry drawing, not a data figure · 2026-11-08
+**Decision.** Figure 4 ("The tempo-break drill, drawn", Stage 06) is a top-down
+plan view built with matplotlib rather than plotnine, because it plots no data:
+every dimension comes from `figures.drill_schematic`, which copies
+`notes/drill-proposal.md` §2 verbatim (approach 8–10 yd, 2-yd run-up, 40° break,
+exit gates 5 yd out, 3–5 yd/s entry, 6 reps = 3 left + 3 right, ~90 s, 3-cone
+footprint). It is deliberately **not** stamped `PLACEHOLDER_SAMPLE` /
+`UNVALIDATED SAMPLE OUTPUT` the way figures 1–3 are, because that banner claims
+a data artefact and this image contains no measurement. It carries its own
+badge, "PROPOSED DRILL — not part of the task spec, awaiting sign-off", and the
+manifest records `status: PROPOSAL`, `provenance_applied: false` and the reason.
+**Why.** The proposal is not in TASK.md and is not a finding; a reader must be
+able to see that from the image alone. Reusing the sample stamp would have
+implied the drawing was rendered from the turn table, which it is not.
+**Not to scale? It is, where it can be.** The axes are drawn in yards with equal
+aspect and a 5 yd scale bar, so the layout is genuinely to scale. The one
+undetermined placement is the approach length, which the note gives as a range;
+the break cone is placed at the midpoint (9 yd), the image labels the approach
+"8–10 yd", and 9 yd is recorded in the manifest as a drawing placement, never as
+a specification. Nothing that the note leaves open is drawn: the gate width (a
+gate is a transverse tick, not a measured opening), any cone beyond the two
+approach cones, the boundary between the walk-in and the 2-yd run-up, and the
+3-cone footprint outline. Each omission is listed in the manifest's
+`omitted_not_specified` and in the figure caption.
+**Evidence.** `config.yaml` §`figures.drill_schematic`; `src/bdb27/figures.py`
+(`drill_schematic_geometry`, `plot_drill_schematic`, `render_schematic`);
+`tests/test_figures_stage.py::test_drill_schematic_*` (drawn angle 40°, gate 5
+yd, approach within 8–10 yd, mirror symmetry, every printed number traceable to
+a config constant, byte-identical re-render, badge present, figures 1–3
+unchanged).
