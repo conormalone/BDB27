@@ -398,6 +398,8 @@ def rendered(tmp_path_factory):
             "sw_csv": out / "fig_stopwatch.csv",
             "bh_png": out / "fig_both_hips.png",
             "bh_csv": out / "fig_both_hips.csv",
+            "ss_png": out / "fig_shallow_sources.png",
+            "ss_csv": out / "fig_shallow_sources.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -893,7 +895,7 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_all_positions",
                                    "fig_measurement_limits", "fig_gap_honest",
                                    "fig_turn_cost", "fig_stopwatch",
-                                   "fig_both_hips"}
+                                   "fig_both_hips", "fig_shallow_sources"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1422,12 +1424,13 @@ def test_measurement_limits_detector_numbers_have_a_stored_source():
         assert token in gate, f"{token} missing from the audit gate"
 
 
-def test_measurement_limits_stage_06_renders_all_ten(rendered):
+def test_stage_06_manifest_lists_every_figure(rendered):
     man = json.loads(rendered["manifest"].read_text())
     assert set(man["figures"]) == {
         "fig_the_hole", "fig_drill_coverage", "fig_before_after",
         "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits",
-        "fig_gap_honest", "fig_turn_cost", "fig_stopwatch", "fig_both_hips"}
+        "fig_gap_honest", "fig_turn_cost", "fig_stopwatch", "fig_both_hips",
+        "fig_shallow_sources"}
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -2555,10 +2558,10 @@ def test_both_hips_computes_no_symmetry_or_p_value(rendered):
         assert token not in flat
 
 
-def test_both_hips_renders_all_ten_figures(rendered):
+def test_both_hips_renders_every_figure(rendered):
     out = rendered["tmp"] / "outputs" / "figures"
     pngs = sorted(p.name for p in out.glob("fig_*.png"))
-    assert len(pngs) == 10, f"stage 06 must render ten figures, found {pngs}"
+    assert len(pngs) == 11, f"stage 06 must render eleven figures, found {pngs}"
     assert "fig_both_hips.png" in pngs
 
 
@@ -2658,3 +2661,317 @@ def test_both_hips_checks_can_fail(rendered):
     empty.write_bytes(b"")
     with pytest.raises(AssertionError):
         _check_png(empty)
+
+
+# --------------------------------------------------------------------------
+# Figure 11: where the shallow turns come from
+# --------------------------------------------------------------------------
+SS_KEY = "fig_shallow_sources"
+
+
+def _all_text(fig) -> str:
+    """Every string drawn on the figure: fig-level and inside the panel."""
+    parts = [t.get_text() for t in fig.texts]
+    for ax in fig.axes:
+        parts.extend(t.get_text() for t in ax.texts)
+    return " ".join(" ".join(str(p).split()) for p in parts)
+
+
+def _ss_population(rendered) -> tuple[pd.DataFrame, "object"]:
+    """The plotted population, rebuilt from the written Parquet with plain masks."""
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    low, high = (float(x) for x in
+                 cfg.get("figures.shallow_sources.angle_band_deg"))
+    position = str(cfg.get("figures.shallow_sources.position_group"))
+    settings = [str(s) for s in cfg.get("figures.shallow_sources.settings")]
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    sub = turns[valid
+                & (turns["position_group"] == position)
+                & (turns["setting"].isin(settings))
+                & (angle >= low) & (angle < high)].copy()
+    return sub, cfg
+
+
+def _check_ss_csv(csv_df: pd.DataFrame, turns: pd.DataFrame, cfg) -> None:
+    """Reconcile every per-player row against the turn table, or raise."""
+    low, high = (float(x) for x in
+                 cfg.get("figures.shallow_sources.angle_band_deg"))
+    position = str(cfg.get("figures.shallow_sources.position_group"))
+    settings = [str(s) for s in cfg.get("figures.shallow_sources.settings")]
+    rule = int(cfg.get("envelope.tau2_min_turns_per_player"))
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    sub = turns[valid
+                & (turns["position_group"] == position)
+                & (turns["setting"].isin(settings))
+                & (angle >= low) & (angle < high)].copy()
+
+    assert "player_name" not in csv_df.columns, "no name column may be written"
+    assert set(csv_df["setting"]) == set(settings)
+    assert set(csv_df["rule_min_turns"].astype(int)) == {rule}
+    assert set(csv_df["rule_key"]) == {"envelope.tau2_min_turns_per_player"}
+    expected_rows = int(sub.groupby("setting")["nfl_id"].nunique().sum())
+    assert len(csv_df) == expected_rows, (
+        f"csv rows={len(csv_df)} but there are {expected_rows} player-settings")
+    assert not csv_df.duplicated(["setting", "nfl_id"]).any(), (
+        "one row per player per setting")
+
+    for _, row in csv_df.iterrows():
+        part = sub[(sub["setting"] == row["setting"])
+                   & (sub["nfl_id"] == row["nfl_id"])]
+        assert len(part) == int(row["turns"]), (
+            f"{row['setting']} player {row['nfl_id']}: csv turns "
+            f"{int(row['turns'])} vs artefact {len(part)}")
+        total = int((sub["setting"] == row["setting"]).sum())
+        assert int(row["turns_setting"]) == total
+        assert int(row["n_players_setting"]) == int(
+            sub[sub["setting"] == row["setting"]]["nfl_id"].nunique())
+        assert np.isclose(float(row["share_of_setting_turns"]),
+                          int(row["turns"]) / total, atol=1e-12)
+        if row["setting"] == "combine":
+            drills = sorted({str(d) for d in part["drill_name"].dropna()})
+            assert sorted(d for d in str(row["drill_names"]).split(";") if d) \
+                == drills, "the CSV must name exactly the drills that carried him"
+            assert int(row["n_drills"]) == len(drills)
+            assert bool(row["labelled_by_drill"]) == (int(row["turns"]) >= 2)
+        else:
+            assert str(row["drill_names"]) in ("", "nan"), (
+                "games carry no drill label")
+
+    for setting in settings:
+        part = sub[sub["setting"] == setting]
+        rows = csv_df[csv_df["setting"] == setting]
+        per = part.groupby("nfl_id").size()
+        assert int(rows["turns"].sum()) == len(part)
+        assert int(rows["turns"].max()) == int(per.max())
+        assert int(rows["at_one_turns"].iloc[0]) == int((per == 1).sum())
+        assert int(rows["median_turns_per_player"].iloc[0]) \
+            == int(round(float(per.median())))
+    assert int(csv_df["turns"].sum()) == len(sub), (
+        "the dots must reconstruct the whole band, no player dropped")
+
+
+def test_shallow_sources_png_and_csv_exist(rendered):
+    _check_png(rendered["ss_png"])
+    assert rendered["ss_csv"].exists()
+    with Image.open(rendered["ss_png"]) as im:
+        assert im.size[0] >= 1500 and im.size[1] >= 900
+
+
+def test_shallow_sources_counts_reconcile_to_the_turn_table(rendered):
+    sub, cfg = _ss_population(rendered)
+    csv_df = pd.read_csv(rendered["ss_csv"])
+    _check_ss_csv(csv_df, pd.read_parquet(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet"), cfg)
+    assert int(sub.groupby("setting")["nfl_id"].nunique().sum()) == len(csv_df)
+
+
+def test_shallow_sources_one_dot_per_player_no_aggregation(rendered):
+    """The row shape IS the claim: every player is drawn, none are bucketed."""
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    sub, _ = _ss_population(rendered)
+    table, context = figures.shallow_sources_table(sub, cfg)
+    frame = figures.shallow_sources_plot_frame(table, context, cfg)
+    assert len(frame) == sub.groupby("setting")["nfl_id"].nunique().sum()
+    for _, row in frame.iterrows():
+        part = sub[(sub["setting"] == row["setting"])
+                   & (sub["nfl_id"] == row["nfl_id"])]
+        assert int(row["turns"]) == len(part), "x must be that player's count"
+    # Counts are printed on the image rather than left to the eye alone.
+    fig = figures.plot_shallow_sources(table, context, cfg).draw()
+    import matplotlib.pyplot as plt
+    try:
+        flat = _all_text(fig)
+        assert f"{context['totals']['combine']} turns" in flat
+        assert f"{context['players']['combine']} players" in flat
+        assert f"{context['totals']['game']} turns" in flat
+        assert f"{context['players']['game']} players" in flat
+        assert f"{context['at_one']['combine']} at exactly 1" in flat
+    finally:
+        plt.close(fig)
+
+
+def test_shallow_sources_rule_line_is_the_envelope_floor(rendered):
+    """The line is read from config and drawn at that value, not hard-coded."""
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    want = int(cfg.get("envelope.tau2_min_turns_per_player"))
+    sub, _ = _ss_population(rendered)
+    table, context = figures.shallow_sources_table(sub, cfg)
+    assert context["rule_min"] == want
+    fig = figures.plot_shallow_sources(table, context, cfg).draw()
+    import matplotlib.pyplot as plt
+    try:
+        drawn = []
+        for artist in list(fig.axes[0].collections) + list(fig.axes[0].lines):
+            paths = getattr(artist, "get_paths", lambda: [])()
+            for path in paths:
+                v = path.vertices
+                if len(v) >= 2 and np.isclose(v[0, 0], v[-1, 0]):
+                    drawn.append(float(v[0, 0]))
+            segs = getattr(artist, "get_segments", lambda: [])()
+            for seg in segs:
+                if len(seg) >= 2 and np.isclose(seg[0, 0], seg[-1, 0]):
+                    drawn.append(float(seg[0][0]))
+        assert any(np.isclose(v, want) for v in drawn), (
+            f"no rule line at {want}; drawn={drawn}")
+        flat = _all_text(fig)
+        assert f"vertical line at {want} turns" in flat
+        assert "envelope.tau2_min_turns_per_player" in flat
+    finally:
+        plt.close(fig)
+
+    # A different config value moves the line and the CSV column with it.
+    alt = yaml.safe_load(rendered["cfg"].read_text())
+    alt["turn_coverage"]["envelope"]["tau2_min_turns_per_player"] = want + 3
+    alt_path = rendered["tmp"] / "config_rule_alt.yaml"
+    alt_path.write_text(yaml.safe_dump(alt, sort_keys=False))
+    alt_cfg = common.load_config(alt_path)
+    alt_table, alt_context = figures.shallow_sources_table(sub, alt_cfg)
+    assert alt_context["rule_min"] == want + 3
+    alt_csv = figures.shallow_sources_csv_frame(alt_table, alt_context)
+    assert set(alt_csv["rule_min_turns"]) == {want + 3}
+
+
+def test_shallow_sources_labels_are_drills_not_player_names(rendered):
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    sub, _ = _ss_population(rendered)
+    csv_df = pd.read_csv(rendered["ss_csv"])
+
+    # Craft a multi-turn Combine player so the labelling path is exercised on
+    # the fixture, then check the label text names DRILLS and nothing else.
+    combine_rows = sub.index[sub["setting"] == "combine"]
+    if len(combine_rows) < 3:
+        pytest.skip("fixture has too few Combine band turns to label")
+    mutated = sub.copy()
+    victim = int(mutated.loc[combine_rows[0], "nfl_id"])
+    mutated.loc[combine_rows[:3], "nfl_id"] = victim
+    combine = mutated[mutated["setting"] == "combine"]
+    table, context = figures.shallow_sources_table(mutated, cfg)
+    frame = figures.shallow_sources_plot_frame(table, context, cfg)
+    labels = figures.shallow_sources_label_frame(frame, table, context)
+    assert len(labels) >= 1, "the multi-turn player must be labelled"
+    assert (labels["turns"] >= 2).all(), "only players above one are labelled"
+    assert victim in set(labels["nfl_id"]), "the crafted player is labelled"
+    text = str(labels[labels["nfl_id"] == victim]["text"].iloc[0])
+    part = combine[combine["nfl_id"] == victim]
+    for drill in part["drill_name"].dropna().unique():
+        assert figures.shallow_drill_label(drill) in text, (
+            f"label does not name the drill {drill}")
+    assert str(victim) not in text, "a player id must never be printed"
+    assert "nfl_id" not in text
+
+    # No name reaches the CSV, the caption or the manifest.
+    names = []
+    full = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    if "player_name" in full.columns:
+        names = [str(n) for n in full["player_name"].dropna().unique()
+                 if str(n).strip()]
+    blob = csv_df.to_csv(index=False)
+    man = json.dumps(json.loads(rendered["manifest"].read_text())
+                     ["figures"][SS_KEY])
+    fig = figures.plot_shallow_sources(
+        *figures.shallow_sources_table(sub, cfg), cfg).draw()
+    import matplotlib.pyplot as plt
+    try:
+        caption = _all_text(fig)
+    finally:
+        plt.close(fig)
+    for name in names:
+        assert name not in blob, f"player name {name!r} leaked into the CSV"
+        assert name not in caption, f"player name {name!r} leaked into the image"
+        assert name not in man, f"player name {name!r} leaked into the manifest"
+
+
+def test_shallow_sources_never_averages_or_tests(rendered):
+    """The figure's own code path may count, but not summarise or test."""
+    import inspect
+    from bdb27 import figures
+    source = "\n".join(inspect.getsource(fn) for fn in (
+        figures.shallow_sources_table, figures.shallow_sources_plot_frame,
+        figures.plot_shallow_sources, figures.shallow_sources_csv_frame))
+    for banned in (".mean(", "geom_boxplot", "geom_smooth", "scipy", "ttest",
+                   "linregress", "corr("):
+        assert banned not in source, f"{banned!r} appears in the figure path"
+    csv_df = pd.read_csv(rendered["ss_csv"])
+    for banned in ("mean", "p_value", "coverage_score"):
+        assert banned not in csv_df.columns
+
+
+def test_shallow_sources_two_runs_are_byte_identical(rendered):
+    before = hashlib.sha256(rendered["ss_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["ss_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 11 differ"
+
+
+def test_shallow_sources_leaves_figures_1_to_10_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png", "ap_png", "ml_png",
+            "gh_png", "tc_png", "sw_png", "bh_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k], (
+            f"{k} changed: figure 11 must not alter figures 1-10")
+
+
+def test_shallow_sources_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][SS_KEY]
+    assert fig["figure"] == SS_KEY
+    assert fig["stamp"] == STAMP
+    assert fig["band"]["position_group"] == "DB"
+    assert fig["band"]["abs_turn_angle_deg"] == [30.0, 60.0]
+    assert set(fig["counts"]) == {"combine", "game"}
+    assert fig["rule"]["key"] == "envelope.tau2_min_turns_per_player"
+    assert fig["rule"]["value"] >= 1
+    assert fig["labels"]["player_names_used"] is False
+    for setting in ("combine", "game"):
+        block = fig["counts"][setting]
+        assert block["players_at_exactly_one"] <= block["players"]
+        assert block["turns_per_player_median"] >= 1
+        assert block["max_turns_player"] >= block["turns_per_player_median"]
+    assert fig["counts"]["combine"]["drills"], "Combine drills must be recorded"
+    assert fig["png"].endswith("fig_shallow_sources.png")
+    assert fig["csv"].endswith("fig_shallow_sources.csv")
+    assert "mean" in json.dumps(fig["not_claimed"]).lower()
+
+
+def test_shallow_sources_refuses_and_checks_can_fail(rendered):
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    good = pd.read_csv(rendered["ss_csv"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    _check_ss_csv(good, turns, cfg)  # sanity: passes on the real file
+
+    bad = good.copy()
+    bad.loc[bad.index[0], "turns"] = int(bad.loc[bad.index[0], "turns"]) + 1
+    with pytest.raises(AssertionError):
+        _check_ss_csv(bad, turns, cfg)
+
+    dup = pd.concat([good, good.iloc[[0]]], ignore_index=True)
+    with pytest.raises(AssertionError):
+        _check_ss_csv(dup, turns, cfg)
+
+    sub, _ = _ss_population(rendered)
+    empty = sub.copy()
+    empty["abs_turn_angle"] = 200.0
+    with pytest.raises(common.StageRefused):
+        figures.shallow_sources_table(empty, cfg)
+
+    only_combine = sub[sub["setting"] == "combine"].copy()
+    with pytest.raises(common.StageRefused):
+        figures.shallow_sources_table(only_combine, cfg)
+
+    empty_png = rendered["tmp"] / "empty_ss.png"
+    empty_png.write_bytes(b"")
+    with pytest.raises(AssertionError):
+        _check_png(empty_png)

@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "9776cc9e8a9ea4ba",
-  "generated_utc": "2026-11-08T18:13:47Z",
+  "config_sha": "fdfeed6b69a8547e",
+  "generated_utc": "2026-11-08T19:24:53Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -3657,6 +3657,118 @@
       ],
       "png": "outputs/figures/fig_both_hips.png",
       "csv": "outputs/figures/fig_both_hips.csv",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_shallow_sources": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_shallow_sources",
+      "title": "Where the shallow turns come from",
+      "band": {
+        "position_group": "DB",
+        "abs_turn_angle_deg": [
+          30.0,
+          60.0
+        ],
+        "rule": "valid turns, left-closed on abs_turn_angle_deg"
+      },
+      "counts": {
+        "combine": {
+          "turns": 26,
+          "players": 16,
+          "turns_per_player_median": 1.0,
+          "players_at_exactly_one": 11,
+          "max_turns_player": 4,
+          "drills": {
+            "THREE_CONE_DRILL": 14,
+            "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL": 4,
+            "TERYL_AUSTIN_DRILL_2": 2,
+            "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION": 1,
+            "BOX_DRILL": 1,
+            "FORTY_YARD_DASH": 1,
+            "SHORT_SHUTTLE": 1,
+            "TERYL_AUSTIN_DRILL_1": 1,
+            "W_DRILL": 1
+          },
+          "multi_turn_players": [
+            {
+              "nfl_id": 57163,
+              "turns": 4,
+              "drills": [
+                "THREE_CONE_DRILL",
+                "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+                "TERYL_AUSTIN_DRILL_1"
+              ]
+            },
+            {
+              "nfl_id": 56086,
+              "turns": 3,
+              "drills": [
+                "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+                "BOX_DRILL",
+                "THREE_CONE_DRILL"
+              ]
+            },
+            {
+              "nfl_id": 58430,
+              "turns": 3,
+              "drills": [
+                "THREE_CONE_DRILL"
+              ]
+            },
+            {
+              "nfl_id": 58437,
+              "turns": 3,
+              "drills": [
+                "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+                "SHORT_SHUTTLE",
+                "THREE_CONE_DRILL"
+              ]
+            },
+            {
+              "nfl_id": 57171,
+              "turns": 2,
+              "drills": [
+                "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+                "THREE_CONE_DRILL"
+              ]
+            }
+          ]
+        },
+        "game": {
+          "turns": 326,
+          "players": 30,
+          "turns_per_player_median": 9.0,
+          "players_at_exactly_one": 3,
+          "max_turns_player": 26,
+          "drills": {},
+          "multi_turn_players": []
+        }
+      },
+      "rule": {
+        "key": "envelope.tau2_min_turns_per_player",
+        "value": 2,
+        "meaning": "the capacity envelope's minimum usable turns per player before it forms a per-player estimate; carried in from the envelope, not chosen by this figure"
+      },
+      "labels": {
+        "rule": "players above label_min_turns are labelled by drill only",
+        "label_min_turns": 2,
+        "player_names_used": false
+      },
+      "claim": "All 26 Combine DB turns of 30-60\u00b0 come from 16 players, 11 of them with exactly one: the shallow turns are incidental fragments of drills built for other purposes, not a test of that turn, while games produce 326 such turns from 30 players (median 9 each).",
+      "not_claimed": [
+        "That any player can or cannot break at 30-60 degrees.",
+        "Any mean, box plot, inference test, coverage score or per-player ranking.",
+        "That the two settings are sampled alike, or any exposure-corrected comparison between the rows.",
+        "That the envelope floor is a property of these players rather than a modelling requirement."
+      ],
+      "caveats": [
+        "Sample data: one session of sample data; nothing here is a finding about the 2027 class.",
+        "Dots are drawn as counted; sparse rows are not aggregated into bars and no player with a turn in the band is dropped.",
+        "Direction, drill purpose and player names are outside this figure: only counts and drill labels appear."
+      ],
+      "png": "outputs/figures/fig_shallow_sources.png",
+      "csv": "outputs/figures/fig_shallow_sources.csv",
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }

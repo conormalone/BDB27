@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-10.
+"""Stage 06 — figures 1-11.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -31,6 +31,11 @@
                           game-only orientation check (LEFT/RIGHT only if a
                           body side can be established; SIDE A/SIDE B
                           otherwise). Descriptive counts only.
+ 11. "Where the shallow turns come from" — one dot per DB who produced at
+                          least one valid 30-60 degree turn, positioned by how
+                          many he produced, Combine above games on one shared
+                          axis, with the envelope's minimum-turns-per-player
+                          floor drawn and labelled. No mean, no box, no test.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -325,6 +330,22 @@ def main(argv=None) -> int:
         bh_payload["stamp"] = figures.STAMP
         _write_manifest(bh_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 11: where the shallow turns come from
+        ss_turns = figures.load_shallow_source_turns(turns_path)
+        ss_table, ss_context = figures.shallow_sources_table(ss_turns, cfg)
+        ss_csv = figures.shallow_sources_csv_frame(ss_table, ss_context)
+        ss_png = outdir / f"{figures.FIGURE_KEY_SHALLOW_SOURCES}.png"
+        ss_csv_path = outdir / f"{figures.FIGURE_KEY_SHALLOW_SOURCES}.csv"
+        common.write_csv(ss_csv, ss_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_SHALLOW_SOURCES})
+        ss_plot = figures.plot_shallow_sources(ss_table, ss_context, cfg)
+        figures.render_shallow_sources(ss_plot, cfg, ss_png)
+        ss_payload = figures.shallow_sources_manifest_payload(
+            ss_table, ss_context, cfg)
+        ss_payload["stamp"] = figures.STAMP
+        _write_manifest(ss_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -371,7 +392,15 @@ def main(argv=None) -> int:
                         f"{bh_context['check']['chirality']['n_plays']} "
                         f"route_carried="
                         f"{len(bh_context['check']['route']['families_carried'])} "
-                        f"resolved={bh_context['check']['resolved']} ")
+                        f"resolved={bh_context['check']['resolved']}; "
+                        f"{figures.FIGURE_KEY_SHALLOW_SOURCES}: "
+                        f"combine={ss_context['totals']['combine']} "
+                        f"({ss_context['players']['combine']} players, "
+                        f"{ss_context['at_one']['combine']} at 1) "
+                        f"game={ss_context['totals']['game']} "
+                        f"({ss_context['players']['game']} players, median "
+                        f"{ss_context['medians']['game']:g}) "
+                        f"rule={ss_context['rule_min']} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -381,6 +410,7 @@ def main(argv=None) -> int:
           f"{tc_png.name}, {tc_csv_path.name}, "
           f"{sw_png.name}, {sw_csv_path.name}, "
           f"{bh_png.name}, {bh_csv_path.name}, "
+          f"{ss_png.name}, {ss_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -397,7 +427,11 @@ def main(argv=None) -> int:
           f"players over {sw_context['n_turns']} turns; figure 10 split "
           f"{bh_context['totals']['combine']}"
           f"/{bh_context['totals']['game']} turns, labels "
-          f"{bh_context['labels']['positive']}/{bh_context['labels']['negative']}"
+          f"{bh_context['labels']['positive']}/{bh_context['labels']['negative']};"
+          f" figure 11 dots "
+          f"{ss_context['totals']['combine']} + {ss_context['totals']['game']} "
+          f"turns from {ss_context['players']['combine']} + "
+          f"{ss_context['players']['game']} players"
           f")")
     return 0
 

@@ -44,6 +44,7 @@ from plotnine import (
     geom_segment,
     geom_text,
     geom_tile,
+    geom_vline,
     ggplot,
     labs,
     position_dodge,
@@ -5477,4 +5478,566 @@ def both_hips_manifest_payload(table: pd.DataFrame, context: dict,
         ],
         "png": f"outputs/figures/{FIGURE_KEY_BOTH_HIPS}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_BOTH_HIPS}.csv",
+    }
+
+
+# ------------- figure 11: where the shallow turns come from
+#: Added at Conor's request (2026-11-08); not derived from a TASK.md line.
+#:
+#: The 30-60 degree DB band is dominated by Combine turns, and that reads like
+#: coverage of the band. This figure tests the reading by counting PLAYERS: one
+#: dot per DB who produced at least one valid turn in the band, x = that
+#: player's own count, two rows (Combine above, games below) on one shared axis.
+#:
+#: The shape is the argument, so it is drawn unasveraged: no mean, no box, no
+#: bar, no test. If the Combine row piles up on 1, the turns are incidental
+#: fragments of drills built for other things, not a test of this turn. If it
+#: does not, the figure says that instead — the counts are recomputed from the
+#: turn table at render time and nothing is hard-coded.
+#:
+#: Players above ``label_min_turns`` are labelled by the DRILLS that carried
+#: their turns. A player name never enters the figure, the CSV or the manifest.
+#:
+#: The vertical rule is read from ``envelope.tau2_min_turns_per_player`` and
+#: labelled on the image, so it reads as the envelope's own modelling floor
+#: rather than as a threshold this figure chose.
+FIGURE_KEY_SHALLOW_SOURCES = "fig_shallow_sources"
+
+#: Figure 11 reads the drill label because the labels ARE the finding: a
+#: multi-turn player is named by the drills that carried his turns.
+SHALLOW_SOURCE_COLUMNS = [
+    "setting",
+    "abs_turn_angle",
+    "position_group",
+    "nfl_id",
+    "drill_name",
+    "valid",
+]
+
+
+def load_shallow_source_turns(path: Path) -> pd.DataFrame:
+    """Read the columns figure 11 needs (drill labels included)."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the per-turn table is absent ({path}) — run 02_turns first")
+    df = pd.read_parquet(path, columns=SHALLOW_SOURCE_COLUMNS)
+    if df.empty:
+        raise common.StageRefused(f"{STAGE}: turns.parquet is empty")
+    return df
+
+#: Readable drill names. The raw ``drill_name`` stays in the CSV; this mapping
+#: only changes how a drill is written on the image, never which drill a turn
+#: belongs to.
+DRILL_DISPLAY = {
+    "THREE_CONE_DRILL": "3-cone",
+    "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL": "back-pedal 90°",
+    "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION": "back-pedal 45°",
+    "BACK_PEDAL_AND_REACT": "back-pedal react",
+    "TERYL_AUSTIN_DRILL_1": "Teryl Austin 1",
+    "TERYL_AUSTIN_DRILL_2": "Teryl Austin 2",
+    "BOX_DRILL": "box",
+    "SHORT_SHUTTLE": "short shuttle",
+    "W_DRILL": "W",
+    "FORTY_YARD_DASH": "40-yd dash",
+    "GAUNTLET_DRILL": "gauntlet",
+}
+
+
+def shallow_drill_label(name: str) -> str:
+    """A drill's display name; an unmapped drill is title-cased, not dropped."""
+    raw = str(name)
+    if raw in DRILL_DISPLAY:
+        return DRILL_DISPLAY[raw]
+    return " ".join(part.capitalize() for part in raw.split("_"))
+
+
+def shallow_sources_table(turns: pd.DataFrame,
+                          cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """One row per player per setting: his own count of turns in the band."""
+    block = "figures.shallow_sources"
+    position = str(cfg.get(f"{block}.position_group"))
+    settings = [str(s) for s in cfg.get(f"{block}.settings")]
+    low, high = (float(x) for x in cfg.get(f"{block}.angle_band_deg"))
+    rule_key = str(cfg.get(f"{block}.rule_key"))
+    rule_min = int(cfg.get(rule_key))
+    label_min = int(cfg.get(f"{block}.label_min_turns"))
+    if high <= low:
+        raise common.StageRefused(
+            f"{STAGE}: figures.shallow_sources.angle_band_deg must be increasing")
+    if rule_min < 1:
+        raise common.StageRefused(
+            f"{STAGE}: {rule_key} is {rule_min}; a turns-per-player floor below "
+            "1 cannot be drawn as a rule on this axis")
+    missing = [c for c in ("setting", "abs_turn_angle", "position_group",
+                           "nfl_id", "drill_name", "valid")
+               if c not in turns.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet has no {missing} column(s); the per-player "
+            "counts cannot be drawn")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    mask = (valid
+            & (turns["position_group"] == position)
+            & turns["setting"].isin(settings)
+            & (angle >= low) & (angle < high))
+    df = turns[mask].copy()
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} turns in [{low:g}, {high:g}) — "
+            "nothing to count")
+
+    rows: list[dict] = []
+    drills: dict[str, dict[str, int]] = {}
+    totals: dict[str, int] = {}
+    players: dict[str, int] = {}
+    medians: dict[str, float] = {}
+    at_one: dict[str, int] = {}
+    max_turns: dict[str, int] = {}
+    for setting in settings:
+        part = df[df["setting"] == setting]
+        if part.empty:
+            raise common.StageRefused(
+                f"{STAGE}: no valid {position} turns in [{low:g}, {high:g}) for "
+                f"setting {setting!r} — a two-row figure cannot be drawn with "
+                "one empty row")
+        total = int(len(part))
+        per_player = part.groupby("nfl_id").size().sort_index()
+        counts = counts_map(part, setting)
+        drills[setting] = dict(
+            part["drill_name"].dropna().astype(str).value_counts().items()
+        ) if setting == "combine" else {}
+        totals[setting] = total
+        players[setting] = int(per_player.size)
+        medians[setting] = float(per_player.median())
+        at_one[setting] = int((per_player == 1).sum())
+        max_turns[setting] = int(per_player.max())
+        for nfl_id, n in per_player.items():
+            sub = part[part["nfl_id"] == nfl_id]
+            names: list[str] = []
+            written = ""
+            n_drills = 0
+            if setting == "combine":
+                tally = sub["drill_name"].dropna().astype(str).value_counts()
+                n_drills = int(tally.size)
+                names = [str(k) for k in tally.index]
+                written = ";".join(names)
+            rows.append({
+                "setting": setting,
+                "setting_label": (COMBINE_LABEL if setting == "combine"
+                                  else GAME_LABEL),
+                "nfl_id": int(nfl_id),
+                "turns": int(n),
+                "share_of_setting_turns": int(n) / total,
+                "drill_names": written,
+                "drill_counts": ";".join(f"{k}={int(v)}" for k, v in
+                                         (counts.get(int(nfl_id), {}).items())
+                                         ) if setting == "combine" else "",
+                "n_drills": n_drills if setting == "combine" else np.nan,
+                "labelled_by_drill": (setting == "combine"
+                                      and int(n) >= label_min),
+                "turns_setting": total,
+                "n_players_setting": int(per_player.size),
+                "median_turns_per_player": float(per_player.median()),
+                "at_one_turns": int((per_player == 1).sum()),
+                "max_turns_player": int(per_player.max()),
+                "angle_low_deg": low,
+                "angle_high_deg": high,
+                "rule_min_turns": rule_min,
+                "rule_key": rule_key,
+                "position_group": position,
+            })
+    table = pd.DataFrame(rows)
+
+    if int(table["turns"].sum()) != int(len(df)):
+        raise ValueError(
+            f"{STAGE}: per-player counts do not reconstruct the turn population")
+    for setting in settings:
+        part = table[table["setting"] == setting]
+        if int(part["turns"].sum()) != totals[setting]:
+            raise ValueError(
+                f"{STAGE}: {setting} per-player turns do not sum to its total")
+        if int(part["n_players_setting"].iloc[0]) != players[setting]:
+            raise ValueError(f"{STAGE}: {setting} player count is inconsistent")
+
+    context = {
+        "position": position,
+        "settings": settings,
+        "angle_low": low,
+        "angle_high": high,
+        "rule_min": rule_min,
+        "rule_key": rule_key,
+        "label_min": label_min,
+        "totals": totals,
+        "players": players,
+        "medians": medians,
+        "at_one": at_one,
+        "max_turns": max_turns,
+        "drills": drills,
+        "n_turns": int(len(df)),
+        "n_players": int(df["nfl_id"].nunique()),
+        "x_max": int(max(max_turns.values())),
+    }
+    return table, context
+
+
+def counts_map(part: pd.DataFrame, setting: str) -> dict[int, dict[str, int]]:
+    """Per-player drill composition, Combine only (games carry no drills)."""
+    out: dict[int, dict[str, int]] = {}
+    if setting != "combine":
+        return out
+    for nfl_id, sub in part.groupby("nfl_id"):
+        tally = sub["drill_name"].dropna().astype(str).value_counts()
+        out[int(nfl_id)] = {str(k): int(v) for k, v in tally.items()}
+    return out
+
+
+def _source_ticks(x_max: int) -> list[float]:
+    """Readable x breaks that always include 1 and the rule line's 2."""
+    if x_max <= 12:
+        return [float(v) for v in range(1, max(2, x_max) + 1)]
+    ticks = [1.0, 2.0, 5.0]
+    step = 5 if x_max <= 30 else 25
+    v = 10
+    while v <= x_max:
+        ticks.append(float(v))
+        v += step
+    if float(x_max) - ticks[-1] >= 3:
+        ticks.append(float(x_max))
+    return ticks
+
+
+def shallow_sources_plot_frame(table: pd.DataFrame, context: dict,
+                               cfg: common.Config) -> pd.DataFrame:
+    """Dot positions: row by setting, deterministic vertical jitter by count."""
+    block = "figures.shallow_sources"
+    half = float(cfg.get(f"{block}.jitter_half"))
+    step = float(cfg.get(f"{block}.jitter_step"))
+    frame = table.copy()
+    frame["row"] = frame["setting"].map({"combine": 1.0, "game": 0.0})
+    if frame["row"].isna().any():
+        raise common.StageRefused(
+            f"{STAGE}: figures.shallow_sources.settings must be combine/game")
+    frame["y"] = frame["row"]
+    for _, group in frame.groupby(["setting", "turns"], sort=False):
+        ordered = group.sort_values("nfl_id")
+        n = len(ordered)
+        offsets = [max(-half, min(half, (i - (n - 1) / 2.0) * step))
+                   for i in range(n)]
+        for idx, off in zip(ordered.index, offsets):
+            frame.loc[idx, "y"] = float(frame.loc[idx, "row"]) + off
+    return frame
+
+
+def shallow_sources_label_frame(frame: pd.DataFrame, table: pd.DataFrame,
+                                context: dict) -> pd.DataFrame:
+    """Anchors for the drill labels: above label_min turns, Combine only.
+
+    The anchor x sits in the empty middle of the panel and a leader line joins
+    it to the dot, so the label's position is never read as a value.
+    """
+    lab = frame[(frame["setting"] == "combine")
+                & (frame["turns"] >= context["label_min"])].copy()
+    if lab.empty:
+        return pd.DataFrame(columns=["nfl_id", "turns", "y", "x_anchor",
+                                     "y_anchor", "text"])
+    lab = lab.sort_values(["turns", "nfl_id"], ascending=[False, True])
+    n = len(lab)
+    top, bottom = 0.90, 0.26
+    ys = np.linspace(top, bottom, n) if n > 1 else np.array([(top + bottom) / 2])
+    x_max = float(context["x_max"])
+    anchor_x = min(8.0, max(4.2, x_max * 0.26))
+    texts = []
+    for _, row in lab.iterrows():
+        parts = []
+        for item in str(row["drill_counts"]).split(";"):
+            if not item:
+                continue
+            name, _, count = item.partition("=")
+            label = shallow_drill_label(name)
+            parts.append(f"{label} ×{count}" if count and count != "1"
+                         else label)
+        texts.append(" · ".join(parts) if parts else "drill not recorded")
+    lab = lab.reset_index(drop=True)
+    lab["x_anchor"] = anchor_x
+    lab["y_anchor"] = ys
+    lab["text"] = texts
+    return lab[["nfl_id", "turns", "y", "x_anchor", "y_anchor", "text"]]
+
+
+def _shallow_drill_sentence(context: dict) -> str:
+    """The Combine drill breakdown, as counts rather than adjectives."""
+    tally = context["drills"].get("combine", {})
+    if not tally:
+        return "no drill names are recorded for them"
+    many = [(shallow_drill_label(k), int(v)) for k, v in tally.items() if v > 1]
+    ones = [shallow_drill_label(k) for k, v in tally.items() if v == 1]
+    parts = [f"{v} in {k}" for k, v in many]
+    if ones:
+        if len(ones) == 1:
+            parts.append(f"1 in {ones[0]}")
+        else:
+            parts.append("1 each in " + ", ".join(ones[:-1]) + " and " + ones[-1])
+    return "; ".join(parts)
+
+
+def _shallow_multi_sentence(table: pd.DataFrame, label_min: int) -> str:
+    """Which drills carried the players who produced more than one turn."""
+    multi = table[(table["setting"] == "combine")
+                  & (table["turns"] >= label_min)].sort_values(
+        ["turns", "nfl_id"], ascending=[False, True])
+    if multi.empty:
+        return ("No Combine player produced more than one turn in this band, "
+                "so there is nothing to label beyond the dots themselves.")
+    parts = []
+    for _, row in multi.iterrows():
+        drills = [shallow_drill_label(d) for d in
+                  str(row["drill_names"]).split(";") if d]
+        parts.append(f"{int(row['turns'])} turns from {', '.join(drills)}")
+    return ("The " + str(len(multi)) + " Combine players with more than one "
+            "turn, labelled by drill and not by name: " + "; ".join(parts) + ".")
+
+
+def _num(value: float) -> str:
+    """1 -> '1', 9.0 -> '9', 8.5 -> '8.5' (never a spurious .0 on a count)."""
+    value = float(value)
+    return str(int(value)) if value.is_integer() else f"{value:g}"
+
+
+def plot_shallow_sources(table: pd.DataFrame, context: dict,
+                         cfg: common.Config) -> ggplot:
+    """Two rows of dots on one shared axis, counts printed, no averaging."""
+    block = "figures.shallow_sources"
+    frame = shallow_sources_plot_frame(table, context, cfg)
+    labels = shallow_sources_label_frame(frame, table, context)
+    low, high = context["angle_low"], context["angle_high"]
+    c_tot, c_pl = context["totals"]["combine"], context["players"]["combine"]
+    g_tot, g_pl = context["totals"]["game"], context["players"]["game"]
+    c_one = context["at_one"]["combine"]
+    rule = int(context["rule_min"])
+    x_max = int(context["x_max"])
+    label_x = min(8.0, max(4.2, x_max * 0.26))
+    right = float(x_max) * 0.97
+
+    summaries = pd.DataFrame([
+        {"x": right, "y": 1.40, "setting": "combine",
+         "text": f"{c_tot} turns · {c_pl} players · {c_one} at exactly 1"},
+        {"x": right, "y": -0.48, "setting": "game",
+         "text": f"{g_tot} turns · {g_pl} players · median "
+                 f"{_num(context['medians']['game'])}"},
+    ])
+
+    title = "Where the shallow turns come from"
+    subtitle = (
+        f"Valid DB turns of {low:g}–{high:g}°: one dot per player who produced "
+        f"at least one, x = how many he produced. Combine row above (one "
+        "session per player), games below. Nothing is averaged.")
+
+    caption_lines = [
+        STAMP,
+        ("FINDING, AS MEASURED. The Combine produces "
+         f"{c_tot} valid {context['position']} turns of {low:g}–{high:g}° in "
+         f"this sample, from {c_pl} players: {c_one} of those {c_pl} produced "
+         f"exactly one, and the largest single count is "
+         f"{context['max_turns']['combine']}. Games produce {g_tot} such turns "
+         f"from {g_pl} players, a median of {_num(context['medians']['game'])} "
+         f"per player (max {context['max_turns']['game']})."),
+        ("WHAT THIS SHOWS. The shallow Combine turns are incidental fragments "
+         f"of drills designed for something else. All {c_tot} sit inside "
+         f"drills built for another purpose — {_shallow_drill_sentence(context)}"
+         f" — and none of those drills is a test of a {low:g}–{high:g}° break "
+         "at speed. The turn is there because a body was already rotating "
+         "through that angle on the way to a different task, not because the "
+         f"drill asked for it. The game row is what the band looks like when "
+         f"the turn is the point: {g_pl} players, {g_tot} turns, median "
+         f"{_num(context['medians']['game'])} each."),
+        ("LABELLED BY DRILL, NEVER BY NAME. " + _shallow_multi_sentence(
+             table, int(context["label_min"]))
+         + " No player name appears in this figure, its CSV or its manifest."),
+        (f"THE RULE LINE. The vertical line at {rule} turns is "
+         f"`{context['rule_key']}` — the minimum number of usable turns the "
+         "capacity envelope requires before it will form a per-player estimate "
+         "at all. It is a modelling floor carried in from the envelope, not a "
+         "threshold chosen here, and not a finding about these players. "
+         "Everything to its left is a player the envelope cannot estimate."),
+        ("DOTS, NOT BARS. " + f"{c_one} of the Combine's {c_pl} dots sit on 1 "
+         "and the row is left that way: no aggregation into bars, no player "
+         "with a turn in this band dropped, no smoothing. Sparse is the "
+         "measurement, not a presentation problem."),
+        ("WHAT IS NOT HERE. No mean, no box plot, no inference test, no "
+         "coverage score, no per-player ranking. A dot at 1 is one incidental "
+         "turn, not one measured ability, and no exposure correction is "
+         "applied: the Combine row is one session per player, the game row is "
+         "whatever snaps the sample contains, and the two rows are not "
+         "sampled alike."),
+        (f"Sample data: one session of sample data. Counts are recomputed at "
+         f"render time from outputs/turns/turns.parquet (valid turns); every "
+         f"value shown is in outputs/figures/{FIGURE_KEY_SHALLOW_SOURCES}.csv. "
+         "This says what the Combine does not test, not what any player can "
+         "do."),
+    ]
+    wrapped: list[str] = []
+    for line in caption_lines:
+        wrapped.extend(_wrap_text(line, 150).split("\n"))
+    caption = "\n".join(wrapped)
+
+    plot = (
+        ggplot(frame, aes(x="turns", y="y", colour="setting"))
+        + geom_vline(xintercept=float(rule), linetype="dashed",
+                     colour="#555555", size=0.5)
+        + geom_segment(data=labels,
+                       mapping=aes(x="turns", y="y", xend="x_anchor",
+                                   yend="y_anchor"),
+                       inherit_aes=False, colour="#9A9A9A", size=0.3)
+        + geom_point(size=3.0, alpha=0.9, stroke=0)
+        + geom_text(data=labels,
+                    mapping=aes(x="x_anchor", y="y_anchor", label="text"),
+                    inherit_aes=False, ha="left", va="center", size=3.4,
+                    colour="#1A1A1A")
+        + geom_text(data=summaries,
+                    mapping=aes(x="x", y="y", label="text"),
+                    inherit_aes=False, ha="right", va="center", size=3.6,
+                    fontweight="bold", show_legend=False,
+                    colour=PALETTE["combine"])
+        + geom_text(data=pd.DataFrame([{
+                        "x": float(rule) + 0.35, "y": 1.62,
+                        "text": (f"envelope floor: {rule} turns per player "
+                                 f"({context['rule_key']})")}]),
+                    mapping=aes(x="x", y="y", label="text"),
+                    inherit_aes=False, ha="left", va="center", size=3.1,
+                    colour="#444444")
+        + scale_colour_manual(values=PALETTE, labels=[COMBINE_LABEL, GAME_LABEL],
+                              name=None)
+        + scale_x_continuous(limits=(0.3, float(x_max) + 0.8),
+                             breaks=_source_ticks(x_max),
+                             expand=(0.0, 0.0))
+        + scale_y_continuous(limits=(-0.72, 1.82), breaks=[0.0, 1.0],
+                             labels=["Games", "Combine\n(one session)"],
+                             expand=(0.0, 0.0))
+        + labs(title=title, subtitle=subtitle, caption=caption,
+               x="Turns this player produced in the band (count)", y=None)
+        + theme_bw(base_size=9)
+        + theme(
+            figure_size=(float(cfg.get(f"{block}.width_in")),
+                         float(cfg.get(f"{block}.height_in"))),
+            panel_background=element_rect(fill="#EBEBEB", colour=None),
+            panel_grid_major=element_line(colour="white", linewidth=0.6),
+            panel_grid_minor=element_blank(),
+            panel_border=element_rect(colour="#B3B3B3", linewidth=0.4),
+            plot_title=element_text(size=15, weight="bold"),
+            plot_subtitle=element_text(size=8.6, colour="#333333"),
+            plot_caption=element_text(size=5.9, colour="#333333", ha="left",
+                                      linespacing=1.30),
+            axis_title_x=element_text(size=8.4, colour="#333333"),
+            axis_text_x=element_text(size=8.4, colour="#222222"),
+            axis_text_y=element_text(size=8.6, colour="#222222"),
+            legend_position="bottom",
+            legend_title=element_blank(),
+            legend_key=element_rect(fill="#EBEBEB", colour=None),
+        )
+    )
+    return plot
+
+
+def render_shallow_sources(plot: ggplot, cfg: common.Config,
+                           out_png: Path) -> Path:
+    """Draw and save figure 11 once, fixed metadata for byte-identical runs."""
+    dpi = int(cfg.get("figures.shallow_sources.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig = plot.draw()
+    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def shallow_sources_csv_frame(table: pd.DataFrame, context: dict) -> pd.DataFrame:
+    """One row per player per setting. No name column, and no name in a value."""
+    out = table.copy()
+    columns = ["setting", "setting_label", "nfl_id", "turns",
+               "share_of_setting_turns", "drill_names", "drill_counts",
+               "n_drills", "labelled_by_drill", "turns_setting",
+               "n_players_setting", "median_turns_per_player", "at_one_turns",
+               "max_turns_player", "angle_low_deg", "angle_high_deg",
+               "rule_min_turns", "rule_key", "position_group"]
+    return out[columns].reset_index(drop=True)
+
+
+def shallow_sources_manifest_payload(table: pd.DataFrame, context: dict,
+                                     cfg: common.Config) -> dict:
+    counts = {}
+    for setting in context["settings"]:
+        part = table[table["setting"] == setting]
+        counts[setting] = {
+            "turns": context["totals"][setting],
+            "players": context["players"][setting],
+            "turns_per_player_median": context["medians"][setting],
+            "players_at_exactly_one": context["at_one"][setting],
+            "max_turns_player": context["max_turns"][setting],
+            "drills": context["drills"][setting],
+            "multi_turn_players": [
+                {"nfl_id": int(row["nfl_id"]), "turns": int(row["turns"]),
+                 "drills": [d for d in str(row["drill_names"]).split(";") if d]}
+                for _, row in part.sort_values(
+                    ["turns", "nfl_id"], ascending=[False, True]).iterrows()
+                if int(row["turns"]) >= context["label_min"]
+            ] if setting == "combine" else [],
+        }
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_SHALLOW_SOURCES,
+        "title": "Where the shallow turns come from",
+        "band": {
+            "position_group": context["position"],
+            "abs_turn_angle_deg": [context["angle_low"], context["angle_high"]],
+            "rule": "valid turns, left-closed on abs_turn_angle_deg",
+        },
+        "counts": counts,
+        "rule": {
+            "key": context["rule_key"],
+            "value": int(context["rule_min"]),
+            "meaning": ("the capacity envelope's minimum usable turns per "
+                        "player before it forms a per-player estimate; carried "
+                        "in from the envelope, not chosen by this figure"),
+        },
+        "labels": {
+            "rule": "players above label_min_turns are labelled by drill only",
+            "label_min_turns": int(context["label_min"]),
+            "player_names_used": False,
+        },
+        "claim": (
+            f"All {context['totals']['combine']} Combine {context['position']} "
+            f"turns of {context['angle_low']:g}-{context['angle_high']:g}° come "
+            f"from {context['players']['combine']} players, "
+            f"{context['at_one']['combine']} of them with exactly one: the "
+            "shallow turns are incidental fragments of drills built for other "
+            "purposes, not a test of that turn, while games produce "
+            f"{context['totals']['game']} such turns from "
+            f"{context['players']['game']} players (median "
+            f"{_num(context['medians']['game'])} each)."),
+        "not_claimed": [
+            "That any player can or cannot break at 30-60 degrees.",
+            "Any mean, box plot, inference test, coverage score or per-player "
+            "ranking.",
+            "That the two settings are sampled alike, or any exposure-corrected "
+            "comparison between the rows.",
+            "That the envelope floor is a property of these players rather than "
+            "a modelling requirement.",
+        ],
+        "caveats": [
+            ("Sample data: one session of sample data; nothing here is a "
+             "finding about the 2027 class."),
+            ("Dots are drawn as counted; sparse rows are not aggregated into "
+             "bars and no player with a turn in the band is dropped."),
+            ("Direction, drill purpose and player names are outside this "
+             "figure: only counts and drill labels appear."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_SHALLOW_SOURCES}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_SHALLOW_SOURCES}.csv",
     }
