@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "a18ee056682fc54e",
-  "generated_utc": "2026-11-08T15:55:52Z",
+  "config_sha": "675f834078b483c9",
+  "generated_utc": "2026-11-08T16:55:55Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -3333,6 +3333,89 @@
         "version": 2,
         "reason": "Figure 8 originally plotted speed_retention (exit \u00f7 entry), which is above 1 in every band by construction and shows gains, not costs. Panel (a) now plots apex_retention (apex \u00f7 entry), the speed actually given up at the plant."
       },
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_stopwatch": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_stopwatch",
+      "title": "Same stopwatch, different turn: what the published three-cone time compresses",
+      "match": {
+        "rule": "nfl_id join to files.combine_results three_cone (not null); turns from outputs/turns/turns.parquet where drill_name contains 'THREE_CONE', setting == 'combine', position_group == 'DB', valid == true",
+        "join_key": "nfl_id",
+        "drill_match": "THREE_CONE",
+        "setting": "combine",
+        "position_group": "DB",
+        "n_players_in_turns": 24,
+        "n_matched_players": 24,
+        "n_unmatched_players": 0,
+        "min_players": 20,
+        "gate": "PASSED"
+      },
+      "n_players": 24,
+      "n_turns": 98,
+      "spread": {
+        "three_cone_s": [
+          6.62,
+          7.26
+        ],
+        "abs_turn_angle_deg": [
+          48.26528549194336,
+          215.10133361816406
+        ],
+        "entry_speed_yd_s": [
+          2.5555551052093506,
+          5.41215181350708
+        ],
+        "turns_per_player": [
+          2,
+          11
+        ],
+        "n_players_with_multiple_attempts": 7,
+        "n_players_sharing_a_time": 4
+      },
+      "panel_a": {
+        "encoding": "one row per player sorted by published three-cone time, one dot per detected turn on the angle axis; light rules at the reporting band edges only",
+        "bands_reference": "figures.hole.bands.turn_angle_deg"
+      },
+      "panel_b": {
+        "encoding": "entry speed of each detected turn against the same published time; min-max line per player; no fit",
+        "entry_speed_floor": {
+          "config_key": "detector.speed_floor_combine",
+          "value_yd_s": 2.5
+        }
+      },
+      "pair_illustration": {
+        "tolerance_s": 0.01,
+        "delta_s": 0.009999999999999787,
+        "a": {
+          "nfl_id": 55921,
+          "three_cone_s": 7.09,
+          "n_turns": 11,
+          "n_attempts": 2
+        },
+        "b": {
+          "nfl_id": 58405,
+          "three_cone_s": 7.1,
+          "n_turns": 8,
+          "n_attempts": 2
+        },
+        "status": "illustration only, never evidence"
+      },
+      "claim": "The published three-cone time is one scalar; the drills behind it contained visibly different turns at different entry speeds, so the metric cannot distinguish them by construction.",
+      "not_claimed": [
+        "That three-cone time fails to predict turn angle or entry speed.",
+        "That any difference between players is a difference in ability.",
+        "Any correlation, R\u00b2, regression, p-value or fitted curve."
+      ],
+      "caveats": [
+        "Sample data: one session of sample data; nothing here is a finding about the 2027 class.",
+        "Descriptive only: the figure shows what the metric compresses, not how well it predicts. With this many matched players an association test would be underpowered, so none is run.",
+        "Turns are pooled across attempts within the drill; the attempt count per player is printed in the CSV and stated in the caption.",
+        "A player's row is the detector's own valid turns, not a scout's reading of the drill; detection limits apply as in every other figure."
+      ],
+      "png": "outputs/figures/fig_stopwatch.png",
+      "csv": "outputs/figures/fig_stopwatch.csv",
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }

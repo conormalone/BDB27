@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-8.
+"""Stage 06 — figures 1-9.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -20,6 +20,11 @@
                           beneath so the substitution is visible. Exit ÷ entry
                           retention is a footnote only: it is above 1 by
                           construction.
+  9. "Same stopwatch, different turn" — the published three-cone time is one
+                          scalar; every turn the detector found inside each
+                          matched player's three-cone is drawn against that
+                          time, with those turns' entry speeds beside it.
+                          Descriptive only: no association statistic.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -35,6 +40,8 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+import pandas as pd
 
 from bdb27 import common, figures
 
@@ -242,6 +249,23 @@ def main(argv=None) -> int:
         tc_payload["stamp"] = figures.STAMP
         _write_manifest(tc_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 9: same stopwatch, different turn
+        combine_results = pd.read_csv(cfg.raw_file(args.mode, "combine_results"))
+        sw_table, sw_context = figures.stopwatch_table(
+            drill_turns, combine_results, cfg)
+        sw_csv = figures.stopwatch_csv_frame(sw_table, sw_context)
+        sw_png = outdir / f"{figures.FIGURE_KEY_STOPWATCH}.png"
+        sw_csv_path = outdir / f"{figures.FIGURE_KEY_STOPWATCH}.csv"
+        common.write_csv(sw_csv, sw_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_STOPWATCH})
+        sw_fig = figures.plot_stopwatch(sw_table, sw_context, cfg)
+        figures.render_stopwatch(sw_fig, cfg, sw_png)
+        sw_payload = figures.stopwatch_manifest_payload(
+            sw_table, sw_context, cfg)
+        sw_payload["stamp"] = figures.STAMP
+        _write_manifest(sw_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -271,8 +295,11 @@ def main(argv=None) -> int:
                         f"{figures.FIGURE_KEY_TURN_COST}: "
                         f"drawn={tc_context['n_drawn']} "
                         f"insufficient={len(tc_context['insufficient'])} "
-                        f"floor_removed={tc_context['n_below_speed_floor']} ")
-
+                        f"floor_removed={tc_context['n_below_speed_floor']}; "
+                        f"{figures.FIGURE_KEY_STOPWATCH}: "
+                        f"players={sw_context['n_players']} "
+                        f"turns={sw_context['n_turns']} "
+                        f"gate={sw_context['min_players']} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -280,6 +307,7 @@ def main(argv=None) -> int:
           f"{ml_png.name}, {ml_csv_path.name}, "
           f"{gh_png.name}, {gh_csv_path.name}, "
           f"{tc_png.name}, {tc_csv_path.name}, "
+          f"{sw_png.name}, {sw_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -291,7 +319,9 @@ def main(argv=None) -> int:
           f"components at the boundary; figure 7 headline "
           f"{gh_context['headline']}; figure 8 drew {tc_context['n_drawn']} "
           f"retention values with {len(tc_context['insufficient'])} band(s) "
-          f"marked insufficient)")
+          f"marked insufficient; figure 9 matched "
+          f"{sw_context['n_players']} of {sw_context['n_via_turns']} three-cone "
+          f"players over {sw_context['n_turns']} turns)")
     return 0
 
 

@@ -65,6 +65,32 @@ DRILL_TOTALS = {
     "FORTY_YARD_DASH": 1,
 }
 
+#: Figure 9 fixture: the 98 THREE_CONE_DRILL rows are reassigned to these 24
+#: players, and a combine_results.csv carrying one published time each is
+#: written beside the fixture config. Counts sum to 98 and span 1-11 turns, so
+#: the per-player reconcile and the feasibility gate are both exercised on real
+#: structure rather than on one turn each. Times include near-identical pairs.
+#: The ids MUST be existing fixture players: figure 3's projection counts the
+#: distinct Combine DBs, and inventing 24 new ones would silently change it from
+#: 122 x 6 reps to 146 x 6 reps. Reusing 24 of the 122 keeps every other figure
+#: exactly as it was.
+STOPWATCH_IDS = list(range(1001, 1025))
+STOPWATCH_COUNTS = [11, 8, 8, 6, 6, 5, 5, 5, 4, 4, 4, 4, 4, 4, 3, 3,
+                    2, 2, 2, 2, 2, 2, 1, 1]
+STOPWATCH_TIMES = [6.62, 6.63, 6.71, 6.72, 6.75, 6.81, 6.82, 6.83,
+                   6.88, 6.88, 6.90, 6.99, 7.00, 7.01, 7.05, 7.06,
+                   7.08, 7.09, 7.10, 7.12, 7.12, 7.20, 7.26, 7.30]
+
+
+def _assign_stopwatch_ids(frame: pd.DataFrame) -> None:
+    """Give every synthetic three-cone turn a player who has a published time."""
+    mask = frame["drill_name"].eq("THREE_CONE_DRILL")
+    assert int(mask.sum()) == sum(STOPWATCH_COUNTS)
+    labels: list[int] = []
+    for player_id, count in zip(STOPWATCH_IDS, STOPWATCH_COUNTS):
+        labels.extend([player_id] * count)
+    frame.loc[mask, "nfl_id"] = labels
+
 
 def _drill_sequence() -> list[str]:
     """One drill label per Combine turn, shuffled with a fixed seed."""
@@ -124,7 +150,9 @@ def _turns_frame() -> pd.DataFrame:
                     "valid": True,
                 })
     assert k == sum(DRILL_TOTALS.values())
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+    _assign_stopwatch_ids(frame)
+    return frame
 
 
 def _extra_positions_frame() -> pd.DataFrame:
@@ -231,6 +259,10 @@ def _write_config(tmp: Path, *, edges=None) -> Path:
     pd.concat([_turns_frame(), _extra_positions_frame()], ignore_index=True
               ).to_parquet(tmp / "outputs" / "turns" / "turns.parquet",
                            index=False)
+    raw = tmp / "data" / "raw"
+    raw.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"nfl_id": STOPWATCH_IDS, "three_cone": STOPWATCH_TIMES}
+                 ).to_csv(raw / "combine_results.csv", index=False)
     _variance_frame().to_csv(
         tmp / "outputs" / "envelope" / "variance_components.csv", index=False)
     path = tmp / "config.yaml"
@@ -310,6 +342,8 @@ def rendered(tmp_path_factory):
             "gh_csv": out / "fig_gap_honest.csv",
             "tc_png": out / "fig_turn_cost.png",
             "tc_csv": out / "fig_turn_cost.csv",
+            "sw_png": out / "fig_stopwatch.png",
+            "sw_csv": out / "fig_stopwatch.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -804,7 +838,7 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_before_after", "fig_drill_schematic",
                                    "fig_all_positions",
                                    "fig_measurement_limits", "fig_gap_honest",
-                                   "fig_turn_cost"}
+                                   "fig_turn_cost", "fig_stopwatch"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1333,12 +1367,12 @@ def test_measurement_limits_detector_numbers_have_a_stored_source():
         assert token in gate, f"{token} missing from the audit gate"
 
 
-def test_measurement_limits_stage_06_renders_all_eight(rendered):
+def test_measurement_limits_stage_06_renders_all_nine(rendered):
     man = json.loads(rendered["manifest"].read_text())
     assert set(man["figures"]) == {
         "fig_the_hole", "fig_drill_coverage", "fig_before_after",
         "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits",
-        "fig_gap_honest", "fig_turn_cost"}
+        "fig_gap_honest", "fig_turn_cost", "fig_stopwatch"}
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -1973,3 +2007,198 @@ def test_turn_cost_checks_can_fail(rendered):
     empty.write_bytes(b"")
     with pytest.raises(AssertionError):
         _check_png(empty)
+
+
+# ------------- figure 9: same stopwatch, different turn
+SW_KEY = "fig_stopwatch"
+
+
+def _sw_expected(rendered) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Recompute the matched population without calling the module's table.
+
+    Plain masks and an inner join on ``nfl_id``; the per-player aggregates are
+    rebuilt from the written Parquet and the fixture combine results, so a bug
+    in ``figures.stopwatch_table`` cannot agree with itself here.
+    """
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    times = pd.read_csv(rendered["tmp"] / "data" / "raw" / "combine_results.csv")
+    position = str(cfg.get("figures.stopwatch.position_group"))
+    setting = str(cfg.get("figures.stopwatch.setting"))
+    match = str(cfg.get("figures.stopwatch.drill_match"))
+    valid = turns["valid"].fillna(False).astype(bool)
+    sub = turns[valid
+                & (turns["position_group"] == position)
+                & (turns["setting"] == setting)
+                & turns["drill_name"].astype("string").str.contains(
+                    match, regex=False, na=False)].copy()
+    joined = sub.merge(times.dropna(subset=["three_cone"]),
+                       on="nfl_id", how="inner")
+    agg = joined.groupby("nfl_id").agg(
+        n_turns=("abs_turn_angle", "size"),
+        three_cone_s=("three_cone", "first"),
+        angle_min=("abs_turn_angle", "min"),
+        angle_max=("abs_turn_angle", "max"),
+        entry_min=("entry_speed", "min"),
+        entry_max=("entry_speed", "max"),
+        n_attempts=("attempt", "nunique"),
+    ).reset_index().sort_values(["three_cone_s", "nfl_id"]).reset_index(drop=True)
+    return agg, joined
+
+
+def test_stopwatch_png_and_csv_exist(rendered):
+    _check_png(rendered["sw_png"])
+    assert rendered["sw_csv"].exists()
+    with Image.open(rendered["sw_png"]) as im:
+        assert im.size[0] >= 1500 and im.size[1] >= 900
+
+
+def test_stopwatch_match_count_and_turn_counts_reconcile(rendered):
+    from bdb27 import common
+    cfg = common.load_config(rendered["cfg"])
+    floor = int(cfg.get("figures.stopwatch.min_players"))
+    expected, joined = _sw_expected(rendered)
+    csv_df = pd.read_csv(rendered["sw_csv"])
+
+    n_players = csv_df["nfl_id"].nunique()
+    assert n_players == len(expected) == 24, "fixture must match 24 players"
+    assert n_players >= floor, "the figure must clear its own stated floor"
+    assert len(csv_df) == len(joined) == 98, "one row per matched turn"
+
+    counts = csv_df.groupby("nfl_id").size()
+    want = expected.set_index("nfl_id")["n_turns"]
+    assert counts.sort_index().equals(want.sort_index())
+    assert csv_df.groupby("nfl_id")["n_turns_player"].first().equals(
+        want.astype(int))
+
+    for player_id, part in csv_df.groupby("nfl_id"):
+        row = expected[expected["nfl_id"] == player_id].iloc[0]
+        assert np.isclose(float(part["three_cone_s"].iloc[0]),
+                          float(row["three_cone_s"]), atol=1e-12)
+        assert np.isclose(float(part["abs_turn_angle_deg"].min()),
+                          float(row["angle_min"]), atol=1e-9)
+        assert np.isclose(float(part["abs_turn_angle_deg"].max()),
+                          float(row["angle_max"]), atol=1e-9)
+        assert np.isclose(float(part["entry_speed_yd_s"].min()),
+                          float(row["entry_min"]), atol=1e-9)
+        assert np.isclose(float(part["entry_speed_yd_s"].max()),
+                          float(row["entry_max"]), atol=1e-9)
+        assert set(part["match_rule"]) == {csv_df["match_rule"].iloc[0]}
+
+    # Rows are ordered by the published time, fastest first.
+    times = csv_df.drop_duplicates("player_order").sort_values("player_order")
+    assert times["three_cone_s"].is_monotonic_increasing
+    assert (times["three_cone_s"].astype(float).diff().dropna() >= 0).all()
+    assert csv_df["gate_passed"].all()
+
+
+def test_stopwatch_pair_is_near_identical_and_labelled(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][SW_KEY]
+    pair = fig["pair_illustration"]
+    tol = float(fig["pair_illustration"]["tolerance_s"]) if pair else None
+    assert pair is not None, "fixture carries a usable illustration pair"
+    assert "illustration" in pair["status"]
+    assert pair["delta_s"] <= tol + 1e-12
+    assert pair["a"]["n_attempts"] == pair["b"]["n_attempts"], (
+        "a pair with different attempt counts is confounded and must not be used")
+    # The callout is in the caption, with its tolerance spelled out.
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    times = pd.read_csv(rendered["tmp"] / "data" / "raw" / "combine_results.csv")
+    table, context = figures.stopwatch_table(turns, times, cfg)
+    fig_obj = figures.plot_stopwatch(table, context, cfg)
+    import matplotlib.pyplot as plt
+    try:
+        texts = " ".join(t.get_text() for t in fig_obj.texts)
+        assert "ILLUSTRATION, NOT EVIDENCE" in texts
+        assert "tolerance" in texts
+        orders = fig_obj.bdb27_draw_audit["pair_orders"]
+        assert len(orders) == 2
+        circled = set(table[table["player_order"].isin(orders)]["nfl_id"])
+        assert circled == {pair["a"]["nfl_id"], pair["b"]["nfl_id"]}
+    finally:
+        plt.close(fig_obj)
+
+
+def test_stopwatch_computes_no_association_statistic(rendered):
+    """No correlation, regression, fit or p-value in the figure 9 code path."""
+    import inspect
+    from bdb27 import figures
+
+    banned_calls = ("corrcoef", "linregress", "polyfit", "spearmanr",
+                    "pearsonr", "scipy", "statsmodels", "r_squared",
+                    "p_value", "slope")
+    for fn in (figures.stopwatch_table, figures.plot_stopwatch,
+               figures._stopwatch_pair_sentence, figures._stopwatch_pair,
+               figures.stopwatch_csv_frame,
+               figures.stopwatch_manifest_payload):
+        src = inspect.getsource(fn).lower()
+        for token in banned_calls:
+            assert token not in src, f"{fn.__name__} references {token!r}"
+
+    csv_df = pd.read_csv(rendered["sw_csv"])
+    for col in csv_df.columns:
+        assert not any(t in col.lower() for t in banned_calls), (
+            f"CSV column {col!r} looks like an association statistic")
+
+    man = json.loads(rendered["manifest"].read_text())
+    flat = json.dumps(man["figures"][SW_KEY]).lower()
+    for token in ("correlation coefficient of", '"r":', '"p":', "r-squared"):
+        assert token not in flat
+    assert "any correlation" in flat and "regression" in flat
+
+
+def test_stopwatch_refuses_below_the_floor(rendered):
+    """The gate is real: 24 matched players vs a 25-player floor refuses."""
+    from bdb27 import common, figures
+    raw = yaml.safe_load(rendered["cfg"].read_text())
+    raw["turn_coverage"]["figures"]["stopwatch"]["min_players"] = 25
+    path = rendered["tmp"] / "config_sw_gate.yaml"
+    path.write_text(yaml.safe_dump(raw, sort_keys=False))
+    cfg = common.load_config(path)
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    times = pd.read_csv(rendered["tmp"] / "data" / "raw" / "combine_results.csv")
+    with pytest.raises(common.StageRefused) as exc:
+        figures.stopwatch_table(turns, times, cfg)
+    message = str(exc.value)
+    assert "24 of 24" in message and "min_players=25" in message
+    assert "no image was drawn" in message
+
+
+def test_stopwatch_two_runs_are_byte_identical(rendered):
+    before = hashlib.sha256(rendered["sw_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["sw_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 9 differ"
+
+
+def test_stopwatch_leaves_figures_1_to_8_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png", "ap_png", "ml_png",
+            "gh_png", "tc_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k], (
+            f"{k} changed: figure 9 must not alter figures 1-8")
+
+
+def test_stopwatch_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][SW_KEY]
+    assert fig["figure"] == SW_KEY
+    assert fig["stamp"] == STAMP
+    assert fig["match"]["gate"] == "PASSED"
+    assert fig["match"]["join_key"] == "nfl_id"
+    assert fig["match"]["min_players"] == 20
+    assert fig["n_players"] == fig["match"]["n_matched_players"] == 24
+    assert fig["n_turns"] == 98
+    assert fig["match"]["n_unmatched_players"] == 0
+    assert fig["spread"]["three_cone_s"][0] < fig["spread"]["three_cone_s"][1]
+    assert fig["panel_b"]["entry_speed_floor"]["config_key"] == \
+        "detector.speed_floor_combine"

@@ -70,6 +70,7 @@ FIGURE_KEY_ALL_POSITIONS = "fig_all_positions"
 FIGURE_KEY_MEASUREMENT_LIMITS = "fig_measurement_limits"
 FIGURE_KEY_GAP_HONEST = "fig_gap_honest"
 FIGURE_KEY_TURN_COST = "fig_turn_cost"
+FIGURE_KEY_STOPWATCH = "fig_stopwatch"
 
 #: Figure 3 needs only the grid coordinates and the player identity.
 SUPPLY_COLUMNS = [
@@ -3982,4 +3983,533 @@ def turn_cost_manifest_payload(table: pd.DataFrame, context: dict,
                        "apex_retention (apex ÷ entry), the speed actually "
                        "given up at the plant."),
         },
+    }
+
+
+# ------------- figure 9: same stopwatch, different turn
+#: The published three-cone is ONE scalar in seconds. Panel (a) shows the turns
+#: the detector found inside each matched player's three-cone attempt; panel (b)
+#: puts those turns' entry speeds against the same published time. The figure is
+#: descriptive by construction: no association statistic is computed anywhere in
+#: this section, so none can be printed, captioned or implied.
+STOPWATCH_COLUMNS = [
+    "setting",
+    "drill_name",
+    "abs_turn_angle",
+    "entry_speed",
+    "position_group",
+    "nfl_id",
+    "event_id",
+    "attempt",
+    "valid",
+]
+
+
+def _stopwatch_pair(agg: pd.DataFrame, tolerance: float) -> dict | None:
+    """The one near-identical pair the caption may call out, or ``None``.
+
+    Candidate pairs must have times within ``tolerance`` *and* the same number
+    of attempts, so the comparison is not confounded by one player having pooled
+    two reps. Among candidates, prefer the largest gap in turn count, then the
+    largest gap in the detected angle range; a pair with fewer than 2 extra
+    turns and under 5 degrees of angle difference is not "visibly different"
+    and is not called out at all. Iteration follows player order (sorted by
+    time), so the choice is deterministic.
+    """
+    rows = agg.to_dict("records")
+    best: dict | None = None
+    best_score: tuple[int, float] | None = None
+    for i in range(len(rows)):
+        for j in range(i + 1, len(rows)):
+            a, b = rows[i], rows[j]
+            delta = abs(float(a["three_cone_s"]) - float(b["three_cone_s"]))
+            if delta > tolerance + 1e-12:
+                continue
+            if int(a["n_attempts"]) != int(b["n_attempts"]):
+                continue
+            angle_gap = max(abs(float(a["angle_min"]) - float(b["angle_min"])),
+                            abs(float(a["angle_max"]) - float(b["angle_max"])))
+            count_gap = abs(int(a["n_turns"]) - int(b["n_turns"]))
+            if angle_gap < 5.0 and count_gap < 2:
+                continue
+            score = (count_gap, angle_gap)
+            if best_score is None or score > best_score:
+                best_score = score
+                best = {"a": a, "b": b, "delta": delta,
+                        "count_gap": count_gap, "angle_gap": angle_gap}
+    return best
+
+
+def stopwatch_table(turns: pd.DataFrame, combine_results: pd.DataFrame,
+                    cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """One row per detected turn, with its player's published three-cone time.
+
+    Population: the detector's own valid turns where ``drill_name`` contains
+    ``figures.stopwatch.drill_match``, ``setting`` and ``position_group`` match
+    the block, joined on ``nfl_id`` to a non-null ``three_cone`` in the raw
+    combine results. The join is inner: a turn whose player has no published
+    time cannot be plotted on a time axis.
+
+    If fewer than ``min_players`` players match, this REFUSES with the count
+    instead of drawing a thin case — the gate is the point, not a formality.
+    """
+    block = "figures.stopwatch"
+    position = str(cfg.get(f"{block}.position_group"))
+    setting = str(cfg.get(f"{block}.setting"))
+    drill_match = str(cfg.get(f"{block}.drill_match"))
+    min_players = int(cfg.get(f"{block}.min_players"))
+    tolerance = float(cfg.get(f"{block}.pair_tolerance_s"))
+    if min_players < 1:
+        raise common.StageRefused(
+            f"{STAGE}: figures.stopwatch.min_players must be >= 1")
+    if tolerance <= 0:
+        raise common.StageRefused(
+            f"{STAGE}: figures.stopwatch.pair_tolerance_s must be > 0")
+
+    missing_cols = [c for c in ("nfl_id", "three_cone")
+                    if c not in combine_results.columns]
+    if missing_cols:
+        raise common.StageRefused(
+            f"{STAGE}: combine results have no {missing_cols} column; the "
+            "three-cone time cannot be joined")
+
+    drill = turns["drill_name"].astype("string").str.upper()
+    valid = turns["valid"].fillna(False).astype(bool)
+    mask = (valid
+            & (turns["position_group"] == position)
+            & (turns["setting"] == setting)
+            & drill.str.contains(drill_match.upper(), regex=False, na=False))
+    df = turns[mask].copy()
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} {setting} turns matching drill "
+            f"name {drill_match!r} — nothing to show")
+    df["nfl_id"] = pd.to_numeric(df["nfl_id"], errors="coerce")
+    df["abs_turn_angle"] = pd.to_numeric(df["abs_turn_angle"], errors="coerce")
+    df["entry_speed"] = pd.to_numeric(df["entry_speed"], errors="coerce")
+    df["attempt"] = pd.to_numeric(df["attempt"], errors="coerce")
+    df = df[df["nfl_id"].notna()
+            & df["abs_turn_angle"].notna()
+            & df["entry_speed"].notna()].copy()
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: the matched three-cone turns carry no usable angle or "
+            "entry speed")
+    df["nfl_id"] = df["nfl_id"].astype("int64")
+
+    times = combine_results[["nfl_id", "three_cone"]].copy()
+    times["nfl_id"] = pd.to_numeric(times["nfl_id"], errors="coerce")
+    times["three_cone"] = pd.to_numeric(times["three_cone"], errors="coerce")
+    times = times[times["nfl_id"].notna() & times["three_cone"].notna()]
+    times = times.drop_duplicates()
+    conflicting = times.groupby("nfl_id")["three_cone"].nunique()
+    conflicting = sorted(int(i) for i in conflicting[conflicting > 1].index)
+    if conflicting:
+        raise common.StageRefused(
+            f"{STAGE}: combine results carry more than one three_cone value "
+            f"for nfl_id {conflicting[:5]}; refusing to pick one")
+    times = times.drop_duplicates("nfl_id", keep="first")
+    times["nfl_id"] = times["nfl_id"].astype("int64")
+
+    merged = df.merge(times, on="nfl_id", how="inner")
+    n_via_turns = int(df["nfl_id"].nunique())
+    n_matched = int(merged["nfl_id"].nunique())
+    if n_matched < min_players:
+        raise common.StageRefused(
+            f"{STAGE}: figure 9 refused — {n_matched} of {n_via_turns} "
+            f"three-cone players matched to a published three_cone time, below "
+            f"figures.stopwatch.min_players={min_players}. A thin figure is not "
+            "evidence; no image was drawn.")
+    merged["three_cone_s"] = merged["three_cone"]
+
+    agg = merged.groupby("nfl_id").agg(
+        three_cone_s=("three_cone_s", "first"),
+        n_turns=("abs_turn_angle", "size"),
+        n_attempts=("attempt", "nunique"),
+        angle_min=("abs_turn_angle", "min"),
+        angle_max=("abs_turn_angle", "max"),
+        entry_min=("entry_speed", "min"),
+        entry_max=("entry_speed", "max"),
+    ).reset_index()
+    agg = agg.sort_values(["three_cone_s", "nfl_id"],
+                          kind="mergesort").reset_index(drop=True)
+    agg["player_order"] = np.arange(1, len(agg) + 1)
+
+    out = merged.merge(
+        agg[["nfl_id", "player_order", "n_turns", "n_attempts"]],
+        on="nfl_id", how="left")
+    out = out.sort_values(["player_order", "abs_turn_angle", "event_id"],
+                          kind="mergesort").reset_index(drop=True)
+    out["turn_index"] = out.groupby("player_order").cumcount() + 1
+    out = out.rename(columns={
+        "n_turns": "n_turns_player",
+        "n_attempts": "n_attempts_player",
+        "abs_turn_angle": "abs_turn_angle_deg",
+        "entry_speed": "entry_speed_yd_s",
+    })
+
+    if int(agg["n_turns"].sum()) != int(len(out)):
+        raise ValueError(
+            f"{STAGE}: per-player turn counts do not reconstruct the turn "
+            "population")
+    per_player = out.groupby("player_order").agg(
+        rows=("nfl_id", "size"), declared=("n_turns_player", "first"))
+    if not (per_player["rows"] == per_player["declared"]).all():
+        raise ValueError(
+            f"{STAGE}: a player's declared turn count disagrees with his rows")
+
+    pair = _stopwatch_pair(agg, tolerance)
+    floor_key = str(cfg.get(f"{block}.entry_speed_floor_key"))
+    match_rule = (
+        f"nfl_id join to files.combine_results three_cone (not null); turns "
+        f"from outputs/turns/turns.parquet where drill_name contains "
+        f"{drill_match!r}, setting == {setting!r}, position_group == "
+        f"{position!r}, valid == true")
+
+    context = {
+        "position": position,
+        "setting": setting,
+        "drill_match": drill_match,
+        "min_players": min_players,
+        "tolerance": tolerance,
+        "n_via_turns": n_via_turns,
+        "n_unmatched": n_via_turns - n_matched,
+        "n_players": int(len(agg)),
+        "n_turns": int(len(out)),
+        "turns_per_player_min": int(out["n_turns_player"].min()),
+        "turns_per_player_max": int(out["n_turns_player"].max()),
+        "n_multi_attempt_players": int((agg["n_attempts"] > 1).sum()),
+        "time_min": float(agg["three_cone_s"].min()),
+        "time_max": float(agg["three_cone_s"].max()),
+        "angle_min": float(out["abs_turn_angle_deg"].min()),
+        "angle_max": float(out["abs_turn_angle_deg"].max()),
+        "entry_min": float(out["entry_speed_yd_s"].min()),
+        "entry_max": float(out["entry_speed_yd_s"].max()),
+        "entry_floor_key": floor_key,
+        "entry_floor": float(cfg.get(floor_key)),
+        "duplicate_times": int(agg["three_cone_s"].duplicated().sum()),
+        "pair": pair,
+        "match_rule": match_rule,
+    }
+    return out, context
+
+
+def _stopwatch_pair_sentence(context: dict) -> str:
+    """The illustration pair, stated with its tolerance — or its absence."""
+    pair = context["pair"]
+    if pair is None:
+        return ("No two players posted times within "
+                f"{context['tolerance']:.2f} s (with the same attempt count) "
+                "whose turn content differed enough to be worth calling out, "
+                "so no pair is named.")
+    a, b = pair["a"], pair["b"]
+    att = int(a["n_attempts"])
+    att_txt = "one attempt each" if att == 1 else f"{att} attempts each"
+    return (
+        f"Two players posted near-identical times — {a['three_cone_s']:.2f} s "
+        f"and {b['three_cone_s']:.2f} s (difference {pair['delta']:.2f} s, "
+        f"within the {context['tolerance']:.2f} s tolerance, {att_txt}) — yet "
+        f"their drills contained "
+        f"{int(a['n_turns'])} and {int(b['n_turns'])} detected turns spanning "
+        f"{a['angle_min']:.1f}°–{a['angle_max']:.1f}° and "
+        f"{b['angle_min']:.1f}°–{b['angle_max']:.1f}° (entry "
+        f"{a['entry_min']:.2f}–{a['entry_max']:.2f} and "
+        f"{b['entry_min']:.2f}–{b['entry_max']:.2f} yd/s). They are circled in "
+        "both panels. This is an illustration of what the scalar compresses, "
+        "not evidence of anything.")
+
+
+def plot_stopwatch(table: pd.DataFrame, context: dict,
+                   cfg: common.Config) -> plt.Figure:
+    """Two panels: turns per player against time, then entry speed vs time."""
+    block = "figures.stopwatch"
+    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    overflow = str(cfg.get("figures.hole.bands.overflow_label"))
+    n_players = context["n_players"]
+
+    fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
+                              float(cfg.get(f"{block}.height_in"))))
+    grid = fig.add_gridspec(
+        1, 2, width_ratios=[1.42, 1.0], wspace=0.15,
+        left=0.108, right=0.985, top=0.845, bottom=0.315)
+    ax_a = fig.add_subplot(grid[0])
+    ax_b = fig.add_subplot(grid[1])
+
+    for ax in (ax_a, ax_b):
+        ax.set_facecolor("#EBEBEB")
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)
+        for spine in ("left", "bottom"):
+            ax.spines[spine].set_color("#B3B3B3")
+        ax.tick_params(labelsize=6.9, colors="#333333", length=2)
+
+    # ---------------------------------------------------------- panel (a)
+    ax_a.grid(axis="y", color="white", linewidth=0.8, zorder=0)
+    y = table["player_order"].to_numpy() - 1
+
+    # Light rule at every reporting band edge; nothing is binned or summarised.
+    for edge in edges:
+        ax_a.axvline(edge, color="#B0B0B0", linewidth=0.7,
+                     linestyle=(0, (3, 3)), zorder=1)
+    ax_a.axvspan(edges[-1], 235.0, color="#6E6E6E", alpha=0.08, zorder=0)
+
+    ax_a.scatter(table["abs_turn_angle_deg"], y, s=34, color=PALETTE["combine"],
+                 edgecolor="white", linewidth=0.5, alpha=0.9, zorder=3)
+
+    yticks = []
+    for _, row in (table.drop_duplicates("player_order")
+                   .sort_values("player_order").iterrows()):
+        yticks.append(f"{float(row['three_cone_s']):.2f}   "
+                      f"n={int(row['n_turns_player'])}")
+    ax_a.set_yticks(np.arange(n_players))
+    ax_a.set_yticklabels(yticks, fontsize=6.6, color="#222222")
+    ax_a.set_ylim(n_players - 0.45, -0.9)
+    ax_a.set_xlim(30.0, 235.0)
+    ax_a.set_xticks(edges + ([210.0] if edges[-1] < 210.0 else []))
+    ax_a.set_xlabel("Absolute turn angle detected inside the three-cone (°)\n"
+                    "dotted rules = reporting band edges; grey zone = "
+                    f"{overflow}",
+                    fontsize=7.2, color="#333333", labelpad=3)
+    ax_a.set_ylabel("Three-cone time (s), fastest at top —\n"
+                    "detected turns in that drill",
+                    fontsize=7.2, color="#333333")
+    ax_a.set_title(
+        "(a) One row per player, sorted by the published time: every turn "
+        "found inside his three-cone",
+        loc="left", fontsize=9.4, fontweight="bold", color="#1A1A1A", pad=6)
+
+    # ---------------------------------------------------------- panel (b)
+    ax_b.grid(axis="y", color="white", linewidth=0.8, zorder=0)
+    for _, prow in (table.drop_duplicates("player_order").iterrows()):
+        part = table[table["player_order"] == prow["player_order"]]
+        ax_b.plot([prow["three_cone_s"], prow["three_cone_s"]],
+                  [part["entry_speed_yd_s"].min(),
+                   part["entry_speed_yd_s"].max()],
+                  color="#8E8E8E", linewidth=0.8, alpha=0.55, zorder=1)
+    ax_b.scatter(table["three_cone_s"], table["entry_speed_yd_s"], s=30,
+                 color=PALETTE["combine"], edgecolor="white", linewidth=0.5,
+                 alpha=0.85, zorder=3)
+    ax_b.axhline(context["entry_floor"], color="#555555", linewidth=0.9,
+                 linestyle=(0, (4, 3)), zorder=2)
+    ax_b.text(context["time_min"] - 0.03, context["entry_floor"] - 0.08,
+              f"detector heading floor {context['entry_floor']:.1f} yd/s "
+              f"({context['entry_floor_key']})",
+              fontsize=5.9, color="#555555", ha="left", va="top")
+    ax_b.set_xlim(context["time_min"] - 0.04, context["time_max"] + 0.05)
+    ax_b.set_ylim(context["entry_min"] - 0.25, context["entry_max"] + 0.30)
+    ax_b.set_xlabel("Published three-cone time (s)", fontsize=7.2,
+                    color="#333333", labelpad=3)
+    ax_b.set_ylabel("Entry speed of each detected turn (yd/s)",
+                    fontsize=7.2, color="#333333")
+    ax_b.set_title(
+        "(b) The same turns' entry speeds, against the same number — it does "
+        "not say how fast he was moving",
+        loc="left", fontsize=9.4, fontweight="bold", color="#1A1A1A", pad=6)
+
+    # ------------------------------------------------- pair rings, both panels
+    pair = context["pair"]
+    if pair is not None:
+        orders = {int(pair["a"]["player_order"]), int(pair["b"]["player_order"])}
+        part = table[table["player_order"].isin(orders)]
+        ax_a.scatter(part["abs_turn_angle_deg"],
+                     part["player_order"].to_numpy() - 1,
+                     s=96, facecolor="none", edgecolor=ALERT, linewidth=0.9,
+                     zorder=4)
+        ax_b.scatter(part["three_cone_s"], part["entry_speed_yd_s"], s=88,
+                     facecolor="none", edgecolor=ALERT, linewidth=0.9, zorder=4)
+        fig.bdb27_pair_orders = sorted(orders)
+    else:
+        fig.bdb27_pair_orders = []
+
+    # ------------------------------------------------------- titles, caption
+    fig.text(0.012, 0.980, "Same stopwatch, different turn", fontsize=16.5,
+             fontweight="bold", ha="left", va="top", color="#111111")
+    fig.text(0.012, 0.952,
+             _wrap_text(
+                 "One drill, one published number in seconds, many turns. Each "
+                 "dot is one valid turn the detector found inside that "
+                 "player's three-cone; a row is a player. Panel (b) puts those "
+                 "turns' entry speeds against the same number. Descriptive "
+                 "only: no fit, no smoothing, no correlation, no test.",
+                 176),
+             fontsize=8.4, ha="left", va="top", color="#333333")
+
+    caption_lines = [
+        STAMP,
+        ("FINDING, AS MEASURED. The three-cone is published as a single scalar, "
+         f"and this sample's drills contained {context['turns_per_player_min']}"
+         f"–{context['turns_per_player_max']} detected turns each across "
+         f"{context['n_players']} players ({context['n_turns']} turns), "
+         f"spanning {context['angle_min']:.0f}° to {context['angle_max']:.0f}° "
+         f"at entry speeds of {context['entry_min']:.2f} to "
+         f"{context['entry_max']:.2f} yd/s. The metric records neither the "
+         "angle of a turn nor the speed into it, so by construction it cannot "
+         "report which turns produced a given time. That is a property of the "
+         "measurement, not a claim about any player."),
+        ("WHAT THIS IS NOT. This is not a test of whether three-cone time "
+         "predicts turn angle or entry speed. With "
+         f"{context['n_players']} matched players such a test is underpowered, "
+         "so an absent association here would be no evidence at all. No "
+         "correlation coefficient, no R², no regression and no p-value is "
+         "computed, printed or implied anywhere in this figure — the claim is "
+         "descriptive: the same published number was produced by drills "
+         "containing visibly different turns."),
+        ("ILLUSTRATION, NOT EVIDENCE. " + _stopwatch_pair_sentence(context)),
+        (f"MATCH RULE. {context['match_rule']}. {context['n_players']} of "
+         f"{context['n_via_turns']} three-cone players matched "
+         f"({context['n_unmatched']} unmatched, no published time). The figure "
+         f"refuses below {context['min_players']} matched players rather than "
+         "draw a thin case."),
+        (f"ATTEMPTS. {context['n_multi_attempt_players']} of "
+         f"{context['n_players']} players have more than one three-cone "
+         "attempt in the sample; turns are pooled across attempts inside the "
+         "drill, as in every other figure here. "
+         f"{context['duplicate_times']} players share an identical published "
+         "time with another player, which is why panel (b) shows overlapping "
+         "columns rather than one point per time."),
+        ("Dots are the detector's valid turns, recomputed at render time from "
+         "outputs/turns/turns.parquet; every value is in "
+         "outputs/figures/fig_stopwatch.csv. Sample data: this shows what the "
+         "metric compresses, not how well it predicts, and nothing here is a "
+         "finding about the 2027 class."),
+    ]
+    wrapped: list[str] = []
+    for line in caption_lines:
+        wrapped.extend(_wrap_text(line, 168).split("\n"))
+    fig.text(0.012, 0.258, "\n".join(wrapped), fontsize=6.05,
+             ha="left", va="top", color="#333333", linespacing=1.30)
+
+    fig.text(0.988, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+
+    # Draw audit: every turn row is exactly one dot in each panel.
+    if len(table) != context["n_turns"]:
+        raise ValueError(f"{STAGE}: table has {len(table)} rows, context says "
+                         f"{context['n_turns']} turns")
+    if len(y) != len(table):
+        raise ValueError(f"{STAGE}: panel (a) drew {len(y)} dots for "
+                         f"{len(table)} turns")
+    fig.bdb27_draw_audit = {
+        "n_rows": int(n_players),
+        "n_turns": int(len(table)),
+        "n_dots_a": int(len(y)),
+        "pair_orders": list(getattr(fig, "bdb27_pair_orders", [])),
+    }
+    return fig
+
+
+def render_stopwatch(fig: plt.Figure, cfg: common.Config,
+                     out_png: Path) -> Path:
+    """Save figure 9 once with fixed metadata, so two runs are identical."""
+    dpi = int(cfg.get("figures.stopwatch.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    return out_png
+
+
+def stopwatch_csv_frame(table: pd.DataFrame, context: dict) -> pd.DataFrame:
+    """One row per detected turn: the player's time, count, angle and speed."""
+    out = table.copy()
+    pair = context["pair"]
+    orders = set()
+    if pair is not None:
+        orders = {int(pair["a"]["player_order"]),
+                  int(pair["b"]["player_order"])}
+    out["pair_player"] = out["player_order"].isin(orders)
+    out["match_rule"] = context["match_rule"]
+    out["gate_min_players"] = context["min_players"]
+    out["gate_passed"] = True
+    return out[[
+        "player_order", "nfl_id", "three_cone_s", "n_turns_player",
+        "n_attempts_player", "turn_index", "abs_turn_angle_deg",
+        "entry_speed_yd_s", "attempt", "event_id", "pair_player",
+        "match_rule", "gate_min_players", "gate_passed"]]
+
+
+def stopwatch_manifest_payload(table: pd.DataFrame, context: dict,
+                               cfg: common.Config) -> dict:
+    pair = context["pair"]
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_STOPWATCH,
+        "title": ("Same stopwatch, different turn: what the published "
+                  "three-cone time compresses"),
+        "match": {
+            "rule": context["match_rule"],
+            "join_key": "nfl_id",
+            "drill_match": context["drill_match"],
+            "setting": context["setting"],
+            "position_group": context["position"],
+            "n_players_in_turns": context["n_via_turns"],
+            "n_matched_players": context["n_players"],
+            "n_unmatched_players": context["n_unmatched"],
+            "min_players": context["min_players"],
+            "gate": "PASSED",
+        },
+        "n_players": context["n_players"],
+        "n_turns": context["n_turns"],
+        "spread": {
+            "three_cone_s": [context["time_min"], context["time_max"]],
+            "abs_turn_angle_deg": [context["angle_min"], context["angle_max"]],
+            "entry_speed_yd_s": [context["entry_min"], context["entry_max"]],
+            "turns_per_player": [context["turns_per_player_min"],
+                                 context["turns_per_player_max"]],
+            "n_players_with_multiple_attempts":
+                context["n_multi_attempt_players"],
+            "n_players_sharing_a_time": context["duplicate_times"],
+        },
+        "panel_a": {
+            "encoding": ("one row per player sorted by published three-cone "
+                         "time, one dot per detected turn on the angle axis; "
+                         "light rules at the reporting band edges only"),
+            "bands_reference": "figures.hole.bands.turn_angle_deg",
+        },
+        "panel_b": {
+            "encoding": ("entry speed of each detected turn against the same "
+                         "published time; min-max line per player; no fit"),
+            "entry_speed_floor": {
+                "config_key": context["entry_floor_key"],
+                "value_yd_s": context["entry_floor"],
+            },
+        },
+        "pair_illustration": None if pair is None else {
+            "tolerance_s": context["tolerance"],
+            "delta_s": pair["delta"],
+            "a": {"nfl_id": int(pair["a"]["nfl_id"]),
+                  "three_cone_s": float(pair["a"]["three_cone_s"]),
+                  "n_turns": int(pair["a"]["n_turns"]),
+                  "n_attempts": int(pair["a"]["n_attempts"])},
+            "b": {"nfl_id": int(pair["b"]["nfl_id"]),
+                  "three_cone_s": float(pair["b"]["three_cone_s"]),
+                  "n_turns": int(pair["b"]["n_turns"]),
+                  "n_attempts": int(pair["b"]["n_attempts"])},
+            "status": "illustration only, never evidence",
+        },
+        "claim": ("The published three-cone time is one scalar; the drills "
+                  "behind it contained visibly different turns at different "
+                  "entry speeds, so the metric cannot distinguish them by "
+                  "construction."),
+        "not_claimed": [
+            "That three-cone time fails to predict turn angle or entry speed.",
+            "That any difference between players is a difference in ability.",
+            "Any correlation, R², regression, p-value or fitted curve.",
+        ],
+        "caveats": [
+            ("Sample data: one session of sample data; nothing here is a "
+             "finding about the 2027 class."),
+            ("Descriptive only: the figure shows what the metric compresses, "
+             "not how well it predicts. With this many matched players an "
+             "association test would be underpowered, so none is run."),
+            ("Turns are pooled across attempts within the drill; the attempt "
+             "count per player is printed in the CSV and stated in the "
+             "caption."),
+            ("A player's row is the detector's own valid turns, not a scout's "
+             "reading of the drill; detection limits apply as in every other "
+             "figure."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_STOPWATCH}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_STOPWATCH}.csv",
     }
