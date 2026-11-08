@@ -104,9 +104,11 @@ TURN_COLUMNS = [
     "entry_speed",
     # Figure 6 plots peak lateral acceleration; figures 1-5 ignore it.
     "peak_lateral_accel_yd_s2",
-    # Figure 8 prices a turn with exit speed / entry speed, stage 02's own
-    # `speed_retention` column. Never recomputed here.
-    "speed_retention",
+    # Figure 8 prices a turn at the plant with stage 02's own `apex_retention`
+    # column (apex speed / entry speed). Never recomputed here. Exit-over-entry
+    # `speed_retention` is not read: it is above 1 by construction and is only
+    # named in the caption as a definitional footnote.
+    "apex_retention",
 ]
 
 DRILL_COLUMNS = [
@@ -3326,11 +3328,16 @@ def turn_cost_table(turns: pd.DataFrame,
     * ``count`` / ``share_within_setting`` — every valid turn in the band. This
       is panel (b), the substitution view, so the shares sum to 100% per
       setting.
-    * ``n_retention`` / quartiles — only turns that *can* carry a retention
-      value: entry speed above the detector's heading-reliability floor, a
-      finite ``speed_retention``, and not in the reversal class. This is panel
-      (a). A band below ``min_n_for_median`` usable turns is flagged
+    * ``n_apex_retention`` / quartiles — only turns that *can* carry a
+      retention value: entry speed above the detector's heading-reliability
+      floor, a finite ``apex_retention``, and not in the reversal class. This
+      is panel (a). A band below ``min_n_for_median`` usable turns is flagged
       ``insufficient`` and is never drawn as a median.
+
+    The measure is ``apex_retention`` (apex speed / entry speed), not
+    ``speed_retention`` (exit / entry): the turn window runs between speed
+    maxima, so exit-over-entry includes re-acceleration and is above 1 in
+    every band by construction. It shows gains, not the cost paid at the plant.
 
     The floors are read from the detector block (their config keys are named in
     the figure block), so the figure cannot apply a floor the detector did not.
@@ -3340,9 +3347,14 @@ def turn_cost_table(turns: pd.DataFrame,
     overflow_label = str(cfg.get("figures.hole.bands.overflow_label"))
     position = str(cfg.get(f"{block}.position_group"))
     min_n = int(cfg.get(f"{block}.min_n_for_median"))
+    column = str(cfg.get(f"{block}.retention_column"))
     if min_n < 1:
         raise common.StageRefused(
             f"{STAGE}: figures.turn_cost.min_n_for_median must be >= 1")
+    if column not in turns.columns:
+        raise common.StageRefused(
+            f"{STAGE}: figures.turn_cost.retention_column {column!r} is not a "
+            "column of the turn table")
 
     floor_keys = cfg.get(f"{block}.entry_speed_floor_keys") or {}
     floors: dict[str, dict] = {}
@@ -3367,7 +3379,7 @@ def turn_cost_table(turns: pd.DataFrame,
     df["setting"] = df["setting"].astype(str)
     df["abs_turn_angle"] = pd.to_numeric(df["abs_turn_angle"], errors="coerce")
     df["entry_speed"] = pd.to_numeric(df["entry_speed"], errors="coerce")
-    df["speed_retention"] = pd.to_numeric(df["speed_retention"], errors="coerce")
+    df[column] = pd.to_numeric(df[column], errors="coerce")
 
     bands = band_labels(edges, overflow_label)
     angle = df["abs_turn_angle"]
@@ -3395,8 +3407,8 @@ def turn_cost_table(turns: pd.DataFrame,
                                | (part["entry_speed"] <= floor)).sum())
             above = part[part["entry_speed"].notna()
                          & (part["entry_speed"] > floor)]
-            no_retention = int(above["speed_retention"].isna().sum())
-            usable = above[above["speed_retention"].notna()]["speed_retention"]
+            no_retention = int(above[column].isna().sum())
+            usable = above[above[column].notna()][column]
             n_ret = int(len(usable))
 
             if reversal_class:
@@ -3430,12 +3442,12 @@ def turn_cost_table(turns: pd.DataFrame,
                 "entry_speed_floor_yd_s": floor,
                 "entry_speed_floor_key": floors[setting]["key"],
                 "n_below_speed_floor": below_floor,
-                "n_missing_retention": no_retention,
-                "n_retention": n_ret,
-                "q1_retention": q1,
-                "median_retention": med,
-                "q3_retention": q3,
-                "iqr_retention": (q3 - q1) if n_ret else np.nan,
+                "n_missing_apex_retention": no_retention,
+                "n_apex_retention": n_ret,
+                "q1_apex_retention": q1,
+                "median_apex_retention": med,
+                "q3_apex_retention": q3,
+                "iqr_apex_retention": (q3 - q1) if n_ret else np.nan,
                 "insufficient": insufficient,
                 "insufficient_reason": reason,
                 # Panel (a) draws a value only for a usable, sufficient,
@@ -3461,6 +3473,7 @@ def turn_cost_table(turns: pd.DataFrame,
     below_total = int(table["n_below_speed_floor"].sum())
     context = {
         "position": position,
+        "column": column,
         "bands": bands,
         "edges": edges,
         "min_n_for_median": min_n,
@@ -3480,28 +3493,37 @@ def turn_cost_table(turns: pd.DataFrame,
         "n_drawn": int(len(drawn)),
         "insufficient": [
             {"band": str(r["band"]), "setting": str(r["setting"]),
-             "n_retention": int(r["n_retention"]),
+             "n_apex_retention": int(r["n_apex_retention"]),
              "reason": str(r["insufficient_reason"])}
             for _, r in insufficient.iterrows()],
         "medians": {
-            s: {str(r["band"]): float(r["median_retention"])
+            s: {str(r["band"]): float(r["median_apex_retention"])
                 for _, r in drawn[drawn["setting"] == s].iterrows()}
             for s in TURN_COST_SETTINGS},
-        "q1": {s: {str(r["band"]): float(r["q1_retention"])
+        "q1": {s: {str(r["band"]): float(r["q1_apex_retention"])
                    for _, r in drawn[drawn["setting"] == s].iterrows()}
                for s in TURN_COST_SETTINGS},
-        "q3": {s: {str(r["band"]): float(r["q3_retention"])
+        "q3": {s: {str(r["band"]): float(r["q3_apex_retention"])
                    for _, r in drawn[drawn["setting"] == s].iterrows()}
                for s in TURN_COST_SETTINGS},
+        "shares": {
+            s: {str(r["band"]): float(r["share_within_setting"])
+                for _, r in table[table["setting"] == s].iterrows()}
+            for s in TURN_COST_SETTINGS},
+        "counts": {
+            s: {str(r["band"]): int(r["count"])
+                for _, r in table[table["setting"] == s].iterrows()}
+            for s in TURN_COST_SETTINGS},
     }
     return table, context
 
 
 def _turn_cost_curve_sentence(context: dict) -> str:
-    """One sentence, generated from the medians actually drawn.
+    """The medians actually drawn, in band order, per setting.
 
-    Written as a generator so the caption cannot describe a curve the data does
-    not have: whichever way the medians run, the sentence carries their numbers.
+    Generated from the table so the caption cannot describe a curve the data
+    does not have, and cannot call it monotone: if a median rises in angle the
+    arithmetic below says so.
     """
     parts = []
     for setting in TURN_COST_SETTINGS:
@@ -3509,48 +3531,50 @@ def _turn_cost_curve_sentence(context: dict) -> str:
         if not med:
             parts.append(f"{SETTING_LABELS[setting]}: no band carries a median")
             continue
-        shallow = med.get(context["bands"][0])
-        deep = med.get(context["bands"][-2])
-        peak_band, peak = max(med.items(), key=lambda kv: kv[1])
-        low_band, low = min(med.items(), key=lambda kv: kv[1])
-        shallow_txt = (f"{shallow:.2f} in {context['bands'][0]}" if shallow
-                       is not None else
-                       f"not reported in {context['bands'][0]} (insufficient n)")
-        deep_txt = (f"{deep:.2f} in {context['bands'][-2]}" if deep is not None
-                    else f"not reported in {context['bands'][-2]}")
-        parts.append(
-            f"{SETTING_LABELS[setting]}: {shallow_txt} against {deep_txt}; peak "
-            f"median {peak:.2f} in {peak_band}, low median {low:.2f} in "
-            f"{low_band}")
+        sequence = []
+        for band in context["bands"][:-1]:
+            if band in med:
+                sequence.append(f"{band} {med[band]:.2f}")
+            else:
+                sequence.append(f"{band} no median (insufficient n)")
+        parts.append(f"{SETTING_LABELS[setting]} medians, shallow to deep: "
+                     + ", ".join(sequence))
     return "; ".join(parts) + "."
 
 
-def _turn_cost_direction(context: dict) -> str:
-    """The shallowest-to-deepest change, stated only where both are reported."""
-    bits = []
+def _turn_cost_shape_sentence(context: dict) -> str:
+    """State the shape honestly: where the curve falls, and where it rises."""
+    rising: list[str] = []
+    falling_txt: list[str] = []
     for setting in TURN_COST_SETTINGS:
         med = context["medians"][setting]
-        shallow = med.get(context["bands"][0])
-        deep = med.get(context["bands"][-2])
-        if shallow is None or deep is None:
-            continue
-        change = deep - shallow
-        pct = 100.0 * change / shallow if shallow else float("nan")
-        bits.append(
-            f"{SETTING_LABELS[setting]} {shallow:.2f} → {deep:.2f} "
-            f"({change:+.2f}, {pct:+.0f}%)")
-    if not bits:
-        return ("No setting reports both the shallowest and the deepest band, "
-                "so no shallow-to-deep change is stated.")
-    return ("From the shallowest to the deepest reported band: "
-            + "; ".join(bits) + ".")
+        ordered = [(b, med[b]) for b in context["bands"][:-1] if b in med]
+        rises = [(ordered[i][0], ordered[i + 1][0]) for i in range(len(ordered) - 1)
+                 if ordered[i + 1][1] > ordered[i][1]]
+        if rises:
+            rising.append(
+                f"{SETTING_LABELS[setting]} rises from "
+                + " and ".join(f"{a} to {b}" for a, b in rises))
+        if ordered:
+            falling_txt.append(
+                f"{SETTING_LABELS[setting]} {ordered[0][1]:.2f} → "
+                f"{ordered[-1][1]:.2f}")
+    bits = []
+    if rising:
+        bits.append("The curve is not monotone in angle: " + "; ".join(rising))
+    else:
+        bits.append("The curve is monotone non-increasing in angle")
+    if falling_txt:
+        bits.append("shallowest to deepest reported band, "
+                    + "; ".join(falling_txt))
+    return "; ".join(bits) + "."
 
 
 def plot_turn_cost(table: pd.DataFrame, context: dict,
                    cfg: common.Config) -> plt.Figure:
     """Two stacked panels on one shared band axis. Returns the Figure.
 
-    (a) median and interquartile spread of ``speed_retention`` per band, one
+    (a) median and interquartile spread of ``apex_retention`` per band, one
     series per setting; insufficient bands and the reversal class are drawn as
     such, never as values. (b) each setting's own share of its turns in the same
     bands, counts printed on the bars, the reversal class hatched.
@@ -3595,18 +3619,19 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
             x = i + offsets[setting]
             colour = PALETTE[setting]
             if row["drawn_in_panel_a"]:
-                ax_a.plot([x, x], [row["q1_retention"], row["q3_retention"]],
+                ax_a.plot([x, x], [row["q1_apex_retention"],
+                                   row["q3_apex_retention"]],
                           color=colour, linewidth=2.6, solid_capstyle="butt",
                           zorder=3)
                 ax_a.plot([x, x],
-                          [row["q1_retention"] - 0.018,
-                           row["q1_retention"] + 0.018],
+                          [row["q1_apex_retention"] - 0.018,
+                           row["q1_apex_retention"] + 0.018],
                           color=colour, linewidth=1.4, zorder=3)
                 ax_a.plot([x, x],
-                          [row["q3_retention"] - 0.018,
-                           row["q3_retention"] + 0.018],
+                          [row["q3_apex_retention"] - 0.018,
+                           row["q3_apex_retention"] + 0.018],
                           color=colour, linewidth=1.4, zorder=3)
-                ax_a.plot([x], [row["median_retention"]],
+                ax_a.plot([x], [row["median_apex_retention"]],
                           marker="o" if setting == "combine" else "s",
                           markersize=6.2, markerfacecolor=colour,
                           markeredgecolor="white", markeredgewidth=0.7,
@@ -3629,8 +3654,8 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
     drawn_y = [v for s in TURN_COST_SETTINGS
                for v in list(context["q1"][s].values())
                + list(context["q3"][s].values())]
-    y_lo = min(0.55, min(drawn_y) - 0.14)
-    y_hi = max(drawn_y) + 0.16
+    y_lo = max(0.0, min(drawn_y) - 0.10)
+    y_hi = max(drawn_y) + 0.12
     ax_a.set_ylim(y_lo, y_hi)
     ax_a.set_xlim(-0.55, n_bands - 0.45)
 
@@ -3645,7 +3670,7 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
             x = i + offsets[setting]
             if row["drawn_in_panel_a"]:
                 ax_a.text(x, y_lo + (y_hi - y_lo) * 0.015,
-                          f"n={int(row['n_retention'])}", ha="center",
+                          f"n={int(row['n_apex_retention'])}", ha="center",
                           va="bottom", fontsize=6.0, color=PALETTE[setting],
                           zorder=6)
             else:
@@ -3654,17 +3679,17 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
                     bar_w, y_hi - y_lo, facecolor="#7A7A7A", alpha=0.16,
                     edgecolor="none", zorder=1))
                 ax_a.text(x, y_lo + (y_hi - y_lo) * 0.20,
-                          f"n={int(row['n_retention'])}\ninsufficient\n"
+                          f"n={int(row['n_apex_retention'])}\ninsufficient\n"
                           f"(min n={min_n})", ha="center", va="bottom",
                           fontsize=5.8, color="#333333", linespacing=1.3,
                           zorder=6)
 
     ax_a.set_title(
-        "(a) What the turn costs in speed — median and interquartile spread of "
-        "exit ÷ entry speed, by reporting band",
+        "(a) What the plant costs — median and interquartile spread of "
+        "apex ÷ entry speed, by reporting band",
         loc="left", fontsize=9.6, fontweight="bold", color="#1A1A1A", pad=7)
-    ax_a.set_ylabel("Speed retention (exit ÷ entry);\ndashed line = 1.0 "
-                    "(exit speed equals entry speed)",
+    ax_a.set_ylabel("Apex retention (apex ÷ entry);\ndashed line = 1.0 "
+                    "(no speed lost at the plant)",
                     fontsize=7.6, color="#333333")
     ax_a.tick_params(axis="x", labelbottom=False, length=0)
     ax_a.tick_params(axis="y", labelsize=7.0, colors="#333333", length=2)
@@ -3725,25 +3750,20 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
     fig.text(0.012, 0.950,
              _wrap_text(
                  "Panel a prices each reporting band with stage 02's own "
-                 "speed_retention (exit speed ÷ entry speed); panel b shows "
-                 "where each setting spends its turns in the same bands. "
-                 "Descriptive distributions only — no fit, no smoothing, no "
-                 "threshold.", 178),
+                 "apex_retention (apex speed ÷ entry speed) — the speed given "
+                 "up at the plant. Panel b shows where each setting spends its "
+                 "turns in the same bands. Descriptive distributions only — no "
+                 "fit, no smoothing, no threshold.", 178),
              fontsize=8.4, ha="left", va="top", color="#333333")
 
     medians = context["medians"]
-    all_med = [v for s in TURN_COST_SETTINGS for v in medians[s].values()]
-    above_one = sum(1 for v in all_med if v > 1.0)
-    low_setting, low_band, low_value = min(
-        ((s, b, v) for s in TURN_COST_SETTINGS
-         for b, v in medians[s].items()), key=lambda x: x[2])
-    peaks = {s: max(medians[s].items(), key=lambda kv: kv[1])[0]
-             for s in TURN_COST_SETTINGS if medians[s]}
-    if len(set(peaks.values())) == 1:
-        peak_txt = f"both settings peak in {next(iter(peaks.values()))}"
-    else:
-        peak_txt = "; ".join(f"{SETTING_LABELS[s]} peaks in {b}"
-                             for s, b in peaks.items())
+    deep_band = context["bands"][-2]
+    deep_txt = "; ".join(
+        f"{SETTING_LABELS[s]} {medians[s].get(deep_band, float('nan')):.2f} "
+        f"(Q1–Q3 "
+        f"{context['q1'][s].get(deep_band, float('nan')):.2f}–"
+        f"{context['q3'][s].get(deep_band, float('nan')):.2f})"
+        for s in TURN_COST_SETTINGS)
     floor_bits = "; ".join(
         f"{SETTING_LABELS[s]} > {context['floors'][s]['value']:.1f} yd/s "
         f"({context['floors'][s]['key']})"
@@ -3755,34 +3775,43 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
 
     ins = context["insufficient"]
     ins_txt = ("; ".join(f"{r['band']} {SETTING_LABELS[r['setting']]} "
-                         f"(n={r['n_retention']})" for r in ins)
+                         f"(n={r['n_apex_retention']})" for r in ins)
                if ins else "none")
 
+    combine_shallow = medians["combine"].get(context["bands"][1], float("nan"))
+    combine_deep = medians["combine"].get("120–150°", float("nan"))
+    combine_plant = medians["combine"].get(deep_band, float("nan"))
+    combine_share_deep = 100.0 * context["shares"]["combine"].get(
+        "120–150°", float("nan"))
+    game_shallow = medians["game"].get(context["bands"][0], float("nan"))
+    game_n_shallow = context["counts"]["game"].get(context["bands"][0], 0)
+
     verdict = (
-        "The claim this figure was built to test — a 30–45° break keeps most "
-        "of the speed while a 150–180° plant gives up a large share of it — is "
-        f"not what the sample shows. {_turn_cost_curve_sentence(context)} "
-        f"{_turn_cost_direction(context)} "
-        f"{above_one} of {len(all_med)} drawn medians are above 1.00 (lowest "
-        f"{low_value:.2f}, {SETTING_LABELS[low_setting]} {low_band}), so the "
-        "exit speed maximum is faster than the entry speed maximum in every "
-        "band that carries a median: no band in this sample gives up a large "
-        f"share of its speed. The curve is not monotone in angle — {peak_txt}.")
+        "The cost is paid at the plant, and it is real. "
+        f"{_turn_cost_curve_sentence(context)} "
+        f"{_turn_cost_shape_sentence(context)} "
+        f"The Combine's shallow rows are where the cost is lowest "
+        f"(45–60° {combine_shallow:.2f}), and it barely tests there: its budget "
+        f"sits in 120–150° ({combine_share_deep:.0f}% of its turns), where its "
+        f"median gives up more than half its entry speed ({combine_deep:.2f}). "
+        f"Games pay a shallower but real price at 30–45° "
+        f"({game_shallow:.2f}) on {game_n_shallow} turns.")
 
     caption_lines = [
         STAMP,
         "FINDING, AS MEASURED. " + verdict,
-        (f"150–180° is the band the claim calls the plant: "
-         + ", ".join(f"{SETTING_LABELS[s]} median "
-                     f"{medians[s].get(context['bands'][-2], float('nan')):.2f} "
-                     f"(Q1–Q3 "
-                     f"{context['q1'][s].get(context['bands'][-2], float('nan')):.2f}–"
-                     f"{context['q3'][s].get(context['bands'][-2], float('nan')):.2f})"
-                     for s in TURN_COST_SETTINGS)
-         + ". A ratio above 1.0 is not a free turn: a turn window runs from one "
-           "speed maximum to another (detector.segmentation), so the ratio "
-           "compares the exit maximum with the entry maximum, and some "
-           "re-acceleration is included at the exit."),
+        (f"The sharpest plants, 150–180°: median apex ÷ entry {deep_txt}. "
+         "Apex retention is apex speed divided by entry speed, so "
+         f"{combine_plant:.2f} means the plant costs the Combine "
+         f"{100.0 * (1.0 - combine_plant):.0f}% of the speed it carried into "
+         "the turn; a median near 1.00 means no speed is lost at the plant "
+         "(a wide turn taken without braking)."),
+        ("Not plotted, by design: speed_retention (exit speed ÷ entry speed). "
+         "The turn window runs between speed maxima (detector.segmentation), "
+         "so re-acceleration inside the window puts exit over entry above 1 in "
+         "every band by construction. It measures the gain across the whole "
+         "window, not the cost at the plant, and appears here only as this "
+         "definitional footnote — never as a cost."),
         (f"Published n per band. Any band with fewer than "
          f"{context['min_n_for_median']} usable turns is drawn as INSUFFICIENT, "
          f"never as a median: {ins_txt}."),
@@ -3806,8 +3835,8 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
     wrapped: list[str] = []
     for line in caption_lines:
         wrapped.extend(_wrap_text(line, 168).split("\n"))
-    fig.text(0.012, 0.252, "\n".join(wrapped), fontsize=6.25,
-             ha="left", va="top", color="#333333", linespacing=1.40)
+    fig.text(0.012, 0.262, "\n".join(wrapped), fontsize=6.2,
+             ha="left", va="top", color="#333333", linespacing=1.33)
 
     fig.text(0.988, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
              fontweight="bold", color=ALERT)
@@ -3857,34 +3886,38 @@ def turn_cost_csv_frame(table: pd.DataFrame) -> pd.DataFrame:
         "band_index", "band", "band_low_deg", "band_high_deg",
         "is_reversal_class", "setting", "count", "setting_total",
         "share_within_setting", "share_pct", "entry_speed_floor_yd_s",
-        "entry_speed_floor_key", "n_below_speed_floor", "n_missing_retention",
-        "n_retention", "q1_retention", "median_retention", "q3_retention",
-        "iqr_retention", "insufficient", "insufficient_reason",
+        "entry_speed_floor_key", "n_below_speed_floor",
+        "n_missing_apex_retention", "n_apex_retention", "q1_apex_retention",
+        "median_apex_retention", "q3_apex_retention", "iqr_apex_retention",
+        "insufficient", "insufficient_reason",
         "drawn_in_panel_a"]]
 
 
 def turn_cost_manifest_payload(table: pd.DataFrame, context: dict,
                                cfg: common.Config) -> dict:
     medians = context["medians"]
-    claim_supported = all(
-        medians[s].get(context["bands"][0], float("nan"))
-        > medians[s].get(context["bands"][-2], float("nan"))
-        for s in TURN_COST_SETTINGS)
     return {
         "stage": STAGE,
         "artefact_version": ARTEFACT_VERSION,
         "figure": FIGURE_KEY_TURN_COST,
-        "title": ("What a turn costs, and who pays for it: speed retention by "
+        "title": ("What a turn costs, and who pays for it: apex retention by "
                   "reporting band, and each setting's own turn mix"),
         "measure": {
-            "column": "speed_retention",
-            "definition": "exit_speed / entry_speed (stage 02)",
+            "column": context["column"],
+            "definition": "apex_speed / entry_speed (stage 02)",
             "segmentation_key": "detector.segmentation",
             "source": "outputs/turns/turns.parquet",
+            "not_plotted": {
+                "column": "speed_retention",
+                "reason": ("exit_speed / entry_speed; the turn window runs "
+                           "between speed maxima, so re-acceleration inside "
+                           "the window makes it exceed 1 by construction. "
+                           "Definitional footnote only, never a cost."),
+            },
         },
         "panel_a": {
-            "encoding": ("median with Q1-Q3 whisker, one series per setting, "
-                         "no smoothing and no fitted curve"),
+            "encoding": ("median apex retention with Q1-Q3 whisker, one series "
+                         "per setting, no smoothing and no fitted curve"),
             "bands": context["bands"][:-1],
             "medians": medians,
             "q1": context["q1"],
@@ -3895,8 +3928,8 @@ def turn_cost_manifest_payload(table: pd.DataFrame, context: dict,
             "claim_tested": ("A 30-45 degree break keeps most of the speed "
                              "while a 150-180 degree plant gives up a large "
                              "share of it."),
-            "claim_supported": bool(claim_supported),
             "verdict": _turn_cost_curve_sentence(context),
+            "shape": _turn_cost_shape_sentence(context),
         },
         "panel_b": {
             "encoding": ("share of each setting's own valid turns per band; "
@@ -3929,9 +3962,11 @@ def turn_cost_manifest_payload(table: pd.DataFrame, context: dict,
         "n_by_setting": context["n_by_setting"],
         "caveats": [
             ("Sample data: nothing here is a finding about the 2027 class."),
-            ("speed_retention is exit_speed / entry_speed with the turn window "
-             "bounded by speed maxima; a ratio above 1 means the exit maximum "
-             "is faster than the entry maximum, not that the turn is free."),
+            ("apex_retention is apex_speed / entry_speed: the speed lost at "
+             "the plant. speed_retention (exit / entry) is above 1 by "
+             "construction because the window runs between speed maxima and "
+             "includes re-acceleration; it is a definitional footnote, never "
+             "a cost."),
             ("Descriptive only: no per-player values, no ranking, no p-values, "
              "no smoothing or fitted curve."),
             ("Bands are figures.hole.bands, left-closed; the last class is the "
@@ -3939,4 +3974,12 @@ def turn_cost_manifest_payload(table: pd.DataFrame, context: dict,
         ],
         "png": f"outputs/figures/{FIGURE_KEY_TURN_COST}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_TURN_COST}.csv",
+        "revision": {
+            "version": 2,
+            "reason": ("Figure 8 originally plotted speed_retention (exit ÷ "
+                       "entry), which is above 1 in every band by construction "
+                       "and shows gains, not costs. Panel (a) now plots "
+                       "apex_retention (apex ÷ entry), the speed actually "
+                       "given up at the plant."),
+        },
     }

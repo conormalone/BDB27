@@ -101,6 +101,8 @@ def _turns_frame() -> pd.DataFrame:
                 # monotone enough to give every drawn band a real spread; the
                 # figure-8 tests recompute the quartiles from this column.
                 retention = 0.92 + 0.11 * (int(lo) // 10 % 5) + 0.02 * (j % 7)
+                apex_retention = max(
+                    0.05, 1.02 - 0.0055 * (angle - 30.0) + 0.02 * (j % 5) / 4.0)
                 rows.append({
                     "setting": setting,
                     "abs_turn_angle": float(angle),
@@ -111,6 +113,7 @@ def _turns_frame() -> pd.DataFrame:
                     "drill_name": drill,
                     "entry_speed": float(entry),
                     "speed_retention": float(retention),
+                    "apex_retention": float(apex_retention),
                     # Figure 6 needs a real acceleration per turn. Monotone in
                     # angle with a deterministic ripple; assertions recompute
                     # the medians and p95 from this written table.
@@ -154,6 +157,9 @@ def _extra_positions_frame() -> pd.DataFrame:
                         "entry_speed": float(3.0 + (j % 5) * 0.8),
                         "speed_retention": float(1.02 + 0.03 * band_index
                                                  + 0.01 * (j % 5)),
+                        "apex_retention": float(
+                            max(0.05, 1.0 - 0.006 * (angle - 30.0)
+                                + 0.015 * (j % 4) / 3.0)),
                         "peak_lateral_accel_yd_s2": float(
                             4.4 + 0.065 * angle + 0.7 * ((j * 5 + i) % 5) / 5.0),
                         "event_id": f"{position}{setting[0]}{band_index}_{j}",
@@ -1631,6 +1637,7 @@ def _tc_expected(turns: pd.DataFrame, cfg) -> pd.DataFrame:
     bands = _fig.band_labels(edges, overflow)
     position = str(cfg.get("figures.turn_cost.position_group"))
     min_n = int(cfg.get("figures.turn_cost.min_n_for_median"))
+    column = str(cfg.get("figures.turn_cost.retention_column"))
     floors = {s: float(cfg.get(cfg.get(
         f"figures.turn_cost.entry_speed_floor_keys.{s}")))
         for s in ("combine", "game")}
@@ -1640,7 +1647,7 @@ def _tc_expected(turns: pd.DataFrame, cfg) -> pd.DataFrame:
     df["setting"] = df["setting"].astype(str)
     df["abs_turn_angle"] = pd.to_numeric(df["abs_turn_angle"], errors="coerce")
     df["entry_speed"] = pd.to_numeric(df["entry_speed"], errors="coerce")
-    df["speed_retention"] = pd.to_numeric(df["speed_retention"], errors="coerce")
+    df[column] = pd.to_numeric(df[column], errors="coerce")
     totals = df.groupby("setting").size().to_dict()
 
     rows = []
@@ -1657,7 +1664,7 @@ def _tc_expected(turns: pd.DataFrame, cfg) -> pd.DataFrame:
                          | (part["entry_speed"] <= floor)).sum())
             usable = part[part["entry_speed"].notna()
                           & (part["entry_speed"] > floor)
-                          & part["speed_retention"].notna()]["speed_retention"]
+                          & part[column].notna()][column]
             n_ret = int(len(usable))
             rows.append({
                 "band_index": i + 1,
@@ -1669,13 +1676,13 @@ def _tc_expected(turns: pd.DataFrame, cfg) -> pd.DataFrame:
                 "share_within_setting": int(len(part)) / int(totals[setting]),
                 "entry_speed_floor_yd_s": floor,
                 "n_below_speed_floor": below,
-                "n_retention": n_ret,
-                "q1_retention": (float(np.percentile(usable, 25))
-                                 if n_ret else np.nan),
-                "median_retention": (float(np.percentile(usable, 50))
-                                     if n_ret else np.nan),
-                "q3_retention": (float(np.percentile(usable, 75))
-                                 if n_ret else np.nan),
+                "n_apex_retention": n_ret,
+                "q1_apex_retention": (float(np.percentile(usable, 25))
+                                      if n_ret else np.nan),
+                "median_apex_retention": (float(np.percentile(usable, 50))
+                                          if n_ret else np.nan),
+                "q3_apex_retention": (float(np.percentile(usable, 75))
+                                      if n_ret else np.nan),
             })
     return pd.DataFrame(rows)
 
@@ -1695,32 +1702,36 @@ def _check_tc_csv(csv_df: pd.DataFrame, turns: pd.DataFrame, cfg) -> None:
         assert int(row["setting_total"]) == int(match["setting_total"])
         assert int(row["n_below_speed_floor"]) == int(
             match["n_below_speed_floor"])
-        assert int(row["n_retention"]) == int(match["n_retention"])
+        assert int(row["n_apex_retention"]) == int(
+            match["n_apex_retention"])
         assert np.isclose(float(row["share_within_setting"]),
                           float(match["share_within_setting"]), atol=1e-12)
         assert np.isclose(float(row["entry_speed_floor_yd_s"]),
                           float(match["entry_speed_floor_yd_s"]), atol=1e-12)
         if match["is_reversal_class"]:
             assert bool(row["is_reversal_class"]) is True
-            assert pd.isna(row["median_retention"]), (
+            assert pd.isna(row["median_apex_retention"]), (
                 "the reversal class must carry no retention value")
             assert bool(row["insufficient"]) is True
             assert bool(row["drawn_in_panel_a"]) is False
             assert "reversal" in str(row["insufficient_reason"])
             continue
         assert bool(row["is_reversal_class"]) is False
-        for col in ("q1_retention", "median_retention", "q3_retention"):
+        for col in ("q1_apex_retention", "median_apex_retention",
+                    "q3_apex_retention"):
             assert np.isclose(float(row[col]), float(match[col]), atol=1e-9), (
                 f"{row['band']} {row['setting']} {col} does not recompute")
-        assert float(row["q1_retention"]) <= float(row["median_retention"]) \
-            <= float(row["q3_retention"]), "quartiles are out of order"
-        assert np.isclose(float(row["iqr_retention"]),
-                          float(match["q3_retention"])
-                          - float(match["q1_retention"]), atol=1e-9)
+        assert float(row["q1_apex_retention"]) \
+            <= float(row["median_apex_retention"]) \
+            <= float(row["q3_apex_retention"]), "quartiles are out of order"
+        assert np.isclose(float(row["iqr_apex_retention"]),
+                          float(match["q3_apex_retention"])
+                          - float(match["q1_apex_retention"]), atol=1e-9)
         assert bool(row["insufficient"]) == bool(
-            int(row["n_retention"]) < min_n), "insufficient flag ignores min_n"
+            int(row["n_apex_retention"]) < min_n), (
+                "insufficient flag ignores min_n")
         assert bool(row["drawn_in_panel_a"]) == bool(
-            int(row["n_retention"]) >= min_n)
+            int(row["n_apex_retention"]) >= min_n)
         reason = ("" if pd.isna(row["insufficient_reason"])
                   else str(row["insufficient_reason"]))
         if row["insufficient"]:
@@ -1789,7 +1800,8 @@ def test_turn_cost_insufficient_band_is_drawn_as_insufficient(rendered):
         assert len(flagged) >= 1, "fixture must contain an unusable band"
         for band, setting in insufficient:
             n = int(csv_df[(csv_df["band"] == band)
-                           & (csv_df["setting"] == setting)]["n_retention"].iloc[0])
+                           & (csv_df["setting"] == setting)][
+                               "n_apex_retention"].iloc[0])
             assert n < int(cfg.get("figures.turn_cost.min_n_for_median"))
         texts = " ".join(t.get_text() for ax in fig.axes for t in ax.texts)
         assert "insufficient" in texts.lower(), (
@@ -1820,7 +1832,7 @@ def test_turn_cost_reversal_class_excluded_from_a_but_present_in_b(rendered):
         assert set(rev["setting"]) == {"combine", "game"}
         assert (rev["count"] > 0).all()
         # The reversal class carries no retention value anywhere in (a).
-        assert rev["median_retention"].isna().all()
+        assert rev["median_apex_retention"].isna().all()
     finally:
         plt.close(fig)
 
@@ -1874,8 +1886,10 @@ def test_turn_cost_manifest_entry(rendered):
     fig = man["figures"][TC_KEY]
     assert fig["figure"] == TC_KEY
     assert fig["stamp"] == STAMP
-    assert fig["measure"]["column"] == "speed_retention"
-    assert fig["measure"]["definition"] == "exit_speed / entry_speed (stage 02)"
+    assert fig["measure"]["column"] == "apex_retention"
+    assert fig["measure"]["definition"] == "apex_speed / entry_speed (stage 02)"
+    assert fig["measure"]["not_plotted"]["column"] == "speed_retention"
+    assert "by construction" in fig["measure"]["not_plotted"]["reason"]
     assert fig["panel_a"]["min_n_for_median"] == 20
     assert len(fig["panel_a"]["medians"]) == 2
     assert set(fig["entry_speed_floor"]) == {"combine", "game"}
@@ -1883,29 +1897,41 @@ def test_turn_cost_manifest_entry(rendered):
                          ("game", "detector.speed_floor_game")):
         assert fig["entry_speed_floor"][setting]["config_key"] == key
     assert fig["reversal_class"]["rule"] == "abs_turn_angle > 180"
-    assert isinstance(fig["panel_a"]["claim_supported"], bool)
+    assert fig["revision"]["version"] == 2
+    assert "speed_retention" in fig["revision"]["reason"]
     assert fig["png"].endswith("fig_turn_cost.png")
     assert fig["csv"].endswith("fig_turn_cost.csv")
     assert "no per-player values" in " ".join(fig["caveats"]).lower()
 
 
 def test_turn_cost_caption_reports_the_curve_it_drew(rendered):
-    """The caption is generated from the medians, and says the claim failed."""
+    """The caption is generated from the medians and names the right measure."""
     fig, table, context, turns, cfg, plt = _tc_build(rendered)
     try:
         text = " ".join(t.get_text() for t in fig.texts)
         flat = " ".join(text.split())
         assert "FINDING, AS MEASURED" in flat
-        assert "not what the sample shows" in flat
+        assert "cost is paid at the plant" in flat
         for setting in ("combine", "game"):
             med = context["medians"][setting]
-            # The sentence quotes the peak and the low median, and the next
-            # caption line quotes the 150-180 degree band: each must appear
-            # with the number actually drawn.
+            # The sentence lists every drawn median, and the next caption line
+            # quotes the 150-180 degree band: each must appear with the number
+            # actually drawn.
             for value in (max(med.values()), min(med.values()),
                           med[context["bands"][-2]]):
                 assert f"{value:.2f}" in flat, (
                     f"caption omits the {setting} median {value:.2f}")
+        assert "speed_retention" in flat, (
+            "the footnote must name the measure that is not plotted")
+        assert "never as a cost" in flat
+        rises = any(
+            seq[i + 1][1] > seq[i][1]
+            for seq in ([ (b, context["medians"][s][b])
+                           for b in context["bands"][:-1]
+                           if b in context["medians"][s]]
+                         for s in ("combine", "game"))
+            for i in range(len(seq) - 1))
+        assert ("not monotone" if rises else "monotone non-increasing") in flat
         assert "INSUFFICIENT" in flat
         assert "detector.speed_floor_combine" in flat
         assert "detector.speed_floor_game" in flat
@@ -1931,8 +1957,8 @@ def test_turn_cost_checks_can_fail(rendered):
     wrong_q = good.copy()
     idx = wrong_q.index[(wrong_q["band"] == "60–90°")
                         & (wrong_q["setting"] == "combine")][0]
-    wrong_q.loc[idx, "median_retention"] = (
-        float(wrong_q.loc[idx, "median_retention"]) + 0.05)
+    wrong_q.loc[idx, "median_apex_retention"] = (
+        float(wrong_q.loc[idx, "median_apex_retention"]) + 0.05)
     with pytest.raises(AssertionError):
         _check_tc_csv(wrong_q, turns, cfg)
 

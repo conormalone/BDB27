@@ -513,10 +513,14 @@ turn_coverage:
       height_in: 7.4
 
     # Stage 06 figure 8 ("What a turn costs, and who pays for it"). Panel (a)
-    # is the median and interquartile spread of `speed_retention` (exit speed /
+    # is the median and interquartile spread of `apex_retention` (apex speed /
     # entry speed, stage 02) per reporting band, one series per setting, on one
-    # axis. Panel (b) is each setting's own share of its turns in those same
-    # bands, so the substitution is visible directly under it. The bands are NOT
+    # axis. The plant is where speed is given up; `speed_retention` (exit /
+    # entry) is deliberately NOT the measure, because the turn window runs
+    # between speed maxima and re-acceleration inside the window makes that
+    # ratio exceed 1 by construction — it shows gains, not costs.
+    # Panel (b) is each setting's own share of its turns in those same bands,
+    # so the substitution is visible directly under it. The bands are NOT
     # repeated here: they are read from `figures.hole.bands`, so figure 8 and
     # figure 1 cannot drift apart. Nothing is smoothed, fitted or thresholded.
     #
@@ -531,6 +535,8 @@ turn_coverage:
     # and a test can prove the values agree with `detector.*`.
     turn_cost:
       position_group: DB
+      # The physical cost of the turn: apex speed divided by entry speed.
+      retention_column: apex_retention
       min_n_for_median: 20
       entry_speed_floor_keys:
         combine: detector.speed_floor_combine

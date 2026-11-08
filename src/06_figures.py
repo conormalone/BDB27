@@ -14,10 +14,12 @@
                           raw counts, each setting's own share, and turns per
                           player-appearance, with the stricter stage-04
                           population as a labelled sensitivity note.
-  8. "What a turn costs" — speed retention by reporting band (median and
-                          interquartile spread, both settings on one axis),
-                          with each setting's own turn mix directly beneath so
-                          the substitution is visible.
+  8. "What a turn costs" — apex retention (apex ÷ entry) by reporting band
+                          (median and interquartile spread, both settings on
+                          one axis), with each setting's own turn mix directly
+                          beneath so the substitution is visible. Exit ÷ entry
+                          retention is a footnote only: it is above 1 by
+                          construction.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.

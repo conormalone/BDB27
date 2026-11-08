@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "dfcee84a2dcd00b7",
-  "generated_utc": "2026-11-08T15:32:59Z",
+  "config_sha": "a18ee056682fc54e",
+  "generated_utc": "2026-11-08T15:55:52Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -3161,15 +3161,19 @@
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_turn_cost",
-      "title": "What a turn costs, and who pays for it: speed retention by reporting band, and each setting's own turn mix",
+      "title": "What a turn costs, and who pays for it: apex retention by reporting band, and each setting's own turn mix",
       "measure": {
-        "column": "speed_retention",
-        "definition": "exit_speed / entry_speed (stage 02)",
+        "column": "apex_retention",
+        "definition": "apex_speed / entry_speed (stage 02)",
         "segmentation_key": "detector.segmentation",
-        "source": "outputs/turns/turns.parquet"
+        "source": "outputs/turns/turns.parquet",
+        "not_plotted": {
+          "column": "speed_retention",
+          "reason": "exit_speed / entry_speed; the turn window runs between speed maxima, so re-acceleration inside the window makes it exceed 1 by construction. Definitional footnote only, never a cost."
+        }
       },
       "panel_a": {
-        "encoding": "median with Q1-Q3 whisker, one series per setting, no smoothing and no fitted curve",
+        "encoding": "median apex retention with Q1-Q3 whisker, one series per setting, no smoothing and no fitted curve",
         "bands": [
           "30\u201345\u00b0",
           "45\u201360\u00b0",
@@ -3180,53 +3184,53 @@
         ],
         "medians": {
           "combine": {
-            "45\u201360\u00b0": 1.3251019716262817,
-            "60\u201390\u00b0": 1.343435525894165,
-            "90\u2013120\u00b0": 1.124939203262329,
-            "120\u2013150\u00b0": 1.2523421049118042,
-            "150\u2013180\u00b0": 1.3000184297561646
+            "45\u201360\u00b0": 1.0,
+            "60\u201390\u00b0": 1.0140187740325928,
+            "90\u2013120\u00b0": 0.7497962117195129,
+            "120\u2013150\u00b0": 0.46048468351364136,
+            "150\u2013180\u00b0": 0.13859587907791138
           },
           "game": {
-            "30\u201345\u00b0": 1.1801292896270752,
-            "45\u201360\u00b0": 1.190018892288208,
-            "60\u201390\u00b0": 1.1955442428588867,
-            "90\u2013120\u00b0": 1.0794122219085693,
-            "120\u2013150\u00b0": 1.036222219467163,
-            "150\u2013180\u00b0": 1.0491986274719238
+            "30\u201345\u00b0": 0.8188444972038269,
+            "45\u201360\u00b0": 0.8760244250297546,
+            "60\u201390\u00b0": 0.8948770761489868,
+            "90\u2013120\u00b0": 0.7220584154129028,
+            "120\u2013150\u00b0": 0.4806806445121765,
+            "150\u2013180\u00b0": 0.28234174847602844
           }
         },
         "q1": {
           "combine": {
-            "45\u201360\u00b0": 1.1925024092197418,
-            "60\u201390\u00b0": 1.0329192876815796,
-            "90\u2013120\u00b0": 0.9941577911376953,
-            "120\u2013150\u00b0": 0.981861025094986,
-            "150\u2013180\u00b0": 0.9732644408941269
+            "45\u201360\u00b0": 1.0,
+            "60\u201390\u00b0": 0.8784509897232056,
+            "90\u2013120\u00b0": 0.5983749032020569,
+            "120\u2013150\u00b0": 0.34499725699424744,
+            "150\u2013180\u00b0": 0.0728038065135479
           },
           "game": {
-            "30\u201345\u00b0": 0.7200939655303955,
-            "45\u201360\u00b0": 0.6479760408401489,
-            "60\u201390\u00b0": 0.8241099268198013,
-            "90\u2013120\u00b0": 0.781889796257019,
-            "120\u2013150\u00b0": 0.7811413258314133,
-            "150\u2013180\u00b0": 0.7570342421531677
+            "30\u201345\u00b0": 0.5875120162963867,
+            "45\u201360\u00b0": 0.5508260726928711,
+            "60\u201390\u00b0": 0.6463519185781479,
+            "90\u2013120\u00b0": 0.51430544257164,
+            "120\u2013150\u00b0": 0.30462755262851715,
+            "150\u2013180\u00b0": 0.14731557667255402
           }
         },
         "q3": {
           "combine": {
-            "45\u201360\u00b0": 1.5124906301498413,
-            "60\u201390\u00b0": 1.667712926864624,
-            "90\u2013120\u00b0": 1.8056246042251587,
-            "120\u2013150\u00b0": 1.6743313074111938,
-            "150\u2013180\u00b0": 1.6859864592552185
+            "45\u201360\u00b0": 1.0431885123252869,
+            "60\u201390\u00b0": 1.1211572885513306,
+            "90\u2013120\u00b0": 0.9891471564769745,
+            "120\u2013150\u00b0": 0.584843784570694,
+            "150\u2013180\u00b0": 0.3913828954100609
           },
           "game": {
-            "30\u201345\u00b0": 1.6608436107635498,
-            "45\u201360\u00b0": 1.6729241609573364,
-            "60\u201390\u00b0": 1.6031220853328705,
-            "90\u2013120\u00b0": 1.414252758026123,
-            "120\u2013150\u00b0": 1.3940903544425964,
-            "150\u2013180\u00b0": 1.5358811616897583
+            "30\u201345\u00b0": 1.0,
+            "45\u201360\u00b0": 1.0,
+            "60\u201390\u00b0": 1.0305030047893524,
+            "90\u2013120\u00b0": 0.9235316067934036,
+            "120\u2013150\u00b0": 0.6906479597091675,
+            "150\u2013180\u00b0": 0.44789814949035645
           }
         },
         "n_drawn": 11,
@@ -3235,13 +3239,13 @@
           {
             "band": "30\u201345\u00b0",
             "setting": "combine",
-            "n_retention": 4,
+            "n_apex_retention": 4,
             "reason": "insufficient: n=4 < min_n=20 (too few turns to carry a median)"
           }
         ],
         "claim_tested": "A 30-45 degree break keeps most of the speed while a 150-180 degree plant gives up a large share of it.",
-        "claim_supported": false,
-        "verdict": "Combine: not reported in 30\u201345\u00b0 (insufficient n) against 1.30 in 150\u2013180\u00b0; peak median 1.34 in 60\u201390\u00b0, low median 1.12 in 90\u2013120\u00b0; Game: 1.18 in 30\u201345\u00b0 against 1.05 in 150\u2013180\u00b0; peak median 1.20 in 60\u201390\u00b0, low median 1.04 in 120\u2013150\u00b0."
+        "verdict": "Combine medians, shallow to deep: 30\u201345\u00b0 no median (insufficient n), 45\u201360\u00b0 1.00, 60\u201390\u00b0 1.01, 90\u2013120\u00b0 0.75, 120\u2013150\u00b0 0.46, 150\u2013180\u00b0 0.14; Game medians, shallow to deep: 30\u201345\u00b0 0.82, 45\u201360\u00b0 0.88, 60\u201390\u00b0 0.89, 90\u2013120\u00b0 0.72, 120\u2013150\u00b0 0.48, 150\u2013180\u00b0 0.28.",
+        "shape": "The curve is not monotone in angle: Combine rises from 45\u201360\u00b0 to 60\u201390\u00b0; Game rises from 30\u201345\u00b0 to 45\u201360\u00b0 and 45\u201360\u00b0 to 60\u201390\u00b0; shallowest to deepest reported band, Combine 1.00 \u2192 0.14; Game 0.82 \u2192 0.28."
       },
       "panel_b": {
         "encoding": "share of each setting's own valid turns per band; counts printed on the bars; reversal class hatched",
@@ -3319,12 +3323,16 @@
       },
       "caveats": [
         "Sample data: nothing here is a finding about the 2027 class.",
-        "speed_retention is exit_speed / entry_speed with the turn window bounded by speed maxima; a ratio above 1 means the exit maximum is faster than the entry maximum, not that the turn is free.",
+        "apex_retention is apex_speed / entry_speed: the speed lost at the plant. speed_retention (exit / entry) is above 1 by construction because the window runs between speed maxima and includes re-acceleration; it is a definitional footnote, never a cost.",
         "Descriptive only: no per-player values, no ranking, no p-values, no smoothing or fitted curve.",
         "Bands are figures.hole.bands, left-closed; the last class is the reversal class and carries no retention value."
       ],
       "png": "outputs/figures/fig_turn_cost.png",
       "csv": "outputs/figures/fig_turn_cost.csv",
+      "revision": {
+        "version": 2,
+        "reason": "Figure 8 originally plotted speed_retention (exit \u00f7 entry), which is above 1 in every band by construction and shows gains, not costs. Panel (a) now plots apex_retention (apex \u00f7 entry), the speed actually given up at the plant."
+      },
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }
