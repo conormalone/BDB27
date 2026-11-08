@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-12.
+"""Stage 06 — figures 1-13.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -43,6 +43,11 @@
                           as a projection. Counts at the bar ends, no
                           subtraction; the caption answers the oversampling
                           objection with the envelope's turns-per-player floor.
+ 13. "Bars of doubt" — one horizontal row per valid 30-45 degree DB turn,
+                          sorted by measured angle: a dot at the primary
+                          measurement and a whisker to the same turn's angle
+                          under the other smoothers, capped at a stated width
+                          and with the share crossing a band edge printed.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -368,6 +373,22 @@ def main(argv=None) -> int:
         lg_payload["stamp"] = figures.STAMP
         _write_manifest(lg_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 13: bars of doubt
+        bd_turns = figures.load_bars_of_doubt_turns(turns_path)
+        bd_table, bd_context = figures.bars_of_doubt_table(bd_turns, cfg)
+        bd_csv = figures.bars_of_doubt_csv_frame(bd_table, bd_context)
+        bd_png = outdir / f"{figures.FIGURE_KEY_BARS_OF_DOUBT}.png"
+        bd_csv_path = outdir / f"{figures.FIGURE_KEY_BARS_OF_DOUBT}.csv"
+        common.write_csv(bd_csv, bd_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_BARS_OF_DOUBT})
+        bd_plot = figures.plot_bars_of_doubt(bd_table, bd_context, cfg)
+        figures.render_bars_of_doubt(bd_plot, cfg, bd_png)
+        bd_payload = figures.bars_of_doubt_manifest_payload(
+            bd_table, bd_context, cfg)
+        bd_payload["stamp"] = figures.STAMP
+        _write_manifest(bd_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -432,7 +453,16 @@ def main(argv=None) -> int:
                         f"{lg_context['reps']} reps) "
                         f"band_players_at_one="
                         f"{lg_context['reliability']['players_at_exactly_one']}/"
-                        f"{lg_context['reliability']['players']} ")
+                        f"{lg_context['reliability']['players']}; "
+                        f"{figures.FIGURE_KEY_BARS_OF_DOUBT}: "
+                        f"turns={bd_context['n_rows']} "
+                        f"({bd_context['by_setting']['combine']}+"
+                        f"{bd_context['by_setting']['game']}) "
+                        f"median_spread="
+                        f"{bd_context['median_spread_deg']:.2f} "
+                        f"crossed={bd_context['n_crossed']} "
+                        f"capped={bd_context['n_capped']} "
+                        f"single_smoother={bd_context['n_single']} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -444,6 +474,7 @@ def main(argv=None) -> int:
           f"{bh_png.name}, {bh_csv_path.name}, "
           f"{ss_png.name}, {ss_csv_path.name}, "
           f"{lg_png.name}, {lg_csv_path.name}, "
+          f"{bd_png.name}, {bd_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -468,6 +499,10 @@ def main(argv=None) -> int:
           f"; figure 12 ledger "
           f"{lg_context['game_turns']}/{lg_context['combine_turns']}/"
           f"{lg_context['projection']} turns"
+          f"; figure 13 bars of doubt {bd_context['n_rows']} turns "
+          f"(median spread {bd_context['median_spread_deg']:.2f}°, "
+          f"{bd_context['n_crossed']} crossing an edge, "
+          f"{bd_context['n_capped']} capped)"
           f")")
     return 0
 

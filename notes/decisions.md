@@ -6020,3 +6020,49 @@ Parquet; the synthetic route world resolves to RIGHT/LEFT and a mirrored y axis
 fails both checks and falls back; the per-cell table is emitted in CSV and
 manifest; no symmetry/p-value token in the path; byte-identical re-render;
 figures 1–9 unchanged; all ten figures render).
+
+## D169 — Figure 13 draws the smoother range per turn, capped for the drawing only · 2026-11-08
+
+**Decision.** Figure 13 ("Bars of doubt: how precisely is a 30–45° turn
+known?", Stage 06) draws one horizontal row per valid DB turn in the 30–45°
+band, sorted by `abs_turn_angle` (101 turns: 4 Combine, 97 game). The dot is
+the primary measurement; the whisker is the same turn's `abs_turn_angle` under
+the other matched smoothers (`abs_turn_angle_smoother_min` to
+`..._max`). Band edges at 30° and 45° are drawn as rules; Combine is the accent
+colour, game is grey; the legend carries both counts.
+
+**The cap is a drawing width, not a data edit.** The uncapped smoother range
+has p90 = 98.7° on this sample (an alternative smoother can match a different
+corner near the same centre time), which would swamp the 15° band.
+`figures.bars_of_doubt.max_whisker_width_deg` (20°) caps each arm at ±10° from
+the dot. A row is flagged `capped` exactly when either arm exceeds that, 31 of
+101 rows here; cut ends get a caret and the count is printed on the image. The
+CSV keeps the uncapped min, max and spread for every row, and the caption
+states the cap and the p90 it hides. Whiskers are a processing range, not a
+confidence interval; no inference is drawn.
+
+**What crosses is the point.** 50 of 101 turns (49.5%) have a smoother range
+that leaves [30, 45); for those the neighbouring band is plausible depending
+on the smoother. The figure reports that count and share rather than resolving
+band membership to one number.
+
+**Counterweight, stated as two separate facts.** The detector recovers planted
+45° corners at 3.1° MAE over 48 planted turns (`notes/phase2-turns.md`), and,
+separately, the real-schema three-cone gate measures precision 0.915 / recall
+0.931 (`notes/phase2-turns.md`; `outputs/audit/gate.json`). The caption and
+manifest keep these on separate lines and say they are not combined into one
+score; a test fails if the two facts land on the same caption line.
+
+**Three rows have one smoother.** `n_smoothers_matched == 1` for 3 of 101
+rows; for those no spread exists and the whisker is a zero-length tick at the
+dot. The count is in the caption, CSV and manifest.
+
+**Evidence.** `config.yaml` §`figures.bars_of_doubt`; `src/bdb27/figures.py`
+(`load_bars_of_doubt_turns`, `bars_of_doubt_table`,
+`plot_bars_of_doubt`, `bars_of_doubt_csv_frame`,
+`bars_of_doubt_manifest_payload`); `tests/test_figures_stage.py::test_bars_of_doubt_*`
+(counts reconcile to the Parquet; crossed-edge share recomputed; cap flag
+applied exactly at the config width; the two detector facts occupy separate
+caption lines and their source numbers still exist; counts printed on the
+image; byte-identical re-render; figures 1–12 unchanged; stage 06 renders
+thirteen).

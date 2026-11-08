@@ -703,6 +703,25 @@ turn_coverage:
       width_in: 12.6
       height_in: 8.4
 
+    # Stage 06 figure 13 ("Bars of doubt"): one horizontal row per valid DB
+    # turn in the 30-45 degree band, sorted by measured angle. The dot is the
+    # primary measurement and the whisker is the same turn's absolute angle
+    # under every smoother that matched it (min-max).
+    #
+    # max_whisker_width_deg is a DRAWING cap, not a data edit. The uncapped
+    # smoother range has p90 = 98.7 degrees (because an alternative smoother
+    # can latch onto a different corner near the same centre time), which
+    # would swamp the 15-degree band. Whiskers are drawn no wider than this,
+    # at +-max/2 around the dot; the cut ends are marked with a caret and the
+    # count is printed on the image. DESIGN CHOICE, recorded as D169.
+    bars_of_doubt:
+      position_group: DB
+      angle_band_deg: [30, 45]
+      max_whisker_width_deg: 20
+      dpi: 150
+      width_in: 11.5
+      height_in: 12.6
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

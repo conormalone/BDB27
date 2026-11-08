@@ -6567,3 +6567,462 @@ def ledger_manifest_payload(table: pd.DataFrame, context: dict,
         "png": f"outputs/figures/{FIGURE_KEY_LEDGER}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_LEDGER}.csv",
     }
+
+
+# ------------- figure 13: bars of doubt
+#: Added at Conor's request (2026-11-08). One horizontal row per valid DB turn
+#: in the 30-45 degree band, sorted by measured angle. The dot is the primary
+#: measurement; the whisker is the min-max of the same turn's absolute angle
+#: under the smoother settings that matched it. The point of the figure is that
+#: band membership is smoother-dependent for some turns, and that the detector
+#: is nevertheless accurate on planted corners and on the real-schema gate.
+#:
+#: The whiskers are CAPPED for drawing only (config key
+#: ``figures.bars_of_doubt.max_whisker_width_deg``). The uncapped range has
+#: p90 = 98.7 degrees on this sample because an alternative smoother can latch
+#: onto a different corner near the same centre time; drawn uncapped it would
+#: swamp the 15-degree band. The CSV keeps the uncapped values and the count
+#: of cut rows is printed on the image.
+FIGURE_KEY_BARS_OF_DOUBT = "fig_bars_of_doubt"
+
+BARS_COLUMNS = [
+    "setting",
+    "position_group",
+    "abs_turn_angle",
+    "abs_turn_angle_smoother_min",
+    "abs_turn_angle_smoother_max",
+    "n_smoothers_matched",
+    "valid",
+]
+
+BARS_ACCENT = "#0072B2"
+BARS_GREY = "#6E6E6E"
+BARS_RULE = "#2B2B2B"
+
+
+def load_bars_of_doubt_turns(path: Path) -> pd.DataFrame:
+    """Read the columns figure 13 needs; refuse if a smoother column is absent."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the per-turn table is absent ({path}) — run 02_turns first")
+    df = pd.read_parquet(path)
+    if df.empty:
+        raise common.StageRefused(f"{STAGE}: turns.parquet is empty")
+    missing = [c for c in BARS_COLUMNS if c not in df.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet has no {missing} column(s); figure 13 "
+            "needs the smoother min/max columns and refuses rather than "
+            "drawing an invented spread")
+    return df[BARS_COLUMNS]
+
+
+def bars_of_doubt_table(turns: pd.DataFrame,
+                        cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """One row per turn in the band, with capped drawing geometry.
+
+    The table is sorted by measured angle. ``spread`` is always the UNCAPPED
+    max - min; ``whisker_low/high`` are the drawn (possibly clipped) ends, and
+    ``capped`` is true exactly when the uncapped spread exceeds the configured
+    drawing width.
+    """
+    block = "figures.bars_of_doubt"
+    position = str(cfg.get(f"{block}.position_group"))
+    low, high = (float(x) for x in cfg.get(f"{block}.angle_band_deg"))
+    cap = float(cfg.get(f"{block}.max_whisker_width_deg"))
+    if high <= low:
+        raise common.StageRefused(
+            f"{STAGE}: figures.bars_of_doubt.angle_band_deg must be increasing")
+    if not np.isfinite(cap) or cap <= 0:
+        raise common.StageRefused(
+            f"{STAGE}: figures.bars_of_doubt.max_whisker_width_deg is {cap}; "
+            "a drawing cap must be positive")
+    missing = [c for c in BARS_COLUMNS if c not in turns.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: the turn table has no {missing} column(s); figure 13 "
+            "cannot draw a smoother range it does not have")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    scope = valid & (turns["position_group"] == position) & angle.notna()
+    band = turns[scope & (angle >= low) & (angle < high)].copy()
+    if band.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} turns in [{low:g}, {high:g}) — "
+            "nothing to draw")
+    for setting in ("combine", "game"):
+        if not (band["setting"] == setting).any():
+            raise common.StageRefused(
+                f"{STAGE}: no valid {position} {setting} turns in "
+                f"[{low:g}, {high:g}) — the figure needs both settings")
+
+    for col in ("abs_turn_angle_smoother_min", "abs_turn_angle_smoother_max",
+                "n_smoothers_matched"):
+        band[col] = pd.to_numeric(band[col], errors="coerce")
+    if band[["abs_turn_angle_smoother_min",
+             "abs_turn_angle_smoother_max"]].isna().any().any():
+        raise common.StageRefused(
+            f"{STAGE}: a band turn has no smoother min/max; figure 13 draws "
+            "only rows whose range is known")
+    if band["n_smoothers_matched"].isna().any() or \
+            (band["n_smoothers_matched"] < 1).any():
+        raise common.StageRefused(
+            f"{STAGE}: a band turn matched no smoother; there is nothing to "
+            "draw for it")
+    if (band["abs_turn_angle_smoother_min"]
+            > band["abs_turn_angle_smoother_max"] + 1e-9).any():
+        raise common.StageRefused(
+            f"{STAGE}: a smoother min exceeds its max; the range is corrupt")
+
+    band["abs_turn_angle"] = pd.to_numeric(band["abs_turn_angle"],
+                                           errors="coerce")
+    band = band[band["abs_turn_angle"].notna()]
+    if band.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no numeric band angles to draw")
+    band = band.sort_values(["abs_turn_angle", "setting"],
+                            kind="mergesort").reset_index(drop=True)
+    band["row_order"] = np.arange(len(band), dtype=int)
+    band["smoother_spread_deg"] = (band["abs_turn_angle_smoother_max"]
+                                   - band["abs_turn_angle_smoother_min"])
+    half = cap / 2.0
+    band["whisker_low_deg"] = np.maximum(
+        band["abs_turn_angle_smoother_min"], band["abs_turn_angle"] - half)
+    band["whisker_high_deg"] = np.minimum(
+        band["abs_turn_angle_smoother_max"], band["abs_turn_angle"] + half)
+    band["capped_low"] = (band["abs_turn_angle_smoother_min"]
+                          < band["abs_turn_angle"] - half - 1e-9)
+    band["capped_high"] = (band["abs_turn_angle_smoother_max"]
+                           > band["abs_turn_angle"] + half + 1e-9)
+    band["capped"] = band["capped_low"] | band["capped_high"]
+    band["crossed_edge"] = ((band["abs_turn_angle_smoother_min"] < low)
+                            | (band["abs_turn_angle_smoother_max"] >= high))
+    band["single_smoother"] = band["n_smoothers_matched"].astype(int) == 1
+    band["band_low_deg"] = low
+    band["band_high_deg"] = high
+    band["cap_width_deg"] = cap
+    band["setting_label"] = band["setting"].map(
+        {"combine": COMBINE_LABEL, "game": GAME_LABEL})
+
+    # The drawn whisker must contain the dot and must never exceed the cap.
+    if ((band["whisker_low_deg"] > band["abs_turn_angle"] + 1e-9)
+            | (band["whisker_high_deg"] < band["abs_turn_angle"] - 1e-9)).any():
+        raise ValueError(f"{STAGE}: a drawn whisker does not contain its dot")
+    if ((band["whisker_high_deg"] - band["whisker_low_deg"])
+            > cap + 1e-6).any():
+        raise ValueError(f"{STAGE}: a drawn whisker exceeds the cap width")
+
+    n = int(len(band))
+    by_setting = {s: int((band["setting"] == s).sum())
+                  for s in ("combine", "game")}
+    if sum(by_setting.values()) != n:
+        raise ValueError(f"{STAGE}: the per-setting counts do not sum to {n}")
+    n_cross = int(band["crossed_edge"].sum())
+    n_capped = int(band["capped"].sum())
+    n_single = int(band["single_smoother"].sum())
+    spreads = band["smoother_spread_deg"]
+    context = {
+        "position": position,
+        "angle_low": low,
+        "angle_high": high,
+        "cap_width": cap,
+        "n_rows": n,
+        "by_setting": by_setting,
+        "median_spread_deg": float(np.median(spreads)),
+        "median_spread_by_setting": {
+            s: float(np.median(spreads[band["setting"] == s]))
+            for s in ("combine", "game")},
+        "max_spread_deg": float(spreads.max()),
+        "p90_spread_deg": float(np.percentile(spreads, 90)),
+        "n_crossed": n_cross,
+        "crossed_share": (n_cross / n) if n else None,
+        "n_capped": n_capped,
+        "n_single": n_single,
+        "n_multi": int(n - n_single),
+    }
+    return band, context
+
+
+def _bars_of_doubt_caption(context: dict) -> list[str]:
+    """Caption lines; the two detector facts are deliberately separate lines."""
+    ev = DETECTOR_EVIDENCE
+    n = context["n_rows"]
+    return [
+        STAMP,
+        (f"WHAT THIS IS. One horizontal row per valid DB turn with a measured "
+         f"|turn_angle| in the {context['angle_low']:g}–"
+         f"{context['angle_high']:g}° band — {n} turns "
+         f"({context['by_setting']['combine']} Combine, "
+         f"{context['by_setting']['game']} game) — sorted by the measured "
+         "angle. The dot is the primary measurement; the whisker is the "
+         "min–max of the same turn's |turn_angle| across the smoother settings "
+         "that matched it. A whisker is a processing range, not a confidence "
+         "interval, and no inference is drawn from it."),
+        (f"CAP — STATED, NOT HIDDEN. Whiskers are drawn no wider than "
+         f"{context['cap_width']:g}° "
+         f"(±{context['cap_width'] / 2:g}° around the dot; "
+         "figures.bars_of_doubt.max_whisker_width_deg). "
+         f"{context['n_capped']} of {n} rows have a whisker cut at that width "
+         "and are drawn with a caret at the cut end. The CSV keeps the "
+         "uncapped min, max and spread for every row."),
+        (f"WHAT CROSSES. {context['n_crossed']} of {n} turns "
+         f"({context['crossed_share']:.1%}) have a smoother range that leaves "
+         f"[{context['angle_low']:g}, {context['angle_high']:g}) — for those "
+         "turns the neighbouring band is plausible depending on the smoother. "
+         "That is the doubt this figure is about: some band memberships are a "
+         "smoother-dependent call."),
+        (f"SINGLE SMOOTHER. {context['n_single']} of {n} rows matched only one "
+         "smoother (n_smoothers_matched = 1); for those no spread is available "
+         "and the whisker is a zero-length tick at the dot."),
+        (f"COUNTERWEIGHT 1 — SYNTHETIC RECOVERY. Separately: the detector "
+         f"recovers planted 45° corners at {ev['angle_mae_deg']:.1f}° MAE over "
+         f"{ev['angle_mae_n']} planted turns (notes/phase2-turns.md). This is "
+         "the planted-corner test, not the gate in the next line."),
+        (f"COUNTERWEIGHT 2 — REAL-SCHEMA GATE. Separately: on real three-cone "
+         f"geometry the gate measures precision {ev['precision']:.3f} and "
+         f"recall {ev['recall']:.3f} (notes/phase2-turns.md; "
+         "outputs/audit/gate.json). The two facts are not combined into one "
+         "score."),
+        ("NOT DRAWN. No histogram on top, no p-value, no error bar on counts, "
+         "no smoothing of the smoothing, no player names. Rows are turns, not "
+         "players."),
+        ("SOURCE. outputs/turns/turns.parquet (valid DB turns, stage 02); every "
+         "value is recomputed at render time. Sample data: one session of "
+         "sample data; nothing here is a finding about the 2027 class."),
+    ]
+
+
+def plot_bars_of_doubt(table: pd.DataFrame, context: dict,
+                       cfg: common.Config) -> plt.Figure:
+    """The dot-and-whisker panel: one row per turn, sorted by measured angle."""
+    from matplotlib.lines import Line2D
+
+    block = "figures.bars_of_doubt"
+    low, high = context["angle_low"], context["angle_high"]
+    n = context["n_rows"]
+    fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
+                              float(cfg.get(f"{block}.height_in"))))
+    ax = fig.add_axes([0.075, 0.205, 0.900, 0.650])
+    ax.set_facecolor("#F1F1F1")
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.spines["bottom"].set_color("#B3B3B3")
+    ax.tick_params(labelsize=8.2, colors="#333333", length=2)
+    ax.set_axisbelow(True)
+
+    # The band itself is the light strip; the rules are the band edges.
+    ax.axvspan(low, high, color="#FFFFFF", alpha=0.72, zorder=0)
+    for edge, label in ((low, f"{low:g}°"), (high, f"{high:g}°")):
+        ax.axvline(edge, color=BARS_RULE, lw=1.1, ls=(0, (4, 3)), zorder=1)
+        ax.text(edge, n + 0.6, label, ha="center", va="bottom", fontsize=8.0,
+                color=BARS_RULE, fontweight="bold")
+
+    for row in table.itertuples(index=False):
+        y = float(row.row_order)
+        combine = row.setting == "combine"
+        colour = BARS_ACCENT if combine else BARS_GREY
+        ax.plot([row.whisker_low_deg, row.whisker_high_deg], [y, y],
+                color=colour, lw=(1.15 if combine else 0.65),
+                alpha=(0.98 if combine else 0.72),
+                solid_capstyle="butt", zorder=(3 if combine else 2))
+        if bool(row.capped_low):
+            ax.plot([row.whisker_low_deg], [y], marker="<", ms=3.1,
+                    color=colour, zorder=4)
+        if bool(row.capped_high):
+            ax.plot([row.whisker_high_deg], [y], marker=">", ms=3.1,
+                    color=colour, zorder=4)
+        ax.plot([row.abs_turn_angle], [y], marker="o",
+                ms=(3.7 if combine else 2.7), color=colour,
+                markeredgecolor="white", markeredgewidth=0.35,
+                zorder=5)
+
+    ax.set_xlim(19.0, 56.0)
+    ax.set_xticks([20, 25, 30, 35, 40, 45, 50, 55])
+    ax.set_xticklabels([f"{t:g}°" for t in [20, 25, 30, 35, 40, 45, 50, 55]])
+    ax.grid(axis="x", color="white", linewidth=0.9, zorder=0)
+    ax.set_ylim(-1.2, n + 1.6)
+    ax.set_yticks([])
+    ax.set_ylabel(
+        f"One row per turn ({n}), sorted by measured angle — increasing upward",
+        fontsize=8.2, color="#333333", labelpad=6)
+    ax.set_xlabel("Absolute turn angle (degrees); the 30–45° band is the lit "
+                  "strip", fontsize=8.4, color="#333333", labelpad=4)
+
+    handles = [
+        Line2D([], [], marker="o", ls="", color=BARS_ACCENT, ms=6.0,
+               label=f"Combine — {context['by_setting']['combine']} turns"),
+        Line2D([], [], marker="o", ls="", color=BARS_GREY, ms=5.0,
+               label=f"Game — {context['by_setting']['game']} turns"),
+        Line2D([0, 1], [0, 0], color="#8A8A8A", lw=1.0,
+               label="whisker = smoother min–max"),
+    ]
+    fig.legend(handles=handles, loc="lower left",
+               bbox_to_anchor=(0.070, 0.862), ncol=3, frameon=False,
+               fontsize=8.4, handlelength=1.5, columnspacing=1.8)
+
+    fig.text(0.008, 0.980, "Bars of doubt: how precisely is a 30–45° turn known?",
+             fontsize=16.5, fontweight="bold", ha="left", va="top",
+             color="#111111")
+    fig.text(0.008, 0.948,
+             "Every valid DB turn in the band, one row each; the dot is the "
+             "measurement, the whisker is the same turn under the other "
+             "smoothers.", fontsize=8.8, ha="left", va="top", color="#333333")
+    fig.text(0.008, 0.920,
+             f"Whiskers capped at {context['cap_width']:g}° total width "
+             f"(at most ±{context['cap_width'] / 2:g}° from the dot): "
+             f"{context['n_capped']} of {n} rows cut; carets mark the cut ends.",
+             fontsize=8.2, ha="left", va="top", color="#333333")
+    fig.text(0.008, 0.898,
+             f"Smoother range leaves the band: {context['n_crossed']} of {n} "
+             f"turns ({context['crossed_share']:.1%}) — neighbouring band "
+             f"plausible. Single smoother only: {context['n_single']} rows.",
+             fontsize=8.2, ha="left", va="top", color="#333333")
+
+    caption = "\n".join(_wrap_text(line, 238)
+                        for line in _bars_of_doubt_caption(context))
+    fig.text(0.008, 0.012, caption, ha="left", va="bottom", fontsize=6.0,
+             color="#333333", linespacing=1.30)
+    return fig
+
+
+def render_bars_of_doubt(fig: plt.Figure, cfg: common.Config,
+                         out_png: Path) -> Path:
+    """Save figure 13 once with fixed metadata, so two runs are identical."""
+    dpi = int(cfg.get("figures.bars_of_doubt.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def bars_of_doubt_csv_frame(table: pd.DataFrame,
+                           context: dict) -> pd.DataFrame:
+    """One row per turn: measured angle, uncapped range, drawn geometry, flags."""
+    out = table.copy()
+    out["position_group"] = context["position"]
+    columns = [
+        "row_order", "setting", "setting_label", "position_group",
+        "abs_turn_angle", "abs_turn_angle_smoother_min",
+        "abs_turn_angle_smoother_max", "smoother_spread_deg",
+        "whisker_low_deg", "whisker_high_deg", "capped", "capped_low",
+        "capped_high", "crossed_edge", "single_smoother",
+        "n_smoothers_matched", "band_low_deg", "band_high_deg",
+        "cap_width_deg",
+    ]
+    return out[columns].reset_index(drop=True)
+
+
+def bars_of_doubt_manifest_payload(table: pd.DataFrame, context: dict,
+                                   cfg: common.Config) -> dict:
+    """Figure 13's manifest entry, with the two detector facts kept separate."""
+    ev = DETECTOR_EVIDENCE
+    n = context["n_rows"]
+    n_cross = context["n_crossed"]
+    n_capped = context["n_capped"]
+    if int(table["crossed_edge"].sum()) != n_cross:
+        raise ValueError(f"{STAGE}: crossing count does not match the table")
+    if int(table["capped"].sum()) != n_capped:
+        raise ValueError(f"{STAGE}: capped count does not match the table")
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_BARS_OF_DOUBT,
+        "title": "Bars of doubt: how precisely is a 30–45° turn known?",
+        "band": {
+            "position_group": context["position"],
+            "abs_turn_angle_deg": [context["angle_low"], context["angle_high"]],
+            "rule": "valid turns, left-closed on abs_turn_angle_deg",
+        },
+        "population": {
+            "turns": n,
+            "by_setting": context["by_setting"],
+            "median_spread_deg": context["median_spread_deg"],
+            "median_spread_by_setting_deg":
+                context["median_spread_by_setting"],
+            "max_spread_deg": context["max_spread_deg"],
+            "p90_spread_deg": context["p90_spread_deg"],
+            "rows_with_single_smoother": context["n_single"],
+            "rows_with_multiple_smoothers": context["n_multi"],
+        },
+        "cap": {
+            "key": "figures.bars_of_doubt.max_whisker_width_deg",
+            "width_deg": context["cap_width"],
+            "arm_deg": context["cap_width"] / 2,
+            "rows_capped": n_capped,
+            "capped_share": n_capped / n,
+            "meaning": ("a DRAWING cap only: whiskers are clipped at the "
+                        "stated width, the CSV keeps the uncapped min/max and "
+                        "spread"),
+            "p90_spread_deg_uncapped": context["p90_spread_deg"],
+        },
+        "crossing": {
+            "rows": n_cross,
+            "share": context["crossed_share"],
+            "rule": ("smoother_min < band_low or smoother_max >= band_high; "
+                     "the smoother range leaves the half-open band"),
+            "meaning": ("for these turns the neighbouring band is plausible "
+                        "depending on which smoother processed the tracking"),
+        },
+        "detector_evidence": {
+            "synthetic_recovery": {
+                "angle_mae_deg": ev["angle_mae_deg"],
+                "n_planted_turns": ev["angle_mae_n"],
+                "source": DETECTOR_SOURCE_NOTES,
+                "is_same_fact_as_gate": False,
+            },
+            "real_schema_gate": {
+                "drill": ev["drill"],
+                "precision": ev["precision"],
+                "recall": ev["recall"],
+                "sources": [DETECTOR_SOURCE_NOTES, DETECTOR_SOURCE_GATE],
+                "is_same_fact_as_synthetic": False,
+            },
+            "stated_separately": True,
+            "note": ("TWO SEPARATE FACTS: the planted-corner MAE is a "
+                     "synthetic recovery test; the precision/recall are the "
+                     "real-schema three-cone gate. They are not combined into "
+                     "one score or one claim."),
+        },
+        "claim": (f"The {n} valid DB turns in the "
+                  f"{context['angle_low']:g}–{context['angle_high']:g}° band "
+                  f"have a median smoother spread of "
+                  f"{context['median_spread_deg']:.2f}°; {n_cross} of {n} "
+                  f"({context['crossed_share']:.1%}) have a smoother range "
+                  "that leaves the band, so their band membership is "
+                  "smoother-dependent. The detector is nevertheless accurate: "
+                  f"planted corners at {ev['angle_mae_deg']:.1f}° MAE over "
+                  f"{ev['angle_mae_n']} turns (synthetic recovery), and "
+                  f"precision {ev['precision']:.3f} / recall "
+                  f"{ev['recall']:.3f} on the real-schema three-cone gate "
+                  "(a separate check)."),
+        "not_claimed": [
+            "That the smoother spread is a confidence interval or a standard "
+            "error; it is a processing range across smoothers.",
+            "That turns whose range crosses an edge belong to the neighbouring "
+            "band; the figure says the neighbouring band is plausible.",
+            "That the two detector checks are one combined test; they are "
+            "separate facts, stated separately.",
+            "Anything about the 2027 class; this is one session of sample data.",
+        ],
+        "caveats": [
+            (f"Whiskers are capped at {context['cap_width']:g}° total width "
+             f"for drawing; {n_capped} of {n} rows are cut and marked with a "
+             "caret. The CSV retains the uncapped values. The uncapped p90 "
+             f"spread is {context['p90_spread_deg']:.1f}°."),
+            (f"{context['n_single']} of {n} rows matched only one smoother; "
+             "for those no spread is available and the whisker is zero-length."),
+            ("Rows are turns, not players; no player names appear."),
+            ("No histogram, no p-value, no error bar on counts, and no "
+             "smoothing of the smoothing."),
+            ("Sample data: one session of sample data; nothing here is a "
+             "finding about the 2027 class."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_BARS_OF_DOUBT}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_BARS_OF_DOUBT}.csv",
+    }

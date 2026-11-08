@@ -135,6 +135,18 @@ def _turns_frame() -> pd.DataFrame:
                 # tracking file. Signs alternate deterministically; no existing
                 # figure reads `turn_angle`.
                 signed = float(angle) if (j % 2 == 0) else -float(angle)
+                # Figure 13 needs a smoother range per turn. The pattern is
+                # deterministic and produces both a few single-smoother rows
+                # (no spread) and widths beyond the drawing cap, so the cap
+                # and crossing flags are exercised on the real code path.
+                n_sm = (1 if (setting == "game" and j % 37 == 5)
+                        else 2 + ((j * 7 + int(lo)) % 5))
+                spread = (0.0 if n_sm == 1
+                          else 1.0 + ((j * 11 + int(lo)) % 19))
+                if n_sm > 2 and j % 13 == 0:
+                    spread += 30.0
+                smoother_min = max(0.0, float(angle) - 0.4 * spread)
+                smoother_max = float(angle) + 0.6 * spread
                 if setting == "combine":
                     play_id, frame_start, frame_end = None, None, None
                 else:
@@ -162,6 +174,9 @@ def _turns_frame() -> pd.DataFrame:
                         4.2 + 0.07 * angle + 0.9 * ((j * 13 + int(lo)) % 7) / 7.0),
                     "event_id": f"{setting[0]}{lo:g}_{j}",
                     "attempt": 1.0,
+                    "n_smoothers_matched": int(n_sm),
+                    "abs_turn_angle_smoother_min": smoother_min,
+                    "abs_turn_angle_smoother_max": smoother_max,
                     "valid": True,
                 })
     assert k == sum(DRILL_TOTALS.values())
@@ -402,6 +417,8 @@ def rendered(tmp_path_factory):
             "ss_csv": out / "fig_shallow_sources.csv",
             "lg_png": out / "fig_ledger.png",
             "lg_csv": out / "fig_ledger.csv",
+            "bd_png": out / "fig_bars_of_doubt.png",
+            "bd_csv": out / "fig_bars_of_doubt.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -898,7 +915,7 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_measurement_limits", "fig_gap_honest",
                                    "fig_turn_cost", "fig_stopwatch",
                                    "fig_both_hips", "fig_shallow_sources",
-                                   "fig_ledger"}
+                                   "fig_ledger", "fig_bars_of_doubt"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1433,8 +1450,8 @@ def test_stage_06_manifest_lists_every_figure(rendered):
         "fig_the_hole", "fig_drill_coverage", "fig_before_after",
         "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits",
         "fig_gap_honest", "fig_turn_cost", "fig_stopwatch", "fig_both_hips",
-        "fig_shallow_sources", "fig_ledger"}
-    assert len(man["figures"]) == 12
+        "fig_shallow_sources", "fig_ledger", "fig_bars_of_doubt"}
+    assert len(man["figures"]) == 13
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -2565,7 +2582,7 @@ def test_both_hips_computes_no_symmetry_or_p_value(rendered):
 def test_both_hips_renders_every_figure(rendered):
     out = rendered["tmp"] / "outputs" / "figures"
     pngs = sorted(p.name for p in out.glob("fig_*.png"))
-    assert len(pngs) == 12, f"stage 06 must render twelve figures, found {pngs}"
+    assert len(pngs) == 13, f"stage 06 must render thirteen figures, found {pngs}"
     assert "fig_both_hips.png" in pngs
 
 
@@ -3187,3 +3204,254 @@ def test_ledger_refuses_and_checks_can_fail(rendered):
     empty_png.write_bytes(b"")
     with pytest.raises(AssertionError):
         _check_png(empty_png)
+
+
+# --------------------------------------------------------------------------
+# Figure 13: bars of doubt
+# --------------------------------------------------------------------------
+BD_KEY = "fig_bars_of_doubt"
+
+
+def _bd_build(rendered):
+    """Rebuild figure 13 from the written Parquet with the repo's own code."""
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    turns = figures.load_bars_of_doubt_turns(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = figures.bars_of_doubt_table(turns, cfg)
+    fig = figures.plot_bars_of_doubt(table, context, cfg)
+    return fig, table, context, cfg, turns
+
+
+def _bd_population(turns: pd.DataFrame, cfg):
+    """Plain-mask recount of the band population, no figure code."""
+    position = str(cfg.get("figures.bars_of_doubt.position_group"))
+    low, high = (float(x) for x in
+                 cfg.get("figures.bars_of_doubt.angle_band_deg"))
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    return turns[valid & (turns["position_group"] == position)
+                 & angle.notna() & (angle >= low) & (angle < high)]
+
+
+def _bd_caption_lines(fig) -> list[str]:
+    """The caption's physical lines (the longest fig-level text object)."""
+    caption = max(fig.texts, key=lambda t: len(t.get_text())).get_text()
+    return caption.split("\n")
+
+
+def test_bars_of_doubt_png_and_csv_exist(rendered):
+    _check_png(rendered["bd_png"])
+    assert rendered["bd_csv"].exists()
+    csv_df = pd.read_csv(rendered["bd_csv"])
+    assert len(csv_df) == 101
+    assert csv_df["setting"].value_counts().to_dict() == {
+        "game": 97, "combine": 4}
+
+
+def test_bars_of_doubt_row_counts_match_the_band_population(rendered):
+    _, table, context, cfg, turns = _bd_build(rendered)
+    band = _bd_population(turns, cfg)
+    csv_df = pd.read_csv(rendered["bd_csv"])
+
+    assert len(csv_df) == len(band) == len(table) == 101
+    for setting in ("combine", "game"):
+        want = int((band["setting"] == setting).sum())
+        assert int((csv_df["setting"] == setting).sum()) == want
+        assert context["by_setting"][setting] == want
+    # The band is left-closed and the row set is exactly the valid DB band.
+    assert csv_df["position_group"].eq("DB").all()
+    assert csv_df["abs_turn_angle"].between(30.0, 45.0, inclusive="left").all()
+    assert list(csv_df["row_order"]) == sorted(csv_df["row_order"])
+
+
+def test_bars_of_doubt_crossed_edge_share_is_recounted_from_the_parquet(rendered):
+    _, table, context, cfg, turns = _bd_build(rendered)
+    low, high = (float(x) for x in
+                 cfg.get("figures.bars_of_doubt.angle_band_deg"))
+    band = _bd_population(turns, cfg)
+    crossed = ((band["abs_turn_angle_smoother_min"] < low)
+               | (band["abs_turn_angle_smoother_max"] >= high))
+    want = int(crossed.sum())
+    share = want / len(band)
+
+    csv_df = pd.read_csv(rendered["bd_csv"])
+    flagged = csv_df["crossed_edge"].astype(str).str.lower().eq("true")
+    assert int(flagged.sum()) == want
+    assert context["n_crossed"] == want
+    assert np.isclose(context["crossed_share"], share, atol=1e-12)
+
+    man = json.loads(rendered["manifest"].read_text())["figures"][BD_KEY]
+    assert man["crossing"]["rows"] == want
+    assert np.isclose(man["crossing"]["share"], share, atol=1e-12)
+    assert 0 < want <= len(band)
+    assert np.isclose(share, want / 101, atol=1e-12)
+
+
+def test_bars_of_doubt_cap_flag_is_applied_exactly_to_the_cap_width(rendered):
+    _, table, context, cfg, _ = _bd_build(rendered)
+    cap = float(cfg.get("figures.bars_of_doubt.max_whisker_width_deg"))
+    half = cap / 2.0
+    csv_df = pd.read_csv(rendered["bd_csv"])
+
+    expected = ((csv_df["abs_turn_angle_smoother_min"]
+                 < csv_df["abs_turn_angle"] - half - 1e-9)
+                | (csv_df["abs_turn_angle_smoother_max"]
+                   > csv_df["abs_turn_angle"] + half + 1e-9))
+    got = csv_df["capped"].astype(str).str.lower().eq("true")
+    assert got.equals(expected)
+    assert int(got.sum()) == int(context["n_capped"])
+
+    # The drawn whisker contains the dot, never exceeds the cap, and equals the
+    # uncapped range wherever no end was cut.
+    assert (csv_df["whisker_low_deg"]
+            <= csv_df["abs_turn_angle"] + 1e-9).all()
+    assert (csv_df["whisker_high_deg"]
+            >= csv_df["abs_turn_angle"] - 1e-9).all()
+    assert ((csv_df["whisker_high_deg"] - csv_df["whisker_low_deg"])
+            <= cap + 1e-6).all()
+    uncut = ~expected
+    assert np.allclose(csv_df.loc[uncut, "whisker_low_deg"],
+                       csv_df.loc[uncut, "abs_turn_angle_smoother_min"])
+    assert np.allclose(csv_df.loc[uncut, "whisker_high_deg"],
+                       csv_df.loc[uncut, "abs_turn_angle_smoother_max"])
+
+    # The CSV keeps the uncapped spread even when the drawing is cut.
+    assert np.allclose(csv_df["smoother_spread_deg"],
+                       csv_df["abs_turn_angle_smoother_max"]
+                       - csv_df["abs_turn_angle_smoother_min"])
+    assert csv_df.loc[got, "smoother_spread_deg"].max() > cap
+
+
+def test_bars_of_doubt_single_smoother_rows_have_no_spread(rendered):
+    _, _, context, _, _ = _bd_build(rendered)
+    csv_df = pd.read_csv(rendered["bd_csv"])
+    single = csv_df["n_smoothers_matched"].eq(1)
+    assert int(single.sum()) == context["n_single"] == 3
+    sub = csv_df[single]
+    assert np.allclose(sub["abs_turn_angle_smoother_min"],
+                       sub["abs_turn_angle_smoother_max"])
+    assert np.allclose(sub["abs_turn_angle_smoother_min"],
+                       sub["abs_turn_angle"])
+    assert int(csv_df["single_smoother"].astype(str).str.lower()
+               .eq("true").sum()) == 3
+
+
+def test_bars_of_doubt_detector_facts_are_separate_caption_lines(rendered):
+    fig, _, _, _, _ = _bd_build(rendered)
+    try:
+        lines = _bd_caption_lines(fig)
+    finally:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+
+    mae_lines = [i for i, line in enumerate(lines) if "3.1° MAE" in line]
+    gate_lines = [i for i, line in enumerate(lines)
+                  if "precision 0.915" in line and "recall 0.931" in line]
+    assert mae_lines, "the synthetic recovery fact is missing"
+    assert gate_lines, "the real-schema gate fact is missing"
+    assert not (set(mae_lines) & set(gate_lines)), (
+        "the two detector facts must be separate caption lines")
+
+    mae = lines[mae_lines[0]]
+    gate = lines[gate_lines[0]]
+    assert "48 planted turns" in mae
+    assert "notes/phase2-turns.md" in mae
+    assert "not the gate" in mae
+    assert "three-cone" in gate
+    assert "not combined" in gate
+    # Neither line may carry the other fact's numbers.
+    assert "0.915" not in mae and "0.931" not in mae
+    assert "3.1" not in gate
+
+    notes = (ROOT / "notes" / "phase2-turns.md").read_text()
+    gate_json = (ROOT / "outputs" / "audit" / "gate.json").read_text()
+    assert "**3.1°**" in notes
+    for token in ("0.915", "0.931"):
+        assert token in notes
+        assert token in gate_json
+
+
+def test_bars_of_doubt_counts_are_printed_on_the_image(rendered):
+    fig, table, context, _, _ = _bd_build(rendered)
+    try:
+        text = _all_text(fig)
+        legend_text = " ".join(
+            t.get_text() for leg in fig.legends for t in leg.get_texts())
+    finally:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+    assert f"{context['n_capped']} of {context['n_rows']} rows cut" in text
+    assert f"{context['n_crossed']} of {context['n_rows']} turns" in text
+    assert f"{context['crossed_share']:.1%}" in text
+    assert f"{context['n_single']} rows" in text
+    assert f"Combine — {context['by_setting']['combine']} turns" in legend_text
+    assert f"Game — {context['by_setting']['game']} turns" in legend_text
+
+
+def test_bars_of_doubt_two_runs_are_byte_identical(rendered):
+    before = hashlib.sha256(rendered["bd_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["bd_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 13 differ"
+
+
+def test_bars_of_doubt_leaves_figures_1_to_12_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png", "ap_png", "ml_png",
+            "gh_png", "tc_png", "sw_png", "bh_png", "ss_png", "lg_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k], (
+            f"{k} changed: figure 13 must not alter figures 1-12")
+
+
+def test_bars_of_doubt_manifest_entry(rendered):
+    _, _, context, _, _ = _bd_build(rendered)
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][BD_KEY]
+    assert fig["figure"] == BD_KEY
+    assert fig["stamp"] == STAMP
+    assert fig["band"]["position_group"] == "DB"
+    assert fig["band"]["abs_turn_angle_deg"] == [30.0, 45.0]
+    assert fig["population"]["turns"] == 101
+    assert fig["population"]["by_setting"] == {"combine": 4, "game": 97}
+    assert fig["population"]["rows_with_single_smoother"] == 3
+    assert fig["cap"]["key"] == \
+        "figures.bars_of_doubt.max_whisker_width_deg"
+    assert fig["cap"]["width_deg"] == 20.0
+    assert fig["cap"]["rows_capped"] == context["n_capped"]
+    assert fig["crossing"]["rows"] == context["n_crossed"]
+    assert np.isclose(fig["crossing"]["share"], context["crossed_share"],
+                      atol=1e-12)
+    assert fig["detector_evidence"]["stated_separately"] is True
+    assert fig["detector_evidence"]["synthetic_recovery"]["angle_mae_deg"] == 3.1
+    assert fig["detector_evidence"]["synthetic_recovery"][
+        "n_planted_turns"] == 48
+    assert fig["detector_evidence"]["real_schema_gate"]["precision"] == 0.915
+    assert fig["detector_evidence"]["real_schema_gate"]["recall"] == 0.931
+    assert "TWO SEPARATE FACTS" in fig["detector_evidence"]["note"]
+    assert fig["png"].endswith("fig_bars_of_doubt.png")
+    assert fig["csv"].endswith("fig_bars_of_doubt.csv")
+
+
+def test_bars_of_doubt_refuses_missing_smoother_columns(rendered):
+    from bdb27 import common, figures
+    cfg = common.load_config(rendered["cfg"])
+    _, _, _, _, turns = _bd_build(rendered)
+
+    broken = turns.drop(columns=["abs_turn_angle_smoother_min"])
+    with pytest.raises(common.StageRefused):
+        figures.bars_of_doubt_table(broken, cfg)
+
+    empty = turns.copy()
+    empty["abs_turn_angle"] = 200.0
+    with pytest.raises(common.StageRefused):
+        figures.bars_of_doubt_table(empty, cfg)
+
+    only_combine = turns[turns["setting"] == "combine"].copy()
+    with pytest.raises(common.StageRefused):
+        figures.bars_of_doubt_table(only_combine, cfg)
