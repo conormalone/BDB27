@@ -419,6 +419,8 @@ def rendered(tmp_path_factory):
             "lg_csv": out / "fig_ledger.csv",
             "bd_png": out / "fig_bars_of_doubt.png",
             "bd_csv": out / "fig_bars_of_doubt.csv",
+            "sc_png": out / "fig_supply_composition.png",
+            "sc_csv": out / "fig_supply_composition.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -915,7 +917,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_measurement_limits", "fig_gap_honest",
                                    "fig_turn_cost", "fig_stopwatch",
                                    "fig_both_hips", "fig_shallow_sources",
-                                   "fig_ledger", "fig_bars_of_doubt"}
+                                   "fig_ledger", "fig_bars_of_doubt",
+                                   "fig_supply_composition"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1450,8 +1453,9 @@ def test_stage_06_manifest_lists_every_figure(rendered):
         "fig_the_hole", "fig_drill_coverage", "fig_before_after",
         "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits",
         "fig_gap_honest", "fig_turn_cost", "fig_stopwatch", "fig_both_hips",
-        "fig_shallow_sources", "fig_ledger", "fig_bars_of_doubt"}
-    assert len(man["figures"]) == 13
+        "fig_shallow_sources", "fig_ledger", "fig_bars_of_doubt",
+        "fig_supply_composition"}
+    assert len(man["figures"]) == 14
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -2582,7 +2586,7 @@ def test_both_hips_computes_no_symmetry_or_p_value(rendered):
 def test_both_hips_renders_every_figure(rendered):
     out = rendered["tmp"] / "outputs" / "figures"
     pngs = sorted(p.name for p in out.glob("fig_*.png"))
-    assert len(pngs) == 13, f"stage 06 must render thirteen figures, found {pngs}"
+    assert len(pngs) == 14, f"stage 06 must render fourteen figures, found {pngs}"
     assert "fig_both_hips.png" in pngs
 
 
@@ -3455,3 +3459,287 @@ def test_bars_of_doubt_refuses_missing_smoother_columns(rendered):
     only_combine = turns[turns["setting"] == "combine"].copy()
     with pytest.raises(common.StageRefused):
         figures.bars_of_doubt_table(only_combine, cfg)
+
+
+# ------------------- figure 14: where the Combine's turns come from
+SC_KEY = "fig_supply_composition"
+SC_BANDS = 7
+
+
+def _sc_recount(rendered, cfg=None):
+    """Per-drill x band counts recomputed from the Parquet under test.
+
+    Nothing is taken from the figure's own table: this is the independent
+    count every assertion is checked against.
+    """
+    from bdb27 import common, figures
+
+    cfg = cfg or common.load_config(rendered["cfg"])
+    block = "figures.supply_composition"
+    position = str(cfg.get(f"{block}.position_group"))
+    edges = [float(x) for x in cfg.get(f"{block}.bands.turn_angle_deg")]
+    overflow = str(cfg.get(f"{block}.bands.overflow_label"))
+    bands = figures.band_labels(edges, overflow)
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    valid = turns["valid"].fillna(False).astype(bool)
+    df = turns[valid & (turns["position_group"] == position)
+               & (turns["setting"] == "combine")].copy()
+    out = {}
+    for drill, part in df.groupby("drill_name"):
+        counts, players = {}, {}
+        for i, band in enumerate(bands):
+            lo = edges[i]
+            hi = edges[i + 1] if i + 1 < len(edges) else np.inf
+            sub = part[(part["abs_turn_angle"] >= lo)
+                       & (part["abs_turn_angle"] < hi)]
+            counts[band] = int(len(sub))
+            players[band] = int(sub["nfl_id"].nunique())
+        out[str(drill)] = {
+            "turns": int(len(part)),
+            "players": int(part["nfl_id"].nunique()),
+            "bands": counts,
+            "band_players": players,
+        }
+    return out, len(df), int(df["nfl_id"].nunique())
+
+
+def _check_sc(csv_df: pd.DataFrame, recount: dict, grand: int) -> None:
+    """The CSV must be a within-drill composition of the recounted turns."""
+    required = {"drill", "band", "turns", "share_of_drill", "players",
+                "drill_turns", "drill_players", "share_start", "share_end",
+                "band_index"}
+    assert required <= set(csv_df.columns)
+    assert set(csv_df["drill"]) == set(recount)
+    assert int(csv_df["turns"].sum()) == grand
+    for drill, want in recount.items():
+        part = csv_df[csv_df["drill"] == drill]
+        assert len(part) == SC_BANDS, f"{drill}: {len(part)} band rows"
+        assert int(part["turns"].sum()) == want["turns"]
+        assert int(part["drill_turns"].iloc[0]) == want["turns"]
+        assert int(part["drill_players"].iloc[0]) == want["players"]
+        assert np.isclose(float(part["share_of_drill"].sum()), 1.0,
+                          atol=1e-12), f"{drill} shares do not sum to 1"
+        for _, row in part.iterrows():
+            assert int(row["turns"]) == want["bands"][row["band"]]
+            assert int(row["players"]) == want["band_players"][row["band"]]
+            assert np.isclose(float(row["share_of_drill"]),
+                              int(row["turns"]) / want["turns"], atol=1e-12)
+        ordered = part.sort_values("band_index")
+        assert np.isclose(float(ordered["share_start"].iloc[0]), 0.0)
+        assert np.isclose(float(ordered["share_end"].iloc[-1]), 1.0)
+        assert np.allclose(ordered["share_start"].to_numpy()[1:],
+                           ordered["share_end"].to_numpy()[:-1])
+
+
+def _sc_build(rendered):
+    from bdb27 import common, figures
+
+    cfg = common.load_config(rendered["cfg"])
+    turns = figures.load_supply_composition_turns(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = figures.supply_composition_table(turns, cfg)
+    return figures.plot_supply_composition(table, context, cfg), table, context, cfg
+
+
+def _sc_texts(fig) -> str:
+    import matplotlib.text
+
+    return " ".join(t.get_text() for t in fig.findobj(matplotlib.text.Text))
+
+
+def _sc_close(fig) -> None:
+    import matplotlib.pyplot as plt
+
+    plt.close(fig)
+
+
+def test_supply_composition_png_and_csv_exist(rendered):
+    _check_png(rendered["sc_png"])
+    recount, grand, players = _sc_recount(rendered)
+    csv_df = pd.read_csv(rendered["sc_csv"])
+    assert len(csv_df) == len(recount) * SC_BANDS
+    assert int(csv_df["turns"].sum()) == grand
+
+
+def test_supply_composition_reconciles_to_the_turn_table(rendered):
+    recount, grand, players = _sc_recount(rendered)
+    csv_df = pd.read_csv(rendered["sc_csv"])
+    _check_sc(csv_df, recount, grand)
+    # every valid DB Combine turn is in exactly one drill x band cell
+    assert int(csv_df["drill_turns"].unique().sum()) == grand
+    assert csv_df["drill"].nunique() == len(recount)
+
+
+def test_supply_composition_shares_are_within_each_drill(rendered):
+    csv_df = pd.read_csv(rendered["sc_csv"])
+    for drill, part in csv_df.groupby("drill"):
+        assert np.isclose(float(part["share_of_drill"].sum()), 1.0, atol=1e-12), (
+            f"{drill} is not a 100% composition")
+        assert (part["share_of_drill"] >= 0).all()
+        assert (part["share_of_drill"] <= 1).all()
+    # no pooled row and no band share of the grand total is stored
+    assert not csv_df["drill"].str.lower().isin(["all", "total", "pooled"]).any()
+
+
+def test_supply_composition_rows_are_sorted_by_drill_total(rendered):
+    _, table, context, _ = _sc_build(rendered)
+    totals = [d["turns"] for d in context["drills"]]
+    assert totals == sorted(totals, reverse=True)
+    first_seen = table.drop_duplicates("drill")["drill_turns"].tolist()
+    assert first_seen == totals
+    assert sum(totals) == context["n_turns"]
+
+
+def test_supply_composition_prints_drill_and_turn_counts(rendered):
+    from bdb27 import figures
+
+    fig, table, context, cfg = _sc_build(rendered)
+    try:
+        texts = _sc_texts(fig)
+        assert f"{context['n_turns']:,} valid DB Combine turns" in texts
+        assert f"across {context['n_drills']} drills" in texts
+        for drill in context["drills"]:
+            assert figures._sc_count(drill["turns"], "turn") in texts, (
+                f"{drill['drill']} total not printed on the row label")
+            assert figures._sc_count(drill["players"], "player") in texts
+        ax = fig.axes[0]
+        expected_labels = int(
+            (table["share_of_drill"] >= context["min_label_share"]).sum())
+        assert len(ax.texts) == expected_labels
+    finally:
+        _sc_close(fig)
+
+
+def test_supply_composition_shallow_band_is_stated_not_rescaled(rendered):
+    fig, table, context, cfg = _sc_build(rendered)
+    try:
+        sh = context["shallow"]
+        texts = _sc_texts(fig)
+        assert (f"{sh['turns']} turns spread across {sh['n_drills']} drills, "
+                f"{sh['players']} players") in texts
+        assert "too small to see at this scale" in texts
+        assert "an inset would" in texts
+        # the claim in the caption is true of the data: no shallow segment can
+        # reach the in-bar label threshold at a 100% stacked scale
+        assert sh["max_share_of_drill"] < context["min_label_share"]
+        assert len(fig.axes) == 1, "no inset panel may be added for the band"
+        part = table[table["band"] == context["bands"][0]]
+        assert int(part["turns"].sum()) == sh["turns"]
+        assert int((part["turns"] > 0).sum()) == sh["n_drills"]
+    finally:
+        _sc_close(fig)
+
+
+def test_supply_composition_draws_one_bar_per_drill_no_pooled_bar(rendered):
+    fig, table, context, cfg = _sc_build(rendered)
+    try:
+        ax = fig.axes[0]
+        nonzero = int((table["turns"] > 0).sum())
+        assert len(ax.patches) == nonzero
+        ys = {round(float(p.get_y() + p.get_height() / 2.0), 6)
+              for p in ax.patches}
+        assert len(ys) == context["n_drills"]
+        for drill in context["drills"]:
+            part = table[table["drill"] == drill["drill"]]
+            widths = [float(p.get_width()) for p in ax.patches
+                      if round(float(p.get_y() + p.get_height() / 2.0), 6)
+                      in {round(float(y), 6) for y in [
+                          context["n_drills"] - 1 - context["drills"].index(drill)]}]
+            assert np.isclose(sum(widths), 1.0, atol=1e-9)
+            assert np.isclose(float(part["share_of_drill"].sum()), 1.0,
+                              atol=1e-12)
+    finally:
+        _sc_close(fig)
+
+
+def test_supply_composition_never_names_a_player(rendered):
+    csv_df = pd.read_csv(rendered["sc_csv"])
+    for col in csv_df.columns:
+        assert "name" not in col.lower(), f"CSV exposes {col!r}"
+    fig, _, _, _ = _sc_build(rendered)
+    try:
+        man = json.loads(rendered["manifest"].read_text())
+        flat = json.dumps(man["figures"][SC_KEY]).lower()
+        assert "player_name" not in flat
+        assert "player_names_used" not in flat or "false" in flat
+        assert "display_name" not in flat
+    finally:
+        _sc_close(fig)
+
+
+def test_supply_composition_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][SC_KEY]
+    assert fig["figure"] == SC_KEY
+    assert fig["stamp"] == STAMP
+    assert fig["band"]["position_group"] == "DB"
+    assert fig["band"]["bands_deg"] == EDGES
+    assert fig["shares"]["within_drill"] is True
+    assert fig["shares"]["pooled_bar_drawn"] is False
+    assert fig["shares"]["band_share_of_all_turns_in_bars"] is False
+    assert len(fig["drills"]) == fig["population"]["drills"]
+    assert sum(d["turns"] for d in fig["drills"]) == fig["population"]["turns"]
+    for drill in fig["drills"]:
+        assert np.isclose(sum(b["share_of_drill"] for b in drill["bands"]),
+                          1.0, atol=1e-12)
+    assert fig["concentration"]["turns"] == sum(
+        d["turns"] for d in fig["concentration"]["top_two"])
+    assert fig["shallow_band"]["turns"] == sum(
+        d["turns"] for d in fig["shallow_band"]["by_drill"])
+    assert fig["png"].endswith("fig_supply_composition.png")
+    assert fig["csv"].endswith("fig_supply_composition.csv")
+
+
+def test_supply_composition_two_runs_are_byte_identical(rendered):
+    before = hashlib.sha256(rendered["sc_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["sc_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 14 differ"
+
+
+def test_supply_composition_leaves_figures_1_to_13_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png", "ap_png", "ml_png",
+            "gh_png", "tc_png", "sw_png", "bh_png", "ss_png", "lg_png",
+            "bd_png"]
+    before = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+              for k in keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k], (
+            f"{k} changed: figure 14 must not alter figures 1-13")
+
+
+def test_supply_composition_refuses_and_checks_can_fail(rendered):
+    from bdb27 import common, figures
+
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    recount, grand, players = _sc_recount(rendered)
+    good = pd.read_csv(rendered["sc_csv"])
+    _check_sc(good, recount, grand)  # sanity: the checker passes on the file
+
+    wrong = good.copy()
+    idx = wrong.index[0]
+    wrong.loc[idx, "turns"] = int(wrong.loc[idx, "turns"]) + 1
+    with pytest.raises(AssertionError):
+        _check_sc(wrong, recount, grand)
+
+    bad_share = good.copy()
+    bad_share.loc[bad_share.index[0], "share_of_drill"] = 0.5
+    with pytest.raises(AssertionError):
+        _check_sc(bad_share, recount, grand)
+
+    with pytest.raises(common.StageRefused):
+        figures.supply_composition_table(turns.iloc[0:0], cfg)
+
+    only_games = turns[turns["setting"] != "combine"]
+    with pytest.raises(common.StageRefused):
+        figures.supply_composition_table(only_games, cfg)
+
+    no_drill = turns.copy()
+    no_drill.loc[no_drill["setting"] == "combine", "drill_name"] = np.nan
+    with pytest.raises(common.StageRefused):
+        figures.supply_composition_table(no_drill, cfg)

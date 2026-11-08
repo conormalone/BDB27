@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-13.
+"""Stage 06 — figures 1-14.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -48,6 +48,11 @@
                           measurement and a whisker to the same turn's angle
                           under the other smoothers, capped at a stated width
                           and with the share crossing a band edge printed.
+ 14. "Where the Combine's turns come from" — one horizontal 100% stacked
+                          bar per drill, sorted by that drill's own valid turn
+                          total, with the reporting angle bands as segments.
+                          Shares are within a drill; the shallow band is
+                          stated as counts, not rescaled.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -389,6 +394,23 @@ def main(argv=None) -> int:
         bd_payload["stamp"] = figures.STAMP
         _write_manifest(bd_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 14: where the Combine's turns come from
+        sc_turns = figures.load_supply_composition_turns(turns_path)
+        sc_table, sc_context = figures.supply_composition_table(sc_turns, cfg)
+        sc_csv = figures.supply_composition_csv_frame(sc_table, sc_context)
+        sc_png = outdir / f"{figures.FIGURE_KEY_SUPPLY_COMPOSITION}.png"
+        sc_csv_path = outdir / f"{figures.FIGURE_KEY_SUPPLY_COMPOSITION}.csv"
+        common.write_csv(sc_csv, sc_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure":
+                                    figures.FIGURE_KEY_SUPPLY_COMPOSITION})
+        sc_fig = figures.plot_supply_composition(sc_table, sc_context, cfg)
+        figures.render_supply_composition(sc_fig, cfg, sc_png)
+        sc_payload = figures.supply_composition_manifest_payload(
+            sc_table, sc_context, cfg)
+        sc_payload["stamp"] = figures.STAMP
+        _write_manifest(sc_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -462,7 +484,16 @@ def main(argv=None) -> int:
                         f"{bd_context['median_spread_deg']:.2f} "
                         f"crossed={bd_context['n_crossed']} "
                         f"capped={bd_context['n_capped']} "
-                        f"single_smoother={bd_context['n_single']} ")
+                        f"single_smoother={bd_context['n_single']}; "
+                        f"{figures.FIGURE_KEY_SUPPLY_COMPOSITION}: "
+                        f"drills={sc_context['n_drills']} "
+                        f"turns={sc_context['n_turns']} "
+                        f"players={sc_context['n_players']} "
+                        f"top2={sc_context['top_two']['turns']} "
+                        f"({sc_context['top_two']['share']:.1%}) "
+                        f"shallow={sc_context['shallow']['turns']} "
+                        f"({sc_context['shallow']['n_drills']} drills, "
+                        f"{sc_context['shallow']['players']} players) ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -475,6 +506,7 @@ def main(argv=None) -> int:
           f"{ss_png.name}, {ss_csv_path.name}, "
           f"{lg_png.name}, {lg_csv_path.name}, "
           f"{bd_png.name}, {bd_csv_path.name}, "
+          f"{sc_png.name}, {sc_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -503,6 +535,12 @@ def main(argv=None) -> int:
           f"(median spread {bd_context['median_spread_deg']:.2f}°, "
           f"{bd_context['n_crossed']} crossing an edge, "
           f"{bd_context['n_capped']} capped)"
+          f"; figure 14 composition {sc_context['n_drills']} drills, "
+          f"{sc_context['n_turns']} turns, top two "
+          f"{sc_context['top_two']['turns']} "
+          f"({sc_context['top_two']['share']:.1%}), "
+          f"shallow {sc_context['shallow']['turns']} turns across "
+          f"{sc_context['shallow']['n_drills']} drills"
           f")")
     return 0
 

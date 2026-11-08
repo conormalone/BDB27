@@ -722,6 +722,32 @@ turn_coverage:
       width_in: 11.5
       height_in: 12.6
 
+    # Stage 06 figure 14 ("Where the Combine's turns come from"). Added at
+    # Conor's request (2026-11-08); it is not derived from a TASK.md line.
+    #
+    # One horizontal 100% stacked bar per drill, sorted by that drill's own
+    # valid turn count, with the reporting angle bands as segments. It is the
+    # composition view of the inventory figure 2 drew as points.
+    #
+    # SHARES ARE WITHIN A DRILL, never pooled: each bar sums to 1 and no
+    # cross-drill band share is drawn. The reporting bands are the same
+    # left-closed angle edges used everywhere else (D164); `bins.turn_angle`
+    # stays frozen for Stages 03/04.
+    #
+    # min_label_share is a DRAWING rule only: a segment prints its count when
+    # it occupies at least this share of its drill's bar. Every count is in the
+    # CSV regardless. The 30-45 degree band is far below it on this sample and
+    # is stated in the caption rather than given a rescaling inset.
+    supply_composition:
+      position_group: DB
+      bands:
+        turn_angle_deg: [30, 45, 60, 90, 120, 150, 180]
+        overflow_label: ">180"
+      min_label_share: 0.06
+      dpi: 150
+      width_in: 12.6
+      height_in: 9.4
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

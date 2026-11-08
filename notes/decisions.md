@@ -6066,3 +6066,50 @@ applied exactly at the config width; the two detector facts occupy separate
 caption lines and their source numbers still exist; counts printed on the
 image; byte-identical re-render; figures 1–12 unchanged; stage 06 renders
 thirteen).
+
+## D170 — Figure 14 composes each drill's own turns, and states the shallow band instead of rescaling it · 2026-11-08
+
+**What it is.** One horizontal 100% stacked bar per DB drill, sorted by that
+drill's own count of valid Combine turns, with the reporting angle bands
+(30–45, 45–60, 60–90, 90–120, 120–150, 150–180, >180) as segments. It is the
+composition view of the inventory figure 2 draws as points: where the existing
+turns actually come from. The bands are the reporting edges of D164; the frozen
+`bins.turn_angle` used by Stages 03/04 is untouched.
+
+**Shares are within a drill, never pooled.** Every bar sums to 100% of that
+drill's own valid turns; the CSV stores `share_of_drill`, `share_start` and
+`share_end` so each bar's geometry is reconstructible, and tests assert each
+drill's shares sum to 1 and that the bars chain from 0 to 1. No pooled bar is
+drawn and no band's share of all turns is a segment. The caption's pooled band
+totals are a separate, explicitly labelled count — counts only, not shares —
+so a large band cannot make any single drill's bar look mostly that band.
+
+**The shallow band is stated, not flattered.** The 30–45° band holds 4 turns in
+this sample, spread across 4 drills and 3 players (one player contributes in
+two drills). Its largest share of any one drill's bar is 1.4%, below the 6%
+in-bar label threshold, so it is invisible at 100% stacked scale. That is the
+honest consequence of the layout: the caption gives the per-drill counts and
+the figure adds no inset. If an inset is ever added it must be marked as a
+different scale.
+
+**Concentration, as counted.** Box drill 304 turns (25.8% of all) and Teryl
+Austin drill 2 199 turns (16.9%) together supply 503 of 1,179 turns (42.7%);
+the other 8 drills account for 676. The caption says this is an inventory of
+where turns exist, not a ranking of drill quality, and no drill is described as
+good or bad.
+
+**Drawing choices.** Single-hue sequential ramp, light at 30–45° and dark at
+>180°, one legend. Row labels carry the wrapped drill name plus the drill's own
+turn and player counts; long names wrap, they are never cut to codes. Counts
+are printed inside segments only when they reach `min_label_share` (0.06) of
+that drill's bar; every count is in the CSV regardless. DB only, sample stamp
+on the image, no player names and no per-player values.
+
+**Evidence.** `config.yaml` §`figures.supply_composition`; `src/bdb27/figures.py`
+(`load_supply_composition_turns`, `supply_composition_table`,
+`plot_supply_composition`, `supply_composition_csv_frame`,
+`supply_composition_manifest_payload`); `tests/test_figures_stage.py::test_supply_composition_*`
+(per-drill totals reconcile to the Parquet, shares sum to 1, drill and total
+counts printed match the artefacts, no pooled bar, shallow band stated with
+counts and no inset, byte-identical re-render, figures 1–13 unchanged, stage 06
+renders fourteen).

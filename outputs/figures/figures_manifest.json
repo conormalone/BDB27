@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "5675ab571b4edb6e",
-  "generated_utc": "2026-11-08T21:48:28Z",
+  "config_sha": "731a5d3da9f252e3",
+  "generated_utc": "2026-11-08T22:31:31Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -3959,6 +3959,658 @@
       ],
       "png": "outputs/figures/fig_bars_of_doubt.png",
       "csv": "outputs/figures/fig_bars_of_doubt.csv",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_supply_composition": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_supply_composition",
+      "title": "Where the Combine's turns come from",
+      "band": {
+        "position_group": "DB",
+        "bands_deg": [
+          30.0,
+          45.0,
+          60.0,
+          90.0,
+          120.0,
+          150.0,
+          180.0
+        ],
+        "overflow_label": ">180",
+        "rule": "valid turns, left-closed on abs_turn_angle_deg"
+      },
+      "population": {
+        "turns": 1179,
+        "players": 122,
+        "drills": 10
+      },
+      "shares": {
+        "unit": "share of the drill's own valid turns",
+        "within_drill": true,
+        "pooled_bar_drawn": false,
+        "band_share_of_all_turns_in_bars": false,
+        "every_drill_sums_to_one": true,
+        "pooled_band_totals_stated_separately": true
+      },
+      "drills": [
+        {
+          "drill": "BOX_DRILL",
+          "label": "Box drill",
+          "turns": 304,
+          "players": 119,
+          "share_of_all_turns": 0.2578456318914334,
+          "bands": [
+            {
+              "band": "30\u201345\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.003289473684210526,
+              "players": 1
+            },
+            {
+              "band": "45\u201360\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "60\u201390\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.003289473684210526,
+              "players": 1
+            },
+            {
+              "band": "90\u2013120\u00b0",
+              "turns": 5,
+              "share_of_drill": 0.01644736842105263,
+              "players": 5
+            },
+            {
+              "band": "120\u2013150\u00b0",
+              "turns": 251,
+              "share_of_drill": 0.8256578947368421,
+              "players": 114
+            },
+            {
+              "band": "150\u2013180\u00b0",
+              "turns": 40,
+              "share_of_drill": 0.13157894736842105,
+              "players": 40
+            },
+            {
+              "band": ">180\u00b0",
+              "turns": 6,
+              "share_of_drill": 0.019736842105263157,
+              "players": 6
+            }
+          ]
+        },
+        {
+          "drill": "TERYL_AUSTIN_DRILL_2",
+          "label": "Teryl Austin drill 2",
+          "turns": 199,
+          "players": 111,
+          "share_of_all_turns": 0.16878710771840544,
+          "bands": [
+            {
+              "band": "30\u201345\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "45\u201360\u00b0",
+              "turns": 2,
+              "share_of_drill": 0.010050251256281407,
+              "players": 2
+            },
+            {
+              "band": "60\u201390\u00b0",
+              "turns": 74,
+              "share_of_drill": 0.37185929648241206,
+              "players": 72
+            },
+            {
+              "band": "90\u2013120\u00b0",
+              "turns": 11,
+              "share_of_drill": 0.05527638190954774,
+              "players": 11
+            },
+            {
+              "band": "120\u2013150\u00b0",
+              "turns": 15,
+              "share_of_drill": 0.07537688442211055,
+              "players": 15
+            },
+            {
+              "band": "150\u2013180\u00b0",
+              "turns": 37,
+              "share_of_drill": 0.18592964824120603,
+              "players": 37
+            },
+            {
+              "band": ">180\u00b0",
+              "turns": 60,
+              "share_of_drill": 0.3015075376884422,
+              "players": 59
+            }
+          ]
+        },
+        {
+          "drill": "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION",
+          "label": "Back pedal and transition 45\u00b0 reaction",
+          "turns": 133,
+          "players": 71,
+          "share_of_all_turns": 0.11280746395250212,
+          "bands": [
+            {
+              "band": "30\u201345\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "45\u201360\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.007518796992481203,
+              "players": 1
+            },
+            {
+              "band": "60\u201390\u00b0",
+              "turns": 8,
+              "share_of_drill": 0.06015037593984962,
+              "players": 8
+            },
+            {
+              "band": "90\u2013120\u00b0",
+              "turns": 87,
+              "share_of_drill": 0.6541353383458647,
+              "players": 59
+            },
+            {
+              "band": "120\u2013150\u00b0",
+              "turns": 37,
+              "share_of_drill": 0.2781954887218045,
+              "players": 32
+            },
+            {
+              "band": "150\u2013180\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": ">180\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            }
+          ]
+        },
+        {
+          "drill": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+          "label": "Back pedal and 90\u00b0 break to ball",
+          "turns": 118,
+          "players": 102,
+          "share_of_all_turns": 0.10008481764206956,
+          "bands": [
+            {
+              "band": "30\u201345\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.00847457627118644,
+              "players": 1
+            },
+            {
+              "band": "45\u201360\u00b0",
+              "turns": 3,
+              "share_of_drill": 0.025423728813559324,
+              "players": 3
+            },
+            {
+              "band": "60\u201390\u00b0",
+              "turns": 65,
+              "share_of_drill": 0.5508474576271186,
+              "players": 56
+            },
+            {
+              "band": "90\u2013120\u00b0",
+              "turns": 49,
+              "share_of_drill": 0.4152542372881356,
+              "players": 48
+            },
+            {
+              "band": "120\u2013150\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "150\u2013180\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": ">180\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            }
+          ]
+        },
+        {
+          "drill": "TERYL_AUSTIN_DRILL_1",
+          "label": "Teryl Austin drill 1",
+          "turns": 108,
+          "players": 101,
+          "share_of_all_turns": 0.0916030534351145,
+          "bands": [
+            {
+              "band": "30\u201345\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "45\u201360\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.009259259259259259,
+              "players": 1
+            },
+            {
+              "band": "60\u201390\u00b0",
+              "turns": 4,
+              "share_of_drill": 0.037037037037037035,
+              "players": 4
+            },
+            {
+              "band": "90\u2013120\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.009259259259259259,
+              "players": 1
+            },
+            {
+              "band": "120\u2013150\u00b0",
+              "turns": 100,
+              "share_of_drill": 0.9259259259259259,
+              "players": 98
+            },
+            {
+              "band": "150\u2013180\u00b0",
+              "turns": 2,
+              "share_of_drill": 0.018518518518518517,
+              "players": 2
+            },
+            {
+              "band": ">180\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            }
+          ]
+        },
+        {
+          "drill": "W_DRILL",
+          "label": "W drill",
+          "turns": 107,
+          "players": 56,
+          "share_of_all_turns": 0.090754877014419,
+          "bands": [
+            {
+              "band": "30\u201345\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.009345794392523364,
+              "players": 1
+            },
+            {
+              "band": "45\u201360\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "60\u201390\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.009345794392523364,
+              "players": 1
+            },
+            {
+              "band": "90\u2013120\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.009345794392523364,
+              "players": 1
+            },
+            {
+              "band": "120\u2013150\u00b0",
+              "turns": 94,
+              "share_of_drill": 0.8785046728971962,
+              "players": 54
+            },
+            {
+              "band": "150\u2013180\u00b0",
+              "turns": 10,
+              "share_of_drill": 0.09345794392523364,
+              "players": 8
+            },
+            {
+              "band": ">180\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            }
+          ]
+        },
+        {
+          "drill": "THREE_CONE_DRILL",
+          "label": "3-cone drill",
+          "turns": 98,
+          "players": 24,
+          "share_of_all_turns": 0.08312128922815945,
+          "bands": [
+            {
+              "band": "30\u201345\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "45\u201360\u00b0",
+              "turns": 14,
+              "share_of_drill": 0.14285714285714285,
+              "players": 11
+            },
+            {
+              "band": "60\u201390\u00b0",
+              "turns": 47,
+              "share_of_drill": 0.47959183673469385,
+              "players": 24
+            },
+            {
+              "band": "90\u2013120\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "120\u2013150\u00b0",
+              "turns": 2,
+              "share_of_drill": 0.02040816326530612,
+              "players": 2
+            },
+            {
+              "band": "150\u2013180\u00b0",
+              "turns": 4,
+              "share_of_drill": 0.04081632653061224,
+              "players": 2
+            },
+            {
+              "band": ">180\u00b0",
+              "turns": 31,
+              "share_of_drill": 0.3163265306122449,
+              "players": 23
+            }
+          ]
+        },
+        {
+          "drill": "SHORT_SHUTTLE",
+          "label": "Short shuttle",
+          "turns": 70,
+          "players": 28,
+          "share_of_all_turns": 0.05937234944868533,
+          "bands": [
+            {
+              "band": "30\u201345\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.014285714285714285,
+              "players": 1
+            },
+            {
+              "band": "45\u201360\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "60\u201390\u00b0",
+              "turns": 1,
+              "share_of_drill": 0.014285714285714285,
+              "players": 1
+            },
+            {
+              "band": "90\u2013120\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "120\u2013150\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "150\u2013180\u00b0",
+              "turns": 35,
+              "share_of_drill": 0.5,
+              "players": 21
+            },
+            {
+              "band": ">180\u00b0",
+              "turns": 33,
+              "share_of_drill": 0.4714285714285714,
+              "players": 21
+            }
+          ]
+        },
+        {
+          "drill": "GAUNTLET_DRILL",
+          "label": "Gauntlet",
+          "turns": 41,
+          "players": 41,
+          "share_of_all_turns": 0.03477523324851569,
+          "bands": [
+            {
+              "band": "30\u201345\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "45\u201360\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "60\u201390\u00b0",
+              "turns": 36,
+              "share_of_drill": 0.8780487804878049,
+              "players": 36
+            },
+            {
+              "band": "90\u2013120\u00b0",
+              "turns": 5,
+              "share_of_drill": 0.12195121951219512,
+              "players": 5
+            },
+            {
+              "band": "120\u2013150\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "150\u2013180\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": ">180\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            }
+          ]
+        },
+        {
+          "drill": "FORTY_YARD_DASH",
+          "label": "40-yard dash",
+          "turns": 1,
+          "players": 1,
+          "share_of_all_turns": 0.0008481764206955047,
+          "bands": [
+            {
+              "band": "30\u201345\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "45\u201360\u00b0",
+              "turns": 1,
+              "share_of_drill": 1.0,
+              "players": 1
+            },
+            {
+              "band": "60\u201390\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "90\u2013120\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "120\u2013150\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": "150\u2013180\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            },
+            {
+              "band": ">180\u00b0",
+              "turns": 0,
+              "share_of_drill": 0.0,
+              "players": 0
+            }
+          ]
+        }
+      ],
+      "concentration": {
+        "top_two": [
+          {
+            "drill": "BOX_DRILL",
+            "label": "Box drill",
+            "turns": 304,
+            "share_of_all_turns": 0.2578456318914334
+          },
+          {
+            "drill": "TERYL_AUSTIN_DRILL_2",
+            "label": "Teryl Austin drill 2",
+            "turns": 199,
+            "share_of_all_turns": 0.16878710771840544
+          }
+        ],
+        "turns": 503,
+        "share_of_all_turns": 0.42663273960983883,
+        "rest_turns": 676,
+        "meaning": "the two largest drills by valid turn count; an inventory fact, not a ranking of drill quality"
+      },
+      "shallow_band": {
+        "band": "30\u201345\u00b0",
+        "turns": 4,
+        "drills": 4,
+        "players": 3,
+        "by_drill": [
+          {
+            "drill": "BOX_DRILL",
+            "label": "Box drill",
+            "turns": 1,
+            "players": 1
+          },
+          {
+            "drill": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+            "label": "Back pedal and 90\u00b0 break to ball",
+            "turns": 1,
+            "players": 1
+          },
+          {
+            "drill": "W_DRILL",
+            "label": "W drill",
+            "turns": 1,
+            "players": 1
+          },
+          {
+            "drill": "SHORT_SHUTTLE",
+            "label": "Short shuttle",
+            "turns": 1,
+            "players": 1
+          }
+        ],
+        "max_share_of_drill": 0.014285714285714285,
+        "visibility": "too small to see at the 100% stacked scale; counts are stated in the caption and CSV and no rescaling inset is used"
+      },
+      "pooled_band_totals": [
+        {
+          "band": "30\u201345\u00b0",
+          "turns": 4,
+          "players": 3
+        },
+        {
+          "band": "45\u201360\u00b0",
+          "turns": 22,
+          "players": 15
+        },
+        {
+          "band": "60\u201390\u00b0",
+          "turns": 237,
+          "players": 110
+        },
+        {
+          "band": "90\u2013120\u00b0",
+          "turns": 159,
+          "players": 92
+        },
+        {
+          "band": "120\u2013150\u00b0",
+          "turns": 499,
+          "players": 121
+        },
+        {
+          "band": "150\u2013180\u00b0",
+          "turns": 128,
+          "players": 75
+        },
+        {
+          "band": ">180\u00b0",
+          "turns": 130,
+          "players": 77
+        }
+      ],
+      "claim": "The 1,179 valid DB Combine turns come from 10 drills and 122 players; the top two drills supply 503 of them (42.7%). The 30\u201345\u00b0 band holds 4 turns spread across 4 drills and 3 players, at most 1.4% of any one drill's own turns.",
+      "not_claimed": [
+        "That any drill is good or bad, easier or harder; this is an inventory of turns, not a ranking of drill quality.",
+        "That the band shares are pooled across drills; every segment is a share of its own drill's turns.",
+        "That the visible large segments are a target; they are where turns currently exist.",
+        "Anything about the 2027 class; this is one session of sample data."
+      ],
+      "caveats": [
+        "Shares are within a drill; each bar sums to 100%. The pooled band totals in the caption are a separate, labelled count and are never drawn as a segment.",
+        "The 30\u201345\u00b0 band is too small to see at this scale (4 turns); it is stated as counts and no inset rescales it.",
+        "No player names and no per-player values appear.",
+        "Sample data: one session of sample data; nothing here is a finding about the 2027 class."
+      ],
+      "png": "outputs/figures/fig_supply_composition.png",
+      "csv": "outputs/figures/fig_supply_composition.csv",
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }

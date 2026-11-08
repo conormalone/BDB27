@@ -7026,3 +7026,527 @@ def bars_of_doubt_manifest_payload(table: pd.DataFrame, context: dict,
         "png": f"outputs/figures/{FIGURE_KEY_BARS_OF_DOUBT}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_BARS_OF_DOUBT}.csv",
     }
+
+
+# ------------- figure 14: where the Combine's turns come from
+#: Added at Conor's request (2026-11-08); it is not derived from a TASK.md line.
+#:
+#: The composition view of the same inventory figure 2 drew as points. One
+#: horizontal 100% stacked bar per drill, sorted by that drill's own valid DB
+#: Combine turn count, with the reporting angle bands as segments.
+#:
+#: The shares are WITHIN A DRILL. Each bar sums to 1 and no pooled bar is
+#: drawn; the caption's pooled band totals are a separate, explicitly labelled
+#: count, never a segment. The 30-45 degree band is a handful of turns and is
+#: therefore invisible at this scale: the caption states its counts and the
+#: figure does not add an inset to flatter it.
+FIGURE_KEY_SUPPLY_COMPOSITION = "fig_supply_composition"
+
+SUPPLY_COMPOSITION_COLUMNS = [
+    "setting",
+    "drill_name",
+    "abs_turn_angle",
+    "position_group",
+    "nfl_id",
+    "valid",
+]
+
+#: Readable row labels. Presentation only; the CSV keeps the source
+#: ``drill_name``. Long names WRAP (see _sc_row_label) — they are never cut
+#: down to an unrecognisable code.
+SUPPLY_COMPOSITION_DISPLAY = {
+    "BOX_DRILL": "Box drill",
+    "TERYL_AUSTIN_DRILL_2": "Teryl Austin drill 2",
+    "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION":
+        "Back pedal and transition 45° reaction",
+    "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL":
+        "Back pedal and 90° break to ball",
+    "TERYL_AUSTIN_DRILL_1": "Teryl Austin drill 1",
+    "W_DRILL": "W drill",
+    "THREE_CONE_DRILL": "3-cone drill",
+    "SHORT_SHUTTLE": "Short shuttle",
+    "GAUNTLET_DRILL": "Gauntlet",
+    "FORTY_YARD_DASH": "40-yard dash",
+}
+
+#: Sequential single-hue ramp, light at the shallow end and dark at the deep
+#: end. Presentation only: the band order is the data, the colour is the key.
+SUPPLY_COMPOSITION_RAMP = [
+    "#BDD7E7", "#9ECAE1", "#6BAED6", "#4292C6",
+    "#3182BD", "#08519C", "#08306B",
+]
+
+
+def load_supply_composition_turns(path: Path) -> pd.DataFrame:
+    """Read the columns figure 14 needs (the drill label is one of them)."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the per-turn table is absent ({path}) — run 02_turns first")
+    df = pd.read_parquet(path, columns=SUPPLY_COMPOSITION_COLUMNS)
+    if df.empty:
+        raise common.StageRefused(f"{STAGE}: turns.parquet is empty")
+    return df
+
+
+def _sc_display(name: str) -> str:
+    """A drill's readable name; an unmapped drill is title-cased, not dropped."""
+    raw = str(name)
+    if raw in SUPPLY_COMPOSITION_DISPLAY:
+        return SUPPLY_COMPOSITION_DISPLAY[raw]
+    return " ".join(part.capitalize() for part in raw.split("_"))
+
+
+def _sc_count(n: int, singular: str) -> str:
+    """'1 turn' / '304 turns' — a count on the image must read as English."""
+    return f"{n:,} {singular}" if n == 1 else f"{n:,} {singular}s"
+
+
+def _sc_row_label(label: str, turns: int, players: int) -> str:
+    """Row label: wrapped drill name, then that drill's own totals."""
+    wrapped = textwrap.fill(label, 30)
+    return (f"{wrapped}\n{_sc_count(turns, 'turn')} · "
+            f"{_sc_count(players, 'player')}")
+
+
+def supply_composition_table(turns: pd.DataFrame,
+                             cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """One row per drill x band, with that drill's own share and player count.
+
+    Shares are always shares of the drill's own valid turns, never of the
+    pooled total. Every drill x band combination is emitted, including zeros,
+    so each drill's shares sum to exactly 1.
+    """
+    block = "figures.supply_composition"
+    position = str(cfg.get(f"{block}.position_group"))
+    edges = [float(x) for x in cfg.get(f"{block}.bands.turn_angle_deg")]
+    overflow = str(cfg.get(f"{block}.bands.overflow_label"))
+    min_share = float(cfg.get(f"{block}.min_label_share"))
+    if len(edges) < 2 or any(b <= a for a, b in zip(edges, edges[1:])):
+        raise common.StageRefused(
+            f"{STAGE}: figures.supply_composition.bands.turn_angle_deg must be "
+            "strictly increasing")
+    if not (0.0 <= min_share <= 1.0):
+        raise common.StageRefused(
+            f"{STAGE}: figures.supply_composition.min_label_share is "
+            f"{min_share}; a share threshold must lie in [0, 1]")
+    missing = [c for c in SUPPLY_COMPOSITION_COLUMNS if c not in turns.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet has no {missing} column(s); the drill "
+            "composition cannot be counted")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    combine = (turns["setting"] == "combine")
+    df = turns[valid & (turns["position_group"] == position) & combine].copy()
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} Combine turns — nothing to "
+            "compose")
+    angle = pd.to_numeric(df["abs_turn_angle"], errors="coerce")
+    if angle.isna().any():
+        raise common.StageRefused(
+            f"{STAGE}: {int(angle.isna().sum())} valid {position} Combine "
+            "turns have no numeric angle; a band composition cannot be drawn "
+            "with an unbanded turn")
+    if df["drill_name"].isna().any():
+        raise common.StageRefused(
+            f"{STAGE}: {int(df['drill_name'].isna().sum())} valid {position} "
+            "Combine turns carry no drill_name; a drill composition cannot "
+            "put them in a row")
+
+    bands = band_labels(edges, overflow)
+    arr = angle.to_numpy()
+    labels = np.full(len(df), None, dtype=object)
+    for i in range(len(edges) - 1):
+        lo, hi = edges[i], edges[i + 1]
+        labels[(arr >= lo) & (arr < hi)] = bands[i]
+    labels[arr >= edges[-1]] = bands[-1]
+    if pd.isna(labels).any():
+        raise common.StageRefused(
+            f"{STAGE}: {int(pd.isna(labels).sum())} valid {position} Combine "
+            f"turns fall outside the configured bands {edges}")
+    df["band"] = labels
+
+    totals = df.groupby("drill_name").size()
+    drill_players = df.groupby("drill_name")["nfl_id"].nunique()
+    order = sorted((str(d) for d in totals.index),
+                   key=lambda d: (-int(totals[d]), d))
+    counts = (df.groupby(["drill_name", "band"], observed=True)
+                .agg(turns=("valid", "size"), players=("nfl_id", "nunique")))
+    grand = int(len(df))
+
+    rows: list[dict] = []
+    for drill in order:
+        d_total = int(totals[drill])
+        d_players = int(drill_players[drill])
+        left = 0.0
+        for i, band in enumerate(bands):
+            if (drill, band) in counts.index:
+                n = int(counts.loc[(drill, band), "turns"])
+                p = int(counts.loc[(drill, band), "players"])
+            else:
+                n, p = 0, 0
+            share = n / d_total
+            rows.append({
+                "drill": drill,
+                "drill_label": _sc_display(drill),
+                "band": band,
+                "band_index": i,
+                "band_low_deg": edges[i] if i < len(edges) - 1 else edges[-1],
+                "band_high_deg": edges[i + 1] if i < len(edges) - 1 else None,
+                "turns": n,
+                "share_of_drill": share,
+                "share_start": left,
+                "share_end": left + share,
+                "players": p,
+                "drill_turns": d_total,
+                "drill_players": d_players,
+                "n_drills": len(order),
+                "position_group": position,
+                "min_label_share": min_share,
+            })
+            left += share
+        if not np.isclose(left, 1.0, atol=1e-12):
+            raise ValueError(
+                f"{STAGE}: {drill} shares sum to {left}, not 1")
+    table = pd.DataFrame(rows)
+
+    # Hard checks: the table must reconstruct the population it came from.
+    if int(table["turns"].sum()) != grand:
+        raise ValueError(
+            f"{STAGE}: drill composition counts sum to "
+            f"{int(table['turns'].sum())}, but the table has {grand} valid "
+            f"{position} Combine turns")
+    for drill in order:
+        part = table[table["drill"] == drill]
+        if int(part["turns"].sum()) != int(totals[drill]):
+            raise ValueError(
+                f"{STAGE}: {drill} band counts do not sum to its total")
+        if not np.isclose(float(part["share_of_drill"].sum()), 1.0,
+                          atol=1e-12):
+            raise ValueError(
+                f"{STAGE}: {drill} shares do not sum to 1")
+
+    drill_rows = [
+        {"drill": d, "label": _sc_display(d),
+         "turns": int(totals[d]), "players": int(drill_players[d]),
+         "share_of_all_turns": int(totals[d]) / grand}
+        for d in order
+    ]
+    top2 = drill_rows[:2]
+    top2_turns = int(sum(r["turns"] for r in top2))
+    shallow = table[(table["band"] == bands[0]) & (table["turns"] > 0)]
+    shallow_by_drill = [
+        {"drill": str(r["drill"]), "label": str(r["drill_label"]),
+         "turns": int(r["turns"]), "players": int(r["players"])}
+        for _, r in shallow.iterrows()
+    ]
+    band_totals = [int(table[table["band"] == b]["turns"].sum())
+                   for b in bands]
+    band_players = [int(df[df["band"] == b]["nfl_id"].nunique())
+                    for b in bands]
+
+    context = {
+        "position": position,
+        "bands": bands,
+        "edges": edges,
+        "overflow_label": overflow,
+        "min_label_share": min_share,
+        "n_turns": grand,
+        "n_players": int(df["nfl_id"].nunique()),
+        "n_drills": len(order),
+        "drills": drill_rows,
+        "top_two": {
+            "drills": top2,
+            "turns": top2_turns,
+            "share": top2_turns / grand,
+            "rest_turns": grand - top2_turns,
+        },
+        "shallow": {
+            "band": bands[0],
+            "turns": int(shallow["turns"].sum()),
+            "n_drills": int(len(shallow)),
+            "players": int(df[df["band"] == bands[0]]["nfl_id"].nunique()),
+            "by_drill": shallow_by_drill,
+            "max_share_of_drill": (float(shallow["share_of_drill"].max())
+                                   if len(shallow) else 0.0),
+        },
+        "band_totals": band_totals,
+        "band_players": band_players,
+    }
+    return table, context
+
+
+def _sc_count_list(items: list[dict]) -> str:
+    """'Box drill 1; W drill 1; ...' — counts, never adjectives."""
+    return "; ".join(f"{i['label']} {i['turns']}" for i in items)
+
+
+def _supply_composition_caption(table: pd.DataFrame,
+                                context: dict) -> list[str]:
+    """Caption lines, every count read from the rendered table."""
+    n = context["n_turns"]
+    n_drills = context["n_drills"]
+    n_players = context["n_players"]
+    top = context["top_two"]
+    t1, t2 = top["drills"][0], top["drills"][1]
+    sh = context["shallow"]
+    pooled = ", ".join(f"{b} {c}" for b, c in
+                       zip(context["bands"], context["band_totals"]))
+    return [
+        STAMP,
+        (f"WHAT THIS IS. One horizontal 100% bar per drill: {n_drills} drills "
+         f"carrying {n:,} valid DB Combine turns from {n_players} players, "
+         "sorted by that drill's own turn total. Every segment is a share of "
+         "THAT DRILL's own turns — each bar sums to 100% — and the row label "
+         "gives the drill's own turn and player counts. No pooled bar is "
+         "drawn and no band's share of all turns is a segment anywhere."),
+        (f"CONCENTRATION, AS COUNTED. The top two drills — {t1['label']} "
+         f"({t1['turns']:,} turns, {t1['share_of_all_turns']:.1%} of all) and "
+         f"{t2['label']} ({t2['turns']:,} turns, "
+         f"{t2['share_of_all_turns']:.1%}) — supply {top['turns']:,} turns, "
+         f"{top['share']:.1%} of the {n:,}. The other "
+         f"{n_drills - 2} drills account for the remaining "
+         f"{top['rest_turns']:,} turns. This is an inventory of where turns "
+         "exist, not a ranking of drill quality."),
+        (f"THE 30–45° BAND, STATED NOT RESCALED. {sh['turns']} turns spread "
+         f"across {sh['n_drills']} drills, {sh['players']} players "
+         f"({_sc_count_list(sh['by_drill'])}). That is at most "
+         f"{sh['max_share_of_drill']:.1%} of any one drill's bar, so the "
+         "30–45° segment is too small to see at this 100% stacked scale. It "
+         "is given here as counts rather than as an inset: an inset would "
+         "give the shallow band a prominence the count does not have. Every "
+         "drill x band count is in the CSV."),
+        (f"POOLED BAND TOTALS, LABELLED SEPARATELY. Counted across all drills "
+         f"and NOT drawn in any bar: {pooled}. These are counts only; the "
+         "bars above remain within-drill shares, so a large pooled band does "
+         "not make any single drill's bar mostly that band."),
+        ("WHAT IS NOT HERE. No pooled bar, no band's share of the total inside "
+         "the bars, no per-player values, no player names, no drill-quality "
+         "score, no ordering by anything except turn count. DB only. Counts "
+         "are recomputed at render time from outputs/turns/turns.parquet "
+         f"(valid turns); every value is in "
+         f"outputs/figures/{FIGURE_KEY_SUPPLY_COMPOSITION}.csv."),
+        ("SAMPLE DATA. One session of sample data. Nothing here is a finding "
+         "about the 2027 class, and equal-length bars do not mean equal drill "
+         "volume: read the turn counts on the row labels."),
+    ]
+
+
+def plot_supply_composition(table: pd.DataFrame, context: dict,
+                            cfg: common.Config) -> plt.Figure:
+    """Horizontal 100% stacked bars, one per drill, sorted by drill total."""
+    from matplotlib.patches import Patch
+
+    block = "figures.supply_composition"
+    bands = context["bands"]
+    ramp = SUPPLY_COMPOSITION_RAMP[:len(bands)]
+    drills = context["drills"]
+    n = context["n_drills"]
+    fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
+                              float(cfg.get(f"{block}.height_in"))))
+    ax = fig.add_axes([0.255, 0.330, 0.720, 0.495])
+    ax.set_facecolor("#EBEBEB")
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.spines["bottom"].set_color("#B3B3B3")
+    ax.tick_params(axis="x", labelsize=8.4, colors="#333333", length=2)
+    ax.tick_params(axis="y", length=0)
+    ax.set_axisbelow(True)
+
+    for i, drill in enumerate(drills):
+        y = float(n - 1 - i)
+        part = table[table["drill"] == drill["drill"]].sort_values("band_index")
+        for row in part.itertuples(index=False):
+            if int(row.turns) == 0:
+                continue
+            ax.barh(y, float(row.share_of_drill), left=float(row.share_start),
+                    height=0.62, color=ramp[int(row.band_index)],
+                    edgecolor="white", linewidth=0.8, zorder=3)
+            if float(row.share_of_drill) >= context["min_label_share"]:
+                ax.text(float(row.share_start) + float(row.share_of_drill) / 2.0,
+                        y, f"{int(row.turns):,}", ha="center", va="center",
+                        fontsize=8.2, fontweight="bold",
+                        color=("#FFFFFF" if int(row.band_index) >= 3
+                               else "#1A1A1A"), zorder=5)
+
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(-0.60, float(n) - 0.40)
+    ax.set_xticks([0.0, 0.25, 0.5, 0.75, 1.0])
+    ax.set_xticklabels(["0", "25%", "50%", "75%", "100%"])
+    ax.grid(axis="x", color="white", linewidth=0.9, zorder=0)
+    ax.set_xlabel("Share of that drill's own valid turns (%)",
+                  fontsize=8.8, color="#333333", labelpad=5)
+    ax.set_yticks([float(n - 1 - i) for i in range(n)])
+    ax.set_yticklabels(
+        [_sc_row_label(d["label"], d["turns"], d["players"]) for d in drills],
+        fontsize=8.4, color="#222222")
+
+    handles = [Patch(facecolor=ramp[i], edgecolor="white", label=b)
+               for i, b in enumerate(bands)]
+    fig.legend(handles=handles, loc="upper left",
+               bbox_to_anchor=(0.250, 0.905), ncol=len(bands),
+               frameon=False, fontsize=8.4, handlelength=1.4,
+               columnspacing=1.5, title=None)
+
+    fig.text(0.010, 0.975, "Where the Combine's turns come from",
+             fontsize=17.5, fontweight="bold", ha="left", va="top",
+             color="#111111")
+    fig.text(0.010, 0.941,
+             f"{context['n_turns']:,} valid DB Combine turns across "
+             f"{context['n_drills']} drills (sorted by drill total); each bar "
+             "is one drill's own 100%, segments are turn-angle bands.",
+             fontsize=8.8, ha="left", va="top", color="#333333")
+    fig.text(0.010, 0.300,
+             f"30–45°: {context['shallow']['turns']} turns in all "
+             f"({context['shallow']['n_drills']} drills, "
+             f"{context['shallow']['players']} players) — at most "
+             f"{context['shallow']['max_share_of_drill']:.1%} of any bar, too "
+             "small to see at this scale; counts in the caption and CSV.",
+             fontsize=7.8, ha="left", va="top", color="#444444")
+
+    caption = "\n".join(_wrap_text(line, 150)
+                        for line in _supply_composition_caption(table, context))
+    fig.text(0.010, 0.012, caption, ha="left", va="bottom", fontsize=6.0,
+             color="#333333", linespacing=1.30)
+    return fig
+
+
+def render_supply_composition(fig: plt.Figure, cfg: common.Config,
+                              out_png: Path) -> Path:
+    """Save figure 14 once with fixed metadata, so two runs are identical."""
+    dpi = int(cfg.get("figures.supply_composition.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def supply_composition_csv_frame(table: pd.DataFrame,
+                                 context: dict) -> pd.DataFrame:
+    """One row per drill x band: turns, share of that drill, players."""
+    out = table.copy()
+    columns = [
+        "drill", "drill_label", "band", "band_index", "band_low_deg",
+        "band_high_deg", "turns", "share_of_drill", "share_start",
+        "share_end", "players", "drill_turns", "drill_players", "n_drills",
+        "position_group", "min_label_share",
+    ]
+    return out[columns].reset_index(drop=True)
+
+
+def supply_composition_manifest_payload(table: pd.DataFrame, context: dict,
+                                        cfg: common.Config) -> dict:
+    """Figure 14's manifest entry, with the within-drill share rule stated."""
+    top = context["top_two"]
+    sh = context["shallow"]
+    if int(table["turns"].sum()) != context["n_turns"]:
+        raise ValueError(f"{STAGE}: manifest counts do not match the table")
+    for drill in context["drills"]:
+        part = table[table["drill"] == drill["drill"]]
+        if not np.isclose(float(part["share_of_drill"].sum()), 1.0,
+                          atol=1e-12):
+            raise ValueError(
+                f"{STAGE}: manifest shares for {drill['drill']} do not sum to 1")
+    drill_entries = []
+    for drill in context["drills"]:
+        part = table[table["drill"] == drill["drill"]].sort_values("band_index")
+        drill_entries.append({
+            **drill,
+            "bands": [
+                {"band": str(row["band"]), "turns": int(row["turns"]),
+                 "share_of_drill": float(row["share_of_drill"]),
+                 "players": int(row["players"])}
+                for _, row in part.iterrows()
+            ],
+        })
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_SUPPLY_COMPOSITION,
+        "title": "Where the Combine's turns come from",
+        "band": {
+            "position_group": context["position"],
+            "bands_deg": context["edges"],
+            "overflow_label": context["overflow_label"],
+            "rule": "valid turns, left-closed on abs_turn_angle_deg",
+        },
+        "population": {
+            "turns": context["n_turns"],
+            "players": context["n_players"],
+            "drills": context["n_drills"],
+        },
+        "shares": {
+            "unit": "share of the drill's own valid turns",
+            "within_drill": True,
+            "pooled_bar_drawn": False,
+            "band_share_of_all_turns_in_bars": False,
+            "every_drill_sums_to_one": True,
+            "pooled_band_totals_stated_separately": True,
+        },
+        "drills": drill_entries,
+        "concentration": {
+            "top_two": [
+                {"drill": d["drill"], "label": d["label"],
+                 "turns": d["turns"], "share_of_all_turns":
+                     d["share_of_all_turns"]}
+                for d in top["drills"]
+            ],
+            "turns": top["turns"],
+            "share_of_all_turns": top["share"],
+            "rest_turns": top["rest_turns"],
+            "meaning": ("the two largest drills by valid turn count; an "
+                        "inventory fact, not a ranking of drill quality"),
+        },
+        "shallow_band": {
+            "band": sh["band"],
+            "turns": sh["turns"],
+            "drills": sh["n_drills"],
+            "players": sh["players"],
+            "by_drill": sh["by_drill"],
+            "max_share_of_drill": sh["max_share_of_drill"],
+            "visibility": ("too small to see at the 100% stacked scale; "
+                           "counts are stated in the caption and CSV and no "
+                           "rescaling inset is used"),
+        },
+        "pooled_band_totals": [
+            {"band": b, "turns": int(c), "players": int(p)}
+            for b, c, p in zip(context["bands"], context["band_totals"],
+                               context["band_players"])
+        ],
+        "claim": (f"The {context['n_turns']:,} valid DB Combine turns come "
+                  f"from {context['n_drills']} drills and {context['n_players']} "
+                  f"players; the top two drills supply {top['turns']:,} of "
+                  f"them ({top['share']:.1%}). The "
+                  f"{sh['band']} band holds {sh['turns']} turns spread across "
+                  f"{sh['n_drills']} drills and {sh['players']} players, at "
+                  f"most {sh['max_share_of_drill']:.1%} of any one drill's "
+                  "own turns."),
+        "not_claimed": [
+            "That any drill is good or bad, easier or harder; this is an "
+            "inventory of turns, not a ranking of drill quality.",
+            "That the band shares are pooled across drills; every segment is "
+            "a share of its own drill's turns.",
+            "That the visible large segments are a target; they are where "
+            "turns currently exist.",
+            "Anything about the 2027 class; this is one session of sample data.",
+        ],
+        "caveats": [
+            ("Shares are within a drill; each bar sums to 100%. The pooled "
+             "band totals in the caption are a separate, labelled count and "
+             "are never drawn as a segment."),
+            (f"The {sh['band']} band is too small to see at this scale "
+             f"({sh['turns']} turns); it is stated as counts and no inset "
+             "rescales it."),
+            ("No player names and no per-player values appear."),
+            ("Sample data: one session of sample data; nothing here is a "
+             "finding about the 2027 class."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_SUPPLY_COMPOSITION}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_SUPPLY_COMPOSITION}.csv",
+    }
