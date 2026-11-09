@@ -40,6 +40,7 @@ from plotnine import (
     facet_wrap,
     geom_blank,
     geom_col,
+    geom_hline,
     geom_point,
     geom_rect,
     geom_segment,
@@ -90,8 +91,53 @@ STAMP = f"{common.PROVENANCE_SAMPLE} — {common.SAMPLE_LABEL}"
 
 #: Okabe-Ito, colour-blind-safe. Combine = blue, game = vermillion.
 PALETTE = {"combine": "#0072B2", "game": "#D55E00"}
-HIGHLIGHT = "#F0E442"
 ALERT = "#B00020"
+
+#: One config block styles the case's focus band in every figure that carries
+#: a band or angle axis. No figure function may hard-code this colour: a test
+#: renders each affected figure with a sentinel colour and fails if the
+#: sentinel does not reach the drawn artists.
+FOCUS_BAND_KEY = "figures.focus_band"
+
+
+def focus_band(cfg: common.Config) -> dict:
+    """Read and validate the single focus-band style block.
+
+    Returns the band edges, the colour and the style flags every figure uses.
+    The colour is a *band* signal: rules, tint, outlines and labels only.
+    """
+    low, high = (float(x) for x in cfg.get(f"{FOCUS_BAND_KEY}.edges_deg"))
+    if not low < high:
+        raise ValueError(
+            f"{STAGE}: {FOCUS_BAND_KEY}.edges_deg must be increasing, got "
+            f"[{low:g}, {high:g}]")
+    colour = str(cfg.get(f"{FOCUS_BAND_KEY}.colour"))
+    tint_alpha = float(cfg.get(f"{FOCUS_BAND_KEY}.tint_alpha"))
+    if not 0.0 <= tint_alpha <= 1.0:
+        raise ValueError(
+            f"{STAGE}: {FOCUS_BAND_KEY}.tint_alpha must lie in [0, 1], got "
+            f"{tint_alpha}")
+    return {
+        "low": low,
+        "high": high,
+        "label": f"{low:g}–{high:g}°",
+        "colour": colour,
+        "tint_alpha": tint_alpha,
+        "rule_width": float(cfg.get(f"{FOCUS_BAND_KEY}.rule_width_pt")),
+        "outline_width": float(cfg.get(f"{FOCUS_BAND_KEY}.outline_width_pt")),
+    }
+
+
+def focus_band_index(edges: list[float], focus: dict) -> int:
+    """Index of the focus band in a left-closed edge list; refuse if absent."""
+    pairs = [(float(a), float(b)) for a, b in zip(edges, edges[1:])]
+    target = (focus["low"], focus["high"])
+    if target not in pairs:
+        raise ValueError(
+            f"{STAGE}: the {focus['label']} focus band is not one of the "
+            f"configured reporting bands {edges}; refusing to draw a focus "
+            "band the axis does not carry")
+    return pairs.index(target)
 
 COMBINE_LABEL = "Combine"
 GAME_LABEL = "Game"
@@ -346,6 +392,18 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
     labels = _labels(table, context["bands"])
     rect, ann = _annotations(table, context)
     texts = ann["text"]
+    focus = focus_band(cfg)
+    if focus_band_index([float(e) for e in context["edges"]], focus) != 0:
+        raise ValueError(
+            f"{STAGE}: figure 1 highlights its first reporting band; "
+            f"{FOCUS_BAND_KEY} must be that band")
+    focus_label = pd.DataFrame([
+        {"panel": panel,
+         "x": 1.0,
+         "y": float(part["value"].max()) * 1.15,
+         "label": f"{focus['label']} band"}
+        for panel, part in frame.groupby("panel", observed=True)
+    ])
 
     c = ann["combine"]
     g = ann["game"]
@@ -380,15 +438,22 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
         ggplot(frame, aes(x="band", y="value", fill="setting"))
         + geom_rect(data=rect, mapping=aes(xmin="xmin", xmax="xmax",
                                            ymin="ymin", ymax="ymax"),
-                    inherit_aes=False, fill=HIGHLIGHT, alpha=0.45)
+                    inherit_aes=False, fill=focus["colour"],
+                    alpha=focus["tint_alpha"])
+        + geom_vline(xintercept=[0.5, 1.5], inherit_aes=False,
+                     colour=focus["colour"], size=focus["rule_width"])
         + geom_col(position=dodge, width=0.72, colour="white", size=0.25)
         + geom_text(data=labels, mapping=aes(x="band", y="lab_y", label="label",
                                              group="setting"),
                     position=dodge, size=2.9, colour="#1A1A1A", va="bottom",
                     show_legend=False)
         + geom_text(data=texts, mapping=aes(x="x", y="y", label="label"),
-                    inherit_aes=False, size=3.2, colour=ALERT, fontweight="bold",
+                    inherit_aes=False, size=3.2, colour=focus["colour"],
+                    fontweight="bold",
                     ha="center", va="center")
+        + geom_text(data=focus_label, mapping=aes(x="x", y="y", label="label"),
+                    inherit_aes=False, size=3.3, colour=focus["colour"],
+                    fontweight="bold", ha="center", va="bottom")
         + facet_wrap("~ panel", nrow=1, scales="free_y")
         + scale_fill_manual(values=[PALETTE["combine"], PALETTE["game"]],
                             labels=[COMBINE_LABEL, GAME_LABEL], name=None)
@@ -651,10 +716,15 @@ def plot_drill_coverage(table: pd.DataFrame, context: dict,
     frames = _drill_plot_frames(table, context)
     points, whisk, labels = frames["points"], frames["whisk"], frames["labels"]
     block = "figures.drill_coverage"
+    focus = focus_band(cfg)
     x_lo, x_hi = (float(x) for x in cfg.get(f"{block}.x_lim"))
     y_lo, y_hi = (float(y) for y in cfg.get(f"{block}.y_lim"))
     a_lo, a_hi = context["target_angle"]
     v_lo, v_hi = context["target_speed"]
+    if (float(a_lo), float(a_hi)) != (focus["low"], focus["high"]):
+        raise ValueError(
+            f"{STAGE}: {block}.target_angle_deg must match "
+            f"{FOCUS_BAND_KEY}.edges_deg; both describe the same focus band")
 
     target_rect = pd.DataFrame([{"xmin": a_lo, "xmax": a_hi,
                                  "ymin": v_lo, "ymax": v_hi}])
@@ -695,8 +765,9 @@ def plot_drill_coverage(table: pd.DataFrame, context: dict,
         ggplot(points, aes(x="x", y="y", colour="kind_label", shape="kind_label"))
         + geom_rect(data=target_rect, mapping=aes(xmin="xmin", xmax="xmax",
                                                   ymin="ymin", ymax="ymax"),
-                    inherit_aes=False, fill=HIGHLIGHT, alpha=0.35,
-                    colour="#8C7A00", linetype="dashed", size=0.5)
+                    inherit_aes=False, fill=focus["colour"],
+                    alpha=focus["tint_alpha"], colour=focus["colour"],
+                    linetype="solid", size=focus["outline_width"])
         + geom_segment(data=whisk, mapping=aes(x="x", xend="xend", y="y",
                                                yend="yend"),
                        inherit_aes=False, colour="#7A7A7A", size=0.45)
@@ -706,7 +777,7 @@ def plot_drill_coverage(table: pd.DataFrame, context: dict,
                     inherit_aes=False, size=2.65, colour="#1A1A1A", va="center",
                     show_legend=False)
         + geom_text(data=target_text, mapping=aes(x="x", y="y", label="label"),
-                    inherit_aes=False, size=2.8, colour="#6B5D00",
+                    inherit_aes=False, size=2.8, colour=focus["colour"],
                     fontweight="bold", ha="center", va="bottom")
         + scale_colour_manual(values=[PALETTE["combine"], PALETTE["game"]],
                               breaks=["measured drill", "proposed"],
@@ -1012,6 +1083,8 @@ def _hatch_segments(xmin: float, xmax: float, ymin: float, ymax: float,
 def plot_before_after(table: pd.DataFrame, context: dict, proj: dict,
                       cfg: common.Config) -> ggplot:
     block = "figures.before_after"
+    focus = focus_band(cfg)
+    focus_idx = focus_band_index(context["angle_edges"], focus) + 1
     frames = before_after_plot_frame(table, proj)
     cells, rect, label = frames["cells"], frames["rect"], frames["label"]
     hatch = _hatch_segments(float(rect["xmin"].iloc[0]), float(rect["xmax"].iloc[0]),
@@ -1069,11 +1142,15 @@ def plot_before_after(table: pd.DataFrame, context: dict, proj: dict,
         + geom_rect(data=rect, mapping=aes(xmin="xmin", xmax="xmax", ymin="ymin",
                                            ymax="ymax"),
                     inherit_aes=False, fill=PROJECT_FILL, alpha=0.28,
-                    colour=PROJECT_EDGE, linetype="dashed", size=0.6)
+                    colour=focus["colour"], linetype="dashed",
+                    size=focus["outline_width"])
         + geom_segment(data=hatch, mapping=aes(x="x", xend="xend", y="y",
                                                yend="yend"),
                        inherit_aes=False, colour=PROJECT_EDGE, size=0.45,
                        alpha=0.85)
+        + geom_vline(xintercept=[focus_idx - 0.5, focus_idx + 0.5],
+                     inherit_aes=False, colour=focus["colour"],
+                     size=focus["outline_width"])
         + geom_text(aes(label="count", colour="text_colour"), size=2.55,
                     show_legend=False)
         + geom_text(data=label, mapping=aes(x="x", y="y", label="label"),
@@ -1980,6 +2057,8 @@ def all_positions_dl_speed_count(turns: pd.DataFrame, position: str,
 def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
                        turns: pd.DataFrame | None = None) -> ggplot:
     block = "figures.all_positions"
+    focus = focus_band(cfg)
+    focus_idx = focus_band_index(context["edges"], focus)
     frame = all_positions_plot_frame(table, context, cfg)
     labels = all_positions_count_labels(frame, cfg)
     badges = all_positions_badges(context, cfg)
@@ -2046,10 +2125,27 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
     caption = "\n".join(_wrap_text(line, 172) for line in caption_lines if line)
 
     n_bands = len(bands)
+    focus_y = -float(focus_idx + 1)
+    focus_label = pd.DataFrame([
+        {"position": position, "x": x_max - 0.4, "y": focus_y,
+         "label": f"{focus['label']} band"}
+        for position in context["positions"]
+    ])
+    focus_label["position"] = pd.Categorical(
+        focus_label["position"], categories=list(context["positions"]),
+        ordered=True)
+
     plot = (
         ggplot(frame, aes(xmin="xmin", xmax="xmax", ymin="ymin", ymax="ymax",
                           fill="setting", alpha="emphasis"))
         + geom_rect(colour="white", size=0.2)
+        + geom_hline(yintercept=[focus_y - 0.5, focus_y + 0.5],
+                     inherit_aes=False, colour=focus["colour"],
+                     size=focus["rule_width"])
+        + geom_text(data=focus_label,
+                    mapping=aes(x="x", y="y", label="label"),
+                    inherit_aes=False, size=2.5, colour=focus["colour"],
+                    fontweight="bold", ha="right", va="center")
         + geom_text(data=labels,
                     mapping=aes(x="lab_x", y="lab_y", label="label"),
                     inherit_aes=False, size=2.55,
@@ -3591,6 +3687,8 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
     bands = context["bands"]
     n_bands = len(bands)
     min_n = context["min_n_for_median"]
+    focus = focus_band(cfg)
+    focus_idx = focus_band_index(context["edges"], focus)
 
     fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
                               float(cfg.get(f"{block}.height_in"))))
@@ -3613,6 +3711,17 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
                 ax.spines[spine].set_color("#B3B3B3")
 
     _fill("#EBEBEB")
+
+    # The focus band is marked once, in the same way in both panels.
+    for ax in (ax_a, ax_b):
+        ax.fill_between([focus_idx - 0.5, focus_idx + 0.5], 0, 1,
+                        transform=ax.get_xaxis_transform(),
+                        color=focus["colour"],
+                        alpha=focus["tint_alpha"], zorder=1,
+                        linewidth=0)
+        for edge in (focus_idx - 0.5, focus_idx + 0.5):
+            ax.axvline(edge, color=focus["colour"],
+                       linewidth=focus["rule_width"], zorder=2)
 
     # ---------------------------------------------------------- panel (a)
     drawn_cells: list[tuple[str, str]] = []
@@ -3728,6 +3837,8 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
         ticks.append(f"{band}\n(reversal)" if i == n_bands - 1 else band)
     ax_b.set_xticks(range(n_bands))
     ax_b.set_xticklabels(ticks, fontsize=7.4, color="#333333")
+    ax_b.get_xticklabels()[focus_idx].set_color(focus["colour"])
+    ax_b.get_xticklabels()[focus_idx].set_fontweight("bold")
     ax_b.tick_params(axis="x", length=2)
     ax_b.tick_params(axis="y", labelsize=7.0, colors="#333333", length=2)
     ax_b.set_xlabel("Absolute turn angle (°), left-closed reporting bands",
@@ -3907,6 +4018,8 @@ def turn_cost_manifest_payload(table: pd.DataFrame, context: dict,
         "figure": FIGURE_KEY_TURN_COST,
         "title": ("What a turn costs, and who pays for it: apex retention by "
                   "reporting band, and each setting's own turn mix"),
+        "claim": _turn_cost_shape_sentence(context),
+        "sources": ["outputs/turns/turns.parquet"],
         "measure": {
             "column": context["column"],
             "definition": "apex_speed / entry_speed (stage 02)",
@@ -4441,6 +4554,8 @@ def stopwatch_manifest_payload(table: pd.DataFrame, context: dict,
         "figure": FIGURE_KEY_STOPWATCH,
         "title": ("Same stopwatch, different turn: what the published "
                   "three-cone time compresses"),
+        "sources": ["outputs/turns/turns.parquet",
+                    "data/raw/combine_results.csv"],
         "match": {
             "rule": context["match_rule"],
             "join_key": "nfl_id",
@@ -5399,6 +5514,9 @@ def both_hips_manifest_payload(table: pd.DataFrame, context: dict,
         "artefact_version": ARTEFACT_VERSION,
         "figure": FIGURE_KEY_BOTH_HIPS,
         "title": "The test never checks which way he turns",
+        "sources": ["outputs/turns/turns.parquet",
+                    "data/raw/game_tracking.csv",
+                    "data/raw/player_play.csv"],
         "band": {
             "position_group": context["position"],
             "abs_turn_angle_deg": [context["angle_low"], context["angle_high"]],
@@ -5994,6 +6112,7 @@ def shallow_sources_manifest_payload(table: pd.DataFrame, context: dict,
         "artefact_version": ARTEFACT_VERSION,
         "figure": FIGURE_KEY_SHALLOW_SOURCES,
         "title": "Where the shallow turns come from",
+        "sources": ["outputs/turns/turns.parquet"],
         "band": {
             "position_group": context["position"],
             "abs_turn_angle_deg": [context["angle_low"], context["angle_high"]],
@@ -6490,6 +6609,7 @@ def ledger_manifest_payload(table: pd.DataFrame, context: dict,
         "artefact_version": ARTEFACT_VERSION,
         "figure": FIGURE_KEY_LEDGER,
         "title": "The ninety-second ledger",
+        "sources": ["outputs/turns/turns.parquet"],
         "band": {
             "position_group": context["position"],
             "abs_turn_angle_deg": [context["angle_low"], context["angle_high"]],
@@ -6597,7 +6717,6 @@ BARS_COLUMNS = [
 
 BARS_ACCENT = "#0072B2"
 BARS_GREY = "#6E6E6E"
-BARS_RULE = "#2B2B2B"
 
 
 def load_bars_of_doubt_turns(path: Path) -> pd.DataFrame:
@@ -6801,6 +6920,11 @@ def plot_bars_of_doubt(table: pd.DataFrame, context: dict,
 
     block = "figures.bars_of_doubt"
     low, high = context["angle_low"], context["angle_high"]
+    focus = focus_band(cfg)
+    if (float(low), float(high)) != (focus["low"], focus["high"]):
+        raise ValueError(
+            f"{STAGE}: {block}.angle_band_deg must match "
+            f"{FOCUS_BAND_KEY}.edges_deg; both describe the same focus band")
     n = context["n_rows"]
     fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
                               float(cfg.get(f"{block}.height_in"))))
@@ -6812,12 +6936,17 @@ def plot_bars_of_doubt(table: pd.DataFrame, context: dict,
     ax.tick_params(labelsize=8.2, colors="#333333", length=2)
     ax.set_axisbelow(True)
 
-    # The band itself is the light strip; the rules are the band edges.
-    ax.axvspan(low, high, color="#FFFFFF", alpha=0.72, zorder=0)
+    # The band itself is the tinted strip; the rules are the band edges.
+    ax.axvspan(low, high, color=focus["colour"], alpha=focus["tint_alpha"],
+               zorder=0)
     for edge, label in ((low, f"{low:g}°"), (high, f"{high:g}°")):
-        ax.axvline(edge, color=BARS_RULE, lw=1.1, ls=(0, (4, 3)), zorder=1)
+        ax.axvline(edge, color=focus["colour"], lw=focus["rule_width"],
+                   linestyle="-", zorder=1)
         ax.text(edge, n + 0.6, label, ha="center", va="bottom", fontsize=8.0,
-                color=BARS_RULE, fontweight="bold")
+                color=focus["colour"], fontweight="bold")
+    ax.text((low + high) / 2.0, n + 1.15, f"{focus['label']} band",
+            ha="center", va="bottom", fontsize=8.0,
+            color=focus["colour"], fontweight="bold")
 
     for row in table.itertuples(index=False):
         y = float(row.row_order)
@@ -6934,6 +7063,7 @@ def bars_of_doubt_manifest_payload(table: pd.DataFrame, context: dict,
         "artefact_version": ARTEFACT_VERSION,
         "figure": FIGURE_KEY_BARS_OF_DOUBT,
         "title": "Bars of doubt: how precisely is a 30–45° turn known?",
+        "sources": ["outputs/turns/turns.parquet"],
         "band": {
             "position_group": context["position"],
             "abs_turn_angle_deg": [context["angle_low"], context["angle_high"]],
@@ -7342,6 +7472,8 @@ def plot_supply_composition(table: pd.DataFrame, context: dict,
     block = "figures.supply_composition"
     bands = context["bands"]
     ramp = SUPPLY_COMPOSITION_RAMP[:len(bands)]
+    focus = focus_band(cfg)
+    focus_idx = focus_band_index(context["edges"], focus)
     drills = context["drills"]
     n = context["n_drills"]
     fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
@@ -7361,9 +7493,12 @@ def plot_supply_composition(table: pd.DataFrame, context: dict,
         for row in part.itertuples(index=False):
             if int(row.turns) == 0:
                 continue
+            is_focus = int(row.band_index) == focus_idx
             ax.barh(y, float(row.share_of_drill), left=float(row.share_start),
                     height=0.62, color=ramp[int(row.band_index)],
-                    edgecolor="white", linewidth=0.8, zorder=3)
+                    edgecolor=(focus["colour"] if is_focus else "white"),
+                    linewidth=(focus["outline_width"] if is_focus else 0.8),
+                    zorder=3)
             if float(row.share_of_drill) >= context["min_label_share"]:
                 ax.text(float(row.share_start) + float(row.share_of_drill) / 2.0,
                         y, f"{int(row.turns):,}", ha="center", va="center",
@@ -7383,12 +7518,17 @@ def plot_supply_composition(table: pd.DataFrame, context: dict,
         [_sc_row_label(d["label"], d["turns"], d["players"]) for d in drills],
         fontsize=8.4, color="#222222")
 
-    handles = [Patch(facecolor=ramp[i], edgecolor="white", label=b)
+    handles = [Patch(facecolor=ramp[i],
+                     edgecolor=(focus["colour"] if i == focus_idx else "white"),
+                     linewidth=(focus["outline_width"] if i == focus_idx else 1.0),
+                     label=(f"{b} (focus band)" if i == focus_idx else b))
                for i, b in enumerate(bands)]
-    fig.legend(handles=handles, loc="upper left",
-               bbox_to_anchor=(0.250, 0.905), ncol=len(bands),
-               frameon=False, fontsize=8.4, handlelength=1.4,
-               columnspacing=1.5, title=None)
+    legend = fig.legend(handles=handles, loc="upper left",
+                        bbox_to_anchor=(0.250, 0.905), ncol=len(bands),
+                        frameon=False, fontsize=8.4, handlelength=1.4,
+                        columnspacing=1.5, title=None)
+    legend.get_texts()[focus_idx].set_color(focus["colour"])
+    legend.get_texts()[focus_idx].set_fontweight("bold")
 
     fig.text(0.010, 0.975, "Where the Combine's turns come from",
              fontsize=17.5, fontweight="bold", ha="left", va="top",
@@ -7399,12 +7539,12 @@ def plot_supply_composition(table: pd.DataFrame, context: dict,
              "is one drill's own 100%, segments are turn-angle bands.",
              fontsize=8.8, ha="left", va="top", color="#333333")
     fig.text(0.010, 0.300,
-             f"30–45°: {context['shallow']['turns']} turns in all "
+             f"{focus['label']}: {context['shallow']['turns']} turns in all "
              f"({context['shallow']['n_drills']} drills, "
              f"{context['shallow']['players']} players) — at most "
              f"{context['shallow']['max_share_of_drill']:.1%} of any bar, too "
              "small to see at this scale; counts in the caption and CSV.",
-             fontsize=7.8, ha="left", va="top", color="#444444")
+             fontsize=7.8, ha="left", va="top", color=focus["colour"])
 
     caption = "\n".join(_wrap_text(line, 150)
                         for line in _supply_composition_caption(table, context))
@@ -7470,6 +7610,7 @@ def supply_composition_manifest_payload(table: pd.DataFrame, context: dict,
         "artefact_version": ARTEFACT_VERSION,
         "figure": FIGURE_KEY_SUPPLY_COMPOSITION,
         "title": "Where the Combine's turns come from",
+        "sources": ["outputs/turns/turns.parquet"],
         "band": {
             "position_group": context["position"],
             "bands_deg": context["edges"],

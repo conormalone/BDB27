@@ -6158,3 +6158,52 @@ notebook still carries zero outputs and zero execution counts.
 `src/06_figures.py` (unchanged — the manifest already carried title, claim,
 caveats, sources, png and stamp per figure); `tests/test_notebook_contract.py`
 (gallery tests a–e); `notebooks/README.md` §5.
+
+## D172 — One config block styles the 30–45° focus band across every band figure · 2026-11-09
+
+**Decision.** The case's focus band is marked in red on the seven figures with a
+band or angle axis: 1 (the hole), 2 (drill coverage), 3 (before/after), 5 (all
+positions), 8 (turn cost), 13 (bars of doubt) and 14 (supply composition).
+Figures 4, 6, 7, 9, 10, 11 and 12 are unchanged: 4 has no band axis, and the
+others only print the band in prose. The style is **one** block,
+`turn_coverage.figures.focus_band` — edges `[30, 45]`, colour `#C00000`, tint
+alpha 0.10, rule width 1.4 pt, outline width 1.6 pt. No figure function contains
+a focus hex; `figures.focus_band()` validates the block and
+`figures.focus_band_index()` refuses a focus band the axis does not carry.
+
+**Why red does not break the encoding.** In figures 1, 3, 5 and 14 bar colour
+already means Combine vs game. Red is therefore applied only to the band
+signal: tint, edge rules, cell outline, and the printed band label. It never
+recolours a bar or a data mark. Where the figure has a discrete axis label
+(figure 8's x ticks, figure 14's legend entry) that label is red and bold; the
+label is always printed, so colour is never the sole carrier.
+
+**Palette choice and contrast.** `#C00000` is a deep print-safe red. Against
+white it is ~6.4:1 and against the `#EBEBEB` panel fill ~5.6:1, both above the
+4.5:1 text threshold, so it survives greyscale printing and small caption
+sizes. Its relative luminance (~0.09) is well below the game orange `#D55E00`
+(~0.29) and the Combine blue `#0072B2` (~0.17), so it separates from both in
+greyscale. Red-vs-orange is the one weak pair under deuteranopia; that is
+covered by the always-present "30–45°" label and by using solid rules where the
+existing reference rules are dashed.
+
+**Data invariance.** This is styling only. Every figure was regenerated and
+every committed CSV compared with `git show HEAD:path` after dropping
+`config_sha`: all fourteen are identical, value for value. The seven affected
+PNGs changed; the other seven are byte-identical. `tests/test_focus_band.py`
+pins each affected figure to the config colour by rendering with a sentinel
+colour and walking the drawn artists, asserts the focus hex is absent from
+`figures.py`, and asserts the focus edges are a reporting band on every axis.
+The existing two-render determinism tests are unchanged.
+
+**Manifest completeness.** While reviewing the notebook gallery, `fig_turn_cost`
+was found to have no `claim` and six figures (8–14) no `sources`, so the gallery
+printed ABSENT. Every entry now carries both. Figure 8's claim is the stage's
+own computed `_turn_cost_shape_sentence()`; the other claims already came from
+their stages. Sources are the artefact paths each stage reads (raw input names
+where a figure reads raw tracking or combine results). The gallery contract
+tests pass unchanged.
+
+**Evidence.** `config.yaml` (`figures.focus_band`); `src/bdb27/figures.py`
+(`focus_band`, `focus_band_index` and the seven plot functions);
+`tests/test_focus_band.py`; regenerated `outputs/figures/`.

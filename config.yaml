@@ -331,6 +331,22 @@ turn_coverage:
     speed_band: [0.0, 2.0, 4.0, 6.0, 8.0, 12.0]
 
   figures:
+    # The case's focus band, styled once for every figure that has a band or
+    # angle axis (D172). Red marks the BAND only: on figures 1/3/5/14 the bars
+    # already encode Combine vs game, so the focus colour is used for rules,
+    # tint and band labels, never to recolour a data mark. #C00000 is chosen
+    # for print-safe contrast: ~6.4:1 against white and ~5.6:1 against the
+    # #EBEBEB panel fill, and far darker than the game orange #D55E00 so the
+    # two remain distinguishable in greyscale. Rules are solid (not the dashed
+    # grey used for other references) and always carry the printed band label,
+    # so colour is never the only carrier of the signal.
+    focus_band:
+      edges_deg: [30, 45]
+      colour: "#C00000"
+      tint_alpha: 0.10
+      rule_width_pt: 1.4
+      outline_width_pt: 1.6
+
     # Stage 06 reporting bands for figure 1 ("The Hole"). DESIGN CHOICE,
     # recorded as D164 in notes/decisions.md.
     #

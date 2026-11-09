@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "731a5d3da9f252e3",
-  "generated_utc": "2026-11-08T22:31:31Z",
+  "config_sha": "ab85e34af0e4f426",
+  "generated_utc": "2026-11-09T00:45:26Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -3162,6 +3162,10 @@
       "artefact_version": 1,
       "figure": "fig_turn_cost",
       "title": "What a turn costs, and who pays for it: apex retention by reporting band, and each setting's own turn mix",
+      "claim": "The curve is not monotone in angle: Combine rises from 45\u201360\u00b0 to 60\u201390\u00b0; Game rises from 30\u201345\u00b0 to 45\u201360\u00b0 and 45\u201360\u00b0 to 60\u201390\u00b0; shallowest to deepest reported band, Combine 1.00 \u2192 0.14; Game 0.82 \u2192 0.28.",
+      "sources": [
+        "outputs/turns/turns.parquet"
+      ],
       "measure": {
         "column": "apex_retention",
         "definition": "apex_speed / entry_speed (stage 02)",
@@ -3340,6 +3344,10 @@
       "artefact_version": 1,
       "figure": "fig_stopwatch",
       "title": "Same stopwatch, different turn: what the published three-cone time compresses",
+      "sources": [
+        "outputs/turns/turns.parquet",
+        "data/raw/combine_results.csv"
+      ],
       "match": {
         "rule": "nfl_id join to files.combine_results three_cone (not null); turns from outputs/turns/turns.parquet where drill_name contains 'THREE_CONE', setting == 'combine', position_group == 'DB', valid == true",
         "join_key": "nfl_id",
@@ -3423,6 +3431,11 @@
       "artefact_version": 1,
       "figure": "fig_both_hips",
       "title": "The test never checks which way he turns",
+      "sources": [
+        "outputs/turns/turns.parquet",
+        "data/raw/game_tracking.csv",
+        "data/raw/player_play.csv"
+      ],
       "band": {
         "position_group": "DB",
         "abs_turn_angle_deg": [
@@ -3664,6 +3677,9 @@
       "artefact_version": 1,
       "figure": "fig_shallow_sources",
       "title": "Where the shallow turns come from",
+      "sources": [
+        "outputs/turns/turns.parquet"
+      ],
       "band": {
         "position_group": "DB",
         "abs_turn_angle_deg": [
@@ -3776,6 +3792,9 @@
       "artefact_version": 1,
       "figure": "fig_ledger",
       "title": "The ninety-second ledger",
+      "sources": [
+        "outputs/turns/turns.parquet"
+      ],
       "band": {
         "position_group": "DB",
         "abs_turn_angle_deg": [
@@ -3884,6 +3903,9 @@
       "artefact_version": 1,
       "figure": "fig_bars_of_doubt",
       "title": "Bars of doubt: how precisely is a 30\u201345\u00b0 turn known?",
+      "sources": [
+        "outputs/turns/turns.parquet"
+      ],
       "band": {
         "position_group": "DB",
         "abs_turn_angle_deg": [
@@ -3966,6 +3988,9 @@
       "artefact_version": 1,
       "figure": "fig_supply_composition",
       "title": "Where the Combine's turns come from",
+      "sources": [
+        "outputs/turns/turns.parquet"
+      ],
       "band": {
         "position_group": "DB",
         "bands_deg": [
