@@ -1482,10 +1482,9 @@ def drill_schematic_geometry(cfg: common.Config) -> tuple[pd.DataFrame, dict]:
                 source_quote="Two exit gates 5 yd from the break cone."),
             _schematic_row(
                 row_kind="annotation", element=f"angle_left_{tag}", kind="text",
-                text=f"{angle:g}° ({band})", value=angle, unit="deg",
+                text=f"{angle:g}°", value=angle, unit="deg",
                 source_constant=f"{block}.break_angles_deg",
-                source_quote="Break 40 deg, either side of the approach line; "
-                             "the 45-60 deg band is drawn too."),
+                source_quote="Break 40 deg, either side of the approach line."),
         ])
 
     rows.extend([
@@ -1636,8 +1635,10 @@ def _schematic_text(table: pd.DataFrame, element: str) -> str:
 
 def _schematic_title(context: dict) -> str:
     """The one bold title line, built from the configured break angles."""
-    angles = " and ".join(f"{float(a):g}\u00b0"
-                          for a in context["break_angles"])
+    break_angles = context["break_angles"]
+    angles = " and ".join(f"{float(a):g}\u00b0" for a in break_angles)
+    if len(break_angles) == 1:
+        return f"The tempo break: a {angles} cut at speed, both sides"
     return f"The tempo break: {angles} cuts at speed, both sides"
 
 
@@ -1701,7 +1702,7 @@ def plot_drill_schematic(table: pd.DataFrame, context: dict,
                                 shrinkB=0))
 
     # ---- break-angle arcs, one per angle at its own radius, labelled with the
-    # configured angle and its stated reporting band
+    # configured angle only
     offset = style["arc_label_offset_yd"]
     for index, angle in enumerate(angles):
         tag = f"{angle:g}"

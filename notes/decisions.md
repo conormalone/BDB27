@@ -6502,6 +6502,7 @@ follows the paper: the recommendation is to test cuts below 60°, and the demand
 gap is larger at 45–60° (10.1% of game DB turns) than at 30–45° (4.3%). Each arc
 is labelled with its band, so the drawing no longer implies a single prescribed
 angle. Geometry stays in yards with equal aspect and the 5 yd scale bar.
+*(Superseded — see "Reverted" at the end of this decision.)*
 
 **Proposal language removed.** The drawn badge
 `PROPOSED DRILL — not part of the task spec, awaiting sign-off`, the config
@@ -6529,3 +6530,12 @@ except `fig_drill_schematic.png`; their CSVs differ only in `config_sha`.
 `drill_schematic_csv_frame`); `tests/test_figures_stage.py` (banned-word sweep,
 both angles, four exits, footer/subtitle absence);
 `outputs/figures/fig_drill_schematic.{png,csv}`.
+
+**Reverted (Conor, 22:02).** The two-angle geometry above (40°/55°, covering
+30–60°, the "Two break geometries, not one" paragraph) is superseded: the figure
+is again a **single 40° break, both sides**, with one exit pair and two gate
+ticks. The drawn arc label is the angle only, `40°`, with no band name; the
+title is "The tempo break: a 40° cut at speed, both sides". The proposal-badge,
+subtitle and footer removals from this decision are unchanged and still absent.
+`config.yaml` is back to `break_angles_deg: [40]` /
+`break_band_labels: ["30–45°"]`.

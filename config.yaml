@@ -433,12 +433,12 @@ turn_coverage:
       # "Walk-in, 2-yd run-up" — the run-up length is stated; its start is not.
       runup_length_yd: 2
       # "Break 40 deg" / "Two exit gates 5 yd from the break cone, at 40 deg
-      # either side of the approach line." The 45-60 degree band is drawn too,
-      # so there are two break angles, each either side of the approach line.
-      break_angles_deg: [40, 55]
-      # The reporting band each break angle belongs to, aligned by index. The
-      # geometry function refuses an angle that falls outside its stated band.
-      break_band_labels: ["30–45°", "45–60°"]
+      # either side of the approach line." One break angle, both sides.
+      break_angles_deg: [40]
+      # The reporting band each break angle belongs to, aligned by index; each
+      # angle is labelled with the band it belongs to. The geometry function
+      # refuses an angle that falls outside its stated band.
+      break_band_labels: ["30–45°"]
       gate_distance_yd: 5
       # "Re-accelerate 5 yd through the gate" — the same 5 yd, drawn once.
       reaccel_length_yd: 5

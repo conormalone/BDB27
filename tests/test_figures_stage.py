@@ -829,7 +829,7 @@ def _check_schematic(csv_df: pd.DataFrame, block: dict) -> None:
     gate = float(block["gate_distance_yd"])
     angles = [float(x) for x in block["break_angles_deg"]]
     bands = [str(x) for x in block["break_band_labels"]]
-    assert len(angles) == len(bands) >= 2
+    assert len(angles) == len(bands) >= 1
     exits = {row["element"] for _, row in csv_df.iterrows()
              if str(row["element"]).startswith("exit_")}
     assert exits == {f"exit_{side}_{angle:g}"
@@ -857,10 +857,10 @@ def _check_schematic(csv_df: pd.DataFrame, block: dict) -> None:
         assert np.isclose(float(rows[f"gate_left_{tag}"]["y"]),
                           -float(rows[f"gate_right_{tag}"]["y"]))
 
-        # the arc label carries the angle and its stated band
+        # the arc label is the angle only; the band is not printed on the arc
         label = str(rows[f"angle_left_{tag}"]["text"])
-        assert f"{angle:g}°" in label
-        assert band in label
+        assert label == f"{angle:g}°"
+        assert band not in label
 
     # the plant is the break cone, at the end of the approach
     assert np.isclose(float(rows["plant"]["x"]), 0.0)
@@ -899,10 +899,9 @@ def test_drill_schematic_geometry_matches_config(rendered):
     rows = _ds_rows(csv_df)
     assert np.isclose(float(rows["exit_left_40"]["angle_deg"]), 40.0)
     assert np.isclose(float(rows["exit_right_40"]["angle_deg"]), -40.0)
-    assert np.isclose(float(rows["exit_left_55"]["angle_deg"]), 55.0)
-    assert np.isclose(float(rows["exit_right_55"]["angle_deg"]), -55.0)
     assert np.isclose(float(rows["gate_left_40"]["length_yd"]), 5.0)
-    assert np.isclose(float(rows["gate_right_55"]["length_yd"]), 5.0)
+    assert np.isclose(float(rows["gate_right_40"]["length_yd"]), 5.0)
+    assert not any("_55" in str(e) for e in csv_df["element"])
     assert 8.0 <= float(rows["approach_line"]["length_yd"]) <= 10.0
 
 
@@ -918,8 +917,8 @@ def test_drill_schematic_is_not_stamped_as_sample_data(rendered):
     assert fig["provenance_applied"] is False
     assert "deliberately NOT stamped" in fig["provenance_note"].lower() or \
         "Deliberately NOT stamped" in fig["provenance_note"]
-    assert fig["spec"]["break_angles_deg"] == [40, 55]
-    assert fig["spec"]["break_band_labels"] == ["30–45°", "45–60°"]
+    assert fig["spec"]["break_angles_deg"] == [40]
+    assert fig["spec"]["break_band_labels"] == ["30–45°"]
     assert fig["spec"]["gate_distance_yd"] == 5
     assert fig["spec"]["approach_length_yd"] == [8, 10]
     assert fig["scale"]["to_scale"] is True
@@ -951,16 +950,17 @@ def test_drill_schematic_has_no_proposal_framing(rendered):
         assert len(fig.texts) == 1, "figure 4 must carry only its title"
         assert "The tempo break:" in fig.texts[0].get_text()
         assert "40°" in fig.texts[0].get_text()
-        assert "55°" in fig.texts[0].get_text()
+        assert "55°" not in fig.texts[0].get_text()
+        assert "a 40° cut at speed" in fig.texts[0].get_text()
         # equal aspect keeps the scale bar truthful
         assert fig.axes[0].get_aspect() == 1.0
-        # both angles and four exits are in the geometry
+        # one angle and two exits are in the geometry
         elements = set(table["element"])
-        for angle in (40, 55):
+        for angle in (40,):
             for side in ("left", "right"):
                 assert f"exit_{side}_{angle}" in elements
                 assert f"gate_{side}_{angle}" in elements
-        assert context["break_angles"] == [40.0, 55.0]
+        assert context["break_angles"] == [40.0]
     finally:
         plt.close(fig)
 
@@ -1001,7 +1001,7 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
     assert len(pd.read_csv(rendered["csv"])) == 14
     assert len(pd.read_csv(rendered["drill_csv"])) == 11
     assert len(pd.read_csv(rendered["ba_csv"])) == 44
-    assert len(pd.read_csv(rendered["ds_csv"])) == 26
+    assert len(pd.read_csv(rendered["ds_csv"])) == 21
     man = json.loads(rendered["manifest"].read_text())
     assert set(man["figures"]) == {"fig_the_hole", "fig_drill_coverage",
                                    "fig_before_after", "fig_drill_schematic",
@@ -1027,20 +1027,20 @@ def test_drill_schematic_checks_can_fail(rendered):
         _check_schematic(wrong_gate, block)
 
     wrong_angle = csv_df.copy()
-    idx = wrong_angle.index[wrong_angle["element"] == "exit_right_55"][0]
+    idx = wrong_angle.index[wrong_angle["element"] == "exit_right_40"][0]
     wrong_angle.loc[idx, "angle_deg"] = -35.0
     with pytest.raises(AssertionError):
         _check_schematic(wrong_angle, block)
 
     asymmetric = csv_df.copy()
-    idx = asymmetric.index[asymmetric["element"] == "gate_right_55"][0]
+    idx = asymmetric.index[asymmetric["element"] == "gate_right_40"][0]
     asymmetric.loc[idx, "y"] = float(asymmetric.loc[idx, "y"]) * 0.9
     with pytest.raises(AssertionError):
         _check_schematic(asymmetric, block)
 
     wrong_band = csv_df.copy()
-    idx = wrong_band.index[wrong_band["element"] == "angle_left_55"][0]
-    wrong_band.loc[idx, "text"] = "55° (30–45°)"
+    idx = wrong_band.index[wrong_band["element"] == "angle_left_40"][0]
+    wrong_band.loc[idx, "text"] = "40° (30–45°)"
     with pytest.raises(AssertionError):
         _check_schematic(wrong_band, block)
 
