@@ -67,6 +67,12 @@
                           game and Combine are dodged on one axis. A bucket
                           below the ten-turn floor (the Combine 30-45 degree
                           bucket holds four turns) is annotated, never drawn.
+ 17. "The movement family by angle band" — four game-only DB panels on one
+                          shared angle-bucket axis: the median per-turn
+                          apex/entry ratio, the median peak lateral
+                          acceleration, the circle-fit usable share, and the
+                          median peak angular rate on a log axis, each with a
+                          player-clustered percentile bootstrap interval.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -458,6 +464,23 @@ def main(argv=None) -> int:
         ees_payload["stamp"] = figures.STAMP
         _write_manifest(ees_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 17: the movement family by angle band
+        mf_turns = figures.load_movement_family_turns(turns_path)
+        mf_table, mf_context = figures.movement_family_table(mf_turns, cfg)
+        mf_csv = figures.movement_family_csv_frame(mf_table, mf_context)
+        mf_png = outdir / f"{figures.FIGURE_KEY_MOVEMENT_FAMILY}.png"
+        mf_csv_path = outdir / f"{figures.FIGURE_KEY_MOVEMENT_FAMILY}.csv"
+        common.write_csv(mf_csv, mf_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure":
+                                    figures.FIGURE_KEY_MOVEMENT_FAMILY})
+        mf_fig = figures.plot_movement_family(mf_table, mf_context, cfg)
+        figures.render_movement_family(mf_fig, cfg, mf_png)
+        mf_payload = figures.movement_family_manifest_payload(
+            mf_table, mf_context, cfg)
+        mf_payload["stamp"] = figures.STAMP
+        _write_manifest(mf_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -560,7 +583,12 @@ def main(argv=None) -> int:
                         f"combine={ees_context['totals']['turns']['combine']} "
                         f"({ees_context['totals']['players']['combine']} "
                         f"players) rows={ees_context['table_rows']} "
-                        f"estimable={ees_context['n_estimable']} ")
+                        f"estimable={ees_context['n_estimable']}; "
+                        f"{figures.FIGURE_KEY_MOVEMENT_FAMILY}: "
+                        f"turns={mf_context['population_turns']} "
+                        f"players={mf_context['population_players']} "
+                        f"rows={mf_context['table_rows']} "
+                        f"estimable={sum(mf_context['n_estimable'].values())} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -576,6 +604,7 @@ def main(argv=None) -> int:
           f"{sc_png.name}, {sc_csv_path.name}, "
           f"{bo_png.name}, {bo_csv_path.name}, "
           f"{ees_png.name}, {ees_csv_path.name}, "
+          f"{mf_png.name}, {mf_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -622,6 +651,11 @@ def main(argv=None) -> int:
           f"{ees_context['totals']['turns']['combine']} Combine turns, "
           f"{ees_context['n_estimable']['combine'] // 2} of 7 Combine bands "
           f"estimated"
+          f"; figure 17 movement family "
+          f"{mf_context['population_turns']} game turns from "
+          f"{mf_context['population_players']} players, "
+          f"{sum(mf_context['n_estimable'].values())} of "
+          f"{mf_context['table_rows']} cells estimable"
           f")")
     return 0
 

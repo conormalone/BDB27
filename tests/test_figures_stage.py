@@ -173,6 +173,14 @@ def _turns_frame() -> pd.DataFrame:
                     "duration_s": float(1.0 if int(lo) == 30 else 2.0),
                     "speed_retention": float(retention),
                     "apex_retention": float(apex_retention),
+                    # Figure 17 needs the movement family per turn. Apex is
+                    # the ratio the retention column already implies; omega
+                    # rises with angle; the circle flag is mostly usable but
+                    # fails deterministically so the share is not always 1.
+                    "apex_speed": float(entry * apex_retention),
+                    "peak_omega_deg_s": float(
+                        78.0 + 2.1 * angle + 9.0 * ((j * 5 + int(lo)) % 7) / 7.0),
+                    "circle_fit_usable": bool((j * 7 + int(lo)) % 10 != 3),
                     # Figure 6 needs a real acceleration per turn. Monotone in
                     # angle with a deterministic ripple; assertions recompute
                     # the medians and p95 from this written table.
@@ -431,6 +439,8 @@ def rendered(tmp_path_factory):
             "bnd_csv": out / "fig_band_only.csv",
             "ees_png": out / "fig_entry_exit_speed.png",
             "ees_csv": out / "fig_entry_exit_speed.csv",
+            "mf_png": out / "fig_movement_family.png",
+            "mf_csv": out / "fig_movement_family.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -929,7 +939,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_both_hips", "fig_shallow_sources",
                                    "fig_ledger", "fig_bars_of_doubt",
                                    "fig_supply_composition", "fig_band_only",
-                                   "fig_entry_exit_speed"}
+                                   "fig_entry_exit_speed",
+                                   "fig_movement_family"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1466,8 +1477,8 @@ def test_stage_06_manifest_lists_every_figure(rendered):
         "fig_gap_honest", "fig_turn_cost", "fig_stopwatch", "fig_both_hips",
         "fig_shallow_sources", "fig_ledger", "fig_bars_of_doubt",
         "fig_supply_composition", "fig_band_only",
-        "fig_entry_exit_speed"}
-    assert len(man["figures"]) == 16
+        "fig_entry_exit_speed", "fig_movement_family"}
+    assert len(man["figures"]) == 17
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -2598,7 +2609,7 @@ def test_both_hips_computes_no_symmetry_or_p_value(rendered):
 def test_both_hips_renders_every_figure(rendered):
     out = rendered["tmp"] / "outputs" / "figures"
     pngs = sorted(p.name for p in out.glob("fig_*.png"))
-    assert len(pngs) == 16, f"stage 06 must render sixteen figures, found {pngs}"
+    assert len(pngs) == 17, f"stage 06 must render seventeen figures, found {pngs}"
     assert "fig_both_hips.png" in pngs
 
 
@@ -4179,3 +4190,44 @@ def test_entry_exit_speed_end_to_end(rendered):
     assert fig["stamp"] == STAMP
     claim = fig["claim"].lower()
     assert "combine" in claim and "game" in claim
+
+
+# ------------------------------------- figure 17: the movement family by band
+MF_KEY = "fig_movement_family"
+
+
+def test_movement_family_end_to_end(rendered):
+    _check_png(rendered["mf_png"])
+    csv_df = pd.read_csv(rendered["mf_csv"])
+    assert len(csv_df) == 28
+    assert csv_df["panel"].unique().tolist() == [
+        "apex_share", "peak_lateral_accel", "circle_fit_share", "peak_omega"]
+    assert csv_df["panel_index"].tolist() == sorted(csv_df["panel_index"])
+    assert csv_df.groupby("panel")["band_index"].apply(list).apply(
+        lambda v: v == list(range(7))).all()
+    assert csv_df["log_axis"].sum() == 7          # panel D only
+    assert csv_df.loc[csv_df["panel"] == "peak_omega", "log_axis"].all()
+    circle = csv_df[csv_df["panel"] == "circle_fit_share"]
+    assert (circle["value"].dropna().between(0.0, 1.0)).all()
+    assert (circle["ci_low"].dropna().between(0.0, 1.0)).all()
+    assert (circle["ci_high"].dropna().between(0.0, 1.0)).all()
+    before = hashlib.sha256(rendered["mf_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["mf_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 17 differ"
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][MF_KEY]
+    assert fig["stamp"] == STAMP
+    assert fig["sources"] == ["outputs/turns/turns.parquet"]
+    assert len(fig["caveats"]) == 4
+    joined = " ".join(fig["caveats"])
+    assert "constant-radius arc model" in joined
+    assert "detector floor" in joined
+    assert "shallow bucket is thin" in joined
+    assert "these are game turns only" in joined
+    assert len(fig["rows"]) == 28
+    assert fig["population"]["position_group"] == "DB"
+    assert fig["population"]["settings"] == ["game"]
+    assert fig["statistic"]["cluster_by"] == "nfl_id"
+    assert fig["statistic"]["reps"] == 2000

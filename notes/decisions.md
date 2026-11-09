@@ -6415,3 +6415,76 @@ figure 16 are byte-identical. The only shared code changed is the new
 `tests/test_focus_band.py`; `tests/test_notebook_contract.py`;
 `outputs/figures/fig_entry_exit_speed.{png,csv}`,
 `outputs/figures/figures_manifest.json`.
+
+## D176 — Figure 17 shows four movement-family panels by angle band, and the break is between 90° and 120°, not at 45° · 2026-11-09
+
+**What changed.** Figure 17, `fig_movement_family`, is a 2×2 of four views of
+the same seven game-only DB angle buckets, all on one shared categorical axis.
+Panel A is apex speed ÷ entry speed, Panel B the peak lateral acceleration
+(yd/s²), Panel C the share of turns whose constant-radius arc fit is usable
+(0–1 axis), Panel D the peak angular rate on a log y axis. The focus treatment
+is the one every band figure uses (D172): a `#C00000` tint and two rules at the
+30–45° band edges, styled from `figures.focus_band`; red marks the band, never
+a data mark. Band edges are read from `figures.hole.bands.turn_angle_deg` and
+the overflow label from the same block — the figure declares no edge of its own
+(D164). The block is `figures.movement_family` in `config.yaml`.
+
+**Population.** Valid game DB turns only, `position_group == 'DB' &
+valid == True & setting == 'game'`: **2,262 turns from 33 players** across the
+seven reporting bands (97 / 229 / 476 / 508 / 460 / 307 / 185). Bands are
+left-closed on `abs_turn_angle`; angles at or above 180° form the configured
+`>180` overflow class. The Combine is not drawn: its 30–45° bucket holds four
+turns, so no panel is estimable there (figure 16, D175).
+
+**The statistic.** Panel A is the **median of per-turn apex ÷ entry ratios**,
+never a ratio of medians; Panel B and Panel D are medians of the column;
+Panel C is the proportion of turns with `circle_fit_usable`. The interval is a
+**95% percentile bootstrap that resamples players (`nfl_id`) with replacement**,
+because turns repeat within a player. 2,000 replicates per cell; the seed base
+is `20270106 + 61616 = 20,331,722` and each cell's seed is
+`seed_from_label("movement_family|<panel>|<band_index>", base)` — md5 of the
+label into the base, as `envelope._seed` does. The shared helpers live in
+`src/bdb27/stats.py` (`cluster_bootstrap_median`,
+`cluster_bootstrap_proportion`, `seed_from_label`). A cell is estimable only at
+≥ `min_n_for_estimate = 10` turns from ≥ 2 players; below the floor it stays in
+the CSV with NaN value and bounds, is annotated "no estimate", and is never
+drawn. These are descriptive medians and shares of measured turns, not
+outcomes, and `circle_fit_usable` is evidence about the detected path's
+geometry, not ground truth about the athlete.
+
+**The four panels, with the numbers (game, median [95% CI]).** Apex share:
+0.819 [0.719, 0.933] / 0.876 [0.761, 1.000] / 0.895 [0.855, 0.954] for 30–45°,
+45–60°, 60–90°, then 0.722 [0.691, 0.766] at 90–120° and 0.481 / 0.282 / 0.144
+after it. Peak lateral acceleration: 5.38 / 5.69 / 5.63 yd/s² for the three arc
+buckets, 7.52 at 90–120°, rising to 32.6 at `>180°`. Circle-fit usable share:
+1.000 / 1.000 / 0.998, 0.970 at 90–120°, down to 0.459 at `>180°`. Peak angular
+rate: 87 / 80 / 84 deg/s, 108 at 90–120°, up to 493 at `>180°`.
+
+**The honest claim.** The three arc buckets 30–45°, 45–60° and 60–90° are **one
+family**: their intervals overlap on every panel and the point estimates barely
+move. **The break sits between 90° and 120°, not at 45°** — apex share starts
+falling there, peak lateral acceleration and peak angular rate start rising, and
+circle-fit usability starts dropping. The **30–45° bucket is an ordinary member
+of the arc family, not its extreme**: it is not the fastest, not the sharpest
+and not the worst-fitting of the three. Its only distinguishing features are the
+lowest entry speed and the absence of a Combine counterpart. This figure does
+not support treating 30–45° as a separate movement class.
+
+**Data invariance.** No number moved. All 16 pre-existing figure PNGs are
+byte-identical to HEAD, and all 16 of their CSVs are equal on every column
+except `config_sha` (which changes because config.yaml gained this block). Two
+consecutive renders of figure 17 are byte-identical
+(`70d4d897…3bdd9a48dc4`). No new data source, no change to band edges or to what
+counts as a valid turn; `stats.py` gained the proportion helper beside the
+median one.
+
+**Evidence.** `config.yaml` (`figures.movement_family`); `src/bdb27/stats.py`
+(`cluster_bootstrap_proportion`); `src/bdb27/figures.py`
+(`load_movement_family_turns`, `movement_family_table`,
+`movement_family_csv_frame`, `plot_movement_family`,
+`render_movement_family`, `movement_family_manifest_payload`,
+`_mf_caption_lines`, `MF_CAVEAT_*`); `src/06_figures.py`;
+`tests/test_movement_family_figure.py`; `tests/test_figures_stage.py`;
+`tests/test_focus_band.py`; `tests/test_notebook_contract.py`;
+`outputs/figures/fig_movement_family.{png,csv}`,
+`outputs/figures/figures_manifest.json`.

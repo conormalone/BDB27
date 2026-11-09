@@ -830,6 +830,52 @@ turn_coverage:
       width_in: 13.2
       height_in: 8.9
 
+    # Stage 06 figure 17 ("Movement family by angle band"). Requested by
+    # Conor (2026-11-09): four views of the same seven game-only DB angle
+    # buckets, all player-clustered. Panel A is the per-turn apex/entry ratio
+    # (the MEDIAN OF PER-TURN RATIOS, never a ratio of medians), B the median
+    # peak lateral acceleration, C the share of turns whose constant-radius
+    # arc fit is usable, D the median peak angular rate on a log axis. Bands
+    # are read from `figures.hole.bands`, never redeclared. The population is
+    # game turns only; the Combine is not drawn because its 30-45 degree
+    # bucket holds four turns (figure 16).
+    movement_family:
+      position_group: DB
+      setting: game
+      settings: [game]
+      panels:
+        apex_share:
+          statistic: median
+          numerator: apex_speed
+          denominator: entry_speed
+          y_label: "Apex speed / entry speed"
+          log_y: false
+        peak_lateral_accel:
+          statistic: median
+          column: peak_lateral_accel_yd_s2
+          y_label: "Peak lateral acceleration (yd/s\u00b2)"
+          log_y: false
+        circle_fit_share:
+          statistic: proportion
+          column: circle_fit_usable
+          y_label: "Circle-fit usable share"
+          log_y: false
+        peak_omega:
+          statistic: median
+          column: peak_omega_deg_s
+          y_label: "Peak angular rate (deg/s), log scale"
+          log_y: true
+      ci_level: 0.95
+      interval: percentile
+      cluster_by: nfl_id
+      bootstrap_reps: 2000
+      bootstrap_seed_offset: 61616
+      min_n_for_estimate: 10
+      min_players_for_estimate: 2
+      dpi: 150
+      width_in: 13.2
+      height_in: 11.0
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

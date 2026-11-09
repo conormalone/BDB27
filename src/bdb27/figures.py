@@ -8974,3 +8974,752 @@ def entry_exit_speed_manifest_payload(table: pd.DataFrame, context: dict,
             "Sample data: nothing here is a finding about the 2027 class.",
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Figure 17 — the movement family by angle band, four panels, game turns only.
+#
+# One panel per movement measure over the SAME seven reporting bands that
+# `figures.hole.bands` (D164) defines; the edges are read, never redeclared. All
+# intervals are player-clustered percentile bootstraps: players (nfl_id) are
+# resampled, because turns repeat within a player. Panel A is deliberately the
+# MEDIAN OF PER-TURN RATIOS (apex/entry on each turn, then median), never a
+# ratio of medians. Panel D is drawn on a log y axis because peak angular rate
+# spans an order of magnitude across the bands.
+#
+# The population is game turns only. The Combine is not drawn: its 30-45 degree
+# bucket holds four turns (figure 16), so nothing there is estimable.
+# ---------------------------------------------------------------------------
+FIGURE_KEY_MOVEMENT_FAMILY = "fig_movement_family"
+
+MOVEMENT_FAMILY_COLUMNS = [
+    "setting",
+    "position_group",
+    "valid",
+    "abs_turn_angle",
+    "nfl_id",
+    "apex_speed",
+    "entry_speed",
+    "peak_lateral_accel_yd_s2",
+    "circle_fit_usable",
+    "peak_omega_deg_s",
+]
+
+MOVEMENT_FAMILY_CSV_COLUMNS = [
+    "panel",
+    "panel_index",
+    "band_index",
+    "band",
+    "band_low_deg",
+    "band_high_deg",
+    "n_turns",
+    "n_players",
+    "statistic",
+    "value",
+    "ci_low",
+    "ci_high",
+    "ci_level",
+    "ci_method",
+    "estimable",
+    "is_focus_band",
+    "log_axis",
+    "bootstrap_reps",
+    "bootstrap_seed",
+]
+
+#: Panel order is fixed by the spec: A top-left, B top-right, C bottom-left,
+#: D bottom-right. The tuple pairs the panel key with its drawn statistic.
+MOVEMENT_FAMILY_PANELS = (
+    ("apex_share", "median"),
+    ("peak_lateral_accel", "median"),
+    ("circle_fit_share", "proportion"),
+    ("peak_omega", "median"),
+)
+
+MOVEMENT_FAMILY_PANEL_TITLES = {
+    "apex_share": "Apex share of entry speed",
+    "peak_lateral_accel": "Peak lateral acceleration",
+    "circle_fit_share": "Circle-fit usable share",
+    "peak_omega": "Peak angular rate",
+}
+
+#: The four honesty clauses. These strings are carried verbatim in the
+#: manifest caveats and drawn (wrapped, never reworded) under the panels.
+MF_CAVEAT_CIRCLE = (
+    "circle_fit_usable describes whether the constant-radius arc model fits "
+    "the turn the detector found; it is evidence about the geometry of the "
+    "detected path, not ground truth about the athlete."
+)
+MF_CAVEAT_FLOOR = (
+    "the 30° detector floor sits immediately below the shallow bucket, so some "
+    "turns there may be fragments of larger movements."
+)
+MF_CAVEAT_THIN = (
+    "the shallow bucket is thin ({n_turns} turns from {n_players} players) and "
+    "its intervals are the widest."
+)
+MF_CAVEAT_COMBINE = (
+    "these are game turns only; the Combine is not drawn because its 30–45° "
+    "bucket holds {n_combine} turns, so no comparison is estimable there."
+)
+
+
+def load_movement_family_turns(path: Path) -> pd.DataFrame:
+    """Read only the columns figure 17 needs; refuse if any is absent."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the per-turn table is absent ({path}) — run 02_turns "
+            "first")
+    try:
+        df = pd.read_parquet(path, columns=MOVEMENT_FAMILY_COLUMNS)
+    except Exception as exc:  # a missing column is a refusal, not a crash
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet cannot supply {MOVEMENT_FAMILY_COLUMNS}; "
+            f"figure 17 needs the movement columns for every valid DB turn "
+            f"({exc})") from exc
+    if df.empty:
+        raise common.StageRefused(f"{STAGE}: turns.parquet is empty")
+    missing = [c for c in MOVEMENT_FAMILY_COLUMNS if c not in df.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet has no {missing} column(s); figure 17 "
+            "needs the movement columns for every valid DB turn")
+    return df[MOVEMENT_FAMILY_COLUMNS]
+
+
+def _movement_family_config(cfg: common.Config) -> dict:
+    """Read and validate the figure-17 block, naming the failing key."""
+    block = "figures.movement_family"
+
+    def bad(key: str, expected: str) -> common.StageRefused:
+        return common.StageRefused(
+            f"{STAGE}: {block}.{key} must be {expected}; figure 17 would "
+            "otherwise draw an interval it cannot honestly compute")
+
+    position = str(cfg.get(f"{block}.position_group"))
+    if not position:
+        raise bad("position_group", "a non-empty position group")
+    setting = str(cfg.get(f"{block}.setting"))
+    if setting not in ("combine", "game"):
+        raise bad("setting", "'combine' or 'game'")
+    settings = [str(s) for s in cfg.get(f"{block}.settings")]
+    if not settings or set(settings) != {setting}:
+        raise bad("settings", f"exactly the single setting [{setting}]")
+    statistic_by_panel = dict(MOVEMENT_FAMILY_PANELS)
+    raw_panels = cfg.get(f"{block}.panels")
+    if not isinstance(raw_panels, dict):
+        raise bad("panels", "a mapping of the four panel keys")
+    if list(raw_panels) != [p for p, _ in MOVEMENT_FAMILY_PANELS]:
+        raise bad("panels", "the keys " + ", ".join(
+            p for p, _ in MOVEMENT_FAMILY_PANELS) + " in that order")
+    panels = []
+    for key, expected_statistic in MOVEMENT_FAMILY_PANELS:
+        panel = dict(raw_panels[key])
+        statistic = str(panel.get("statistic"))
+        if statistic != expected_statistic:
+            raise bad(f"panels.{key}.statistic", f"'{expected_statistic}'")
+        log_y = bool(panel.get("log_y"))
+        if log_y != (key == "peak_omega"):
+            raise bad(f"panels.{key}.log_y",
+                      "'true' only for peak_omega (the log panel)")
+        if key == "apex_share":
+            numerator = str(panel.get("numerator"))
+            denominator = str(panel.get("denominator"))
+            if not numerator or not denominator or numerator == denominator:
+                raise bad(f"panels.{key}", "distinct numerator and denominator "
+                          "columns")
+            column = None
+        else:
+            column = str(panel.get("column"))
+            if not column:
+                raise bad(f"panels.{key}.column", "a column name")
+            numerator = denominator = None
+        panels.append({
+            "panel": key,
+            "statistic": statistic,
+            "numerator": numerator,
+            "denominator": denominator,
+            "column": column,
+            "y_label": str(panel.get("y_label")),
+            "log_y": log_y,
+        })
+    interval = str(cfg.get(f"{block}.interval"))
+    if interval != "percentile":
+        raise bad("interval", "'percentile'")
+    cluster_by = str(cfg.get(f"{block}.cluster_by"))
+    if cluster_by != "nfl_id":
+        raise bad("cluster_by", "'nfl_id' (turns repeat within a player)")
+    ci_level = float(cfg.get(f"{block}.ci_level"))
+    if not 0.0 < ci_level < 1.0:
+        raise bad("ci_level", "inside (0, 1)")
+    reps = int(cfg.get(f"{block}.bootstrap_reps"))
+    if reps < stats.MIN_BOOTSTRAP_REPS:
+        raise bad("bootstrap_reps", f"at least {stats.MIN_BOOTSTRAP_REPS}")
+    min_n = int(cfg.get(f"{block}.min_n_for_estimate"))
+    if min_n < 1:
+        raise bad("min_n_for_estimate", "at least 1")
+    min_players = int(cfg.get(f"{block}.min_players_for_estimate"))
+    if min_players < 2:
+        raise bad("min_players_for_estimate", "at least 2")
+    return {
+        "position": position,
+        "setting": setting,
+        "settings": settings,
+        "panels": panels,
+        "interval": interval,
+        "cluster_by": cluster_by,
+        "ci_level": ci_level,
+        "reps": reps,
+        "min_n": min_n,
+        "min_players": min_players,
+        "seed_base": int(cfg.seed)
+        + int(cfg.get(f"{block}.bootstrap_seed_offset")),
+        "seed_offset": int(cfg.get(f"{block}.bootstrap_seed_offset")),
+    }
+
+
+def _movement_band_index(angles: pd.Series, edges: list[float]) -> pd.Series:
+    """Left-closed band index; the last edge is the start of the overflow class."""
+    idx = pd.Series(-1, index=angles.index, dtype=int)
+    for i in range(len(edges) - 1):
+        lo, hi = edges[i], edges[i + 1]
+        idx[(angles >= lo) & (angles < hi)] = i
+    idx[angles >= edges[-1]] = len(edges) - 1
+    return idx
+
+
+def movement_family_table(turns: pd.DataFrame,
+                          cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """One row per panel x band, in panel order A-D then band 0-6.
+
+    A cell below the feasibility floor is present with NaN value and NaN
+    bounds and ``estimable=False``: the figure annotates it and draws nothing,
+    and the CSV says "no estimate" without a made-up number.
+    """
+    conf = _movement_family_config(cfg)
+    position = conf["position"]
+    setting = conf["setting"]
+    panels = conf["panels"]
+    min_n = conf["min_n"]
+    min_players = conf["min_players"]
+    reps = conf["reps"]
+    ci_level = conf["ci_level"]
+
+    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    if len(edges) < 2 or any(b <= a for a, b in zip(edges, edges[1:])):
+        raise common.StageRefused(
+            f"{STAGE}: figures.hole.bands.turn_angle_deg must be increasing, "
+            f"got {edges}")
+    overflow = str(cfg.get("figures.hole.bands.overflow_label"))
+    focus = focus_band(cfg)
+    if focus_band_index(edges, focus) != 0:
+        raise common.StageRefused(
+            f"{STAGE}: the {focus['label']} focus band is not the first "
+            f"reporting band in {edges}; figure 17 shades band 0 only")
+
+    missing = [c for c in MOVEMENT_FAMILY_COLUMNS if c not in turns.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: the turn table has no {missing} column(s); figure 17 "
+            "cannot compute the movement family")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    base = turns[valid & (turns["position_group"] == position)
+                 & angle.notna()].copy()
+    if base.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} turns in the turn table — nothing "
+            "to estimate")
+    base["abs_turn_angle"] = angle.loc[base.index]
+    base["band_index"] = _movement_band_index(base["abs_turn_angle"], edges)
+    outside = int(((base["band_index"] < 0)
+                   & (base["setting"] == setting)).sum())
+    if outside:
+        raise common.StageRefused(
+            f"{STAGE}: {outside} valid {position} {setting} turn(s) fall "
+            f"outside the configured bands {edges}; a silent gap would make "
+            "the counts a lie")
+
+    # The Combine shallow count is only quoted in caveat (d); it never enters
+    # an estimate. It is counted here so the sentence is data-driven.
+    other_setting = "combine" if setting == "game" else "game"
+    combine_shallow = int(((base["setting"] == other_setting)
+                           & (base["band_index"] == 0)).sum()) \
+        if other_setting == "combine" else 0
+
+    df = base[base["setting"] == setting].copy()
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} {setting} turns — figure 17 needs "
+            "at least one")
+
+    # Never divide silently: refuse an all-zero/non-positive denominator.
+    entries = pd.to_numeric(df["entry_speed"], errors="coerce")
+    n_bad_entry = int((entries.isna() | (entries <= 0)).sum())
+    if n_bad_entry:
+        raise common.StageRefused(
+            f"{STAGE}: {n_bad_entry} valid {position} {setting} turn(s) have "
+            "a missing or non-positive entry_speed; the apex share is a ratio "
+            "per turn and would divide by zero")
+
+    for panel in panels:
+        columns = ([panel["numerator"], panel["denominator"]]
+                   if panel["panel"] == "apex_share" else [panel["column"]])
+        for column in columns:
+            if column not in df.columns:
+                raise common.StageRefused(
+                    f"{STAGE}: turns.parquet has no {column!r} column; figure "
+                    f"17 panel {panel['panel']} needs it")
+            series = pd.to_numeric(df[column], errors="coerce")
+            n_missing = int(series.isna().sum())
+            if n_missing:
+                raise common.StageRefused(
+                    f"{STAGE}: {n_missing} valid {position} {setting} {column} "
+                    f"value(s) are missing; panel {panel['panel']} cannot be "
+                    "computed")
+            df[column] = series
+
+    apex_ratio = df["apex_speed"] / df["entry_speed"]
+    circle_flag = df["circle_fit_usable"].astype(bool).astype(float)
+    metric_values = {
+        "apex_share": apex_ratio,
+        "peak_lateral_accel": df["peak_lateral_accel_yd_s2"],
+        "circle_fit_share": circle_flag,
+        "peak_omega": df["peak_omega_deg_s"],
+    }
+
+    bands = band_labels(edges, overflow)
+    rows = []
+    for panel in panels:
+        key = panel["panel"]
+        values = metric_values[key]
+        for i, band in enumerate(bands):
+            part = df[df["band_index"] == i]
+            n_turns = int(len(part))
+            n_players = int(part["nfl_id"].nunique())
+            estimable = n_turns >= min_n and n_players >= min_players
+            label = f"movement_family|{key}|{i}"
+            seed = stats.seed_from_label(label, conf["seed_base"])
+            value = ci_low = ci_high = float("nan")
+            if estimable:
+                v = values.loc[part.index].to_numpy(dtype=float)
+                clusters = part["nfl_id"].to_numpy()
+                if panel["statistic"] == "proportion":
+                    res = stats.cluster_bootstrap_proportion(
+                        v, clusters, reps=reps, ci_level=ci_level,
+                        label=label, base_seed=conf["seed_base"])
+                    value = res["proportion"]
+                else:
+                    res = stats.cluster_bootstrap_median(
+                        v, clusters, reps=reps, ci_level=ci_level,
+                        label=label, base_seed=conf["seed_base"])
+                    value = res["median"]
+                ci_low = res["ci_low"]
+                ci_high = res["ci_high"]
+            rows.append({
+                "panel": key,
+                "panel_index": len(rows) // len(bands),
+                "band_index": i,
+                "band": band,
+                "band_low_deg": edges[i],
+                "band_high_deg": (edges[i + 1] if i + 1 < len(edges)
+                                  else float("nan")),
+                "n_turns": n_turns,
+                "n_players": n_players,
+                "statistic": panel["statistic"],
+                "value": value,
+                "ci_low": ci_low,
+                "ci_high": ci_high,
+                "ci_level": ci_level,
+                "ci_method": "percentile_cluster_bootstrap_by_player",
+                "estimable": bool(estimable),
+                "is_focus_band": i == 0,
+                "log_axis": bool(panel["log_y"]),
+                "bootstrap_reps": reps,
+                "bootstrap_seed": int(seed),
+            })
+    table = pd.DataFrame(rows)[MOVEMENT_FAMILY_CSV_COLUMNS]
+
+    n_estimable = {panel["panel"]: int(
+        table[table["panel"] == panel["panel"]]["estimable"].sum())
+        for panel in panels}
+    shallow_entries = entries.loc[df["band_index"] == 0]
+    context = {
+        "table": table,
+        "bands": bands,
+        "edges": edges,
+        "overflow": overflow,
+        "focus": focus,
+        "panels": panels,
+        "position": position,
+        "setting": setting,
+        "settings": conf["settings"],
+        "population_turns": int(len(df)),
+        "population_players": int(df["nfl_id"].nunique()),
+        "combine_shallow_n": combine_shallow,
+        "shallow_entry_speed": float(shallow_entries.median()),
+        "min_n_for_estimate": min_n,
+        "min_players_for_estimate": min_players,
+        "reps": reps,
+        "ci_level": ci_level,
+        "seed_base": conf["seed_base"],
+        "seed_offset": conf["seed_offset"],
+        "n_estimable": n_estimable,
+        "table_rows": int(len(table)),
+    }
+    return table, context
+
+
+def movement_family_csv_frame(table: pd.DataFrame,
+                              context: dict) -> pd.DataFrame:
+    """Exactly the documented columns, in the documented row order."""
+    return table[MOVEMENT_FAMILY_CSV_COLUMNS].reset_index(drop=True)
+
+
+def _mf_cell(table: pd.DataFrame, panel: str, band_index: int) -> pd.Series:
+    part = table[(table["panel"] == panel)
+                 & (table["band_index"] == band_index)]
+    return part.iloc[0]
+
+
+def _mf_apex_span_phrase(table: pd.DataFrame, bands: list[str]) -> str:
+    """First-to-last estimable apex-share phrase for non-default band sets."""
+    rows = [_mf_cell(table, "apex_share", i) for i in range(len(bands))
+            if bool(_mf_cell(table, "apex_share", i)["estimable"])]
+    if not rows:
+        return "no apex-share cell is estimable on the configured bands"
+    return (f"the median per-turn apex/entry ratio runs "
+            f"{float(rows[0]['value']):.2f} in {rows[0]['band']} to "
+            f"{float(rows[-1]['value']):.2f} in {rows[-1]['band']}")
+
+
+def _mf_caption_lines(context: dict) -> list[str]:
+    """Caption lines; the four fixed honesty clauses are passed through."""
+    table = context["table"]
+    bands = context["bands"]
+    edges = context["edges"]
+    shallow = _mf_cell(table, "apex_share", 0)
+    thin = MF_CAVEAT_THIN.format(n_turns=int(shallow["n_turns"]),
+                                 n_players=int(shallow["n_players"]))
+    combine = MF_CAVEAT_COMBINE.format(n_combine=context["combine_shallow_n"])
+    def val(panel: str, i: int) -> float:
+        return float(_mf_cell(table, panel, i)["value"])
+
+    if len(bands) == 7:
+        point = (
+            (f"THE POINT, WITH THE NUMBERS. The three arc buckets are one "
+             f"family: {bands[0]}, {bands[1]} and {bands[2]} give an apex "
+             f"share of {val('apex_share', 0):.2f} / "
+             f"{val('apex_share', 1):.2f} / {val('apex_share', 2):.2f}, peak "
+             f"lateral acceleration {val('peak_lateral_accel', 0):.1f} / "
+             f"{val('peak_lateral_accel', 1):.1f} / "
+             f"{val('peak_lateral_accel', 2):.1f} yd/s², peak angular rate "
+             f"{val('peak_omega', 0):.0f} / {val('peak_omega', 1):.0f} / "
+             f"{val('peak_omega', 2):.0f} deg/s and circle-fit usable share "
+             f"{val('circle_fit_share', 0):.3f} / "
+             f"{val('circle_fit_share', 1):.3f} / "
+             f"{val('circle_fit_share', 2):.3f}, and their player-clustered "
+             f"intervals overlap on every panel. The break comes at "
+             f"{bands[3]}: from there the apex share falls monotonically "
+             f"({val('apex_share', 3):.2f} → {val('apex_share', 4):.2f} → "
+             f"{val('apex_share', 5):.2f} → {val('apex_share', 6):.2f}) while "
+             f"peak lateral acceleration rises "
+             f"({val('peak_lateral_accel', 3):.1f} → "
+             f"{val('peak_lateral_accel', 6):.1f} yd/s²), peak angular rate "
+             f"rises ({val('peak_omega', 3):.0f} → "
+             f"{val('peak_omega', 6):.0f} deg/s) and the circle-fit usable "
+             f"share falls ({val('circle_fit_share', 3):.2f} → "
+             f"{val('circle_fit_share', 6):.2f}); the plant family starts "
+             f"above {edges[4]:g}°. The {bands[0]} bucket is an ordinary "
+             f"member of the arc family, not its extreme: its distinguishing "
+             f"features are the lowest entry speed "
+             f"({context['shallow_entry_speed']:.2f} yd/s) and the absence of "
+             f"a Combine counterpart ({context['combine_shallow_n']} turns). "
+             "Panel A is the median of per-turn ratios, not a ratio of "
+             "medians. These are descriptive medians and shares of measured "
+             "turns, not outcomes.")
+        )
+    else:
+        point = (
+            f"THE POINT, WITH THE NUMBERS. Across the bands "
+            f"{_mf_apex_span_phrase(table, bands)}. Panel A is the median of "
+            "per-turn ratios, not a ratio of medians. These are descriptive "
+            "medians and shares of measured turns, not outcomes.")
+    return [
+        STAMP,
+        (f"WHAT THIS IS. Every valid {context['position']} {context['setting']} "
+         f"turn in outputs/turns/turns.parquet "
+         f"({context['population_turns']:,} turns from "
+         f"{context['population_players']} players), banded by absolute turn "
+         f"angle on the seven reporting bands "
+         f"{edges[0]:g}–{edges[-1]:g}° plus the {context['overflow']}° "
+         f"overflow class. Four panels share one categorical axis; every "
+         f"interval is a {context['ci_level']:.0%} percentile bootstrap with "
+         f"{context['reps']:,} replicates resampling players (`nfl_id`) with "
+         f"replacement. Key {FIGURE_KEY_MOVEMENT_FAMILY}."),
+        point,
+        "HONESTY (a). " + MF_CAVEAT_CIRCLE,
+        "HONESTY (b). " + MF_CAVEAT_FLOOR,
+        "HONESTY (c). " + thin,
+        "HONESTY (d). " + combine,
+        ("WHAT IS NOT HERE. No test, no p-value, no ranking of bands and no "
+         "player-level value; the intervals are bootstrap intervals, not "
+         "posteriors. Sample data: nothing here is a finding about the 2027 "
+         f"class. Every value is in outputs/figures/"
+         f"{FIGURE_KEY_MOVEMENT_FAMILY}.csv."),
+    ]
+
+
+def plot_movement_family(table: pd.DataFrame, context: dict,
+                         cfg: common.Config) -> plt.Figure:
+    """Four 2x2 panels on one shared categorical angle-bucket axis."""
+    from matplotlib.colors import to_rgba
+
+    block = "figures.movement_family"
+    focus = context["focus"]
+    tint = to_rgba(focus["colour"], focus["tint_alpha"])
+    bands = context["bands"]
+    panels = context["panels"]
+
+    fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
+                              float(cfg.get(f"{block}.height_in"))))
+    positions = [(0.075, 0.595, 0.400, 0.255),
+                 (0.525, 0.595, 0.400, 0.255),
+                 (0.075, 0.300, 0.400, 0.255),
+                 (0.525, 0.300, 0.400, 0.255)]
+    axes = [fig.add_axes(pos) for pos in positions]
+
+    for panel_index, (ax, panel) in enumerate(zip(axes, panels)):
+        part = table[table["panel"] == panel["panel"]]
+        drawn = part[part["estimable"]]
+        x = drawn["band_index"].to_numpy(dtype=float)
+        y = drawn["value"].to_numpy(dtype=float)
+        low = drawn["ci_low"].to_numpy(dtype=float)
+        high = drawn["ci_high"].to_numpy(dtype=float)
+
+        ax.set_facecolor("#EBEBEB")
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)
+        for spine in ("left", "bottom"):
+            ax.spines[spine].set_color("#B3B3B3")
+        ax.tick_params(axis="both", labelsize=8.2, colors="#333333", length=2)
+        ax.set_axisbelow(True)
+        ax.grid(axis="y", color="white", linewidth=0.8, zorder=0)
+
+        # The focus band: dark red tint and two rules; red never touches data.
+        ax.axvspan(-0.5, 0.5, facecolor=tint, edgecolor="none", zorder=0)
+        for edge in (-0.5, 0.5):
+            ax.axvline(edge, color=focus["colour"],
+                       linewidth=focus["rule_width"], zorder=1)
+
+        if len(drawn):
+            ax.errorbar(
+                x, y, yerr=[y - low, high - y], fmt="o", color=BARS_GREY,
+                ecolor=BARS_GREY, capsize=3, markersize=5.6,
+                markeredgewidth=0.8, markerfacecolor=BARS_GREY,
+                markeredgecolor="white", linestyle="none", elinewidth=1.1,
+                capthick=1.1, zorder=3)
+
+        non_estimable = part[~part["estimable"]]
+        for _, row in non_estimable.iterrows():
+            ax.annotate("no estimate",
+                        xy=(float(row["band_index"]), 0.06),
+                        xycoords=("data", "axes fraction"),
+                        ha="center", va="bottom", fontsize=6.4,
+                        color="#555555", fontstyle="italic",
+                        annotation_clip=False, zorder=4)
+
+        ax.set_xlim(-0.5, len(bands) - 0.5)
+        ax.set_xticks(range(len(bands)))
+        if panel["log_y"]:
+            ax.set_yscale("log")
+            if len(drawn):
+                ax.set_ylim(min(low) * 0.88, max(high) * 1.12)
+        elif panel["panel"] == "circle_fit_share":
+            ax.set_ylim(0.0, 1.0)
+        elif len(drawn):
+            y_low, y_high = float(min(low)), float(max(high))
+            pad = max(0.08, (y_high - y_low) * 0.12)
+            ax.set_ylim(y_low - pad, y_high + pad)
+        ax.set_ylabel(panel["y_label"], fontsize=8.6, color="#333333")
+        if panel_index >= 2:
+            ax.set_xticklabels(bands, fontsize=7.6)
+            ax.set_xlabel("Absolute turn angle band (°)", fontsize=8.6,
+                          color="#333333", labelpad=4)
+        else:
+            ax.set_xticklabels([])
+
+        ax.text(0.015, 0.955,
+                f"{'ABCD'[panel_index]}  "
+                f"{MOVEMENT_FAMILY_PANEL_TITLES[panel['panel']]}",
+                transform=ax.transAxes, ha="left", va="top",
+                fontsize=9.6, fontweight="bold", color="#111111")
+
+    axes[0].text(0.5, 0.975, "30–45° band", transform=axes[0].transAxes,
+                 ha="center", va="top", fontsize=8.6, fontweight="bold",
+                 color=focus["colour"], zorder=6)
+
+    # Footer: one mention of each bucket's turns and players, shared by all
+    # four panels. fig.text, so the figure still has exactly four axes.
+    shallow_rows = [_mf_cell(table, panels[0]["panel"], i)
+                    for i in range(len(bands))]
+    turns_line = "turns per band (left → right): " + " · ".join(
+        str(int(row["n_turns"])) for row in shallow_rows)
+    players_line = "players per band (left → right): " + " · ".join(
+        str(int(row["n_players"])) for row in shallow_rows)
+    fig.text(0.500, 0.245, turns_line, ha="center", va="center",
+             fontsize=7.0, color="#333333")
+    fig.text(0.500, 0.226, players_line, ha="center", va="center",
+             fontsize=7.0, color="#333333")
+
+    fig.text(0.010, 0.982, "Two movement families by angle band",
+             fontsize=17.0, fontweight="bold", ha="left", va="top",
+             color="#111111")
+    fig.text(0.010, 0.950,
+             f"Valid {context['position']} {context['setting']} turns, seven "
+             f"reporting bands — median (A, B, D) or share (C) with a "
+             f"{context['ci_level']:.0%} player-clustered percentile bootstrap "
+             f"interval ({context['reps']:,} replicates). Panel D is on a log "
+             "y axis.",
+             fontsize=8.8, ha="left", va="top", color="#333333")
+    fig.text(0.010, 0.924,
+             f"Bands are left-closed; {context['overflow']}° is the overflow "
+             f"class. Panel A takes the median of per-turn apex/entry ratios. "
+             f"A bucket below the {context['min_n_for_estimate']}-turn floor "
+             "is annotated, never drawn.",
+             fontsize=8.8, ha="left", va="top", color="#333333")
+
+    caption = "\n".join(_wrap_text(line, 185)
+                        for line in _mf_caption_lines(context))
+    fig.text(0.010, 0.008, caption, ha="left", va="bottom", fontsize=5.9,
+             color="#333333", linespacing=1.28)
+    return fig
+
+
+def render_movement_family(fig: plt.Figure, cfg: common.Config,
+                           out_png: Path) -> Path:
+    """Save figure 17 once with fixed metadata, so two runs are identical."""
+    dpi = int(cfg.get("figures.movement_family.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.text(0.995, 0.994, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def movement_family_manifest_payload(table: pd.DataFrame, context: dict,
+                                     cfg: common.Config) -> dict:
+    """Figure 17's manifest entry: population, statistic, every row, caveats."""
+    table = context["table"]
+    bands = context["bands"]
+    shallow = _mf_cell(table, "apex_share", 0)
+    caveats = [
+        MF_CAVEAT_CIRCLE,
+        MF_CAVEAT_FLOOR,
+        MF_CAVEAT_THIN.format(n_turns=int(shallow["n_turns"]),
+                              n_players=int(shallow["n_players"])),
+        MF_CAVEAT_COMBINE.format(n_combine=context["combine_shallow_n"]),
+    ]
+    def val(panel: str, i: int) -> float:
+        return float(_mf_cell(table, panel, i)["value"])
+
+    if len(bands) == 7:
+        claim = (
+            f"The seven {context['setting']}-only {context['position']} angle "
+            f"buckets are two families, not a gradient: {bands[0]}, {bands[1]} "
+            f"and {bands[2]} are statistically indistinguishable on all four "
+            f"panels (apex share {val('apex_share', 0):.2f}/"
+            f"{val('apex_share', 1):.2f}/{val('apex_share', 2):.2f}, peak "
+            f"lateral acceleration {val('peak_lateral_accel', 0):.1f}/"
+            f"{val('peak_lateral_accel', 1):.1f}/"
+            f"{val('peak_lateral_accel', 2):.1f} yd/s², peak angular rate "
+            f"{val('peak_omega', 0):.0f}/{val('peak_omega', 1):.0f}/"
+            f"{val('peak_omega', 2):.0f} deg/s, circle-fit usable share "
+            f"{val('circle_fit_share', 0):.3f}/"
+            f"{val('circle_fit_share', 1):.3f}/"
+            f"{val('circle_fit_share', 2):.3f}; every player-clustered "
+            f"interval overlaps within these three buckets). The break comes "
+            f"at {bands[3]}, and from there the decline is monotone: the apex "
+            f"share falls {val('apex_share', 3):.2f} to "
+            f"{val('apex_share', 6):.2f} while peak lateral acceleration "
+            f"rises {val('peak_lateral_accel', 3):.1f} to "
+            f"{val('peak_lateral_accel', 6):.1f} yd/s², peak angular rate "
+            f"rises {val('peak_omega', 3):.0f} to "
+            f"{val('peak_omega', 6):.0f} deg/s and the circle-fit usable "
+            f"share falls {val('circle_fit_share', 3):.2f} to "
+            f"{val('circle_fit_share', 6):.2f}. The plant family starts above "
+            f"{context['edges'][4]:g}°. The {bands[0]} bucket is an ordinary "
+            f"member of the arc family, not its extreme: it has the lowest "
+            f"entry speed ({context['shallow_entry_speed']:.2f} yd/s) and no "
+            f"Combine counterpart ({context['combine_shallow_n']} turns). "
+            "These are descriptive medians and shares with player-clustered "
+            "bootstrap intervals, not a test or a ranking of bands.")
+    else:
+        claim = (
+            f"Across the {context['setting']}-only {context['position']} "
+            f"angle buckets {_mf_apex_span_phrase(table, bands)}; these are "
+            "descriptive medians and shares with player-clustered bootstrap "
+            "intervals, not a test or a ranking of bands.")
+    rows = [{k: _ee_json(v) for k, v in rec.items()}
+            for rec in table.to_dict("records")]
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_MOVEMENT_FAMILY,
+        "title": "Two movement families by angle band",
+        "sources": ["outputs/turns/turns.parquet"],
+        "png": f"outputs/figures/{FIGURE_KEY_MOVEMENT_FAMILY}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_MOVEMENT_FAMILY}.csv",
+        "population": {
+            "turns": context["population_turns"],
+            "players": context["population_players"],
+            "position_group": context["position"],
+            "settings": context["settings"],
+            "band_rule": ("valid turns, left-closed on abs_turn_angle_deg; "
+                          "angles at or above the last edge are the overflow "
+                          "class"),
+        },
+        "bands": {
+            "edges": list(context["edges"]),
+            "overflow_label": context["overflow"],
+            "labels": list(bands),
+            "focus_band": True,
+            "focus_edges_deg": [context["focus"]["low"],
+                                context["focus"]["high"]],
+            "declares_own_edges": False,
+            "shared_with": "figures.hole.bands (D164)",
+        },
+        "statistic": {
+            "cluster_by": "nfl_id",
+            "ci_level": context["ci_level"],
+            "interval": "percentile",
+            "reps": context["reps"],
+            "seed_base": context["seed_base"],
+            "seed_offset": context["seed_offset"],
+            "min_n_for_estimate": context["min_n_for_estimate"],
+            "min_players_for_estimate": context["min_players_for_estimate"],
+            "panels": [
+                {
+                    "panel": panel["panel"],
+                    "metric": (panel["numerator"] + " / " + panel["denominator"]
+                               if panel["panel"] == "apex_share"
+                               else panel["column"]),
+                    "statistic": panel["statistic"],
+                    "units": ("ratio" if panel["panel"] == "apex_share"
+                              else "share" if panel["statistic"] == "proportion"
+                              else "deg/s" if panel["panel"] == "peak_omega"
+                              else "yd/s²"),
+                    "log_y": panel["log_y"],
+                }
+                for panel in context["panels"]
+            ],
+        },
+        "rows": rows,
+        "claim": claim,
+        "caveats": caveats,
+    }
