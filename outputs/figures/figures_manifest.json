@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "24911c719e74751b",
-  "generated_utc": "2026-11-09T01:45:00Z",
+  "config_sha": "6d46d3a4e8522e47",
+  "generated_utc": "2026-11-09T10:00:05Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -4013,6 +4013,7 @@
       "shares": {
         "unit": "share of the drill's own valid turns",
         "within_drill": true,
+        "layout": "drill x angle-band matrix",
         "pooled_bar_drawn": false,
         "band_share_of_all_turns_in_bars": false,
         "every_drill_sums_to_one": true,
@@ -4582,7 +4583,7 @@
           }
         ],
         "max_share_of_drill": 0.014285714285714285,
-        "visibility": "too small to see at the 100% stacked scale; counts are stated in the caption and CSV and no rescaling inset is used"
+        "visibility": "drawn as its own column in the matrix, with counts and within-drill shares printed in the cells and listed in the CSV"
       },
       "pooled_band_totals": [
         {
@@ -4624,13 +4625,13 @@
       "claim": "The 1,179 valid DB Combine turns come from 10 drills and 122 players; the top two drills supply 503 of them (42.7%). The 30\u201345\u00b0 band holds 4 turns spread across 4 drills and 3 players, at most 1.4% of any one drill's own turns.",
       "not_claimed": [
         "That any drill is good or bad, easier or harder; this is an inventory of turns, not a ranking of drill quality.",
-        "That the band shares are pooled across drills; every segment is a share of its own drill's turns.",
-        "That the visible large segments are a target; they are where turns currently exist.",
+        "That the band shares are pooled across drills; every printed share is a share of its own drill's turns.",
+        "That the large cells are a target; they are where turns currently exist.",
         "Anything about the 2027 class; this is one session of sample data."
       ],
       "caveats": [
-        "Shares are within a drill; each bar sums to 100%. The pooled band totals in the caption are a separate, labelled count and are never drawn as a segment.",
-        "The 30\u201345\u00b0 band is too small to see at this scale (4 turns); it is stated as counts and no inset rescales it.",
+        "Shares are within a drill; each row sums to 100%. The pooled band totals are the labelled footer row, a count and never a share segment.",
+        "The 30\u201345\u00b0 band is its own column in the matrix (4 turns); its counts and within-drill shares are printed in the cells and listed in the CSV.",
         "No player names and no per-player values appear.",
         "Sample data: one session of sample data; nothing here is a finding about the 2027 class."
       ],

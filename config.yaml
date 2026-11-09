@@ -740,26 +740,35 @@ turn_coverage:
 
     # Stage 06 figure 14 ("Where the Combine's turns come from"). Added at
     # Conor's request (2026-11-08); it is not derived from a TASK.md line.
+    # Rebuilt as a drill x angle-band matrix at Conor's request (2026-11-09):
+    # one row per drill (sorted by that drill's own valid turn count), one
+    # column per reporting angle band in increasing angle order. Each cell
+    # prints its turn count (bold) and that cell's share of the drill's own
+    # turns; a dot marks a zero cell. It is the composition view of the
+    # inventory figure 2 drew as points.
     #
-    # One horizontal 100% stacked bar per drill, sorted by that drill's own
-    # valid turn count, with the reporting angle bands as segments. It is the
-    # composition view of the inventory figure 2 drew as points.
+    # SHARES ARE WITHIN A DRILL, never pooled: every row sums to 1 and no
+    # cross-drill band share is drawn. The footer row is a labelled count, not
+    # a share segment. The reporting bands are the same left-closed angle edges
+    # used everywhere else (D164); `bins.turn_angle` stays frozen for Stages
+    # 03/04.
     #
-    # SHARES ARE WITHIN A DRILL, never pooled: each bar sums to 1 and no
-    # cross-drill band share is drawn. The reporting bands are the same
-    # left-closed angle edges used everywhere else (D164); `bins.turn_angle`
-    # stays frozen for Stages 03/04.
+    # min_label_share is kept for CSV compatibility and is no longer used as a
+    # drawing threshold: the matrix prints every count and share in its cell.
     #
-    # min_label_share is a DRAWING rule only: a segment prints its count when
-    # it occupies at least this share of its drill's bar. Every count is in the
-    # CSV regardless. The 30-45 degree band is far below it on this sample and
-    # is stated in the caption rather than given a rescaling inset.
+    # focus_fill is the bright red Conor asked for in THIS figure only
+    # (2026-11-09) to mark the 30-45 degree column. It is deliberately brighter
+    # than `figures.focus_band.colour` (#C00000), which stays dark on purpose
+    # for the seven other figures that draw it. White text on focus_fill
+    # measures 4.85:1
+    # (WCAG AA).
     supply_composition:
       position_group: DB
       bands:
         turn_angle_deg: [30, 45, 60, 90, 120, 150, 180]
         overflow_label: ">180"
       min_label_share: 0.06
+      focus_fill: "#E4002B"
       dpi: 150
       width_in: 12.6
       height_in: 9.4

@@ -48,11 +48,14 @@
                           measurement and a whisker to the same turn's angle
                           under the other smoothers, capped at a stated width
                           and with the share crossing a band edge printed.
- 14. "Where the Combine's turns come from" — one horizontal 100% stacked
-                          bar per drill, sorted by that drill's own valid turn
-                          total, with the reporting angle bands as segments.
-                          Shares are within a drill; the shallow band is
-                          stated as counts, not rescaled.
+ 14. "Where the Combine's turns come from" — a drill x angle-band matrix:
+                          one row per drill, sorted by that drill's own valid
+                          turn total, one column per reporting angle band in
+                          increasing angle order. Each cell prints its count
+                          and that cell's share of the drill's own turns; a
+                          dot marks a zero cell and a footer row carries the
+                          pooled column totals. The 30-45 degree column is
+                          filled bright red; shares are within a drill.
  15. "The band on its own" — the 30-45 degree DB band alone: one dot per valid
                           turn, entry speed against absolute angle, Combine
                           against games, with the 2-6 yd/s target window

@@ -3592,6 +3592,21 @@ def test_supply_composition_rows_are_sorted_by_drill_total(rendered):
     assert sum(totals) == context["n_turns"]
 
 
+def _sc_cells(fig) -> list:
+    """The 70 cell patches (tagged in the figure) in draw order."""
+    return [p for p in fig.axes[0].patches
+            if (p.get_gid() or "").startswith("sc-cell:")]
+
+
+def _sc_footer_totals(fig) -> list[str]:
+    import matplotlib.text
+
+    found = [t for t in fig.findobj(matplotlib.text.Text)
+             if (t.get_gid() or "").startswith("sc-footer-total:")]
+    return [t.get_text() for t in sorted(found,
+                                         key=lambda t: t.get_position()[0])]
+
+
 def test_supply_composition_prints_drill_and_turn_counts(rendered):
     from bdb27 import figures
 
@@ -3604,52 +3619,149 @@ def test_supply_composition_prints_drill_and_turn_counts(rendered):
             assert figures._sc_count(drill["turns"], "turn") in texts, (
                 f"{drill['drill']} total not printed on the row label")
             assert figures._sc_count(drill["players"], "player") in texts
-        ax = fig.axes[0]
-        expected_labels = int(
-            (table["share_of_drill"] >= context["min_label_share"]).sum())
-        assert len(ax.texts) == expected_labels
+        # every cell prints its own count and within-drill share
+        for row in table.itertuples(index=False):
+            if int(row.turns) > 0:
+                assert f"{int(row.turns):,}" in texts
+                assert f"{float(row.share_of_drill) * 100:.1f}%" in texts
+        assert "All drills" in texts
     finally:
         _sc_close(fig)
 
 
-def test_supply_composition_shallow_band_is_stated_not_rescaled(rendered):
+def test_supply_composition_draws_a_drill_by_band_matrix(rendered):
+    fig, table, context, cfg = _sc_build(rendered)
+    try:
+        ax = fig.axes[0]
+        cells = _sc_cells(fig)
+        assert len(cells) == context["n_drills"] * len(context["bands"])
+        xs = {round(float(p.get_x() + p.get_width() / 2.0), 6)
+              for p in cells}
+        ys = {round(float(p.get_y() + p.get_height() / 2.0), 6)
+              for p in cells}
+        assert len(xs) == len(context["bands"])
+        assert len(ys) == context["n_drills"]
+        expected = {(context["n_drills"] - 1 - i, c)
+                    for i in range(context["n_drills"])
+                    for c in range(len(context["bands"]))}
+        drawn = {(round(float(p.get_y() + p.get_height() / 2.0)),
+                  round(float(p.get_x() + p.get_width() / 2.0)))
+                 for p in cells}
+        assert drawn == expected
+        # exactly one axes: no inset panel
+        assert len(fig.axes) == 1
+    finally:
+        _sc_close(fig)
+
+
+def test_supply_composition_focus_column_is_filled_red(rendered):
+    from matplotlib.colors import to_hex, to_rgba
+    from bdb27 import common, figures
+
+    cfg = common.load_config(rendered["cfg"])
+    focus_fill = str(cfg.get("figures.supply_composition.focus_fill"))
+    fig, table, context, cfg2 = _sc_build(rendered)
+    try:
+        focus_idx = figures.focus_band_index(
+            context["edges"], figures.focus_band(cfg))
+        cells = _sc_cells(fig)
+        focus_cells = [p for p in cells
+                       if p.get_gid().endswith(f":{focus_idx}")]
+        assert len(focus_cells) == context["n_drills"]
+        for patch in focus_cells:
+            assert to_hex(to_rgba(patch.get_facecolor())).upper() == \
+                focus_fill.upper()
+            assert patch.get_alpha() == 1.0
+        labels = fig.axes[0].get_xticklabels()
+        assert labels[focus_idx].get_text() == context["bands"][focus_idx]
+        assert to_hex(to_rgba(labels[focus_idx].get_color())).upper() == \
+            focus_fill.upper()
+        assert labels[focus_idx].get_fontweight() in ("bold", 700)
+        # no other column is drawn in the focus fill
+        others = [p for p in cells
+                  if not p.get_gid().endswith(f":{focus_idx}")]
+        for patch in others:
+            assert to_hex(to_rgba(patch.get_facecolor())).upper() != \
+                focus_fill.upper()
+    finally:
+        _sc_close(fig)
+
+
+def test_supply_composition_zero_cells_print_a_dot(rendered):
+    fig, table, context, cfg = _sc_build(rendered)
+    try:
+        texts = [t.get_text() for t in fig.findobj()
+                 if hasattr(t, "get_text")]
+        assert texts.count("·") == int((table["turns"] == 0).sum())
+        assert int((table["turns"] == 0).sum()) > 0
+        # no cell is blank and no zero cell prints a 0 / 0.0%
+        nonzero = int((table["turns"] > 0).sum())
+        assert texts.count("0") == 0
+        assert not any(t == "0.0%" for t in texts)
+        assert nonzero + texts.count("·") == len(table)
+    finally:
+        _sc_close(fig)
+
+
+def test_supply_composition_footer_totals_match_the_csv(rendered):
+    fig, table, context, cfg = _sc_build(rendered)
+    try:
+        csv_df = pd.read_csv(rendered["sc_csv"])
+        sums = (csv_df.groupby("band_index")["turns"].sum()
+                .sort_index().tolist())
+        assert [int(x) for x in sums] == [int(x) for x in context["band_totals"]]
+        assert _sc_footer_totals(fig) == [f"{int(x):,}" for x in sums]
+        shallow_total = int(
+            csv_df[csv_df["band"] == context["bands"][0]]["turns"].sum())
+        assert shallow_total == context["shallow"]["turns"] == 4
+        assert _sc_footer_totals(fig)[0] == "4"
+        assert sum(sums) == context["n_turns"]
+    finally:
+        _sc_close(fig)
+
+
+def test_supply_composition_never_says_too_small(rendered):
+    fig, table, context, cfg = _sc_build(rendered)
+    try:
+        drawn = _sc_texts(fig).lower()
+        assert "too small" not in drawn
+        man = json.loads(rendered["manifest"].read_text())
+        flat = json.dumps(man["figures"][SC_KEY]).lower()
+        assert "too small" not in flat
+        source = (ROOT / "src/bdb27/figures.py").read_text(encoding="utf-8")
+        assert "too small" not in source.lower()
+    finally:
+        _sc_close(fig)
+
+
+def test_supply_composition_rows_sum_to_one(rendered):
+    fig, table, context, cfg = _sc_build(rendered)
+    try:
+        csv_df = pd.read_csv(rendered["sc_csv"])
+        for drill, part in table.groupby("drill"):
+            assert np.isclose(float(part["share_of_drill"].sum()), 1.0,
+                              atol=1e-12), f"{drill} table row is not 100%"
+        for drill, part in csv_df.groupby("drill"):
+            assert np.isclose(float(part["share_of_drill"].sum()), 1.0,
+                              atol=1e-12), f"{drill} CSV row is not 100%"
+    finally:
+        _sc_close(fig)
+
+
+def test_supply_composition_shallow_band_is_stated_in_its_column(rendered):
     fig, table, context, cfg = _sc_build(rendered)
     try:
         sh = context["shallow"]
         texts = _sc_texts(fig)
-        assert (f"{sh['turns']} turns spread across {sh['n_drills']} drills, "
-                f"{sh['players']} players") in texts
-        assert "too small to see at this scale" in texts
-        assert "an inset would" in texts
-        # the claim in the caption is true of the data: no shallow segment can
-        # reach the in-bar label threshold at a 100% stacked scale
-        assert sh["max_share_of_drill"] < context["min_label_share"]
+        assert (f"{sh['turns']} turns, one in each of {sh['n_drills']} "
+                "drills") in texts
+        assert f"{sh['max_share_of_drill']:.1%}" in texts
+        for item in sh["by_drill"]:
+            assert item["label"] in texts
         assert len(fig.axes) == 1, "no inset panel may be added for the band"
         part = table[table["band"] == context["bands"][0]]
         assert int(part["turns"].sum()) == sh["turns"]
         assert int((part["turns"] > 0).sum()) == sh["n_drills"]
-    finally:
-        _sc_close(fig)
-
-
-def test_supply_composition_draws_one_bar_per_drill_no_pooled_bar(rendered):
-    fig, table, context, cfg = _sc_build(rendered)
-    try:
-        ax = fig.axes[0]
-        nonzero = int((table["turns"] > 0).sum())
-        assert len(ax.patches) == nonzero
-        ys = {round(float(p.get_y() + p.get_height() / 2.0), 6)
-              for p in ax.patches}
-        assert len(ys) == context["n_drills"]
-        for drill in context["drills"]:
-            part = table[table["drill"] == drill["drill"]]
-            widths = [float(p.get_width()) for p in ax.patches
-                      if round(float(p.get_y() + p.get_height() / 2.0), 6)
-                      in {round(float(y), 6) for y in [
-                          context["n_drills"] - 1 - context["drills"].index(drill)]}]
-            assert np.isclose(sum(widths), 1.0, atol=1e-9)
-            assert np.isclose(float(part["share_of_drill"].sum()), 1.0,
-                              atol=1e-12)
     finally:
         _sc_close(fig)
 

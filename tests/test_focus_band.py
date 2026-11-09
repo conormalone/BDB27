@@ -143,6 +143,26 @@ def test_focus_colour_is_not_hard_coded():
     assert "#C00000" not in source.upper()
 
 
+def test_figure_14_focus_fill_is_read_from_config():
+    """The bright figure-14 red is configured, never hard-coded."""
+    cfg = common.load_config(ROOT / "config.yaml")
+    fill = str(cfg.get("figures.supply_composition.focus_fill"))
+    assert fill
+    source = (ROOT / "src/bdb27/figures.py").read_text(encoding="utf-8")
+    assert "#E4002B" not in source.upper(), (
+        "the figure-14 focus fill is hard-coded in figures.py; read it from "
+        "figures.supply_composition.focus_fill instead")
+    assert fill.upper() not in source.upper()
+
+
+def test_figure_14_focus_fill_differs_from_focus_band_colour():
+    """The bright column fill must stay distinct from the dark focus red."""
+    cfg = common.load_config(ROOT / "config.yaml")
+    fill = str(cfg.get("figures.supply_composition.focus_fill"))
+    focus = figures.focus_band(cfg)
+    assert fill.upper() != str(focus["colour"]).upper()
+
+
 def test_focus_edges_are_reporting_bands_everywhere():
     """The focus band must exist, unchanged, on every affected band axis."""
     cfg = common.load_config(ROOT / "config.yaml")

@@ -6254,3 +6254,68 @@ figure 15 are byte-identical.
 `tests/test_figures_stage.py` (figure 15 tests, manifest count 15);
 `tests/test_focus_band.py` (figure 15 added to the sentinel-colour set);
 `outputs/figures/fig_band_only.{png,csv}`.
+
+## D174 — Figure 14 is a drill × angle-band matrix, and the 30–45° column is bright red · 2026-11-09
+
+**Decision.** Conor asked for figure 14 ("Where the Combine's turns come from")
+to be redrawn in place as a matrix: drill on the y axis, angle range on the x
+axis, and "put the turns that are 30 to 45 in red" — the column and its header.
+That overrules the part of 6498c52/D172 that kept red out of the bars; the red
+in this figure is now a *cell fill*, not a band treatment. Same figure key, same
+slot 14, same PNG/CSV paths, same 10 drills in the same sorted order and labels.
+
+**What changed in the drawing.** 10 rows × 7 columns, columns in increasing
+angle left to right so the 30–45° column is leftmost. Each cell prints its turn
+count in bold and, below it in smaller lighter type, that cell's share of the
+drill's own valid turns: the per-drill 100% normalisation survives the layout
+change, and every row still sums to 1. A dot — not a blank, not a pair of
+zeros — marks the 28 of 70 cells that hold no turns; the emptiness is the
+finding. A footer row labelled "All drills" carries the pooled column totals
+(4, 22, 237, 159, 499, 128, 130; 1,179 in all) with no fill, so it can never be
+read as a row of the matrix.
+
+**The red.** A new config value, `figures.supply_composition.focus_fill =
+"#E4002B"`, fills every cell of the 30–45° column and colours its header; cell
+text is white. `figures.focus_band.colour` stays `#C00000` and every other
+figure keeps it — the two reds are deliberately different keys, and
+`tests/test_focus_band.py` asserts the fill is read from config, is never
+hard-coded in `figures.py`, and is not the dark focus red. The figure still
+draws the focus colour itself in its under-panel band note, so the sentinel test
+that swaps `focus_band.colour` continues to prove figure 14 reads that block.
+
+**Contrast and the orange.** White on `#E4002B` measures **4.85:1** (WCAG AA for
+normal text at these sizes). Against the game-series orange `#D55E00` the pair
+is ΔE(OKLab) **0.112**, hue 24° against 48°; against the orange marker
+`#E69F00` it is **0.255**. Reported honestly: the bright red sits slightly
+*closer* to the game vermillion than the old `#C00000` did (0.134), because it
+is brighter and less blue; the separation that matters is that the two colours
+never share a panel — no figure draws a game series and this fill in the same
+axes — and the column is identified by its header, not by hue alone.
+
+**The false sentence is gone.** "At most 1.4% of any one drill's bar, so the
+30–45° segment is too small to see at this 100% stacked scale" described the old
+scale, not the data. It is deleted from the figure, the caption, the manifest
+and the code (a test now asserts the phrase appears nowhere), and replaced with
+the true shape: 4 turns, one each in Box drill (1 of 304), back-pedal 90° break
+to ball (1 of 118), W drill (1 of 107) and short shuttle (1 of 70), from 3
+players; the largest 30–45° share of any drill's own turns is **1.43%** — short
+shuttle. The reason the shallow break is under-tested is retained unchanged:
+those turns are side effects of drills chasing something else.
+
+**Data invariance.** No number moved. `fig_supply_composition.csv` is identical
+to the previous commit in every column except `config_sha` (which changes
+because config.yaml gained the fill) and `stamp`; all 15 figure CSVs are
+identical on the same test. The other 14 figure PNGs are byte-identical; two
+consecutive renders of figure 14 are byte-identical
+(`2095af76…c82787`). No new data source, no change to band edges or to what
+counts as a valid turn; the notebook still reads the manifest and needs no
+kernel access beyond the PNG.
+
+**Evidence.** `config.yaml` (`figures.supply_composition.focus_fill`);
+`src/bdb27/figures.py` (`plot_supply_composition`, `_supply_composition_caption`,
+`_sc_shallow_phrase`, `supply_composition_manifest_payload`);
+`src/06_figures.py` (figure-14 docstring);
+`tests/test_figures_stage.py` (matrix shape, red column, zero dots, footer
+totals, no "too small", rows sum to 1); `tests/test_focus_band.py` (config-read
+fill, distinct from the focus colour); `outputs/figures/fig_supply_composition.{png,csv}`,
+`outputs/figures/figures_manifest.json`.

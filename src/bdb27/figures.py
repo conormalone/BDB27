@@ -7161,15 +7161,17 @@ def bars_of_doubt_manifest_payload(table: pd.DataFrame, context: dict,
 # ------------- figure 14: where the Combine's turns come from
 #: Added at Conor's request (2026-11-08); it is not derived from a TASK.md line.
 #:
-#: The composition view of the same inventory figure 2 drew as points. One
-#: horizontal 100% stacked bar per drill, sorted by that drill's own valid DB
-#: Combine turn count, with the reporting angle bands as segments.
+#: The composition view of the same inventory figure 2 drew as points. A
+#: drill x angle-band matrix: one row per drill (sorted by that drill's own
+#: valid DB Combine turn count) and one column per reporting angle band in
+#: increasing angle order.
 #:
-#: The shares are WITHIN A DRILL. Each bar sums to 1 and no pooled bar is
-#: drawn; the caption's pooled band totals are a separate, explicitly labelled
-#: count, never a segment. The 30-45 degree band is a handful of turns and is
-#: therefore invisible at this scale: the caption states its counts and the
-#: figure does not add an inset to flatter it.
+#: The shares are WITHIN A DRILL. Each cell prints its count and that cell's
+#: share of the drill's own valid turns, so every row sums to 1. A dot marks a
+#: zero cell. The footer row is the pooled column total, explicitly labelled
+#: and drawn as counts only, never as a share segment. The 30-45 degree column
+#: is filled bright red (config focus_fill) so its four turns are visible in
+#: the matrix rather than described as unseeable at a bar scale.
 FIGURE_KEY_SUPPLY_COMPOSITION = "fig_supply_composition"
 
 SUPPLY_COMPOSITION_COLUMNS = [
@@ -7408,9 +7410,14 @@ def supply_composition_table(turns: pd.DataFrame,
     return table, context
 
 
-def _sc_count_list(items: list[dict]) -> str:
-    """'Box drill 1; W drill 1; ...' — counts, never adjectives."""
-    return "; ".join(f"{i['label']} {i['turns']}" for i in items)
+def _sc_shallow_phrase(context: dict) -> str:
+    """'Box drill (1 of 304), ...' — counts read from the context only."""
+    totals = {d["drill"]: d["turns"] for d in context["drills"]}
+    items = [f"{i['label']} ({i['turns']} of {totals[i['drill']]:,})"
+             for i in context["shallow"]["by_drill"]]
+    if len(items) > 1:
+        return ", ".join(items[:-1]) + " and " + items[-1]
+    return "".join(items)
 
 
 def _supply_composition_caption(table: pd.DataFrame,
@@ -7419,19 +7426,24 @@ def _supply_composition_caption(table: pd.DataFrame,
     n = context["n_turns"]
     n_drills = context["n_drills"]
     n_players = context["n_players"]
+    n_bands = len(context["bands"])
     top = context["top_two"]
     t1, t2 = top["drills"][0], top["drills"][1]
     sh = context["shallow"]
+    shallow_phrase = _sc_shallow_phrase(context)
     pooled = ", ".join(f"{b} {c}" for b, c in
                        zip(context["bands"], context["band_totals"]))
     return [
         STAMP,
-        (f"WHAT THIS IS. One horizontal 100% bar per drill: {n_drills} drills "
-         f"carrying {n:,} valid DB Combine turns from {n_players} players, "
-         "sorted by that drill's own turn total. Every segment is a share of "
-         "THAT DRILL's own turns — each bar sums to 100% — and the row label "
-         "gives the drill's own turn and player counts. No pooled bar is "
-         "drawn and no band's share of all turns is a segment anywhere."),
+        (f"WHAT THIS IS. A drill x angle-band matrix: {n_drills} drills "
+         f"(rows, sorted by that drill's own turn total) carrying {n:,} "
+         f"valid DB Combine turns from {n_players} players, against the "
+         f"{n_bands} reporting angle bands (columns, increasing angle left "
+         "to right). In each cell the bold number is the turns in that cell "
+         "and the smaller number below it is that cell's share of the "
+         "drill's own valid turns, so every row sums to 100%. A dot marks a "
+         "cell with no turns. The footer row is the pooled column total, "
+         "labelled as such and drawn as counts only."),
         (f"CONCENTRATION, AS COUNTED. The top two drills — {t1['label']} "
          f"({t1['turns']:,} turns, {t1['share_of_all_turns']:.1%} of all) and "
          f"{t2['label']} ({t2['turns']:,} turns, "
@@ -7440,110 +7452,131 @@ def _supply_composition_caption(table: pd.DataFrame,
          f"{n_drills - 2} drills account for the remaining "
          f"{top['rest_turns']:,} turns. This is an inventory of where turns "
          "exist, not a ranking of drill quality."),
-        (f"THE 30–45° BAND, STATED NOT RESCALED. {sh['turns']} turns spread "
-         f"across {sh['n_drills']} drills, {sh['players']} players "
-         f"({_sc_count_list(sh['by_drill'])}). That is at most "
-         f"{sh['max_share_of_drill']:.1%} of any one drill's bar, so the "
-         "30–45° segment is too small to see at this 100% stacked scale. It "
-         "is given here as counts rather than as an inset: an inset would "
-         "give the shallow band a prominence the count does not have. Every "
-         "drill x band count is in the CSV."),
-        (f"POOLED BAND TOTALS, LABELLED SEPARATELY. Counted across all drills "
-         f"and NOT drawn in any bar: {pooled}. These are counts only; the "
-         "bars above remain within-drill shares, so a large pooled band does "
-         "not make any single drill's bar mostly that band."),
-        ("WHAT IS NOT HERE. No pooled bar, no band's share of the total inside "
-         "the bars, no per-player values, no player names, no drill-quality "
-         "score, no ordering by anything except turn count. DB only. Counts "
-         "are recomputed at render time from outputs/turns/turns.parquet "
-         f"(valid turns); every value is in "
+        (f"THE {sh['band']} BAND, IN ITS OWN COLUMN. {sh['turns']} turns, one "
+         f"in each of {sh['n_drills']} drills: {shallow_phrase}. The largest "
+         f"{sh['band']} share of any drill's own turns is "
+         f"{sh['max_share_of_drill']:.1%}, and the counts show why the "
+         "shallow break is under-tested: those turns are side effects of "
+         "drills chasing something else, and no drill is designed to "
+         "produce one. Every drill x band count is in the CSV."),
+        (f"POOLED BAND TOTALS, IN THE FOOTER ROW. Counted across all drills "
+         f"and printed as the footer row, never as a share segment: {pooled}. "
+         "These are counts only; the cells above remain within-drill shares, "
+         "so a large pooled band does not make any single drill's row mostly "
+         "that band."),
+        ("WHAT IS NOT HERE. No pooled share bar, no band's share of the total "
+         "printed in a cell, no per-player values, no player names, no "
+         "drill-quality score, no ordering by anything except turn count. DB "
+         "only. Counts are recomputed at render time from "
+         "outputs/turns/turns.parquet (valid turns); every value is in "
          f"outputs/figures/{FIGURE_KEY_SUPPLY_COMPOSITION}.csv."),
         ("SAMPLE DATA. One session of sample data. Nothing here is a finding "
-         "about the 2027 class, and equal-length bars do not mean equal drill "
+         "about the 2027 class, and equal-sized cells do not mean equal drill "
          "volume: read the turn counts on the row labels."),
     ]
 
 
 def plot_supply_composition(table: pd.DataFrame, context: dict,
                             cfg: common.Config) -> plt.Figure:
-    """Horizontal 100% stacked bars, one per drill, sorted by drill total."""
-    from matplotlib.patches import Patch
+    """Drill x angle-band matrix, one row per drill, focus band in red."""
+    from matplotlib.patches import Rectangle
 
     block = "figures.supply_composition"
     bands = context["bands"]
     ramp = SUPPLY_COMPOSITION_RAMP[:len(bands)]
     focus = focus_band(cfg)
     focus_idx = focus_band_index(context["edges"], focus)
+    focus_fill = str(cfg.get(f"{block}.focus_fill"))
     drills = context["drills"]
     n = context["n_drills"]
+    cell_w, cell_h = 0.88, 0.86
+    footer_y = -1.10
     fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
                               float(cfg.get(f"{block}.height_in"))))
-    ax = fig.add_axes([0.255, 0.330, 0.720, 0.495])
-    ax.set_facecolor("#EBEBEB")
-    for spine in ("top", "right", "left"):
-        ax.spines[spine].set_visible(False)
-    ax.spines["bottom"].set_color("#B3B3B3")
-    ax.tick_params(axis="x", labelsize=8.4, colors="#333333", length=2)
+    ax = fig.add_axes([0.235, 0.315, 0.750, 0.555])
+    ax.set_facecolor("white")
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.tick_params(axis="x", length=0, pad=4, labelsize=9.0,
+                   colors="#333333")
     ax.tick_params(axis="y", length=0)
+    ax.xaxis.set_ticks_position("top")
     ax.set_axisbelow(True)
 
     for i, drill in enumerate(drills):
         y = float(n - 1 - i)
         part = table[table["drill"] == drill["drill"]].sort_values("band_index")
         for row in part.itertuples(index=False):
+            col = int(row.band_index)
+            is_focus = col == focus_idx
+            rect = Rectangle((col - cell_w / 2.0, y - cell_h / 2.0),
+                             cell_w, cell_h,
+                             facecolor=(focus_fill if is_focus else ramp[col]),
+                             edgecolor="white", linewidth=1.2,
+                             alpha=(1.0 if is_focus else 0.16), zorder=2)
+            rect.set_gid(f"sc-cell:{drill['drill']}:{col}")
+            ax.add_patch(rect)
             if int(row.turns) == 0:
+                ax.text(col, y, "·", ha="center", va="center",
+                        fontsize=11.0, zorder=4,
+                        color=("#FFFFFF" if is_focus else "#9A9A9A"))
                 continue
-            is_focus = int(row.band_index) == focus_idx
-            ax.barh(y, float(row.share_of_drill), left=float(row.share_start),
-                    height=0.62, color=ramp[int(row.band_index)],
-                    edgecolor=(focus["colour"] if is_focus else "white"),
-                    linewidth=(focus["outline_width"] if is_focus else 0.8),
-                    zorder=3)
-            if float(row.share_of_drill) >= context["min_label_share"]:
-                ax.text(float(row.share_start) + float(row.share_of_drill) / 2.0,
-                        y, f"{int(row.turns):,}", ha="center", va="center",
-                        fontsize=8.2, fontweight="bold",
-                        color=("#FFFFFF" if int(row.band_index) >= 3
-                               else "#1A1A1A"), zorder=5)
+            ax.text(col, y + 0.13, f"{int(row.turns):,}", ha="center",
+                    va="center", fontsize=9.6, fontweight="bold", zorder=4,
+                    color=("#FFFFFF" if is_focus else "#1A1A1A"))
+            ax.text(col, y - 0.17,
+                    f"{float(row.share_of_drill) * 100:.1f}%", ha="center",
+                    va="center", fontsize=6.8, zorder=4,
+                    color=("#FFFFFF" if is_focus else "#555555"))
 
-    ax.set_xlim(0.0, 1.0)
-    ax.set_ylim(-0.60, float(n) - 0.40)
-    ax.set_xticks([0.0, 0.25, 0.5, 0.75, 1.0])
-    ax.set_xticklabels(["0", "25%", "50%", "75%", "100%"])
-    ax.grid(axis="x", color="white", linewidth=0.9, zorder=0)
-    ax.set_xlabel("Share of that drill's own valid turns (%)",
-                  fontsize=8.8, color="#333333", labelpad=5)
-    ax.set_yticks([float(n - 1 - i) for i in range(n)])
+    # Hairline, then the footer row: pooled column totals, counts only.
+    ax.plot([-0.60, len(bands) - 0.40], [footer_y + 0.52, footer_y + 0.52],
+            color="#B3B3B3", linewidth=0.8, zorder=1, clip_on=False)
+    for col, total in enumerate(context["band_totals"]):
+        total_text = ax.text(col, footer_y, f"{int(total):,}", ha="center",
+                             va="center", fontsize=10.0, fontweight="bold",
+                             zorder=4,
+                             color=(focus_fill if col == focus_idx
+                                    else "#1A1A1A"))
+        total_text.set_gid(f"sc-footer-total:{col}")
+
+    ax.set_xlim(-0.60, len(bands) - 0.40)
+    ax.set_ylim(footer_y - 0.55, float(n) - 0.30)
+    ax.set_xticks(list(range(len(bands))))
+    ax.set_xticklabels(bands, fontsize=9.0, color="#333333")
+    for col, label in enumerate(ax.get_xticklabels()):
+        if col == focus_idx:
+            label.set_color(focus_fill)
+            label.set_fontweight("bold")
+    ax.set_yticks([float(n - 1 - i) for i in range(n)] + [footer_y])
     ax.set_yticklabels(
-        [_sc_row_label(d["label"], d["turns"], d["players"]) for d in drills],
+        [_sc_row_label(d["label"], d["turns"], d["players"]) for d in drills]
+        + [f"All drills\n{_sc_count(context['n_turns'], 'turn')}"],
         fontsize=8.4, color="#222222")
 
-    handles = [Patch(facecolor=ramp[i],
-                     edgecolor=(focus["colour"] if i == focus_idx else "white"),
-                     linewidth=(focus["outline_width"] if i == focus_idx else 1.0),
-                     label=(f"{b} (focus band)" if i == focus_idx else b))
-               for i, b in enumerate(bands)]
-    legend = fig.legend(handles=handles, loc="upper left",
-                        bbox_to_anchor=(0.250, 0.905), ncol=len(bands),
-                        frameon=False, fontsize=8.4, handlelength=1.4,
-                        columnspacing=1.5, title=None)
-    legend.get_texts()[focus_idx].set_color(focus["colour"])
-    legend.get_texts()[focus_idx].set_fontweight("bold")
+    sh = context["shallow"]
+    shallow_labels = [i["label"] for i in sh["by_drill"]]
+    if len(shallow_labels) > 1:
+        shallow_names = ", ".join(shallow_labels[:-1]) + " and " + shallow_labels[-1]
+    else:
+        shallow_names = "".join(shallow_labels)
 
     fig.text(0.010, 0.975, "Where the Combine's turns come from",
              fontsize=17.5, fontweight="bold", ha="left", va="top",
              color="#111111")
     fig.text(0.010, 0.941,
              f"{context['n_turns']:,} valid DB Combine turns across "
-             f"{context['n_drills']} drills (sorted by drill total); each bar "
-             "is one drill's own 100%, segments are turn-angle bands.",
+             f"{context['n_drills']} drills (sorted by drill total); rows are "
+             "drills, columns are angle bands, and each cell prints its own "
+             "count and within-drill share.",
              fontsize=8.8, ha="left", va="top", color="#333333")
     fig.text(0.010, 0.300,
-             f"{focus['label']}: {context['shallow']['turns']} turns in all "
-             f"({context['shallow']['n_drills']} drills, "
-             f"{context['shallow']['players']} players) — at most "
-             f"{context['shallow']['max_share_of_drill']:.1%} of any bar, too "
-             "small to see at this scale; counts in the caption and CSV.",
+             f"{focus['label']}: {sh['turns']} turns in all "
+             f"({sh['n_drills']} drills, {sh['players']} players) — one each "
+             f"in {shallow_names}.\nThe {focus['label']} column is red; the "
+             f"largest within-drill share is "
+             f"{sh['max_share_of_drill']:.1%}. Counts and shares are printed "
+             "in the cells; every value is in the CSV.",
              fontsize=7.8, ha="left", va="top", color=focus["colour"])
 
     caption = "\n".join(_wrap_text(line, 150)
@@ -7625,6 +7658,7 @@ def supply_composition_manifest_payload(table: pd.DataFrame, context: dict,
         "shares": {
             "unit": "share of the drill's own valid turns",
             "within_drill": True,
+            "layout": "drill x angle-band matrix",
             "pooled_bar_drawn": False,
             "band_share_of_all_turns_in_bars": False,
             "every_drill_sums_to_one": True,
@@ -7651,9 +7685,9 @@ def supply_composition_manifest_payload(table: pd.DataFrame, context: dict,
             "players": sh["players"],
             "by_drill": sh["by_drill"],
             "max_share_of_drill": sh["max_share_of_drill"],
-            "visibility": ("too small to see at the 100% stacked scale; "
-                           "counts are stated in the caption and CSV and no "
-                           "rescaling inset is used"),
+            "visibility": ("drawn as its own column in the matrix, with "
+                           "counts and within-drill shares printed in the "
+                           "cells and listed in the CSV"),
         },
         "pooled_band_totals": [
             {"band": b, "turns": int(c), "players": int(p)}
@@ -7671,19 +7705,19 @@ def supply_composition_manifest_payload(table: pd.DataFrame, context: dict,
         "not_claimed": [
             "That any drill is good or bad, easier or harder; this is an "
             "inventory of turns, not a ranking of drill quality.",
-            "That the band shares are pooled across drills; every segment is "
-            "a share of its own drill's turns.",
-            "That the visible large segments are a target; they are where "
-            "turns currently exist.",
+            "That the band shares are pooled across drills; every printed "
+            "share is a share of its own drill's turns.",
+            "That the large cells are a target; they are where turns "
+            "currently exist.",
             "Anything about the 2027 class; this is one session of sample data.",
         ],
         "caveats": [
-            ("Shares are within a drill; each bar sums to 100%. The pooled "
-             "band totals in the caption are a separate, labelled count and "
-             "are never drawn as a segment."),
-            (f"The {sh['band']} band is too small to see at this scale "
-             f"({sh['turns']} turns); it is stated as counts and no inset "
-             "rescales it."),
+            ("Shares are within a drill; each row sums to 100%. The pooled "
+             "band totals are the labelled footer row, a count and never a "
+             "share segment."),
+            (f"The {sh['band']} band is its own column in the matrix "
+             f"({sh['turns']} turns); its counts and within-drill shares are "
+             "printed in the cells and listed in the CSV."),
             ("No player names and no per-player values appear."),
             ("Sample data: one session of sample data; nothing here is a "
              "finding about the 2027 class."),
