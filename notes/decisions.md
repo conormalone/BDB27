@@ -6488,3 +6488,44 @@ median one.
 `tests/test_focus_band.py`; `tests/test_notebook_contract.py`;
 `outputs/figures/fig_movement_family.{png,csv}`,
 `outputs/figures/figures_manifest.json`.
+
+## D177 — The tempo-break schematic covers 30–60°, and stops being a proposal · 2026-11-09
+
+**Decision (Conor, 18:52).** Redraw `fig_drill_schematic` with the 45–60° band
+added, with all proposal/draft framing removed, with the subtitle under the bold
+title removed, and with the footer text under the plot removed.
+
+**Two break geometries, not one.** The figure previously drew a single 40° break
+from `notes/drill-proposal.md`. It now draws **40° (the 30–45° band) and 55° (the
+45–60° band)**, each left and right, so four exits and four gates. The change
+follows the paper: the recommendation is to test cuts below 60°, and the demand
+gap is larger at 45–60° (10.1% of game DB turns) than at 30–45° (4.3%). Each arc
+is labelled with its band, so the drawing no longer implies a single prescribed
+angle. Geometry stays in yards with equal aspect and the 5 yd scale bar.
+
+**Proposal language removed.** The drawn badge
+`PROPOSED DRILL — not part of the task spec, awaiting sign-off`, the config
+`status: PROPOSAL` and the `PROPOSAL_STAMP` constant are gone from the image, the
+CSV and the manifest. They are replaced by `SCHEMATIC` /
+`"SCHEMATIC — illustrative geometry, not measured data"`, which keeps the
+provenance claim that matters — nothing on this image is measured data — without
+the draft framing. The source path `notes/drill-proposal.md` survives only as a
+CSV citation; it is not drawn.
+
+**Subtitle and footer removed.** The line "Top-down plan view of the proposed DB
+drill. Schematic drawing: nothing on this figure is measured." is deleted, as is
+the three-line footer under the axes (footprint/duration, the scale-bar
+sentence, the source/status sentence). The axes re-flow into the reclaimed
+space; no replacement text was added, and nothing is drawn below the axes.
+
+**What did not change.** Approach arrow, two approach cones, break cone and
+single plant, gate ticks and labels, re-acceleration label, reps box, scale bar,
+arc labels and the entry-speed callout are unchanged in meaning. No measured
+number enters the drawing. Figures 1–17 PNGs are byte-identical to `8519917`
+except `fig_drill_schematic.png`; their CSVs differ only in `config_sha`.
+
+**Evidence.** `config.yaml` (`figures.drill_schematic.break_angles_deg`);
+`src/bdb27/figures.py` (`drill_schematic_geometry`, `plot_drill_schematic`,
+`drill_schematic_csv_frame`); `tests/test_figures_stage.py` (banned-word sweep,
+both angles, four exits, footer/subtitle absence);
+`outputs/figures/fig_drill_schematic.{png,csv}`.

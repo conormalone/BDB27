@@ -4,7 +4,7 @@
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
   3. "Before and After" — measured supply vs supply + the proposed drill, on
                           one angle x entry-speed grid.
-  4. "Tempo break"      — the proposed drill drawn to scale (a diagram).
+  4. "Tempo break"      — a schematic tempo-break drill drawn to scale.
   5. "Same hole"        — figure 1's paired share panel repeated for DB, WR,
                           TE, OL and DL on one identical axis.
   6. "Measurement limits" — why per-player ranking is not supported: variance

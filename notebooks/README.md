@@ -28,7 +28,7 @@ figures plus `outputs/figures/figures_manifest.json`, which is what the gallery 
    placeholder image, no silent skip); a missing manifest prints `NOT RUN` with the
    `06_figures` reason from §4. Sample provenance is a single **banner at the top**
    (`PLACEHOLDER_SAMPLE`), and a sample figure is never presented as a result. The
-   proposal-stamped schematic shows its own `PROPOSAL` status instead — the gallery does
+   schematic drawing shows its own `SCHEMATIC` status instead — the gallery does
    not force one stamp onto every figure.
 5. **§6 Headline** — reads **only** `outputs/audit/gate.json` and
    `outputs/audit/audit_items.csv`: the provenance banner taken from the artefact, the
@@ -65,7 +65,7 @@ missing `gate.json` renders `NOT RUN` rather than a blank, and a stub is never a
 plus the full-mode preflight names every missing tracking file and blocks the run. The
 gallery adds five more: every manifest entry appears in the rendered text, the cell reads
 the manifest rather than a literal figure list, a missing PNG prints `MISSING` instead of
-raising, the sample banner is printed once, and the schematic renders as `PROPOSAL`
+raising, the sample banner is printed once, and the schematic renders as `SCHEMATIC`
 without a sample stamp.
 
 ## Shell fallback

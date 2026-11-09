@@ -419,7 +419,7 @@ def test_gallery_missing_png_is_missing_not_an_exception(notebook, tmp_path):
 
     assert "MISSING — fig_nowhere" in text
     assert returned == {"figures": 1, "displayed": 0,
-                        "missing": ["fig_nowhere"], "proposal": []}
+                        "missing": ["fig_nowhere"], "schematic": []}
     assert shown == [], "no image should be displayed for a missing PNG"
     assert "1 of 1 figure(s) displayed, 0 MISSING" not in text
 
@@ -438,15 +438,15 @@ def test_gallery_prints_the_sample_banner_once(notebook, tmp_path):
     assert returned["displayed"] == 1 and len(shown) == 1
 
 
-def test_gallery_shows_the_schematic_as_a_proposal(notebook, tmp_path):
-    """(e) The proposal schematic wears PROPOSAL; no sample badge is forced onto it."""
+def test_gallery_shows_the_schematic_as_a_schematic(notebook, tmp_path):
+    """(e) The schematic wears SCHEMATIC; no sample badge is forced onto it."""
     (tmp_path / "fig_schematic.png").write_bytes(PNG_1PX)
     (tmp_path / "fig_data.png").write_bytes(PNG_1PX)
     schematic = sample_entry(
         "fig_schematic",
-        status="PROPOSAL",
-        status_stamp="PROPOSED DRILL — not part of the task spec, awaiting sign-off",
-        stamp="PROPOSED DRILL — not part of the task spec, awaiting sign-off",
+        status="SCHEMATIC",
+        status_stamp="SCHEMATIC — illustrative geometry, not measured data",
+        stamp="SCHEMATIC — illustrative geometry, not measured data",
         provenance_applied=False,
     )
     path = write_manifest(tmp_path, {
@@ -457,13 +457,15 @@ def test_gallery_shows_the_schematic_as_a_proposal(notebook, tmp_path):
 
     body = text.split("GALLERY RESULT")[0]
     blocks = [b for b in body.split("-" * 92) if re.match(r"\s*\[\d+/\d+\]", b)]
-    proposal_block = next(b for b in blocks if "fig_schematic" in b)
+    schematic_block = next(b for b in blocks if "fig_schematic" in b)
     data_block = next(b for b in blocks if "fig_data" in b)
-    assert "PROPOSAL — PROPOSED DRILL" in proposal_block
-    assert "PLACEHOLDER_SAMPLE" not in proposal_block
-    assert "deliberately NOT sample-stamped" in proposal_block
+    assert "SCHEMATIC — illustrative geometry, not measured data" in schematic_block
+    assert "PLACEHOLDER_SAMPLE" not in schematic_block
+    assert "deliberately NOT sample-stamped" in schematic_block
+    assert "PROPOSAL" not in body
+    assert "proposed" not in body.lower()
     assert SAMPLE_STAMP in data_block, "a data figure keeps its sample stamp"
-    assert returned["proposal"] == ["fig_schematic"]
+    assert returned["schematic"] == ["fig_schematic"]
     assert returned["displayed"] == 2 and len(shown) == 2
     assert "1 of 2 figures below are sample output" in text
 

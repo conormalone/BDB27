@@ -788,11 +788,13 @@ def test_before_after_checks_can_fail(rendered):
 
 
 # ------------------------------------- figure 4: the drill schematic
-#: The figure is a PROPOSAL: drawn from notes/drill-proposal.md section 2, not
+#: The figure is a SCHEMATIC: drawn from the drill source note, section 2, not
 #: from data. These tests pin the geometry to the config block and pin the
-#: status stamp — they never treat this figure as a measurement.
-DS_STAMP = "PROPOSED DRILL — not part of the task spec, awaiting sign-off"
+#: SCHEMATIC status stamp — they never treat this figure as a measurement.
+DS_STAMP = "SCHEMATIC — illustrative geometry, not measured data"
 DS_PREFIX = "figures.drill_schematic."
+DS_BANNED = ("proposal", "proposed", "draft", "awaiting sign-off",
+             "not part of the task spec")
 
 
 def _ds_block(cfg_path: Path) -> dict:
@@ -804,9 +806,15 @@ def _ds_rows(csv_df: pd.DataFrame) -> dict:
     return {row["element"]: row for _, row in csv_df.iterrows()}
 
 
+def _ds_band_bounds(label: str) -> tuple[float, float]:
+    text = str(label).replace("°", "").replace("–", "-")
+    lo, hi = (float(x) for x in text.split("-"))
+    return lo, hi
+
+
 def _check_schematic(csv_df: pd.DataFrame, block: dict) -> None:
-    """Every drawn dimension must equal the configured (proposal) dimension."""
-    assert set(csv_df["status"]) == {"PROPOSAL"}
+    """Every drawn dimension must equal the configured schematic dimension."""
+    assert set(csv_df["status"]) == {"SCHEMATIC"}
     assert set(csv_df["status_stamp"]) == {DS_STAMP}
     rows = _ds_rows(csv_df)
 
@@ -819,20 +827,40 @@ def _check_schematic(csv_df: pd.DataFrame, block: dict) -> None:
     assert np.isclose(float(approach["y_end"]), 0.0)
 
     gate = float(block["gate_distance_yd"])
-    angle = float(block["break_angle_deg"])
-    for side in ("left", "right"):
-        seg = rows[f"exit_{side}"]
-        assert np.isclose(float(seg["length_yd"]), gate)
-        assert np.isclose(abs(float(seg["angle_deg"])), angle)
-        assert np.isclose(float(seg["x"]), 0.0) and np.isclose(float(seg["y"]), 0.0)
-        mark = rows[f"gate_{side}"]
-        assert np.isclose(np.hypot(float(mark["x"]), float(mark["y"])), gate)
+    angles = [float(x) for x in block["break_angles_deg"]]
+    bands = [str(x) for x in block["break_band_labels"]]
+    assert len(angles) == len(bands) >= 2
+    exits = {row["element"] for _, row in csv_df.iterrows()
+             if str(row["element"]).startswith("exit_")}
+    assert exits == {f"exit_{side}_{angle:g}"
+                     for angle in angles for side in ("left", "right")}
 
-    # both sides symmetric about the approach line
-    left, right = rows["exit_left"], rows["exit_right"]
-    assert np.isclose(float(left["x_end"]), float(right["x_end"]))
-    assert np.isclose(float(left["y_end"]), -float(right["y_end"]))
-    assert np.isclose(float(rows["gate_left"]["y"]), -float(rows["gate_right"]["y"]))
+    for angle, band in zip(angles, bands):
+        tag = f"{angle:g}"
+        band_lo, band_hi = _ds_band_bounds(band)
+        assert band_lo <= angle <= band_hi, (
+            f"angle {angle} is outside its stated band {band}")
+        for side in ("left", "right"):
+            seg = rows[f"exit_{side}_{tag}"]
+            assert np.isclose(float(seg["length_yd"]), gate)
+            assert np.isclose(abs(float(seg["angle_deg"])), angle)
+            assert np.isclose(float(seg["x"]), 0.0)
+            assert np.isclose(float(seg["y"]), 0.0)
+            mark = rows[f"gate_{side}_{tag}"]
+            assert np.isclose(
+                np.hypot(float(mark["x"]), float(mark["y"])), gate)
+
+        # both sides symmetric about the approach line, per angle
+        left, right = rows[f"exit_left_{tag}"], rows[f"exit_right_{tag}"]
+        assert np.isclose(float(left["x_end"]), float(right["x_end"]))
+        assert np.isclose(float(left["y_end"]), -float(right["y_end"]))
+        assert np.isclose(float(rows[f"gate_left_{tag}"]["y"]),
+                          -float(rows[f"gate_right_{tag}"]["y"]))
+
+        # the arc label carries the angle and its stated band
+        label = str(rows[f"angle_left_{tag}"]["text"])
+        assert f"{angle:g}°" in label
+        assert band in label
 
     # the plant is the break cone, at the end of the approach
     assert np.isclose(float(rows["plant"]["x"]), 0.0)
@@ -845,13 +873,20 @@ def _check_schematic(csv_df: pd.DataFrame, block: dict) -> None:
         key = str(row["source_constant"])
         assert key.startswith(DS_PREFIX), f"untraceable annotation source {key}"
         want = block[key[len(DS_PREFIX):]]
+        printed = str(row["text"])
         if not pd.isna(row["value_low"]):
             assert [float(row["value_low"]), float(row["value_high"])] == [
                 float(x) for x in want]
         elif not pd.isna(row["value"]):
-            assert np.isclose(float(row["value"]), float(want)), (
-                f"{row['element']}: printed {row['value']} but config says {want}")
-            assert f"{float(row['value']):g}" in str(row["text"])
+            if isinstance(want, (list, tuple)):
+                assert any(np.isclose(float(row["value"]), float(x))
+                           for x in want), (
+                    f"{row['element']}: printed {row['value']} is not in {want}")
+            else:
+                assert np.isclose(float(row["value"]), float(want)), (
+                    f"{row['element']}: printed {row['value']} but config "
+                    f"says {want}")
+            assert f"{float(row['value']):g}" in printed
 
 
 def test_drill_schematic_png_exists_non_empty_and_wide(rendered):
@@ -862,8 +897,12 @@ def test_drill_schematic_geometry_matches_config(rendered):
     csv_df = pd.read_csv(rendered["ds_csv"])
     _check_schematic(csv_df, _ds_block(rendered["cfg"]))
     rows = _ds_rows(csv_df)
-    assert np.isclose(float(rows["exit_left"]["angle_deg"]), 40.0)
-    assert np.isclose(float(rows["gate_left"]["length_yd"]), 5.0)
+    assert np.isclose(float(rows["exit_left_40"]["angle_deg"]), 40.0)
+    assert np.isclose(float(rows["exit_right_40"]["angle_deg"]), -40.0)
+    assert np.isclose(float(rows["exit_left_55"]["angle_deg"]), 55.0)
+    assert np.isclose(float(rows["exit_right_55"]["angle_deg"]), -55.0)
+    assert np.isclose(float(rows["gate_left_40"]["length_yd"]), 5.0)
+    assert np.isclose(float(rows["gate_right_55"]["length_yd"]), 5.0)
     assert 8.0 <= float(rows["approach_line"]["length_yd"]) <= 10.0
 
 
@@ -873,30 +912,62 @@ def test_drill_schematic_is_not_stamped_as_sample_data(rendered):
     assert "UNVALIDATED SAMPLE OUTPUT" not in raw
     man = json.loads(rendered["manifest"].read_text())
     fig = man["figures"]["fig_drill_schematic"]
-    assert fig["status"] == "PROPOSAL"
+    assert fig["status"] == "SCHEMATIC"
     assert fig["stamp"] == DS_STAMP
+    assert fig["status_stamp"] == DS_STAMP
     assert fig["provenance_applied"] is False
     assert "deliberately NOT stamped" in fig["provenance_note"].lower() or \
         "Deliberately NOT stamped" in fig["provenance_note"]
-    assert fig["spec"]["break_angle_deg"] == 40
+    assert fig["spec"]["break_angles_deg"] == [40, 55]
+    assert fig["spec"]["break_band_labels"] == ["30–45°", "45–60°"]
     assert fig["spec"]["gate_distance_yd"] == 5
     assert fig["spec"]["approach_length_yd"] == [8, 10]
     assert fig["scale"]["to_scale"] is True
     assert fig["omitted_not_specified"], "omissions must be listed"
     assert any("Gate width" in t for t in fig["omitted_not_specified"])
+    blob = json.dumps(fig).lower()
+    for word in DS_BANNED:
+        assert word not in blob, f"{word!r} is still in the manifest entry"
 
 
-def test_drill_schematic_badge_is_drawn(rendered):
+def test_drill_schematic_has_no_proposal_framing(rendered):
+    """The old badge/footer/status framing must be gone from image and CSV."""
     from bdb27 import common, figures
+    import matplotlib.pyplot as plt
+
     cfg = common.load_config(rendered["cfg"])
     table, context = figures.drill_schematic_geometry(cfg)
     fig = figures.plot_drill_schematic(table, context, cfg)
-    texts = [t.get_text() for t in fig.texts] + [t.get_text()
-                                                for t in fig.axes[0].texts]
-    assert any(DS_STAMP in t for t in texts), "the proposal badge is not drawn"
-    assert any("not part of the task spec" in t for t in texts)
-    import matplotlib.pyplot as plt
-    plt.close(fig)
+    try:
+        drawn = [t.get_text() for t in fig.texts] + [
+            t.get_text() for t in fig.axes[0].texts]
+        joined = "\n".join(drawn).lower()
+        for word in DS_BANNED:
+            assert word not in joined, f"{word!r} is still drawn on figure 4"
+        for old in ("PROPOSED DRILL", "Drawn to scale in yards", "Source:",
+                    "Top-down plan view"):
+            assert old.lower() not in joined, f"old framing {old!r} is drawn"
+        # one bold title line only, no secondary line and no footer
+        assert len(fig.texts) == 1, "figure 4 must carry only its title"
+        assert "The tempo break:" in fig.texts[0].get_text()
+        assert "40°" in fig.texts[0].get_text()
+        assert "55°" in fig.texts[0].get_text()
+        # equal aspect keeps the scale bar truthful
+        assert fig.axes[0].get_aspect() == 1.0
+        # both angles and four exits are in the geometry
+        elements = set(table["element"])
+        for angle in (40, 55):
+            for side in ("left", "right"):
+                assert f"exit_{side}_{angle}" in elements
+                assert f"gate_{side}_{angle}" in elements
+        assert context["break_angles"] == [40.0, 55.0]
+    finally:
+        plt.close(fig)
+
+    csv_df = pd.read_csv(rendered["ds_csv"])
+    blob = csv_df.drop(columns=["source_note"]).to_csv(index=False).lower()
+    for word in DS_BANNED:
+        assert word not in blob, f"{word!r} is still in the CSV"
 
 
 def test_drill_schematic_two_runs_are_byte_identical(rendered):
@@ -930,6 +1001,7 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
     assert len(pd.read_csv(rendered["csv"])) == 14
     assert len(pd.read_csv(rendered["drill_csv"])) == 11
     assert len(pd.read_csv(rendered["ba_csv"])) == 44
+    assert len(pd.read_csv(rendered["ds_csv"])) == 26
     man = json.loads(rendered["manifest"].read_text())
     assert set(man["figures"]) == {"fig_the_hole", "fig_drill_coverage",
                                    "fig_before_after", "fig_drill_schematic",
@@ -949,22 +1021,28 @@ def test_drill_schematic_checks_can_fail(rendered):
     _check_schematic(csv_df, block)  # sanity: passes on the real drawing
 
     wrong_gate = csv_df.copy()
-    idx = wrong_gate.index[wrong_gate["element"] == "exit_left"][0]
+    idx = wrong_gate.index[wrong_gate["element"] == "exit_left_40"][0]
     wrong_gate.loc[idx, "length_yd"] = 4.0
     with pytest.raises(AssertionError):
         _check_schematic(wrong_gate, block)
 
     wrong_angle = csv_df.copy()
-    idx = wrong_angle.index[wrong_angle["element"] == "exit_right"][0]
+    idx = wrong_angle.index[wrong_angle["element"] == "exit_right_55"][0]
     wrong_angle.loc[idx, "angle_deg"] = -35.0
     with pytest.raises(AssertionError):
         _check_schematic(wrong_angle, block)
 
     asymmetric = csv_df.copy()
-    idx = asymmetric.index[asymmetric["element"] == "gate_right"][0]
+    idx = asymmetric.index[asymmetric["element"] == "gate_right_55"][0]
     asymmetric.loc[idx, "y"] = float(asymmetric.loc[idx, "y"]) * 0.9
     with pytest.raises(AssertionError):
         _check_schematic(asymmetric, block)
+
+    wrong_band = csv_df.copy()
+    idx = wrong_band.index[wrong_band["element"] == "angle_left_55"][0]
+    wrong_band.loc[idx, "text"] = "55° (30–45°)"
+    with pytest.raises(AssertionError):
+        _check_schematic(wrong_band, block)
 
     invented = csv_df.copy()
     idx = invented.index[invented["row_kind"] == "annotation"][0]
