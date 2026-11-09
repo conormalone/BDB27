@@ -6207,3 +6207,50 @@ tests pass unchanged.
 **Evidence.** `config.yaml` (`figures.focus_band`); `src/bdb27/figures.py`
 (`focus_band`, `focus_band_index` and the seven plot functions);
 `tests/test_focus_band.py`; regenerated `outputs/figures/`.
+
+## D173 — Figure 15 shows the 30–45° band alone, and treats four Combine points as a list · 2026-11-09
+
+**Decision.** Conor asked for the 30–45° turns on their own, with no other bands
+on the axes. Figure 15 is one panel: x = entry speed (yd/s), y = absolute turn
+angle (degrees), one dot per valid DB turn in `[30, 45)`. Combine is the accent
+blue `#0072B2`, games are grey `#6E6E6E` — the same Combine-vs-game encoding the
+bars use, so red stays reserved for the band/window treatment (D172). The
+2–6 yd/s × 30–45° target window is tinted and outlined from
+`figures.focus_band` and labelled above its top edge. The code refuses to run if
+`figures.band_only.angle_band_deg` is not exactly the focus band, so the red
+window can never mark a different band from the rest of the stage.
+
+**Four points are a list, not a distribution.** The Combine side is four turns.
+No density curve, fit, box plot, confidence ellipse, mean or interval is drawn,
+and `tests/test_figures_stage.py` asserts both that those artists are absent from
+the rendered axes and that the banned calls are absent from the code path. The
+caption says what the figure cannot show: the sample has no Combine turn at game
+speed in this band, so a Combine distribution there cannot be estimated — only
+stated as absent.
+
+**The one drawing device.** Three pairs of game turns nearly coincide (their
+dots would sit on top of each other). Each pair is separated by 0.08 yd/s along
+the speed axis — 0.04 each side — and the offset is written per row in the CSV
+(`x_offset_yd_s`, `y_offset_deg`); the measured speed and angle are unchanged.
+No Combine dot is moved, no other point is jittered, and a turn can belong to at
+most one pair so a chain of near neighbours cannot fan into a fabricated speed
+range. The radii and the step live in `figures.band_only.dodge`.
+
+**What the figure says.** 4 Combine turns at 2.66–3.40 yd/s (median 2.86) and 97
+game turns at 2.00–7.80 yd/s (median 3.45); all 4 Combine turns and 89 of 97 game
+turns are inside the 2–6 window, and the 8 game turns outside it are all faster
+than 6 yd/s. The four Combine turns are turns, not players: 3 players, with two
+of the four from the same player. They are the incidental drill fragments figure
+11 describes, and the four drills are printed under the axis.
+
+**Data invariance.** Regenerating the stage changed no figure 1–14 PNG (all 14
+byte-identical) and no figure 1–14 CSV value; those CSVs differ only in
+`config_sha`, which changes because this adds a config block. The two renders of
+figure 15 are byte-identical.
+
+**Evidence.** `config.yaml` (`figures.band_only`); `src/bdb27/figures.py`
+(`band_only_table`, `plot_band_only`, `render_band_only`,
+`band_only_csv_frame`, `band_only_manifest_payload`); `src/06_figures.py`;
+`tests/test_figures_stage.py` (figure 15 tests, manifest count 15);
+`tests/test_focus_band.py` (figure 15 added to the sentinel-colour set);
+`outputs/figures/fig_band_only.{png,csv}`.

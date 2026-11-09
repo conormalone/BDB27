@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "ab85e34af0e4f426",
-  "generated_utc": "2026-11-09T00:45:26Z",
+  "config_sha": "24911c719e74751b",
+  "generated_utc": "2026-11-09T01:45:00Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -4636,6 +4636,147 @@
       ],
       "png": "outputs/figures/fig_supply_composition.png",
       "csv": "outputs/figures/fig_supply_composition.csv",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_band_only": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_band_only",
+      "title": "The band on its own: 30\u201345\u00b0 in the Combine and in games",
+      "sources": [
+        "outputs/turns/turns.parquet"
+      ],
+      "band": {
+        "position_group": "DB",
+        "abs_turn_angle_deg": [
+          30.0,
+          45.0
+        ],
+        "rule": "valid turns, left-closed on abs_turn_angle_deg",
+        "other_bands_drawn": false
+      },
+      "target_window": {
+        "entry_speed_yd_s": [
+          2.0,
+          6.0
+        ],
+        "abs_turn_angle_deg": [
+          30.0,
+          45.0
+        ],
+        "styling": "figures.focus_band (colour, tint, outline width)",
+        "red_marks_data": false,
+        "turns_inside": {
+          "combine": 4,
+          "game": 89
+        }
+      },
+      "population": {
+        "turns": 101,
+        "by_setting": {
+          "combine": 4,
+          "game": 97
+        },
+        "players_by_setting": {
+          "combine": 3,
+          "game": 25
+        },
+        "combine_players": 3,
+        "combine_turns_from_a_shared_player": 2,
+        "combine_is_a_list_not_a_distribution": true,
+        "combine_turns": [
+          {
+            "number": 1,
+            "drill": "BOX_DRILL",
+            "drill_label": "box",
+            "entry_speed": 3.4008917808532715,
+            "abs_turn_angle": 37.17597198486328
+          },
+          {
+            "number": 2,
+            "drill": "SHORT_SHUTTLE",
+            "drill_label": "short shuttle",
+            "entry_speed": 2.655113697052002,
+            "abs_turn_angle": 37.226234436035156
+          },
+          {
+            "number": 3,
+            "drill": "W_DRILL",
+            "drill_label": "W",
+            "entry_speed": 2.8011929988861084,
+            "abs_turn_angle": 40.335418701171875
+          },
+          {
+            "number": 4,
+            "drill": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+            "drill_label": "back-pedal 90\u00b0",
+            "entry_speed": 2.9193029403686523,
+            "abs_turn_angle": 43.04576873779297
+          }
+        ]
+      },
+      "entry_speed_yd_s": {
+        "combine": {
+          "min": 2.655113697052002,
+          "median": 2.8602479696273804,
+          "max": 3.4008917808532715
+        },
+        "game": {
+          "min": 2.0034289360046387,
+          "median": 3.4533705711364746,
+          "max": 7.798844814300537
+        }
+      },
+      "turn_angle_deg": {
+        "combine": {
+          "min": 37.17597198486328,
+          "median": 38.780826568603516,
+          "max": 43.04576873779297
+        },
+        "game": {
+          "min": 30.08333969116211,
+          "median": 40.021907806396484,
+          "max": 44.759002685546875
+        }
+      },
+      "drawing": {
+        "one_dot_per_turn": true,
+        "density_curve": false,
+        "fit": false,
+        "box_plot": false,
+        "confidence_ellipse": false,
+        "mean_or_interval": false,
+        "jitter": false,
+        "dodge": {
+          "axis": "entry speed",
+          "reason": "pairs of game dots would coincide; each pair is separated only so two dots are visible",
+          "pairs": 3,
+          "points_moved": 6,
+          "step_yd_s": 0.08,
+          "combine_points_moved": 0,
+          "recorded_per_row": [
+            "x_offset_yd_s",
+            "y_offset_deg"
+          ]
+        }
+      },
+      "claim": "In the 30\u201345\u00b0 DB band the 4 Combine turns sit at 2.66\u20133.40 yd/s while the 97 game turns run 2.00\u20137.80 yd/s; all 4 Combine turns and 89 of 97 game turns are inside the 2\u20136 yd/s window, so within this one band the Combine samples only the slow end of the speed range games use.",
+      "not_claimed": [
+        "That the Combine turns are a distribution, a mean, or a typical value; four points are a list.",
+        "That any Combine turn exists at game speeds in this band; the sample has none.",
+        "That the 4 Combine turns are 4 players; they are 4 turns from 3 players.",
+        "That the two settings are sampled alike or that the gap is a shortfall of ability.",
+        "Anything about the 2027 class; this is one session of sample data."
+      ],
+      "caveats": [
+        "One dot per turn at its measured coordinates. 3 pairs of near-coincident game turns are separated by 0.08 yd/s for drawing; the measured speed and angle are unchanged in the CSV.",
+        "No density curve, fit, box plot, confidence ellipse, mean or interval is drawn: four Combine points cannot support any of them.",
+        "The 4 Combine turns are incidental fragments of drills built for other purposes (figure 11); two of the four come from the same player.",
+        "No player names or ids appear in the figure, the CSV or this entry.",
+        "Sample data: one session of sample data; nothing here is a finding about the 2027 class."
+      ],
+      "png": "outputs/figures/fig_band_only.png",
+      "csv": "outputs/figures/fig_band_only.csv",
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
   }

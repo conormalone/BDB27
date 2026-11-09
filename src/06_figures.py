@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-14.
+"""Stage 06 — figures 1-15.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -53,6 +53,11 @@
                           total, with the reporting angle bands as segments.
                           Shares are within a drill; the shallow band is
                           stated as counts, not rescaled.
+ 15. "The band on its own" — the 30-45 degree DB band alone: one dot per valid
+                          turn, entry speed against absolute angle, Combine
+                          against games, with the 2-6 yd/s target window
+                          outlined. Four Combine points are a list, not a
+                          distribution: no curve, fit, box or ellipse.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -411,6 +416,22 @@ def main(argv=None) -> int:
         sc_payload["stamp"] = figures.STAMP
         _write_manifest(sc_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 15: the 30-45 degree band on its own
+        bo_turns = figures.load_band_only_turns(turns_path)
+        bo_table, bo_context = figures.band_only_table(bo_turns, cfg)
+        bo_csv = figures.band_only_csv_frame(bo_table, bo_context)
+        bo_png = outdir / f"{figures.FIGURE_KEY_BAND_ONLY}.png"
+        bo_csv_path = outdir / f"{figures.FIGURE_KEY_BAND_ONLY}.csv"
+        common.write_csv(bo_csv, bo_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure": figures.FIGURE_KEY_BAND_ONLY})
+        bo_fig = figures.plot_band_only(bo_table, bo_context, cfg)
+        figures.render_band_only(bo_fig, cfg, bo_png)
+        bo_payload = figures.band_only_manifest_payload(
+            bo_table, bo_context, cfg)
+        bo_payload["stamp"] = figures.STAMP
+        _write_manifest(bo_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -493,7 +514,20 @@ def main(argv=None) -> int:
                         f"({sc_context['top_two']['share']:.1%}) "
                         f"shallow={sc_context['shallow']['turns']} "
                         f"({sc_context['shallow']['n_drills']} drills, "
-                        f"{sc_context['shallow']['players']} players) ")
+                        f"{sc_context['shallow']['players']} players); "
+                        f"{figures.FIGURE_KEY_BAND_ONLY}: "
+                        f"turns={bo_context['n_turns']} "
+                        f"({bo_context['by_setting']['combine']}+"
+                        f"{bo_context['by_setting']['game']}) "
+                        f"entry_combine="
+                        f"{bo_context['ranges']['combine_entry']['min']:.2f}-"
+                        f"{bo_context['ranges']['combine_entry']['max']:.2f} "
+                        f"entry_game="
+                        f"{bo_context['ranges']['game_entry']['min']:.2f}-"
+                        f"{bo_context['ranges']['game_entry']['max']:.2f} "
+                        f"inside={bo_context['inside_window']['combine']}+"
+                        f"{bo_context['inside_window']['game']} "
+                        f"dodged_pairs={bo_context['dodge_pairs']} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -507,6 +541,7 @@ def main(argv=None) -> int:
           f"{lg_png.name}, {lg_csv_path.name}, "
           f"{bd_png.name}, {bd_csv_path.name}, "
           f"{sc_png.name}, {sc_csv_path.name}, "
+          f"{bo_png.name}, {bo_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -541,6 +576,13 @@ def main(argv=None) -> int:
           f"({sc_context['top_two']['share']:.1%}), "
           f"shallow {sc_context['shallow']['turns']} turns across "
           f"{sc_context['shallow']['n_drills']} drills"
+          f"; figure 15 band alone {bo_context['n_turns']} turns "
+          f"({bo_context['by_setting']['combine']} Combine at "
+          f"{bo_context['ranges']['combine_entry']['min']:.1f}-"
+          f"{bo_context['ranges']['combine_entry']['max']:.1f} yd/s; "
+          f"{bo_context['by_setting']['game']} game at "
+          f"{bo_context['ranges']['game_entry']['min']:.1f}-"
+          f"{bo_context['ranges']['game_entry']['max']:.1f} yd/s)"
           f")")
     return 0
 

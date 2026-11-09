@@ -764,6 +764,32 @@ turn_coverage:
       width_in: 12.6
       height_in: 9.4
 
+    # Stage 06 figure 15 ("The band on its own"). Requested by Conor
+    # (2026-11-09): the 30-45 degree turns alone, with no other bands on the
+    # axes. One dot per valid DB turn, entry speed against absolute angle.
+    #
+    # The target window is the case's own focus band on the angle axis
+    # (`figures.focus_band`, D172) crossed with a speed window. The code refuses
+    # to draw if `angle_band_deg` is not exactly the focus band, so the red
+    # outline can never mark a different band from the rest of the stage.
+    #
+    # `dodge` is a DRAWING rule only. Three pairs of game turns nearly coincide;
+    # each pair is separated along the speed axis so two dots are visible. The
+    # radii are about one marker footprint at the configured size, and the step
+    # is one clear dot-width. The measured value is never changed: the offset is
+    # written to the CSV (`x_offset_yd_s`) and no Combine dot is moved.
+    band_only:
+      position_group: DB
+      angle_band_deg: [30, 45]
+      speed_window_yd_s: [2, 6]
+      dodge:
+        radius_yd_s: 0.035
+        radius_deg: 0.20
+        step_yd_s: 0.08
+      dpi: 150
+      width_in: 11.5
+      height_in: 8.8
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

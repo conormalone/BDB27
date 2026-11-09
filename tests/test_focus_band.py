@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SENTINEL = "#0f0e0d"          # deliberately not a palette colour
 AFFECTED = ["fig_the_hole", "fig_drill_coverage", "fig_before_after",
             "fig_all_positions", "fig_turn_cost", "fig_bars_of_doubt",
-            "fig_supply_composition"]
+            "fig_supply_composition", "fig_band_only"]
 
 
 @pytest.fixture(scope="module")
@@ -120,6 +120,10 @@ def drawn(sentinel_cfg, turns):
     figures_out["fig_supply_composition"] = figures.plot_supply_composition(
         sct, scc, cfg)
 
+    bot, boc = figures.band_only_table(
+        figures.load_band_only_turns(ROOT / "outputs/turns/turns.parquet"), cfg)
+    figures_out["fig_band_only"] = figures.plot_band_only(bot, boc, cfg)
+
     yield figures_out
     for fig in figures_out.values():
         plt.close(fig)
@@ -152,6 +156,8 @@ def test_focus_edges_are_reporting_bands_everywhere():
         "turn_cost": [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")],
         "supply_composition": [float(x) for x in
                                cfg.get("figures.supply_composition.bands.turn_angle_deg")],
+        "band_only": [float(x) for x in
+                      cfg.get("figures.band_only.angle_band_deg")],
     }
     for name, edges in axes.items():
         assert figures.focus_band_index(edges, focus) == 0, name

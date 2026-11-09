@@ -421,6 +421,8 @@ def rendered(tmp_path_factory):
             "bd_csv": out / "fig_bars_of_doubt.csv",
             "sc_png": out / "fig_supply_composition.png",
             "sc_csv": out / "fig_supply_composition.csv",
+            "bnd_png": out / "fig_band_only.png",
+            "bnd_csv": out / "fig_band_only.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -918,7 +920,7 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_turn_cost", "fig_stopwatch",
                                    "fig_both_hips", "fig_shallow_sources",
                                    "fig_ledger", "fig_bars_of_doubt",
-                                   "fig_supply_composition"}
+                                   "fig_supply_composition", "fig_band_only"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1454,8 +1456,8 @@ def test_stage_06_manifest_lists_every_figure(rendered):
         "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits",
         "fig_gap_honest", "fig_turn_cost", "fig_stopwatch", "fig_both_hips",
         "fig_shallow_sources", "fig_ledger", "fig_bars_of_doubt",
-        "fig_supply_composition"}
-    assert len(man["figures"]) == 14
+        "fig_supply_composition", "fig_band_only"}
+    assert len(man["figures"]) == 15
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -2586,7 +2588,7 @@ def test_both_hips_computes_no_symmetry_or_p_value(rendered):
 def test_both_hips_renders_every_figure(rendered):
     out = rendered["tmp"] / "outputs" / "figures"
     pngs = sorted(p.name for p in out.glob("fig_*.png"))
-    assert len(pngs) == 14, f"stage 06 must render fourteen figures, found {pngs}"
+    assert len(pngs) == 15, f"stage 06 must render fifteen figures, found {pngs}"
     assert "fig_both_hips.png" in pngs
 
 
@@ -3743,3 +3745,288 @@ def test_supply_composition_refuses_and_checks_can_fail(rendered):
     no_drill.loc[no_drill["setting"] == "combine", "drill_name"] = np.nan
     with pytest.raises(common.StageRefused):
         figures.supply_composition_table(no_drill, cfg)
+
+
+# ------------------- figure 15: the 30-45 degree band on its own
+BO_KEY = "fig_band_only"
+
+
+def _bo_recount(rendered, cfg=None):
+    """The band population recomputed from the Parquet under test."""
+    from bdb27 import common
+
+    cfg = cfg or common.load_config(rendered["cfg"])
+    block = "figures.band_only"
+    position = str(cfg.get(f"{block}.position_group"))
+    low, high = (float(x) for x in cfg.get(f"{block}.angle_band_deg"))
+    s_low, s_high = (float(x) for x in
+                     cfg.get(f"{block}.speed_window_yd_s"))
+    turns = pd.read_parquet(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    entry = pd.to_numeric(turns["entry_speed"], errors="coerce")
+    df = turns[valid & (turns["position_group"] == position)
+               & (angle >= low) & (angle < high)].copy()
+    df["abs_turn_angle"] = angle[df.index]
+    df["entry_speed"] = entry[df.index]
+    return df, (low, high, s_low, s_high)
+
+
+def _bo_build(rendered):
+    from bdb27 import common, figures
+
+    cfg = common.load_config(rendered["cfg"])
+    turns = figures.load_band_only_turns(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = figures.band_only_table(turns, cfg)
+    return figures.plot_band_only(table, context, cfg), table, context, cfg
+
+
+def test_band_only_png_and_csv_exist(rendered):
+    _check_png(rendered["bnd_png"])
+    df, _ = _bo_recount(rendered)
+    csv_df = pd.read_csv(rendered["bnd_csv"])
+    assert len(csv_df) == len(df)
+    assert csv_df["setting"].value_counts().to_dict() == \
+        df["setting"].value_counts().to_dict()
+
+
+def test_band_only_one_row_per_turn_and_all_inside_the_band(rendered):
+    df, (low, high, _, _) = _bo_recount(rendered)
+    csv_df = pd.read_csv(rendered["bnd_csv"])
+    assert csv_df["abs_turn_angle"].between(low, high, inclusive="left").all()
+    assert (csv_df["abs_turn_angle"] < high).all()
+    # one row per turn: compare the multiset of measured coordinates
+    want = sorted((str(r.setting), round(float(r.abs_turn_angle), 6),
+                   round(float(r.entry_speed), 6))
+                  for r in df.itertuples(index=False))
+    got = sorted((str(r.setting), round(float(r.abs_turn_angle), 6),
+                  round(float(r.entry_speed), 6))
+                 for r in csv_df.itertuples(index=False))
+    assert got == want
+    assert csv_df["row_order"].tolist() == list(range(len(csv_df)))
+
+
+def test_band_only_two_to_six_counts_match_the_turn_table(rendered):
+    df, (_, _, s_low, s_high) = _bo_recount(rendered)
+    csv_df = pd.read_csv(rendered["bnd_csv"])
+    inside = (df["entry_speed"] >= s_low) & (df["entry_speed"] <= s_high)
+    for setting in ("combine", "game"):
+        want = int(inside[df["setting"] == setting].sum())
+        part = csv_df[csv_df["setting"] == setting]
+        assert int(part["in_target_window"].sum()) == want
+        assert len(part) == int((df["setting"] == setting).sum())
+        # the flag agrees with the measured speed on every row
+        assert (part["in_target_window"]
+                == part["entry_speed"].between(s_low, s_high)).all()
+    # the fixture's Combine turns are all inside its 2-6 window
+    comb = csv_df[csv_df["setting"] == "combine"]
+    assert comb["in_target_window"].all()
+
+
+def test_band_only_prints_ranges_and_the_point(rendered):
+    fig, table, context, cfg = _bo_build(rendered)
+    try:
+        texts = " ".join(_sc_texts(fig).split())
+        r = context["ranges"]
+        assert (f"{r['combine_entry']['min']:.1f}–"
+                f"{r['combine_entry']['max']:.1f} yd/s") in texts
+        assert (f"{r['game_entry']['min']:.1f}–"
+                f"{r['game_entry']['max']:.1f} yd/s") in texts
+        assert (f"{context['inside_window']['game']} of "
+                f"{context['by_setting']['game']} game turns") in texts
+        assert "samples only the slow end" in texts
+        for row in context["combine_rows"]:
+            assert row["drill_label"] in texts, "a Combine drill is unlabelled"
+        assert "not a distribution" in texts
+        assert "confidence ellipse" in texts
+        assert len(fig.axes) == 1, "the band must be one panel, not a grid"
+        ax = fig.axes[0]
+        assert len(ax.texts) == context["by_setting"]["combine"] + 1
+    finally:
+        _sc_close(fig)
+
+
+def test_band_only_draws_no_curve_fit_box_or_ellipse(rendered):
+    import inspect
+    from matplotlib.collections import PathCollection
+    from matplotlib.patches import Ellipse, Rectangle
+
+    from bdb27 import figures
+
+    for fn in (figures.band_only_table, figures.plot_band_only,
+               figures._band_only_caption, figures.band_only_csv_frame,
+               figures.band_only_manifest_payload):
+        src = inspect.getsource(fn)
+        for token in ("gaussian_kde(", "kdeplot", "polyfit", "linregress",
+                      "lowess", "Ellipse(", "boxplot(", "violinplot(",
+                      "conf_int", "stderr", "ttest"):
+            assert token not in src, f"{fn.__name__} references {token!r}"
+
+    fig, table, context, cfg = _bo_build(rendered)
+    try:
+        ax = fig.axes[0]
+        assert len(ax.lines) == 0, "no line artist belongs in this figure"
+        assert len(ax.images) == 0, "no raster/density layer may be drawn"
+        assert all(isinstance(c, PathCollection) for c in ax.collections)
+        assert len(ax.collections) == 2, "one scatter layer per setting"
+        assert len(ax.patches) == 1
+        assert isinstance(ax.patches[0], Rectangle)
+        assert not any(isinstance(p, Ellipse) for p in ax.patches)
+        # one marker per turn, at the drawn coordinate
+        sizes = [len(c.get_offsets()) for c in ax.collections]
+        assert sorted(sizes) == sorted(
+            [context["by_setting"]["combine"], context["by_setting"]["game"]])
+    finally:
+        _sc_close(fig)
+
+
+def test_band_only_offset_is_recorded_and_moves_no_combine_turn(rendered):
+    csv_df = pd.read_csv(rendered["bnd_csv"])
+    assert {"x_offset_yd_s", "y_offset_deg", "dodge_pair"} <= set(csv_df.columns)
+    assert np.allclose(csv_df["x_draw"],
+                       csv_df["entry_speed"] + csv_df["x_offset_yd_s"])
+    assert (csv_df["y_draw"] == csv_df["abs_turn_angle"]).all()
+    assert (csv_df["y_offset_deg"] == 0.0).all()
+    comb = csv_df[csv_df["setting"] == "combine"]
+    assert (comb["x_offset_yd_s"] == 0.0).all(), "a Combine dot was moved"
+    assert (comb["dodge_pair"] == -1).all()
+    moved = csv_df[csv_df["x_offset_yd_s"] != 0.0]
+    assert len(moved) % 2 == 0
+    assert set(np.round(moved["x_offset_yd_s"].abs().unique(), 6)) <= {0.04}
+    # every dodged pair is one +step/2 and one -step/2, same order in the CSV
+    for pid, part in moved.groupby("dodge_pair"):
+        assert len(part) == 2, f"pair {pid} does not hold two turns"
+        assert np.isclose(float(part["x_offset_yd_s"].sum()), 0.0)
+    # no offset moved a turn out of the target window
+    inside = csv_df["in_target_window"]
+    assert csv_df.loc[inside, "x_draw"].between(
+        csv_df.loc[inside, "speed_window_low_yd_s"],
+        csv_df.loc[inside, "speed_window_high_yd_s"]).all()
+
+
+def test_band_only_names_drills_not_players(rendered):
+    from bdb27 import common
+
+    cfg = common.load_config(rendered["cfg"])
+    df, _ = _bo_recount(rendered)
+    csv_df = pd.read_csv(rendered["bnd_csv"])
+    for col in csv_df.columns:
+        assert "name" not in col.lower(), f"CSV exposes {col!r}"
+    assert csv_df[csv_df["setting"] == "game"]["drill"].fillna("").eq("").all()
+    comb = csv_df[csv_df["setting"] == "combine"]
+    assert comb["drill"].notna().all()
+    assert set(comb["drill"]) == set(
+        df[df["setting"] == "combine"]["drill_name"].astype(str))
+    fig, table, context, _ = _bo_build(rendered)
+    try:
+        texts = _sc_texts(fig)
+        for pid in df["nfl_id"].dropna().unique():
+            assert str(int(pid)) not in texts
+        man = json.loads(rendered["manifest"].read_text())
+        flat = json.dumps(man["figures"][BO_KEY]).lower()
+        assert "player_name" not in flat
+        assert "nfl_id" not in flat
+        assert context["combine_players"] == int(
+            df[df["setting"] == "combine"]["nfl_id"].nunique())
+        sizes = df[df["setting"] == "combine"].groupby("nfl_id").size()
+        assert context["combine_turns_in_shared"] == int(
+            sum(int(c) for c in sizes if int(c) > 1))
+    finally:
+        _sc_close(fig)
+
+
+def test_band_only_manifest_entry(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][BO_KEY]
+    df, (low, high, s_low, s_high) = _bo_recount(rendered)
+    assert fig["figure"] == BO_KEY
+    assert fig["stamp"] == STAMP
+    assert fig["sources"] == ["outputs/turns/turns.parquet"]
+    assert fig["band"]["abs_turn_angle_deg"] == [low, high]
+    assert fig["band"]["other_bands_drawn"] is False
+    assert fig["target_window"]["entry_speed_yd_s"] == [s_low, s_high]
+    assert fig["target_window"]["red_marks_data"] is False
+    assert fig["population"]["turns"] == len(df)
+    assert fig["population"]["by_setting"] == \
+        df["setting"].value_counts().to_dict()
+    for setting in ("combine", "game"):
+        part = df[df["setting"] == setting]
+        entry = fig["entry_speed_yd_s"][setting]
+        assert np.isclose(entry["min"], part["entry_speed"].min())
+        assert np.isclose(entry["max"], part["entry_speed"].max())
+        assert np.isclose(entry["median"], float(np.median(part["entry_speed"])))
+    d = fig["drawing"]
+    assert d["one_dot_per_turn"] is True
+    for key in ("density_curve", "fit", "box_plot", "confidence_ellipse",
+                "mean_or_interval", "jitter"):
+        assert d[key] is False, f"manifest claims {key}"
+    assert d["dodge"]["combine_points_moved"] == 0
+    assert d["dodge"]["recorded_per_row"] == ["x_offset_yd_s",
+                                              "y_offset_deg"]
+    assert any("a list" in line.lower() for line in fig["not_claimed"])
+    assert fig["png"].endswith("fig_band_only.png")
+    assert fig["csv"].endswith("fig_band_only.csv")
+
+
+def test_band_only_two_runs_are_byte_identical(rendered):
+    before = hashlib.sha256(rendered["bnd_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["bnd_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 15 differ"
+
+
+def test_band_only_leaves_figures_1_to_14_untouched(rendered):
+    keys = ["png", "drill_png", "ba_png", "ds_png", "ap_png", "ml_png",
+            "gh_png", "tc_png", "sw_png", "bh_png", "ss_png", "lg_png",
+            "bd_png", "sc_png"]
+    csv_keys = ["csv", "drill_csv", "ba_csv", "ds_csv", "ap_csv", "ml_csv",
+                "gh_csv", "tc_csv", "sw_csv", "bh_csv", "ss_csv", "lg_csv",
+                "bd_csv", "sc_csv"]
+    before_png = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+                  for k in keys}
+    before_csv = {k: hashlib.sha256(rendered[k].read_bytes()).hexdigest()
+                  for k in csv_keys}
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    for k in keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == \
+            before_png[k], f"{k} changed: figure 15 must not alter figures 1-14"
+    for k in csv_keys:
+        assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == \
+            before_csv[k], f"{k} changed: figure 15 must not alter figures 1-14"
+
+
+def test_band_only_refuses_and_checks_can_fail(rendered):
+    from bdb27 import common, figures
+
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    good = pd.read_csv(rendered["bnd_csv"])
+    df, _ = _bo_recount(rendered)
+
+    bad = good.copy()
+    bad.loc[bad.index[0], "abs_turn_angle"] = 45.0
+    assert not bad["abs_turn_angle"].between(30, 45, inclusive="left").all()
+
+    wrong = good.copy()
+    idx = int(wrong.index[wrong["setting"] == "game"][0])
+    wrong.loc[idx, "in_target_window"] = not bool(
+        wrong.loc[idx, "in_target_window"])
+    assert int(wrong[wrong["setting"] == "game"]["in_target_window"].sum()) != \
+        int(((df[df["setting"] == "game"]["entry_speed"] >= 2)
+             & (df[df["setting"] == "game"]["entry_speed"] <= 6)).sum())
+
+    with pytest.raises(common.StageRefused):
+        figures.band_only_table(turns.iloc[0:0], cfg)
+
+    no_speed = turns.drop(columns=["entry_speed"])
+    with pytest.raises(common.StageRefused):
+        figures.band_only_table(no_speed, cfg)
+
+    only_games = turns[turns["setting"] != "combine"]
+    with pytest.raises(common.StageRefused):
+        figures.band_only_table(only_games, cfg)

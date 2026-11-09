@@ -7691,3 +7691,557 @@ def supply_composition_manifest_payload(table: pd.DataFrame, context: dict,
         "png": f"outputs/figures/{FIGURE_KEY_SUPPLY_COMPOSITION}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_SUPPLY_COMPOSITION}.csv",
     }
+
+
+# ------------- figure 15: the 30-45 degree band on its own
+#: Added at Conor's request (2026-11-09); it is not derived from a TASK.md line.
+#:
+#: One panel, one band. Every valid DB turn whose absolute angle lies in
+#: [30, 45), drawn once: x = entry speed, y = absolute turn angle. No other
+#: band appears on either axis, so the panel answers "what does this band look
+#: like by itself?" rather than "how big is it next to the others?".
+#:
+#: The Combine side is four points. Four points are a LIST, not a
+#: distribution: no density curve, no fit, no box plot, no confidence ellipse,
+#: no mean and no interval is drawn. The only drawing device is a stated
+#: horizontal separation for turns whose dots would land on top of each other.
+FIGURE_KEY_BAND_ONLY = "fig_band_only"
+
+BAND_ONLY_COLUMNS = [
+    "setting",
+    "abs_turn_angle",
+    "entry_speed",
+    "position_group",
+    "nfl_id",
+    "drill_name",
+    "valid",
+]
+
+
+def load_band_only_turns(path: Path) -> pd.DataFrame:
+    """Read the columns figure 15 needs; refuse if entry speed is absent."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the per-turn table is absent ({path}) — run 02_turns first")
+    df = pd.read_parquet(path)
+    if df.empty:
+        raise common.StageRefused(f"{STAGE}: turns.parquet is empty")
+    missing = [c for c in BAND_ONLY_COLUMNS if c not in df.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet has no {missing} column(s); figure 15 "
+            "places every turn by its entry speed and cannot invent one")
+    return df[BAND_ONLY_COLUMNS]
+
+
+def band_only_table(turns: pd.DataFrame,
+                    cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """One row per valid DB turn in the band, with its drawn coordinates.
+
+    ``x_draw`` differs from ``entry_speed`` only where a pair of dots would
+    coincide; the offset is recorded and is a drawing device, never a measured
+    value. ``abs_turn_angle`` is the measured y for every row.
+    """
+    block = "figures.band_only"
+    position = str(cfg.get(f"{block}.position_group"))
+    low, high = (float(x) for x in cfg.get(f"{block}.angle_band_deg"))
+    speed_low, speed_high = (float(x) for x in
+                             cfg.get(f"{block}.speed_window_yd_s"))
+    radius_x = float(cfg.get(f"{block}.dodge.radius_yd_s"))
+    radius_y = float(cfg.get(f"{block}.dodge.radius_deg"))
+    step = float(cfg.get(f"{block}.dodge.step_yd_s"))
+    if high <= low:
+        raise common.StageRefused(
+            f"{STAGE}: figures.band_only.angle_band_deg must be increasing")
+    if speed_high <= speed_low:
+        raise common.StageRefused(
+            f"{STAGE}: figures.band_only.speed_window_yd_s must be increasing")
+    if step <= 0 or radius_x <= 0 or radius_y <= 0:
+        raise common.StageRefused(
+            f"{STAGE}: figures.band_only.dodge values must be positive")
+    focus = focus_band(cfg)
+    if (focus["low"], focus["high"]) != (low, high):
+        raise common.StageRefused(
+            f"{STAGE}: figures.band_only.angle_band_deg {low:g}-{high:g} is "
+            f"not the {focus['label']} focus band; the target window would "
+            "mark a band the rest of the stage does not use")
+    missing = [c for c in BAND_ONLY_COLUMNS if c not in turns.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: the turn table has no {missing} column(s); figure 15 "
+            "cannot place a turn by its entry speed")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    entry = pd.to_numeric(turns["entry_speed"], errors="coerce")
+    scope = valid & (turns["position_group"] == position) & angle.notna()
+    band = turns[scope & (angle >= low) & (angle < high)].copy()
+    if band.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} turns in [{low:g}, {high:g}) — "
+            "nothing to draw")
+    band["abs_turn_angle"] = pd.to_numeric(band["abs_turn_angle"],
+                                           errors="coerce")
+    band["entry_speed"] = pd.to_numeric(band["entry_speed"], errors="coerce")
+    if band["entry_speed"].isna().any():
+        raise common.StageRefused(
+            f"{STAGE}: {int(band['entry_speed'].isna().sum())} band turns have "
+            "no numeric entry_speed; the x axis cannot be drawn without it")
+    for setting in ("combine", "game"):
+        if not (band["setting"] == setting).any():
+            raise common.StageRefused(
+                f"{STAGE}: no valid {position} {setting} turns in "
+                f"[{low:g}, {high:g}) — the figure needs both settings")
+    combine_drill = band.loc[band["setting"] == "combine", "drill_name"]
+    if combine_drill.isna().any():
+        raise common.StageRefused(
+            f"{STAGE}: a valid Combine band turn carries no drill_name; the "
+            "figure names each Combine turn by the drill that produced it")
+
+    band["setting_label"] = band["setting"].map(
+        {"combine": COMBINE_LABEL, "game": GAME_LABEL})
+    band["drill"] = np.where(
+        band["setting"].to_numpy() == "combine",
+        band["drill_name"].fillna("").astype(str).to_numpy(),
+        "")
+    band["drill_label"] = [
+        shallow_drill_label(d) if d else "" for d in band["drill"]]
+
+    # ---- the only drawing offset: separate near-coincident pairs along x.
+    # Deterministic greedy pairing in (speed, angle, setting) order. A point is
+    # in at most one pair, so a long chain of near neighbours cannot fan out
+    # into a fabricated speed range.
+    order = band.sort_values(["entry_speed", "abs_turn_angle", "setting"],
+                             kind="mergesort").index.to_numpy()
+    x = band.loc[order, "entry_speed"].to_numpy(dtype=float)
+    y = band.loc[order, "abs_turn_angle"].to_numpy(dtype=float)
+    n = len(order)
+    paired = np.zeros(n, dtype=bool)
+    offsets = np.zeros(n, dtype=float)
+    pair_id = np.full(n, -1, dtype=int)
+    next_pair = 0
+    for i in range(n):
+        if paired[i]:
+            continue
+        for j in range(i + 1, n):
+            if paired[j]:
+                continue
+            if abs(x[i] - x[j]) <= radius_x and abs(y[i] - y[j]) <= radius_y:
+                offsets[i] = -step / 2.0
+                offsets[j] = step / 2.0
+                paired[i] = paired[j] = True
+                pair_id[i] = pair_id[j] = next_pair
+                next_pair += 1
+                break
+    band.loc[order, "x_offset_yd_s"] = offsets
+    band.loc[order, "dodge_pair"] = pair_id
+    band["y_offset_deg"] = 0.0
+    band["x_draw"] = band["entry_speed"] + band["x_offset_yd_s"]
+    band["y_draw"] = band["abs_turn_angle"] + band["y_offset_deg"]
+
+    in_window = ((band["entry_speed"] >= speed_low)
+                 & (band["entry_speed"] <= speed_high))
+    if in_window.any():
+        moved = band.loc[in_window]
+        if ((moved["x_draw"] < speed_low)
+                | (moved["x_draw"] > speed_high)).any():
+            raise common.StageRefused(
+                f"{STAGE}: the drawing offset moved a turn that was inside "
+                "the speed window outside it; the window would lie")
+    if not band["y_draw"].between(low, high, inclusive="left").all():
+        raise ValueError(
+            f"{STAGE}: a drawn angle left the half-open band "
+            f"[{low:g}, {high:g})")
+
+    band["in_target_window"] = in_window
+    band["band_low_deg"] = low
+    band["band_high_deg"] = high
+    band["speed_window_low_yd_s"] = speed_low
+    band["speed_window_high_yd_s"] = speed_high
+    band["dodge_step_yd_s"] = step
+
+    band["abs_turn_angle"] = pd.to_numeric(band["abs_turn_angle"],
+                                           errors="coerce")
+    band = band.sort_values(["abs_turn_angle", "entry_speed", "setting"],
+                            kind="mergesort").reset_index(drop=True)
+    band["row_order"] = np.arange(len(band), dtype=int)
+
+    by_setting = {s: int((band["setting"] == s).sum())
+                  for s in ("combine", "game")}
+    if sum(by_setting.values()) != len(band):
+        raise ValueError(f"{STAGE}: the per-setting counts do not sum to the "
+                         "band population")
+    ranges: dict[str, dict[str, float]] = {}
+    for setting in ("combine", "game"):
+        part = band[band["setting"] == setting]
+        for col, key in (("entry_speed", "entry"), ("abs_turn_angle", "angle")):
+            values = part[col].astype(float)
+            ranges[f"{setting}_{key}"] = {
+                "min": float(values.min()),
+                "median": float(np.median(values)),
+                "max": float(values.max()),
+            }
+    inside = {s: int(band[(band["setting"] == s)
+                          & band["in_target_window"]].shape[0])
+              for s in ("combine", "game")}
+    outside_fast = {s: int(band[(band["setting"] == s)
+                                & (band["entry_speed"] > speed_high)].shape[0])
+                    for s in ("combine", "game")}
+    outside_slow = {s: int(band[(band["setting"] == s)
+                                & (band["entry_speed"] < speed_low)].shape[0])
+                    for s in ("combine", "game")}
+    combine_part = band[band["setting"] == "combine"]
+    player_turns = combine_part.groupby("nfl_id").size()
+    combine_players = int(combine_part["nfl_id"].nunique())
+    shared = {int(pid): int(c) for pid, c in player_turns.items() if int(c) > 1}
+    combine_rows = [
+        {"number": i + 1, "drill": str(row.drill),
+         "drill_label": str(row.drill_label),
+         "entry_speed": float(row.entry_speed),
+         "abs_turn_angle": float(row.abs_turn_angle)}
+        for i, row in enumerate(combine_part.sort_values(
+            "abs_turn_angle", kind="mergesort").itertuples(index=False))
+    ]
+    n_pairs = int((band["dodge_pair"] >= 0).sum() // 2)
+    n_dodged = int((band["dodge_pair"] >= 0).sum())
+    combine_pairs = band.loc[band["setting"] == "combine", "dodge_pair"]
+    if len(combine_pairs) and int(combine_pairs.max()) >= 0:
+        raise ValueError(
+            f"{STAGE}: a Combine turn was moved; the dodge is only for "
+            "coincident game dots")
+
+    context = {
+        "position": position,
+        "angle_low": low,
+        "angle_high": high,
+        "speed_low": speed_low,
+        "speed_high": speed_high,
+        "n_turns": int(len(band)),
+        "by_setting": by_setting,
+        "players": {s: int(band[band["setting"] == s]["nfl_id"].nunique())
+                    for s in ("combine", "game")},
+        "combine_players": combine_players,
+        "combine_shared_players": shared,
+        "combine_turns_in_shared": int(sum(shared.values())),
+        "shared_phrase": (
+            (f", and {sum(shared.values())} of the {len(combine_part)} come "
+             "from the same player")
+            if shared else ", and no player supplies more than one"),
+        "combine_rows": combine_rows,
+        "ranges": ranges,
+        "inside_window": inside,
+        "outside_fast": outside_fast,
+        "outside_slow": outside_slow,
+        "dodge_pairs": n_pairs,
+        "dodged_points": n_dodged,
+        "dodge_step": step,
+    }
+    return band, context
+
+
+def band_only_csv_frame(table: pd.DataFrame, context: dict) -> pd.DataFrame:
+    """One row per turn: measured coordinates, drawn coordinates, drill, flags."""
+    columns = [
+        "row_order", "setting", "setting_label", "position_group",
+        "abs_turn_angle", "entry_speed", "drill", "drill_label",
+        "x_offset_yd_s", "y_offset_deg", "x_draw", "y_draw",
+        "dodge_pair", "in_target_window", "band_low_deg", "band_high_deg",
+        "speed_window_low_yd_s", "speed_window_high_yd_s", "dodge_step_yd_s",
+    ]
+    return table[columns].reset_index(drop=True)
+
+
+def _band_only_caption(context: dict) -> list[str]:
+    """Caption lines; every number comes from the rendered table."""
+    r = context["ranges"]
+    c, g = context["by_setting"]["combine"], context["by_setting"]["game"]
+    ci, gi = context["inside_window"]["combine"], context["inside_window"]["game"]
+    fast = context["outside_fast"]["game"]
+    slow = context["outside_slow"]["game"]
+    drills = "; ".join(
+        f"{row['number']} {row['drill_label']} ({row['entry_speed']:.2f} yd/s, "
+        f"{row['abs_turn_angle']:.1f}°)"
+        for row in context["combine_rows"])
+    return [
+        STAMP,
+        (f"WHAT THIS IS. One panel, one band: every valid "
+         f"{context['position']} turn whose absolute angle lies in "
+         f"[{context['angle_low']:g}, {context['angle_high']:g}) — "
+         f"{context['n_turns']} turns, no other band on either axis. "
+         f"x = entry speed in yd/s, y = absolute turn angle in degrees. "
+         f"Combine in the accent blue ({c} turns), games in grey ({g}). The "
+         "red outline and light tint are the case's target window "
+         f"({context['speed_low']:g}–{context['speed_high']:g} yd/s by "
+         f"{context['angle_low']:g}–{context['angle_high']:g}°), styled from "
+         "figures.focus_band; red marks the window, never a data point. Every "
+         "count is recomputed from outputs/turns/turns.parquet at render time."),
+        (f"THE POINT, WITH THE NUMBERS. The {c} Combine turns sit at "
+         f"{r['combine_entry']['min']:.2f}–{r['combine_entry']['max']:.2f} "
+         f"yd/s (median {r['combine_entry']['median']:.2f}); the {g} game "
+         f"turns run {r['game_entry']['min']:.2f}–"
+         f"{r['game_entry']['max']:.2f} yd/s (median "
+         f"{r['game_entry']['median']:.2f}). All {ci} of {c} Combine turns "
+         f"are inside the {context['speed_low']:g}–{context['speed_high']:g} "
+         f"window, as are {gi} of {g} game turns"
+         f"{f'; the {fast} game turns outside it are all faster than ' + format(context['speed_high'], 'g') + ' yd/s' if fast else ''}"
+         f"{f' and {slow} game turns are slower than it' if slow else ''}. "
+         "Within the one band that looks nominally covered, the Combine "
+         "samples only the slow end of the speed range games use."),
+        (f"FOUR POINTS ARE A LIST, NOT A DISTRIBUTION. The Combine side is {c} "
+         "turns, not a distribution: four points cannot support a density "
+         "curve, a fit, a box plot or a confidence ellipse, and none is "
+         "drawn. No mean, no interval, no smoothing. What the figure cannot "
+         f"show is any Combine turn at game speed: the sample has none in "
+         f"this band above {r['combine_entry']['max']:.2f} yd/s, so a Combine "
+         "distribution at those speeds cannot be estimated from it — only "
+         "stated as absent here."),
+        (f"WHO THE {c} ARE, AND WHO THEY ARE NOT. They are turns, not players: "
+         f"{c} valid Combine turns from {context['combine_players']} players"
+         f"{context['shared_phrase']}. Each is an incidental fragment of a "
+         "drill built for "
+         "another purpose (figure 11), and the drills are printed under the "
+         f"axis: {drills}. No player name or id appears in this figure, its "
+         "CSV or its manifest."),
+        (f"DOTS, AND THE ONE DRAWING OFFSET. One dot per turn at its measured "
+         f"coordinates. {context['dodge_pairs']} pairs of game turns would sit "
+         f"on top of each other; each pair is separated by "
+         f"{context['dodge_step']:.2f} yd/s along the speed axis "
+         f"({context['dodge_step'] / 2:.2f} each side) purely so two dots are "
+         "visible, and no Combine dot is moved. The offset is written per row "
+         "in the CSV (x_offset_yd_s, y_offset_deg); the measured entry speed "
+         "and angle are unchanged. No jitter is used anywhere else."),
+        ("WHAT IS NOT HERE. No other angle band, no pooled comparison, no "
+         "player-level value, no inference, no p-value. Game turns come from "
+         "whatever snaps the sample contains and the Combine from one session "
+         "of drills; the two are not sampled alike, and nothing here compares "
+         "them beyond their own measured ranges. Sample data: one session of "
+         "sample data; nothing here is a finding about the 2027 class. Every "
+         f"value is in outputs/figures/{FIGURE_KEY_BAND_ONLY}.csv."),
+    ]
+
+
+def plot_band_only(table: pd.DataFrame, context: dict,
+                   cfg: common.Config) -> plt.Figure:
+    """One dot per turn on speed x angle, with the band's window outlined."""
+    from matplotlib.colors import to_rgba
+    from matplotlib.lines import Line2D  # noqa: F401  (kept for future legends)
+
+    block = "figures.band_only"
+    focus = focus_band(cfg)
+    tint = to_rgba(focus["colour"], focus["tint_alpha"])
+    low, high = context["angle_low"], context["angle_high"]
+    s_low, s_high = context["speed_low"], context["speed_high"]
+    c = context["by_setting"]["combine"]
+    g = context["by_setting"]["game"]
+    r = context["ranges"]
+
+    fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
+                              float(cfg.get(f"{block}.height_in"))))
+    ax = fig.add_axes([0.085, 0.355, 0.890, 0.505])
+    ax.set_facecolor("#EBEBEB")
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color("#B3B3B3")
+    ax.tick_params(axis="both", labelsize=9.0, colors="#333333", length=2)
+    ax.set_axisbelow(True)
+
+    ax.add_patch(plt.Rectangle((s_low, low), s_high - s_low, high - low,
+                               facecolor=tint, edgecolor=focus["colour"],
+                               linewidth=focus["outline_width"], zorder=1))
+    ax.text((s_low + s_high) / 2.0, high + 0.32,
+            f"target window: {s_low:g}–{s_high:g} yd/s × "
+            f"{low:g}–{high:g}°",
+            ha="center", va="bottom", fontsize=9.2, fontweight="bold",
+            color=focus["colour"], zorder=6)
+
+    game = table[table["setting"] == "game"]
+    combine = table[table["setting"] == "combine"]
+    ax.scatter(game["x_draw"], game["y_draw"], s=26,
+               color=BARS_GREY, alpha=0.80, edgecolor="white",
+               linewidth=0.45, zorder=3)
+    ax.scatter(combine["x_draw"], combine["y_draw"], s=95,
+               color=PALETTE["combine"], alpha=0.95, edgecolor="white",
+               linewidth=0.9, zorder=5)
+    for i, row in enumerate(combine.sort_values(
+            "abs_turn_angle", kind="mergesort").itertuples(index=False)):
+        ax.text(float(row.x_draw), float(row.y_draw), str(i + 1),
+                ha="center", va="center", fontsize=7.0, fontweight="bold",
+                color="white", zorder=6)
+
+    ax.set_xlim(1.75, 8.35)
+    ax.set_ylim(low - 0.45, high + 1.35)
+    ax.set_xticks([2, 3, 4, 5, 6, 7, 8])
+    ax.set_yticks([30, 33, 36, 39, 42, 45])
+    ax.grid(axis="y", color="white", linewidth=0.8, zorder=0)
+    ax.grid(axis="x", color="white", linewidth=0.8, zorder=0)
+    ax.set_xlabel("Entry speed (yd/s)", fontsize=9.6, color="#333333",
+                  labelpad=6)
+    ax.set_ylabel("Absolute turn angle (°)", fontsize=9.6, color="#333333",
+                  labelpad=6)
+
+    fig.text(0.010, 0.978, "The band on its own: 30–45° in the Combine and "
+             "in games", fontsize=17.5, fontweight="bold", ha="left",
+             va="top", color="#111111")
+    fig.text(0.010, 0.938,
+             f"One dot per valid DB turn with an absolute angle in "
+             f"[{low:g}, {high:g})° — Combine in blue ({c}), games in grey "
+             f"({g}). No other angle band is on either axis.",
+             fontsize=9.2, ha="left", va="top", color="#333333")
+    fig.text(0.010, 0.911,
+             f"The {c} Combine turns sit at "
+             f"{r['combine_entry']['min']:.1f}–"
+             f"{r['combine_entry']['max']:.1f} yd/s; games run "
+             f"{r['game_entry']['min']:.1f}–{r['game_entry']['max']:.1f} yd/s "
+             f"({context['inside_window']['game']} of {g} game turns are "
+             f"inside the window).",
+             fontsize=9.2, ha="left", va="top", color="#222222")
+
+    key = " · ".join(
+        f"{row['number']} {row['drill_label']} "
+        f"({row['entry_speed']:.2f} yd/s, {row['abs_turn_angle']:.1f}°)"
+        for row in context["combine_rows"])
+    fig.text(0.010, 0.291, f"The {c} Combine turns, by drill: {key}",
+             fontsize=8.0, ha="left", va="top", color="#333333")
+
+    caption = "\n".join(_wrap_text(line, 170)
+                        for line in _band_only_caption(context))
+    fig.text(0.010, 0.010, caption, ha="left", va="bottom", fontsize=6.0,
+             color="#333333", linespacing=1.30)
+    return fig
+
+
+def render_band_only(fig: plt.Figure, cfg: common.Config,
+                     out_png: Path) -> Path:
+    """Save figure 15 once with fixed metadata, so two runs are identical."""
+    dpi = int(cfg.get("figures.band_only.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def band_only_manifest_payload(table: pd.DataFrame, context: dict,
+                               cfg: common.Config) -> dict:
+    """Figure 15's manifest entry: the band, both ranges, and what is absent."""
+    c = context["by_setting"]["combine"]
+    g = context["by_setting"]["game"]
+    if int(len(table)) != context["n_turns"]:
+        raise ValueError(f"{STAGE}: manifest counts do not match the table")
+    if int(table["setting"].eq("combine").sum()) != c:
+        raise ValueError(f"{STAGE}: table Combine count does not match")
+    if int(table["setting"].eq("game").sum()) != g:
+        raise ValueError(f"{STAGE}: table game count does not match")
+    r = context["ranges"]
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_BAND_ONLY,
+        "title": "The band on its own: 30–45° in the Combine and in games",
+        "sources": ["outputs/turns/turns.parquet"],
+        "band": {
+            "position_group": context["position"],
+            "abs_turn_angle_deg": [context["angle_low"],
+                                   context["angle_high"]],
+            "rule": "valid turns, left-closed on abs_turn_angle_deg",
+            "other_bands_drawn": False,
+        },
+        "target_window": {
+            "entry_speed_yd_s": [context["speed_low"], context["speed_high"]],
+            "abs_turn_angle_deg": [context["angle_low"],
+                                   context["angle_high"]],
+            "styling": "figures.focus_band (colour, tint, outline width)",
+            "red_marks_data": False,
+            "turns_inside": {
+                "combine": context["inside_window"]["combine"],
+                "game": context["inside_window"]["game"],
+            },
+        },
+        "population": {
+            "turns": context["n_turns"],
+            "by_setting": context["by_setting"],
+            "players_by_setting": context["players"],
+            "combine_players": context["combine_players"],
+            "combine_turns_from_a_shared_player":
+                context["combine_turns_in_shared"],
+            "combine_is_a_list_not_a_distribution": True,
+            "combine_turns": context["combine_rows"],
+        },
+        "entry_speed_yd_s": {
+            "combine": r["combine_entry"],
+            "game": r["game_entry"],
+        },
+        "turn_angle_deg": {
+            "combine": r["combine_angle"],
+            "game": r["game_angle"],
+        },
+        "drawing": {
+            "one_dot_per_turn": True,
+            "density_curve": False,
+            "fit": False,
+            "box_plot": False,
+            "confidence_ellipse": False,
+            "mean_or_interval": False,
+            "jitter": False,
+            "dodge": {
+                "axis": "entry speed",
+                "reason": ("pairs of game dots would coincide; each pair is "
+                           "separated only so two dots are visible"),
+                "pairs": context["dodge_pairs"],
+                "points_moved": context["dodged_points"],
+                "step_yd_s": context["dodge_step"],
+                "combine_points_moved": 0,
+                "recorded_per_row": ["x_offset_yd_s", "y_offset_deg"],
+            },
+        },
+        "claim": (f"In the {context['angle_low']:g}–"
+                  f"{context['angle_high']:g}° DB band the {c} Combine turns "
+                  f"sit at {r['combine_entry']['min']:.2f}–"
+                  f"{r['combine_entry']['max']:.2f} yd/s while the {g} game "
+                  f"turns run {r['game_entry']['min']:.2f}–"
+                  f"{r['game_entry']['max']:.2f} yd/s; all {c} Combine turns "
+                  f"and {context['inside_window']['game']} of {g} game turns "
+                  f"are inside the {context['speed_low']:g}–"
+                  f"{context['speed_high']:g} yd/s window, so within this one "
+                  "band the Combine samples only the slow end of the speed "
+                  "range games use."),
+        "not_claimed": [
+            "That the Combine turns are a distribution, a mean, or a typical "
+            "value; four points are a list.",
+            "That any Combine turn exists at game speeds in this band; the "
+            "sample has none.",
+            (f"That the {c} Combine turns are {c} players; they are {c} "
+             f"turns from {context['combine_players']} players."),
+            "That the two settings are sampled alike or that the gap is a "
+            "shortfall of ability.",
+            "Anything about the 2027 class; this is one session of sample data.",
+        ],
+        "caveats": [
+            ("One dot per turn at its measured coordinates. "
+             f"{context['dodge_pairs']} pairs of near-coincident game turns "
+             f"are separated by {context['dodge_step']:.2f} yd/s for drawing; "
+             "the measured speed and angle are unchanged in the CSV."),
+            ("No density curve, fit, box plot, confidence ellipse, mean or "
+             "interval is drawn: four Combine points cannot support any of "
+             "them."),
+            (f"The {c} Combine turns are incidental fragments of drills built "
+             "for other purposes (figure 11)"
+             + ("; two of the four come from the same player."
+                if context["combine_turns_in_shared"] == 2 and c == 4
+                else f"; {context['combine_turns_in_shared']} of the {c} come "
+                     "from one player."
+                if context["combine_turns_in_shared"] else
+                "; no player supplies more than one.")),
+            ("No player names or ids appear in the figure, the CSV or this "
+             "entry."),
+            ("Sample data: one session of sample data; nothing here is a "
+             "finding about the 2027 class."),
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_BAND_ONLY}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_BAND_ONLY}.csv",
+    }
