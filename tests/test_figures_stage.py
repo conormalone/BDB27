@@ -165,6 +165,12 @@ def _turns_frame() -> pd.DataFrame:
                     "snap_type": snap,
                     "drill_name": drill,
                     "entry_speed": float(entry),
+                    # Figure 16 needs an exit speed and a turn duration per
+                    # turn. Exit sits a little above entry; duration is 1.0 s
+                    # in the shallow band and 2.0 s elsewhere.
+                    "exit_speed": float(
+                        entry + 0.30 + 0.01 * ((j * 3 + int(lo)) % 3)),
+                    "duration_s": float(1.0 if int(lo) == 30 else 2.0),
                     "speed_retention": float(retention),
                     "apex_retention": float(apex_retention),
                     # Figure 6 needs a real acceleration per turn. Monotone in
@@ -423,6 +429,8 @@ def rendered(tmp_path_factory):
             "sc_csv": out / "fig_supply_composition.csv",
             "bnd_png": out / "fig_band_only.png",
             "bnd_csv": out / "fig_band_only.csv",
+            "ees_png": out / "fig_entry_exit_speed.png",
+            "ees_csv": out / "fig_entry_exit_speed.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -920,7 +928,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_turn_cost", "fig_stopwatch",
                                    "fig_both_hips", "fig_shallow_sources",
                                    "fig_ledger", "fig_bars_of_doubt",
-                                   "fig_supply_composition", "fig_band_only"}
+                                   "fig_supply_composition", "fig_band_only",
+                                   "fig_entry_exit_speed"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1456,8 +1465,9 @@ def test_stage_06_manifest_lists_every_figure(rendered):
         "fig_drill_schematic", "fig_all_positions", "fig_measurement_limits",
         "fig_gap_honest", "fig_turn_cost", "fig_stopwatch", "fig_both_hips",
         "fig_shallow_sources", "fig_ledger", "fig_bars_of_doubt",
-        "fig_supply_composition", "fig_band_only"}
-    assert len(man["figures"]) == 15
+        "fig_supply_composition", "fig_band_only",
+        "fig_entry_exit_speed"}
+    assert len(man["figures"]) == 16
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -2588,7 +2598,7 @@ def test_both_hips_computes_no_symmetry_or_p_value(rendered):
 def test_both_hips_renders_every_figure(rendered):
     out = rendered["tmp"] / "outputs" / "figures"
     pngs = sorted(p.name for p in out.glob("fig_*.png"))
-    assert len(pngs) == 15, f"stage 06 must render fifteen figures, found {pngs}"
+    assert len(pngs) == 16, f"stage 06 must render sixteen figures, found {pngs}"
     assert "fig_both_hips.png" in pngs
 
 
@@ -4142,3 +4152,30 @@ def test_band_only_refuses_and_checks_can_fail(rendered):
     only_games = turns[turns["setting"] != "combine"]
     with pytest.raises(common.StageRefused):
         figures.band_only_table(only_games, cfg)
+
+
+# ------------------------------------- figure 16: entry and exit speed by band
+EES_KEY = "fig_entry_exit_speed"
+
+
+def test_entry_exit_speed_end_to_end(rendered):
+    _check_png(rendered["ees_png"])
+    csv_df = pd.read_csv(rendered["ees_csv"])
+    assert len(csv_df) == 28
+    shallow = csv_df[(csv_df["setting"] == "combine")
+                     & (csv_df["band_index"] == 0)]
+    assert len(shallow) == 2                      # entry and exit series
+    assert int(shallow["n_turns"].iloc[0]) == 4
+    assert shallow[["median_yd_s", "ci_low_yd_s", "ci_high_yd_s"]].isna().all().all()
+    assert not shallow["estimable"].any()
+    assert not shallow["drawn"].any()
+    before = hashlib.sha256(rendered["ees_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["ees_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 16 differ"
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][EES_KEY]
+    assert fig["stamp"] == STAMP
+    claim = fig["claim"].lower()
+    assert "combine" in claim and "game" in claim

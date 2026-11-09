@@ -6319,3 +6319,99 @@ kernel access beyond the PNG.
 totals, no "too small", rows sum to 1); `tests/test_focus_band.py` (config-read
 fill, distinct from the focus colour); `outputs/figures/fig_supply_composition.{png,csv}`,
 `outputs/figures/figures_manifest.json`.
+
+## D175 — Figure 16 plots entry and exit speed by angle band with a player-clustered bootstrap · 2026-11-09
+
+**What changed.** Conor asked (2026-11-09) for one more figure: entry and exit
+speed, with confidence bounds, by angle bucket. Figure 16,
+`fig_entry_exit_speed`, is one panel with seven categorical bands on the x axis
+and speed in yd/s on the y axis. Four series are dodged inside each band, in
+this order: game entry (-0.21), game exit (-0.07), Combine entry (+0.07),
+Combine exit (+0.21). Game markers are filled in `BARS_GREY`; Combine markers
+are hollow with the `#0072B2` edge; entry is a circle, exit a square, and the
+exit whisker is dashed. The focus treatment is the same one every band figure
+uses (D172): a `#C00000` tint and two rules at the 30–45° band edges, styled
+from `figures.focus_band`, plus the bold label "30–45° band". Red marks the
+band only; no data mark is recoloured. The figure does **not** declare its own
+edges: it reads `figures.hole.bands.turn_angle_deg` and
+`figures.hole.bands.overflow_label`, the shared definition figures 1, 5, 7, 8
+and 13 already use (D164). A test asserts the CSV's band edges equal that
+block, and the focus band must be band 0 or the code refuses.
+
+**Population.** Valid DB turns in both settings,
+`position_group == 'DB' & valid == True`: 2,262 game turns (33 players) and
+1,179 Combine turns (122 players), 3,441 in all. Bands are left-closed on
+`abs_turn_angle`; angles at or above 180° form the configured `>180` overflow
+class. Any valid DB turn outside the bands would stop the stage rather than be
+silently dropped.
+
+**The statistic.** The median speed, separately for entry and exit, in each of
+7 bands × 2 settings × 2 series. The interval is a **95% percentile bootstrap
+of the median that resamples players (`nfl_id`) with replacement**, because
+turns repeat within a player; it is a bootstrap interval, never a posterior.
+There are 2,000 replicates per cell and the seed base is
+`20270106 + 51515` (the per-cell label is
+`entry_exit_speed|<setting>|<band_index>|<speed_kind>`, hashed into the seed as
+in `envelope._seed`). The shared helper lives in `src/bdb27/stats.py`;
+`bootstrap_reps < 2000` is refused by config validation and by the helper.
+
+**The floor.** A cell is estimable only when it holds at least
+`min_n_for_estimate = 10` turns from at least 2 players. Below the floor the
+row is present in the CSV with NaN median and NaN bounds, `estimable=False` and
+`drawn=False`; the figure prints `combine n=4, no estimate` in the Combine blue
+and draws no point and no whisker. The Combine 30–45° bucket is exactly that
+case: 4 turns from 3 players. **Combine confidence intervals are drawn only
+where a band holds at least 10 turns.**
+
+**The two honesty clauses, verbatim.** (a) "exit speed is measured at the end
+of the detector window, not at a fixed distance, so exit > entry mostly means
+the athlete was accelerating when the window closed". (b) "the shallow 30–45°
+bucket holds short turns (median 1.0 s vs 2.0 s), so a fixed-length window
+flatters sharp cuts and the shallow bucket differently". Both appear unchanged
+in the caption and in the manifest caveats; the two durations are computed from
+`duration_s` on the game turns (band 0 median 1.0 s, bands ≥45° pooled median
+2.0 s).
+
+**The computed table** (median yd/s with the 95% player-clustered interval in
+brackets; the Combine 30–45° row has no estimate):
+
+| Band | Game n | Game entry | Game exit | Combine entry | Combine exit |
+|------|-------:|-----------|-----------|---------------|--------------|
+| 30–45° | 97 | 3.453 [3.033, 3.803] | 3.808 [3.467, 4.231] | — (n=4, no estimate) | — (n=4, no estimate) |
+| 45–60° | 229 | 3.905 [3.664, 4.359] | 4.123 [3.760, 4.530] | 3.765 [3.548, 4.120] | 5.733 [4.393, 6.694] |
+| 60–90° | 476 | 3.698 [3.586, 3.846] | 4.338 [4.142, 4.496] | 3.244 [3.129, 3.347] | 5.342 [4.902, 5.743] |
+| 90–120° | 508 | 4.091 [3.889, 4.239] | 4.350 [4.206, 4.559] | 5.453 [4.758, 5.846] | 6.270 [6.204, 6.394] |
+| 120–150° | 460 | 4.038 [3.833, 4.328] | 4.280 [4.119, 4.482] | 3.645 [3.492, 3.880] | 5.412 [5.245, 5.569] |
+| 150–180° | 307 | 3.874 [3.733, 4.194] | 4.229 [4.061, 4.384] | 4.019 [3.702, 4.202] | 5.658 [5.574, 5.738] |
+| >180° | 185 | 3.699 [3.562, 3.931] | 4.137 [3.855, 4.263] | 4.213 [4.015, 4.369] | 5.708 [5.615, 5.788] |
+
+The game exit median exceeds the game entry median in all seven bands; the
+largest shift is +0.64 yd/s in the 60–90° band. Every count, player count and
+median above matches the PM's ground-truth table.
+
+**The `>180` finding, and the class that is not `>180`.** Conor's check list
+carried 13 turns and 4.21/4.45 yd/s for the `>180` class. That is the
+`[180, 181)` subset, not the configured overflow class: the detector returns
+absolute angles well above 180 for wrap-around turns, and the configured class
+holds **185 game turns** (median entry 3.699, exit 4.137; 29 players). No 181°
+edge was invented, and the overflow label remains `>180`. Six of the seven game
+counts in the check list match exactly (97, 229, 476, 508, 460, 307), and all
+seven Combine counts match exactly (4, 22, 237, 159, 499, 128, 130); only the
+`>180` count differs, for the reason above.
+
+**Data invariance.** Figures 1–15 are untouched: all 15 PNGs are byte-identical
+to HEAD and all 15 CSVs are equal on every column except `config_sha` (which
+changes because config.yaml gained this block). Two consecutive renders of
+figure 16 are byte-identical. The only shared code changed is the new
+`stats.py` module and an added import in `figures.py`.
+
+**Evidence.** `config.yaml` (`figures.entry_exit_speed`); `src/bdb27/stats.py`
+(`cluster_bootstrap_median`, `seed_from_label`); `src/bdb27/figures.py`
+(`load_entry_exit_turns`, `entry_exit_speed_table`,
+`entry_exit_speed_csv_frame`, `_entry_exit_speed_caption`,
+`plot_entry_exit_speed`, `render_entry_exit_speed`,
+`entry_exit_speed_manifest_payload`); `src/06_figures.py`;
+`tests/test_entry_exit_speed_figure.py`; `tests/test_figures_stage.py`;
+`tests/test_focus_band.py`; `tests/test_notebook_contract.py`;
+`outputs/figures/fig_entry_exit_speed.{png,csv}`,
+`outputs/figures/figures_manifest.json`.

@@ -1,4 +1,4 @@
-"""Stage 06 — figures 1-15.
+"""Stage 06 — figures 1-16.
 
   1. "The Hole"         — DB supply vs demand by turn-angle band.
   2. "Drill coverage"   — what each DB drill asks for (angle x entry speed).
@@ -61,6 +61,12 @@
                           against games, with the 2-6 yd/s target window
                           outlined. Four Combine points are a list, not a
                           distribution: no curve, fit, box or ellipse.
+ 16. "Entry and exit speed by angle band" — median entry and exit speed for
+                          valid DB turns in every reporting band, with 95%
+                          player-clustered percentile bootstrap whiskers;
+                          game and Combine are dodged on one axis. A bucket
+                          below the ten-turn floor (the Combine 30-45 degree
+                          bucket holds four turns) is annotated, never drawn.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -435,6 +441,23 @@ def main(argv=None) -> int:
         bo_payload["stamp"] = figures.STAMP
         _write_manifest(bo_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 16: entry and exit speed by angle band
+        ees_turns = figures.load_entry_exit_turns(turns_path)
+        ees_table, ees_context = figures.entry_exit_speed_table(ees_turns, cfg)
+        ees_csv = figures.entry_exit_speed_csv_frame(ees_table, ees_context)
+        ees_png = outdir / f"{figures.FIGURE_KEY_ENTRY_EXIT_SPEED}.png"
+        ees_csv_path = outdir / f"{figures.FIGURE_KEY_ENTRY_EXIT_SPEED}.csv"
+        common.write_csv(ees_csv, ees_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.STAMP,
+                                "figure":
+                                    figures.FIGURE_KEY_ENTRY_EXIT_SPEED})
+        ees_fig = figures.plot_entry_exit_speed(ees_table, ees_context, cfg)
+        figures.render_entry_exit_speed(ees_fig, cfg, ees_png)
+        ees_payload = figures.entry_exit_speed_manifest_payload(
+            ees_table, ees_context, cfg)
+        ees_payload["stamp"] = figures.STAMP
+        _write_manifest(ees_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -530,7 +553,14 @@ def main(argv=None) -> int:
                         f"{bo_context['ranges']['game_entry']['max']:.2f} "
                         f"inside={bo_context['inside_window']['combine']}+"
                         f"{bo_context['inside_window']['game']} "
-                        f"dodged_pairs={bo_context['dodge_pairs']} ")
+                        f"dodged_pairs={bo_context['dodge_pairs']}; "
+                        f"{figures.FIGURE_KEY_ENTRY_EXIT_SPEED}: "
+                        f"game={ees_context['totals']['turns']['game']} "
+                        f"({ees_context['totals']['players']['game']} players) "
+                        f"combine={ees_context['totals']['turns']['combine']} "
+                        f"({ees_context['totals']['players']['combine']} "
+                        f"players) rows={ees_context['table_rows']} "
+                        f"estimable={ees_context['n_estimable']} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -545,6 +575,7 @@ def main(argv=None) -> int:
           f"{bd_png.name}, {bd_csv_path.name}, "
           f"{sc_png.name}, {sc_csv_path.name}, "
           f"{bo_png.name}, {bo_csv_path.name}, "
+          f"{ees_png.name}, {ees_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -586,6 +617,11 @@ def main(argv=None) -> int:
           f"{bo_context['by_setting']['game']} game at "
           f"{bo_context['ranges']['game_entry']['min']:.1f}-"
           f"{bo_context['ranges']['game_entry']['max']:.1f} yd/s)"
+          f"; figure 16 entry/exit speeds "
+          f"{ees_context['totals']['turns']['game']} game + "
+          f"{ees_context['totals']['turns']['combine']} Combine turns, "
+          f"{ees_context['n_estimable']['combine'] // 2} of 7 Combine bands "
+          f"estimated"
           f")")
     return 0
 

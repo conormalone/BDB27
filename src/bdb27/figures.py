@@ -63,7 +63,7 @@ from plotnine import (
     theme_bw,
 )
 
-from bdb27 import common
+from bdb27 import common, stats
 
 STAGE = "06_figures"
 ARTEFACT_VERSION = 1
@@ -8278,4 +8278,699 @@ def band_only_manifest_payload(table: pd.DataFrame, context: dict,
         ],
         "png": f"outputs/figures/{FIGURE_KEY_BAND_ONLY}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_BAND_ONLY}.csv",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Figure 16 — entry and exit speed by angle band, with 95% CI whiskers.
+#
+# The bands are NOT declared here: they are `figures.hole.bands` (D164), the one
+# reporting-band definition figures 1, 5, 7, 8 and 13 already use. The interval
+# is a percentile bootstrap of the median that resamples players (nfl_id), not
+# turns, because turns repeat within a player. A bucket below the feasibility
+# floor carries no point and no CI — it is annotated instead.
+# ---------------------------------------------------------------------------
+FIGURE_KEY_ENTRY_EXIT_SPEED = "fig_entry_exit_speed"
+
+ENTRY_EXIT_COLUMNS = [
+    "setting",
+    "position_group",
+    "valid",
+    "abs_turn_angle",
+    "entry_speed",
+    "exit_speed",
+    "nfl_id",
+    "duration_s",
+]
+
+ENTRY_EXIT_CSV_COLUMNS = [
+    "band_index",
+    "band",
+    "band_low_deg",
+    "band_high_deg",
+    "setting",
+    "setting_label",
+    "speed_kind",
+    "n_turns",
+    "n_players",
+    "median_yd_s",
+    "ci_low_yd_s",
+    "ci_high_yd_s",
+    "ci_level",
+    "ci_method",
+    "estimable",
+    "drawn",
+    "is_focus_band",
+    "min_n_for_estimate",
+    "bootstrap_reps",
+    "bootstrap_seed",
+]
+
+#: Verbatim honesty clauses. The caption and the manifest both carry these
+#: strings unchanged; tests assert the substrings rather than paraphrases.
+_EE_EXIT_POSITION = (
+    "exit speed is measured at the end of the detector window, not at a fixed "
+    "distance, so exit > entry mostly means the athlete was accelerating when "
+    "the window closed")
+_EE_SHALLOW_DURATION = (
+    "the shallow 30–45° bucket holds short turns (median {shallow} s vs "
+    "{other} s), so a fixed-length window flatters sharp cuts and the shallow "
+    "bucket differently")
+_EE_FLOOR_SENTENCE = (
+    "Combine confidence intervals are drawn only where a band holds at least "
+    "10 turns")
+
+
+def load_entry_exit_turns(path: Path) -> pd.DataFrame:
+    """Read only the columns figure 16 needs; refuse if any is absent."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the per-turn table is absent ({path}) — run 02_turns first")
+    try:
+        df = pd.read_parquet(path, columns=ENTRY_EXIT_COLUMNS)
+    except Exception as exc:  # a missing column is a refusal, not a crash
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet cannot supply {ENTRY_EXIT_COLUMNS}; "
+            f"figure 16 needs entry and exit speed for every valid DB turn "
+            f"({exc})") from exc
+    if df.empty:
+        raise common.StageRefused(f"{STAGE}: turns.parquet is empty")
+    missing = [c for c in ENTRY_EXIT_COLUMNS if c not in df.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet has no {missing} column(s); figure 16 "
+            "needs entry and exit speed for every valid DB turn")
+    return df[ENTRY_EXIT_COLUMNS]
+
+
+def _entry_exit_config(cfg: common.Config) -> dict:
+    """Read and validate the figure-16 block, naming the failing key."""
+    block = "figures.entry_exit_speed"
+
+    def bad(key: str, expected: str) -> common.StageRefused:
+        return common.StageRefused(
+            f"{STAGE}: {block}.{key} must be {expected}; figure 16 would "
+            "otherwise draw an interval it cannot honestly compute")
+
+    statistic = str(cfg.get(f"{block}.statistic"))
+    if statistic != "median":
+        raise bad("statistic", "'median'")
+    interval = str(cfg.get(f"{block}.interval"))
+    if interval != "percentile":
+        raise bad("interval", "'percentile'")
+    cluster_by = str(cfg.get(f"{block}.cluster_by"))
+    if cluster_by != "nfl_id":
+        raise bad("cluster_by", "'nfl_id' (turns repeat within a player)")
+    ci_level = float(cfg.get(f"{block}.ci_level"))
+    if not 0.0 < ci_level < 1.0:
+        raise bad("ci_level", "inside (0, 1)")
+    reps = int(cfg.get(f"{block}.bootstrap_reps"))
+    if reps < stats.MIN_BOOTSTRAP_REPS:
+        raise bad("bootstrap_reps",
+                  f"at least {stats.MIN_BOOTSTRAP_REPS}")
+    min_n = int(cfg.get(f"{block}.min_n_for_estimate"))
+    if min_n < 1:
+        raise bad("min_n_for_estimate", "at least 1")
+    min_players = int(cfg.get(f"{block}.min_players_for_estimate"))
+    if min_players < 2:
+        raise bad("min_players_for_estimate", "at least 2")
+    settings = [str(s) for s in cfg.get(f"{block}.settings")]
+    if not settings or not set(settings) <= {"combine", "game"}:
+        raise bad("settings", "a non-empty subset of [combine, game]")
+    speed_columns = dict(cfg.get(f"{block}.speed_columns"))
+    if set(speed_columns) != {"entry", "exit"}:
+        raise bad("speed_columns", "exactly the keys entry and exit")
+    values = [str(v) for v in speed_columns.values()]
+    if not all(values) or len(set(values)) != len(values):
+        raise bad("speed_columns", "non-empty with distinct column names")
+    return {
+        "statistic": statistic,
+        "interval": interval,
+        "cluster_by": cluster_by,
+        "ci_level": ci_level,
+        "reps": reps,
+        "min_n": min_n,
+        "min_players": min_players,
+        "settings": settings,
+        "speed_columns": speed_columns,
+        "position": str(cfg.get(f"{block}.position_group")),
+        "seed_base": int(cfg.seed)
+        + int(cfg.get(f"{block}.bootstrap_seed_offset")),
+    }
+
+
+def entry_exit_speed_table(turns: pd.DataFrame,
+                           cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """Median entry/exit speed and a player-clustered CI per band and setting.
+
+    Always a rectangle: ``7 bands x len(settings) x 2 speed kinds`` rows in
+    band order, then setting order ``[combine, game]``, then speed-kind order
+    ``[entry, exit]``. A below-floor cell is present with NaN median and NaN
+    bounds, so "no estimate" is literally true in the CSV.
+    """
+    conf = _entry_exit_config(cfg)
+    position = conf["position"]
+    settings = conf["settings"]
+    min_n = conf["min_n"]
+    min_players = conf["min_players"]
+    reps = conf["reps"]
+    ci_level = conf["ci_level"]
+    speed_columns = conf["speed_columns"]
+
+    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    if len(edges) < 2 or any(b <= a for a, b in zip(edges, edges[1:])):
+        raise common.StageRefused(
+            f"{STAGE}: figures.hole.bands.turn_angle_deg must be increasing, "
+            f"got {edges}")
+    overflow = str(cfg.get("figures.hole.bands.overflow_label"))
+    focus = focus_band(cfg)
+    if focus_band_index(edges, focus) != 0:
+        raise common.StageRefused(
+            f"{STAGE}: the {focus['label']} focus band is not the first "
+            f"reporting band in {edges}; figure 16 shades band 0 only")
+
+    missing = [c for c in ENTRY_EXIT_COLUMNS if c not in turns.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: the turn table has no {missing} column(s); figure 16 "
+            "cannot compute an entry or exit speed")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    df = turns[valid & (turns["position_group"] == position)
+               & angle.notna()].copy()
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} turns in the turn table — nothing "
+            "to estimate")
+    df["abs_turn_angle"] = angle.loc[df.index]
+    df["band_index"] = -1
+    for i in range(len(edges) - 1):
+        lo, hi = edges[i], edges[i + 1]
+        mask = (df["abs_turn_angle"] >= lo) & (df["abs_turn_angle"] < hi)
+        df.loc[mask, "band_index"] = i
+    df.loc[df["abs_turn_angle"] >= edges[-1], "band_index"] = len(edges) - 1
+    outside = int((df["band_index"] < 0).sum())
+    if outside:
+        raise common.StageRefused(
+            f"{STAGE}: {outside} valid {position} turn(s) fall outside the "
+            f"configured bands {edges}; a silent gap would make the counts a "
+            "lie")
+
+    df = df[df["setting"].isin(settings)].copy()
+    if df.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {position} turns in {settings} — figure 16 "
+            "needs at least one setting")
+
+    numeric: dict[str, pd.Series] = {}
+    for kind, column in speed_columns.items():
+        series = pd.to_numeric(df[column], errors="coerce")
+        n_bad = int(series.isna().sum())
+        if n_bad:
+            raise common.StageRefused(
+                f"{STAGE}: {n_bad} {position} {column} value(s) are missing in "
+                f"the selected population {settings}; the median and its "
+                "interval cannot be computed")
+        numeric[kind] = series
+    df["duration_s"] = pd.to_numeric(df["duration_s"], errors="coerce")
+
+    bands = band_labels(edges, overflow)
+    kinds = ["entry", "exit"]
+    rows = []
+    for i, band in enumerate(bands):
+        low = edges[i]
+        high = edges[i + 1] if i + 1 < len(edges) else float("nan")
+        for setting in ("combine", "game"):
+            part = df[(df["band_index"] == i) & (df["setting"] == setting)]
+            n_turns = int(len(part))
+            n_players = int(part["nfl_id"].nunique())
+            estimable = n_turns >= min_n and n_players >= min_players
+            for kind in kinds:
+                label = f"entry_exit_speed|{setting}|{i}|{kind}"
+                seed = stats.seed_from_label(label, conf["seed_base"])
+                median = ci_low = ci_high = float("nan")
+                if estimable:
+                    res = stats.cluster_bootstrap_median(
+                        numeric[kind].loc[part.index].to_numpy(dtype=float),
+                        part["nfl_id"].to_numpy(),
+                        reps=reps, ci_level=ci_level, label=label,
+                        base_seed=conf["seed_base"])
+                    median = res["median"]
+                    ci_low = res["ci_low"]
+                    ci_high = res["ci_high"]
+                rows.append({
+                    "band_index": i,
+                    "band": band,
+                    "band_low_deg": low,
+                    "band_high_deg": high,
+                    "setting": setting,
+                    "setting_label": COMBINE_LABEL if setting == "combine"
+                    else GAME_LABEL,
+                    "speed_kind": kind,
+                    "n_turns": n_turns,
+                    "n_players": n_players,
+                    "median_yd_s": median,
+                    "ci_low_yd_s": ci_low,
+                    "ci_high_yd_s": ci_high,
+                    "ci_level": ci_level,
+                    "ci_method": "percentile_cluster_bootstrap_by_player",
+                    "estimable": bool(estimable),
+                    "drawn": bool(estimable),
+                    "is_focus_band": i == 0,
+                    "min_n_for_estimate": min_n,
+                    "bootstrap_reps": reps,
+                    "bootstrap_seed": int(seed),
+                })
+    table = pd.DataFrame(rows)[ENTRY_EXIT_CSV_COLUMNS]
+
+    totals = {"turns": {s: int((df["setting"] == s).sum()) for s in settings},
+              "players": {s: int(df.loc[df["setting"] == s, "nfl_id"].nunique())
+                          for s in settings}}
+    n_estimable = {
+        s: int(table[(table["setting"] == s) & table["estimable"]].shape[0])
+        for s in settings}
+    missing_cells = []
+    for i, band in enumerate(bands):
+        for setting in settings:
+            part = df[(df["band_index"] == i) & (df["setting"] == setting)]
+            if len(part) < min_n:
+                missing_cells.append((band, setting, int(len(part))))
+
+    game = df[df["setting"] == "game"]
+    shallow = game.loc[game["band_index"] == 0, "duration_s"].dropna()
+    other = game.loc[game["band_index"] >= 1, "duration_s"].dropna()
+    duration = {
+        "shallow_median_s": float(shallow.median()) if len(shallow) else float("nan"),
+        "other_median_s": float(other.median()) if len(other) else float("nan"),
+    }
+
+    context = {
+        "table": table,
+        "bands": bands,
+        "edges": edges,
+        "overflow": overflow,
+        "focus": {"low": focus["low"], "high": focus["high"],
+                  "label": focus["label"], "colour": focus["colour"],
+                  "tint_alpha": focus["tint_alpha"],
+                  "rule_width": focus["rule_width"]},
+        "position": position,
+        "settings": settings,
+        "totals": totals,
+        "n_estimable": n_estimable,
+        "missing": missing_cells,
+        "duration": duration,
+        "min_n_for_estimate": min_n,
+        "min_players_for_estimate": min_players,
+        "reps": reps,
+        "ci_level": ci_level,
+        "seed_base": conf["seed_base"],
+        "seed_offset": int(cfg.get(
+            "figures.entry_exit_speed.bootstrap_seed_offset")),
+        "table_rows": int(len(table)),
+    }
+    return table, context
+
+
+def entry_exit_speed_csv_frame(table: pd.DataFrame,
+                               context: dict) -> pd.DataFrame:
+    """Exactly the documented columns — no drawing-only columns."""
+    return table[ENTRY_EXIT_CSV_COLUMNS].reset_index(drop=True)
+
+
+def _ee_cell(table: pd.DataFrame, band_index: int, setting: str,
+             kind: str) -> pd.Series:
+    part = table[(table["band_index"] == band_index)
+                 & (table["setting"] == setting)
+                 & (table["speed_kind"] == kind)]
+    return part.iloc[0]
+
+
+def _entry_exit_speed_caption(context: dict) -> list[str]:
+    """Caption lines; every number comes from the computed table."""
+    table = context["table"]
+    bands = context["bands"]
+    n_bands = len(bands)
+    game_entry = [_ee_cell(table, i, "game", "entry") for i in range(n_bands)]
+    game_exit = [_ee_cell(table, i, "game", "exit") for i in range(n_bands)]
+    g_entry_drawn = [r for r in game_entry if bool(r["drawn"])]
+    g_exit_drawn = [r for r in game_exit if bool(r["drawn"])]
+    entry_lo = min(float(r["median_yd_s"]) for r in g_entry_drawn)
+    entry_hi = max(float(r["median_yd_s"]) for r in g_entry_drawn)
+    exit_lo = min(float(r["median_yd_s"]) for r in g_exit_drawn)
+    exit_hi = max(float(r["median_yd_s"]) for r in g_exit_drawn)
+    pairs = [(i, float(game_entry[i]["median_yd_s"]),
+              float(game_exit[i]["median_yd_s"]))
+             for i in range(n_bands)
+             if bool(game_entry[i]["drawn"]) and bool(game_exit[i]["drawn"])]
+    exit_gt = sum(1 for _, e, x in pairs if x > e)
+    shift_band, shift = max(((i, x - e) for i, e, x in pairs),
+                            key=lambda t: t[1])
+    combine_estimable = [
+        (i, _ee_cell(table, i, "combine", "entry"),
+         _ee_cell(table, i, "combine", "exit"))
+        for i in range(n_bands)
+        if bool(_ee_cell(table, i, "combine", "entry")["estimable"])]
+    combine_phrase = "; ".join(
+        f"{bands[i]} entry {float(e['median_yd_s']):.2f}, exit "
+        f"{float(x['median_yd_s']):.2f}"
+        for i, e, x in combine_estimable)
+    below = [m for m in context["missing"] if m[1] == "combine"]
+    below_phrase = "; ".join(
+        f"{band} holds {n} turns from "
+        f"{int(_ee_cell(table, bands.index(band), 'combine', 'entry')['n_players'])} "
+        "players"
+        for band, _, n in below) or "no Combine band"
+    game_turns = context["totals"]["turns"]["game"]
+    combine_turns = context["totals"]["turns"].get("combine", 0)
+    shallow = context["duration"]["shallow_median_s"]
+    other = context["duration"]["other_median_s"]
+    return [
+        STAMP,
+        (f"WHAT THIS IS. Every valid {context['position']} turn in "
+         f"outputs/turns/turns.parquet, both settings, banded by absolute turn "
+         f"angle on the seven reporting bands "
+         f"{context['edges'][0]:g}–{context['edges'][-1]:g}° plus "
+         f"{context['overflow']}°: {game_turns:,} game and "
+         f"{combine_turns:,} Combine turns. The statistic is the median speed; "
+         f"the "
+         f"interval is a {context['ci_level']:.0%} percentile bootstrap of the "
+         f"median with {context['reps']:,} replicates resampling players "
+         f"(`nfl_id`) with replacement, not turns. Seven bands, key "
+         f"{FIGURE_KEY_ENTRY_EXIT_SPEED}."),
+        (f"THE POINT, WITH THE NUMBERS. Across the bands the game median entry "
+         f"speed runs {entry_lo:.2f}–{entry_hi:.2f} yd/s and the game median "
+         f"exit speed {exit_lo:.2f}–{exit_hi:.2f} yd/s. Exit exceeds entry in "
+         f"{exit_gt} of {n_bands} bands; the largest entry→exit shift is "
+         f"+{shift:.2f} yd/s in the {bands[shift_band]} band. Combine medians, "
+         f"for the bands that clear the floor, are: {combine_phrase}. These are "
+         "medians of measured turns, not outcomes."),
+        (f"HONESTY (a). One definitional fact: {_EE_EXIT_POSITION}."),
+        ("HONESTY (b). And one sampling fact: "
+         + _EE_SHALLOW_DURATION.format(shallow=f"{shallow:.1f}",
+                                       other=f"{other:.1f}")
+         + "."),
+        (f"THE FLOOR. {_EE_FLOOR_SENTENCE}: a bucket below the floor is "
+         f"annotated, never drawn with a point or a whisker. The Combine side "
+         f"is the case in point — {below_phrase}, below the "
+         f"{context['min_n_for_estimate']}-turn floor, so the "
+         f"{bands[0]} Combine band is annotated, never drawn."),
+        ("WHAT IS NOT HERE. No test, no p-value, no ranking of bands and no "
+         "player-level value; the intervals are bootstrap intervals, not "
+         "posteriors. The exit-speed definition is detector-window-dependent "
+         "(see honesty (a)), so no exit value is a free-standing measure of "
+         "acceleration. Sample data: nothing here is a finding about the 2027 "
+         f"class. Every value is in outputs/figures/"
+         f"{FIGURE_KEY_ENTRY_EXIT_SPEED}.csv."),
+    ]
+
+
+def plot_entry_exit_speed(table: pd.DataFrame, context: dict,
+                          cfg: common.Config) -> plt.Figure:
+    """Four dodged series (game/Combine x entry/exit) with 95% CI whiskers."""
+    from matplotlib.colors import to_rgba
+    from matplotlib.lines import Line2D
+
+    block = "figures.entry_exit_speed"
+    focus = context["focus"]
+    tint = to_rgba(focus["colour"], focus["tint_alpha"])
+    bands = context["bands"]
+    offsets = {"game": {"entry": -0.21, "exit": -0.07},
+               "combine": {"entry": 0.07, "exit": 0.21}}
+    markers = {"entry": "o", "exit": "s"}
+    labels = {"game": {"entry": "Game entry", "exit": "Game exit"},
+              "combine": {"entry": "Combine entry",
+                          "exit": "Combine exit"}}
+
+    fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
+                              float(cfg.get(f"{block}.height_in"))))
+    ax = fig.add_axes([0.085, 0.395, 0.890, 0.455])
+    ax.set_facecolor("#EBEBEB")
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color("#B3B3B3")
+    ax.tick_params(axis="both", labelsize=9.0, colors="#333333", length=2)
+    ax.set_axisbelow(True)
+
+    # The focus band: tint plus two rules. Red never touches a data mark.
+    ax.axvspan(-0.5, 0.5, facecolor=tint, edgecolor="none", zorder=0)
+    for edge in (-0.5, 0.5):
+        ax.axvline(edge, color=focus["colour"],
+                   linewidth=focus["rule_width"], zorder=1)
+
+    drawn_lows, drawn_highs = [], []
+    for setting in ("game", "combine"):
+        for kind in ("entry", "exit"):
+            part = table[(table["setting"] == setting)
+                         & (table["speed_kind"] == kind)
+                         & table["drawn"]]
+            if part.empty:
+                continue
+            x = part["band_index"].to_numpy(dtype=float) + offsets[setting][kind]
+            y = part["median_yd_s"].to_numpy(dtype=float)
+            low = part["ci_low_yd_s"].to_numpy(dtype=float)
+            high = part["ci_high_yd_s"].to_numpy(dtype=float)
+            drawn_lows.extend(low.tolist())
+            drawn_highs.extend(high.tolist())
+            if setting == "game":
+                container = ax.errorbar(
+                    x, y, yerr=[y - low, high - y], fmt=markers[kind],
+                    color=BARS_GREY, ecolor=BARS_GREY, capsize=3,
+                    markersize=6.0, markeredgewidth=0.8,
+                    markerfacecolor=BARS_GREY, markeredgecolor="white",
+                    linestyle="none", elinewidth=1.1, capthick=1.1,
+                    label=labels[setting][kind], zorder=3)
+            else:
+                container = ax.errorbar(
+                    x, y, yerr=[y - low, high - y], fmt=markers[kind],
+                    color=PALETTE["combine"], ecolor=PALETTE["combine"],
+                    capsize=3, markersize=6.4, markeredgewidth=1.5,
+                    markerfacecolor="none",
+                    markeredgecolor=PALETTE["combine"], linestyle="none",
+                    elinewidth=1.2, capthick=1.2,
+                    label=labels[setting][kind], zorder=4)
+            if kind == "exit":
+                # Exit whiskers are dashed; caps stay solid, so shape still
+                # separates exit from entry in greyscale.
+                for barcols in container[2]:
+                    barcols.set_linestyle("--")
+
+    if not drawn_lows:
+        raise common.StageRefused(
+            f"{STAGE}: no estimable band in either setting — figure 16 has "
+            "nothing to draw")
+    y_low, y_high = min(drawn_lows), max(drawn_highs)
+    pad = max(0.15, (y_high - y_low) * 0.12)
+    ax.set_ylim(y_low - pad, y_high + pad * 1.35)
+    ax.set_xlim(-0.5, len(bands) - 0.5)
+    ax.set_xticks(range(len(bands)))
+    ax.set_xticklabels(bands)
+    ax.grid(axis="y", color="white", linewidth=0.8, zorder=0)
+    ax.set_xlabel("Absolute turn angle band (°)", fontsize=9.8,
+                  color="#333333", labelpad=52)
+
+    ax.text(0.0, ax.get_ylim()[1] - 0.02 * pad, "30–45° band",
+            ha="center", va="top", fontsize=10.0, fontweight="bold",
+            color=focus["colour"], zorder=6)
+
+    # Per-bucket n and players, under the axis: game above Combine.
+    for i, band in enumerate(bands):
+        entry = _ee_cell(table, i, "game", "entry")
+        combine = _ee_cell(table, i, "combine", "entry")
+        ax.annotate(f"game n={int(entry['n_turns'])} · "
+                    f"{int(entry['n_players'])}p",
+                    xy=(i, -0.10), xycoords=("data", "axes fraction"),
+                    ha="center", va="top", fontsize=6.2, color="#333333",
+                    annotation_clip=False)
+        if bool(combine["drawn"]):
+            text = (f"combine n={int(combine['n_turns'])} · "
+                    f"{int(combine['n_players'])}p")
+            style = {"fontstyle": "normal", "fontweight": "normal"}
+        else:
+            text = (f"combine n={int(combine['n_turns'])}, "
+                    "no estimate")
+            style = {"fontstyle": "italic", "fontweight": "normal"}
+        ax.annotate(text, xy=(i, -0.165),
+                    xycoords=("data", "axes fraction"),
+                    ha="center", va="top", fontsize=6.2,
+                    color=PALETTE["combine"],
+                    annotation_clip=False, **style)
+
+    handles = [
+        Line2D([], [], marker="o", linestyle="none", color=BARS_GREY,
+               markerfacecolor=BARS_GREY, markeredgecolor="white",
+               markersize=6.0),
+        Line2D([], [], marker="s", linestyle="none", color=BARS_GREY,
+               markerfacecolor=BARS_GREY, markeredgecolor="white",
+               markersize=6.0),
+        Line2D([], [], marker="o", linestyle="none",
+               color=PALETTE["combine"], markerfacecolor="none",
+               markeredgecolor=PALETTE["combine"], markeredgewidth=1.5,
+               markersize=6.4),
+        Line2D([], [], marker="s", linestyle="none",
+               color=PALETTE["combine"], markerfacecolor="none",
+               markeredgecolor=PALETTE["combine"], markeredgewidth=1.5,
+               markersize=6.4),
+    ]
+    fig.legend(handles,
+               ["Game entry", "Game exit", "Combine entry", "Combine exit"],
+               loc="upper center", bbox_to_anchor=(0.53, 0.893), ncol=4,
+               frameon=False, fontsize=7.6, handlelength=1.6,
+               columnspacing=2.2)
+
+    fig.text(0.010, 0.978, "Entry and exit speed by angle band",
+             fontsize=17.5, fontweight="bold", ha="left", va="top",
+             color="#111111")
+    fig.text(0.010, 0.940,
+             f"Valid {context['position']} turns, game and Combine — median "
+             f"speed with a {context['ci_level']:.0%} player-clustered "
+             f"percentile bootstrap interval ({context['reps']:,} "
+             "replicates).",
+             fontsize=9.2, ha="left", va="top", color="#333333")
+    fig.text(0.010, 0.914,
+             f"Seven reporting bands, left-closed; {context['overflow']}° is "
+             "the overflow class. Whiskers are those intervals; a band below "
+             f"the {context['min_n_for_estimate']}-turn floor is annotated, "
+             "never drawn.",
+             fontsize=9.2, ha="left", va="top", color="#333333")
+
+    caption = "\n".join(_wrap_text(line, 180)
+                        for line in _entry_exit_speed_caption(context))
+    fig.text(0.010, 0.010, caption, ha="left", va="bottom", fontsize=6.0,
+             color="#333333", linespacing=1.30)
+    return fig
+
+
+def render_entry_exit_speed(fig: plt.Figure, cfg: common.Config,
+                            out_png: Path) -> Path:
+    """Save figure 16 once with fixed metadata, so two runs are identical."""
+    dpi = int(cfg.get("figures.entry_exit_speed.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+             fontweight="bold", color=ALERT)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def _ee_json(value):
+    """Plain JSON scalar: numpy ints become ints, non-finite floats become None."""
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        return float(value) if np.isfinite(value) else None
+    return value
+
+
+def entry_exit_speed_manifest_payload(table: pd.DataFrame, context: dict,
+                                      cfg: common.Config) -> dict:
+    """Figure 16's manifest entry: the population, the statistic, every row."""
+    bands = context["bands"]
+    game_entry = [_ee_cell(table, i, "game", "entry") for i in range(len(bands))]
+    game_exit = [_ee_cell(table, i, "game", "exit") for i in range(len(bands))]
+    pairs = [(i, float(game_entry[i]["median_yd_s"]),
+              float(game_exit[i]["median_yd_s"]))
+             for i in range(len(bands))
+             if bool(game_entry[i]["drawn"]) and bool(game_exit[i]["drawn"])]
+    exit_gt = sum(1 for _, e, x in pairs if x > e)
+    entry_medians = [e for _, e, _ in pairs]
+    exit_medians = [x for _, _, x in pairs]
+    combine_estimable = [
+        (i, _ee_cell(table, i, "combine", "entry"),
+         _ee_cell(table, i, "combine", "exit"))
+        for i in range(len(bands))
+        if bool(_ee_cell(table, i, "combine", "entry")["estimable"])]
+    combine_phrase = "; ".join(
+        f"{bands[i]} entry {float(e['median_yd_s']):.2f}, exit "
+        f"{float(x['median_yd_s']):.2f}"
+        for i, e, x in combine_estimable)
+    below = []
+    for i in range(len(bands)):
+        row = _ee_cell(table, i, "combine", "entry")
+        if not bool(row["estimable"]):
+            below.append({"band": bands[i],
+                          "n_turns": int(row["n_turns"]),
+                          "n_players": int(row["n_players"])})
+    shallow = context["duration"]["shallow_median_s"]
+    other = context["duration"]["other_median_s"]
+    rows = [{k: _ee_json(v) for k, v in rec.items()}
+            for rec in table.to_dict("records")]
+    claim = (
+        f"Across the seven angle bands the game median entry speed runs "
+        f"{min(entry_medians):.2f}-{max(entry_medians):.2f} yd/s and the game "
+        f"median exit speed {min(exit_medians):.2f}-{max(exit_medians):.2f} "
+        f"yd/s. Combine medians, where a band clears the "
+        f"{context['min_n_for_estimate']}-turn floor, are: {combine_phrase}. "
+        f"The {bands[0]} Combine band holds "
+        f"{below[0]['n_turns'] if below else 0} turns and is not estimated. "
+        f"Of the seven bands, the exit median exceeds the entry median in "
+        f"{exit_gt} of 7 bands.")
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_ENTRY_EXIT_SPEED,
+        "title": "Entry and exit speed by angle band",
+        "sources": ["outputs/turns/turns.parquet"],
+        "png": f"outputs/figures/{FIGURE_KEY_ENTRY_EXIT_SPEED}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_ENTRY_EXIT_SPEED}.csv",
+        "population": {
+            "turns": context["totals"]["turns"],
+            "players": context["totals"]["players"],
+            "band_rule": ("valid turns, left-closed on abs_turn_angle_deg; "
+                          "angles at or above the last edge are the overflow "
+                          "class"),
+            "position_group": context["position"],
+            "settings": context["settings"],
+        },
+        "bands": {
+            "edges": list(context["edges"]),
+            "overflow_label": context["overflow"],
+            "labels": list(bands),
+            "focus_band": True,
+            "focus_edges_deg": [context["focus"]["low"],
+                                context["focus"]["high"]],
+            "declares_own_edges": False,
+            "shared_with": "figures.hole.bands (D164)",
+        },
+        "statistic": {
+            "name": "median",
+            "ci_level": context["ci_level"],
+            "interval": "percentile",
+            "cluster_by": "nfl_id",
+            "reps": context["reps"],
+            "seed_base": context["seed_base"],
+            "seed_offset": context["seed_offset"],
+            "floor": {
+                "min_n_for_estimate": context["min_n_for_estimate"],
+                "min_players_for_estimate":
+                    context["min_players_for_estimate"],
+            },
+            "min_players": context["min_players_for_estimate"],
+        },
+        "rows": rows,
+        "combine_below_floor": below,
+        "claim": claim,
+        "not_claimed": [
+            "That the interval is a posterior; it is a percentile bootstrap.",
+            "That any band ranks above another; no test and no ranking is run.",
+            "Any player-level value; no player id or name is printed.",
+            "That exit speed is a fixed-distance measurement; it is measured "
+            "at the end of the detector window.",
+            "Anything about the 2027 class; this is one session of sample data.",
+        ],
+        "caveats": [
+            _EE_EXIT_POSITION + ".",
+            _EE_SHALLOW_DURATION.format(shallow=f"{shallow:.1f}",
+                                        other=f"{other:.1f}") + ".",
+            f"{_EE_FLOOR_SENTENCE}: " + "; ".join(
+                f"{b['band']} holds {b['n_turns']} turns from "
+                f"{b['n_players']} players" for b in below) + ".",
+            "Sample data: nothing here is a finding about the 2027 class.",
+        ],
     }

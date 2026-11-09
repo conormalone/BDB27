@@ -799,6 +799,37 @@ turn_coverage:
       width_in: 11.5
       height_in: 8.8
 
+    # Stage 06 figure 16 ("Entry and exit speed by angle band"). Requested by
+    # Conor (2026-11-09): entry and exit speeds, with confidence bounds, by
+    # angle bucket. Population: valid DB turns; the Combine DB series is an
+    # overlay. The bands are NOT repeated here — they are read from
+    # `figures.hole.bands` (D164), the one reporting-band definition figures
+    # 1, 5, 7, 8 and 13 already use, so this figure cannot drift from them.
+    #
+    # The interval is a percentile bootstrap of the MEDIAN that resamples
+    # PLAYERS (nfl_id) with replacement, because turns repeat within a player;
+    # it is a bootstrap interval, never a posterior. `min_n_for_estimate` is a
+    # feasibility floor: below it a bucket is annotated, never drawn with a CI
+    # (the 30-45 degree Combine bucket holds 4 turns). `bootstrap_reps` must be
+    # at least 2000 and the code refuses a smaller value.
+    entry_exit_speed:
+      position_group: DB
+      settings: [combine, game]
+      speed_columns:
+        entry: entry_speed
+        exit: exit_speed
+      statistic: median
+      ci_level: 0.95
+      interval: percentile
+      cluster_by: nfl_id
+      bootstrap_reps: 2000
+      bootstrap_seed_offset: 51515
+      min_n_for_estimate: 10
+      min_players_for_estimate: 2
+      dpi: 150
+      width_in: 13.2
+      height_in: 8.9
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).
