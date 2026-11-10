@@ -69,10 +69,13 @@ The ten DB drills, median angle ascending: 40-yard dash 48.1° (1 turn), 3-cone
 reaction 113.1°, W drill 139.3°, box drill 139.3°, Teryl Austin 1 140.4°, Teryl
 Austin 2 148.2°, short shuttle 179.6°. Turns inside 30–60°: **26 of 1,179
 (2.2%)**. The 40-yard dash median sits in the band because its row is a single
-turn; the caption says so. One row holds fewer than ten turns and is labelled
-italic.
+turn; the manifest entry says so. One row holds fewer than ten turns and is
+labelled italic.
 
-Caption caveats: Combine turns only (a game turn carries no drill name); valid
+The figure draws a heading and the data and no other text (Conor, 2026-11-10):
+no subtitle under the heading, no caption at the foot, and the x label reads
+"Absolute turn angle (°)". The caveats live in the CSV and the manifest entry:
+Combine turns only (a game turn carries no drill name); valid
 turns only; the 30° detector floor censors the shallow end of every row, so no
 turn below 30° exists in the table; dots are individual turns, not players; the
 ±0.275-row vertical jitter is seeded and written per row as `y_offset_rows`,

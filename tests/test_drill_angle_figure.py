@@ -292,6 +292,85 @@ def test_figure_draws_every_dot(built, cfg):
     plt.close(fig)
 
 
+def _drawn_text(fig) -> str:
+    """Every string the figure draws: figure text, axes text and axis labels."""
+    parts = [t.get_text() for t in fig.texts]
+    for ax in fig.axes:
+        parts.extend(t.get_text() for t in ax.texts)
+        parts.extend(t.get_text() for t in ax.get_xticklabels())
+        parts.extend(t.get_text() for t in ax.get_yticklabels())
+        parts.extend([ax.get_title(), ax.get_xlabel(), ax.get_ylabel()])
+    return "\n".join(parts)
+
+
+def test_the_heading_is_the_only_text_block(built, cfg):
+    """D183: a heading and the data, nothing else — no subtitle, no caption."""
+    table, context = built
+    fig = figures.plot_drill_angle(table, context, cfg)
+    fig.canvas.draw()
+    assert [t.get_text() for t in fig.texts] == [
+        "Every DB Combine turn, against the drill that made it"
+    ], "figure 18 must draw exactly one figure-level text: its heading"
+    drawn = _drawn_text(fig)
+    assert "One dot per valid DB Combine turn" not in drawn, (
+        "the subtitle is still drawn under the heading")
+    assert "red band is the case" not in drawn, (
+        "the band subtitle is still drawn under the heading")
+    assert "bucketed" not in drawn, (
+        "'measured, not bucketed' is still drawn somewhere on the figure")
+    assert "WHAT THIS IS" not in drawn and "THE BAND." not in drawn, (
+        "the caption block is still drawn at the foot of the figure")
+    plt.close(fig)
+
+
+def test_x_label_is_the_plain_quantity(built, cfg):
+    table, context = built
+    fig = figures.plot_drill_angle(table, context, cfg)
+    fig.canvas.draw()
+    ax = fig.axes[0]
+    assert ax.get_xlabel() == "Absolute turn angle (\u00b0)", (
+        "the x label must name the quantity and stop there")
+    assert ax.get_ylabel() == "Drill, ordered by median angle"
+    plt.close(fig)
+
+
+def test_axes_fill_the_canvas_under_the_heading(built, cfg):
+    """Removing the text blocks must give the plot the space, not white bands."""
+    table, context = built
+    fig = figures.plot_drill_angle(table, context, cfg)
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    width, height = fig.canvas.get_width_height()
+    ax = fig.axes[0]
+    rect = ax.get_window_extent(renderer)
+    heading = fig.texts[0].get_window_extent(renderer)
+
+    # heading above the axes, with a real but not cavernous gap
+    gap_in = (heading.y0 - rect.y1) / fig.dpi
+    assert 0.15 <= gap_in <= 0.60, f"heading-to-axes gap is {gap_in:.2f} in"
+    assert rect.y1 / height <= 0.93, "the axes do not reach up under the heading"
+    assert (rect.y1 - rect.y0) / height >= 0.75, (
+        "the plot was shrunk instead of being given the freed space")
+
+    # the x label sits near the bottom with a normal margin under it
+    label_bottom_in = ax.xaxis.label.get_window_extent(renderer).y0 / fig.dpi
+    assert 0.08 <= label_bottom_in <= 0.45, (
+        f"x label bottom margin is {label_bottom_in:.2f} in")
+
+    # nothing drawn hangs off the canvas
+    for artist in fig.findobj(matplotlib.text.Text):
+        if not artist.get_visible() or not artist.get_text().strip():
+            continue
+        box = artist.get_window_extent(renderer)
+        if box.width == 0 and box.height == 0:
+            continue
+        assert box.x0 >= 0 and box.y0 >= 0, (
+            f"{artist.get_text()[:30]!r} runs off the left/bottom edge")
+        assert box.x1 <= width and box.y1 <= height, (
+            f"{artist.get_text()[:30]!r} runs off the right/top edge")
+    plt.close(fig)
+
+
 # ------------------------------------------------------- committed artefact
 REPO_CSV = ROOT / "outputs" / "figures" / f"{figures.FIGURE_KEY_DRILL_ANGLE}.csv"
 REPO_TURNS = ROOT / "outputs" / "turns" / "turns.parquet"

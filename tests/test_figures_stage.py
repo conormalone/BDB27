@@ -4444,6 +4444,64 @@ def test_drill_angle_two_renders_are_byte_identical(rendered):
     assert before == after, "two renders of figure 18 differ"
 
 
+def test_drill_angle_drawn_text_is_one_heading_and_the_data(rendered):
+    """D183 (2026-11-10): no subtitle, no caption, plain x label."""
+    import matplotlib.pyplot as plt
+
+    from bdb27 import common, figures
+
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = figures.drill_angle_table(turns, cfg)
+    fig = figures.plot_drill_angle(table, context, cfg)
+    fig.canvas.draw()
+    try:
+        assert len(fig.texts) == 1, "figure 18 must draw only its heading"
+        assert fig.texts[0].get_text() == (
+            "Every DB Combine turn, against the drill that made it")
+        drawn = [t.get_text() for t in fig.texts]
+        drawn += [t.get_text() for ax in fig.axes for t in ax.texts]
+        drawn += [ax.get_xlabel() for ax in fig.axes]
+        drawn += [ax.get_ylabel() for ax in fig.axes]
+        drawn += [t.get_text() for ax in fig.axes
+                  for t in ax.get_xticklabels() + ax.get_yticklabels()]
+        joined = "\n".join(drawn)
+        for gone in ("One dot per valid", "red band is the case",
+                     "bucketed", "WHAT THIS IS", "THE BAND.",
+                     "THE FLOOR", "DOTS ARE TURNS"):
+            assert gone not in joined, f"{gone!r} is still drawn on figure 18"
+        assert fig.axes[0].get_xlabel() == "Absolute turn angle (\u00b0)"
+    finally:
+        plt.close(fig)
+
+
+def test_drill_angle_manifest_text_is_unchanged_by_the_drawing(rendered):
+    """The caveats live in the CSV/manifest and must survive the text removal."""
+    import matplotlib.pyplot as plt
+
+    from bdb27 import common, figures
+
+    cfg = common.load_config(rendered["cfg"])
+    turns = pd.read_parquet(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = figures.drill_angle_table(turns, cfg)
+    fig = figures.plot_drill_angle(table, context, cfg)
+    plt.close(fig)
+    # the caption's sentences are no longer drawn, but every caveat must still
+    # exist in full in the manifest and the CSV's provenance columns
+    fig_payload = figures.drill_angle_manifest_payload(table, context, cfg)
+    man = json.loads(rendered["manifest"].read_text())["figures"][DA_KEY]
+    assert man["caveats"] == fig_payload["caveats"], (
+        "the drawn-text change must not touch the manifest caveats")
+    joined = " ".join(man["caveats"])
+    assert "floor" in joined and "not a distribution" in joined
+    assert "jitter" in joined
+    csv_df = pd.read_csv(rendered["da_csv"])
+    assert {"stamp", "config_sha", "y_offset_rows"} <= set(csv_df.columns)
+    assert csv_df["stamp"].eq(STAMP).all()
+
+
 def test_drill_angle_manifest_carries_claim_and_caveats(rendered):
     man = json.loads(rendered["manifest"].read_text())
     fig = man["figures"][DA_KEY]

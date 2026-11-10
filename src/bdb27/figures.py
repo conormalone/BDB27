@@ -10334,7 +10334,13 @@ def _da_pct(value: float) -> str:
 
 
 def _da_caption(context: dict, cfg: common.Config) -> list[str]:
-    """Caption lines; every number comes from the rendered table."""
+    """Caption lines; every number comes from the rendered table.
+
+    Kept for the manifest/CSV wording, which still owns every caveat (D183,
+    2026-11-10): the figure draws no caption at all — Conor asked for a
+    heading and the data, nothing else — so this function is currently
+    uncalled. Its numbers still have to be true if it is ever drawn again.
+    """
     focus = context["focus"]
     n = context["n_turns"]
     position = context["position_group"]
@@ -10423,10 +10429,11 @@ def plot_drill_angle(table: pd.DataFrame, context: dict,
 
     fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
                               float(cfg.get(f"{block}.height_in"))))
-    # The bottom margin is sized for the caption block: with the DB-only
-    # population the plot is ten rows tall, so the caption cannot sit in an
-    # eighth-of-an-inch strip any more.
-    ax = fig.add_axes([0.185, 0.200, 0.741, 0.716])
+    # No subtitle and no caption are drawn (D183, 2026-11-10): the heading sits
+    # at the top and the axes fill everything below it, with only the x-axis
+    # tick labels and label for padding underneath. The left margin still holds
+    # the long drill labels; the right margin holds the row turn counts.
+    ax = fig.add_axes([0.185, 0.078, 0.741, 0.830])
     ax.set_facecolor("#EBEBEB")
     for spine in ("top", "right"):
         ax.spines[spine].set_visible(False)
@@ -10478,29 +10485,19 @@ def plot_drill_angle(table: pd.DataFrame, context: dict,
     ax.set_xlim(*x_lim)
     ax.set_ylim(y_lo, y_hi)
     ax.set_xticks(x_ticks)
-    ax.set_xlabel("Absolute turn angle (°) — measured, not bucketed",
+    ax.set_xlabel("Absolute turn angle (°)",
                   fontsize=9.6, color="#333333", labelpad=6)
     ax.set_ylabel("Drill, ordered by median angle", fontsize=9.6,
                   color="#333333", labelpad=6)
 
+    # The heading is the figure's only text block: no subtitle under it and no
+    # caption at the foot (D183, 2026-11-10). Every caveat that used to live in
+    # the caption stays in the CSV and the manifest entry, which are the
+    # provenance record.
     fig.text(0.010, 0.988,
              "Every DB Combine turn, against the drill that made it",
              fontsize=17.5, fontweight="bold", ha="left", va="top",
              color="#111111")
-    fig.text(0.010, 0.969,
-             f"One dot per valid DB Combine turn: {context['n_turns']:,} turns "
-             f"across {n_rows} drills. x = absolute turn angle, continuous; "
-             f"y = drill, rows sorted by that drill's median angle.",
-             fontsize=9.2, ha="left", va="top", color="#333333")
-    fig.text(0.010, 0.954,
-             f"The red band is the case's {focus['label']} window "
-             f"(figures.focus_band): it marks the band, never a data point.",
-             fontsize=9.2, ha="left", va="top", color="#222222")
-
-    caption = "\n".join(_wrap_text(line, 300)
-                        for line in _da_caption(context, cfg))
-    fig.text(0.010, 0.008, caption, ha="left", va="bottom", fontsize=5.9,
-             color="#333333", linespacing=1.28)
     return fig
 
 

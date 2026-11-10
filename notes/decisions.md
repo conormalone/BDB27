@@ -6984,3 +6984,56 @@ new assertions that the table is one position, that the non-DB drills are
 excluded, that no grey mark is drawn, that a single series carries no legend,
 and that the committed CSV holds 1,179 rows, 10 drills, DB only, 26 in band.
 `tests/test_figures_stage.py` figure-18 tests assert the same counts end to end.
+
+### D183 (extended) — figure 18 carries a heading and the data, nothing else · 2026-11-10 23:08
+
+**The instruction (Conor, 2026-11-10 22:56, verbatim, sent against the rendered
+image).** "Remove the text under the heading, all the text at the bottom and
+'measured not bucketed'".
+
+**What was removed.** Three text blocks and nothing else. (1) The two subtitle
+lines under the heading — the "One dot per valid DB Combine turn …" line and
+the "The red band is the case's 30–60° window (figures.focus_band) …" line.
+(2) The whole caption block at the foot of the figure: the `_wrap_text`/`_da_caption`
+construction and its `fig.text(0.010, 0.008, …)` call. (3) The x-axis label's
+tail, "— measured, not bucketed"; it now reads exactly "Absolute turn angle (°)".
+
+**What the removal is not.** No number, caveat or claim was dropped from the
+artefact: `_da_caption()` still builds the same prose with the same
+render-time numbers and is currently uncalled, while the manifest's `caveats`
+and `claim` and the CSV's provenance columns carry every caveat the caption
+used to print. `fig_drill_angle_scatter.csv` is byte-identical before and after
+this change (SHA-256 d6004a90…cd8ab), which is the proof that this is a drawing
+change only. `_da_caption` is left in place, uncalled, rather than deleted, so
+the wording is available if a caption is ever wanted again; the docstring says
+so.
+
+**Layout.** With no subtitle and no caption the canvas had dead space top and
+bottom, so the axes rectangle was recomputed rather than the plot shrunk:
+`[0.185, 0.200, 0.741, 0.716]` → `[0.185, 0.078, 0.741, 0.830]`. The heading
+keeps its anchor at `y = 0.988`; measured on the rendered figure the gap from
+the heading's bottom to the axes' top is 0.36 in, the axes fill 83% of the
+canvas height, and the x-axis label sits 0.19 in above the bottom edge with no
+text within 2 px of any canvas edge. Canvas size is unchanged (2040 × 1140 px,
+150 dpi).
+
+**Draw unchanged.** Band tint and outline from `figures.focus_band`, the
+in-band label, the per-row median ticks, the right-edge turn counts, the
+seeded ±0.275-row vertical-only jitter and the one-dot-per-turn encoding are
+all untouched, and the CSV that records them is byte-identical.
+
+**Proof nothing else moved.** `outputs/figures/fig_drill_angle_scatter.png` is
+the only PNG that changes (308,053 → 177,149 bytes); all 17 other figure PNGs
+are byte-identical to `2ea57c8` (SHA-256), every other figure CSV is unchanged
+(no `config_sha` move either — `config.yaml` is untouched), and the manifest
+changes only in its top-level `generated_utc`: the `fig_drill_angle_scatter`
+entry itself, caveats included, is unchanged. Two consecutive renders of figure
+18 are byte-identical.
+
+**Tests.** `tests/test_drill_angle_figure.py` grows three assertions from 18 to
+21: the heading is the only figure-level text block; the x label is exactly
+"Absolute turn angle (°)"; the axes fill the canvas under the heading with a
+normal margin and nothing is clipped or drawn off-canvas. The stage-level
+figure-18 tests gain two: the drawn text of a real render carries one heading,
+no subtitle, no caption and no "bucketed", and the manifest caveats plus the
+CSV provenance columns are unchanged by the drawing edit.
