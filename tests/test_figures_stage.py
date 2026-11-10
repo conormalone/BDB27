@@ -797,7 +797,7 @@ def test_on_image_stamp_switch_controls_the_banner(rendered, tmp_path):
 
 
 def test_no_figure_draws_placeholder_text(rendered):
-    """Every one of the 17 figures is scanned for placeholder hedging (D180).
+    """Every one of the 18 figures is scanned for placeholder hedging (D180).
 
     Rebuilds each figure in-process and reads the drawn text back — the PNG
     cannot be searched as text, so the figure objects are the evidence.
@@ -806,7 +806,7 @@ def test_no_figure_draws_placeholder_text(rendered):
 
     report = scan_figures(rendered["cfg"])
     assert report["exit_code"] == 0
-    assert report["figures_scanned"] == 17, report["figures_scanned"]
+    assert report["figures_scanned"] == 18, report["figures_scanned"]
     assert report["total_hits"] == 0, [
         (f["png"], f["hits"]) for f in report["figures"] if f["hits"]]
     assert BANNED_TOKENS == ("PLACEHOLDER", "UNVALIDATED", "SAMPLE OUTPUT",
@@ -1082,7 +1082,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_ledger", "fig_bars_of_doubt",
                                    "fig_supply_composition", "fig_band_only",
                                    "fig_entry_exit_speed",
-                                   "fig_movement_family"}
+                                   "fig_movement_family",
+                                   "fig_drill_angle_scatter"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1633,8 +1634,9 @@ def test_stage_06_manifest_lists_every_figure(rendered):
         "fig_gap_honest", "fig_turn_cost", "fig_stopwatch", "fig_both_hips",
         "fig_shallow_sources", "fig_ledger", "fig_bars_of_doubt",
         "fig_supply_composition", "fig_band_only",
-        "fig_entry_exit_speed", "fig_movement_family"}
-    assert len(man["figures"]) == 17
+        "fig_entry_exit_speed", "fig_movement_family",
+        "fig_drill_angle_scatter"}
+    assert len(man["figures"]) == 18
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -2765,7 +2767,7 @@ def test_both_hips_computes_no_symmetry_or_p_value(rendered):
 def test_both_hips_renders_every_figure(rendered):
     out = rendered["tmp"] / "outputs" / "figures"
     pngs = sorted(p.name for p in out.glob("fig_*.png"))
-    assert len(pngs) == 17, f"stage 06 must render seventeen figures, found {pngs}"
+    assert len(pngs) == 18, f"stage 06 must render eighteen figures, found {pngs}"
     assert "fig_both_hips.png" in pngs
 
 
