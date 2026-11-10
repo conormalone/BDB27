@@ -613,9 +613,7 @@ def main(argv=None) -> int:
                         f"{figures.FIGURE_KEY_DRILL_ANGLE}: "
                         f"turns={da_context['n_turns']} "
                         f"drills={da_context['n_drills']} "
-                        f"in_band={da_context['turns_in_band']} "
-                        f"({da_context['accent']} "
-                        f"{da_context['accent_band_turns']}) ")
+                        f"in_band={da_context['turns_in_band']} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -684,10 +682,9 @@ def main(argv=None) -> int:
           f"{mf_context['population_players']} players, "
           f"{sum(mf_context['n_estimable'].values())} of "
           f"{mf_context['table_rows']} cells estimable"
-          f"; figure 18 every Combine turn "
+          f"; figure 18 every DB Combine turn "
           f"{da_context['n_turns']} across {da_context['n_drills']} drills, "
-          f"{da_context['turns_in_band']} in the 30-60 band "
-          f"({da_context['accent']} {da_context['accent_band_turns']})"
+          f"{da_context['turns_in_band']} in the 30-60 band"
           f")")
     return 0
 

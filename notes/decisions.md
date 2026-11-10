@@ -6931,3 +6931,56 @@ the turns plotted, determinism, manifest claim/caveats).
 `outputs/figures/fig_drill_angle_scatter.{png,csv}`;
 `outputs/figures/figures_manifest.json`; `tests/test_drill_angle_figure.py`;
 `tests/test_figures_stage.py`.
+
+### D183 (extended) — figure 18 narrowed to DB only · 2026-11-10 18:23
+
+**Standing policy (Conor, 2026-11-10 17:16, verbatim).** "Unless I say otherwise
+everything is db only." Follow-ups on this figure: "Just the dbs this time" and
+"And just the db drills." This is now permanent project policy, not a one-figure
+preference: every figure, query and table is `position_group == DB` unless Conor
+says otherwise. No D number is opened for it — D183 is extended, because the
+figure, its contract and its caveats are the same artefact.
+
+**What changed.** The figure population is `position_group == DB`: 1,179 valid
+DB Combine turns across the ten drills DBs ran (box 304, Teryl Austin 2 199,
+back-pedal 45 reaction 133, back-pedal 90 break 118, Teryl Austin 1 108, W 107,
+3-cone 98, short shuttle 70, gauntlet 41, 40-yard dash 1). The y axis is that
+drill set by construction — no drill whitelist is declared, so a DB drill cannot
+be dropped silently. The 26 DB turns inside 30–60° are unchanged. The band, the
+per-drill median tick, the right-edge turn count, the vertical-only seeded
+jitter and the one-dot-per-turn encoding are unchanged.
+
+**What was removed.** The position-accent split (DB blue / other positions
+grey), its three-handle legend and the caption sentence that compared DB's band
+count with the other four positions. A single series needs no legend. The
+duplicate-spelling caveat went too: `PASS_PRO*` are not DB drills, so it no
+longer describes anything drawn. The config key `position_accent` became
+`position_group` (same value, DB) because it is now the population, not an
+accent.
+
+**Measured at render time (turns.parquet).** 1,179 turns, 10 drills, 122
+players, 26 in band = 2.2% of DB Combine turns. Drill medians, ascending:
+40-yard dash 48.1° (a single turn, so its "median" is that turn — the caption
+says so), 3-cone 70.6°, gauntlet 85.1°, back-pedal 90° break 89.1°, back-pedal
+45° reaction 113.1°, W drill 139.3°, box 139.3°, Teryl Austin 1 140.4°, Teryl
+Austin 2 148.2°, short shuttle 179.6°. One row (40-yard dash) holds fewer than
+ten turns and is italic.
+
+**Layout.** Ten rows no longer need the 45-row canvas: `height_in` 15.2 → 7.6
+(2040 × 1140 px at 150 dpi), and the axes rectangle gives the caption block a
+real bottom margin. Two consecutive renders are byte-identical.
+
+**Proof nothing else moved.** All 17 pre-existing PNGs are byte-identical to
+`fddb107` (SHA-256). Every other figure CSV is unchanged in every column except
+`config_sha` (same row count, same cells). The manifest changes only in its
+fig_drill_angle_scatter entry plus the top-level `config_sha`/`generated_utc`.
+The `run_log` timer line still reports turns, drills and in-band count, now
+DB-only.
+
+**Tests.** `tests/test_drill_angle_figure.py` (18): the row-count/row-order/
+x-equals-angle/jitter/band/CSV/manifest/refusal/determinism/sentinel tests are
+kept, with the fixture made DB-only plus a WR/OL block that must not be drawn;
+new assertions that the table is one position, that the non-DB drills are
+excluded, that no grey mark is drawn, that a single series carries no legend,
+and that the committed CSV holds 1,179 rows, 10 drills, DB only, 26 in band.
+`tests/test_figures_stage.py` figure-18 tests assert the same counts end to end.

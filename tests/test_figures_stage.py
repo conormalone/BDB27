@@ -4409,9 +4409,15 @@ def test_drill_angle_end_to_end(rendered):
     valid = turns["valid"].fillna(False).astype(bool)
     angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
     expected = int((valid & (turns["setting"] == "combine")
+                    & (turns["position_group"] == "DB")
                     & angle.notna()).sum())
     csv_df = pd.read_csv(rendered["da_csv"])
-    assert len(csv_df) == expected, "the CSV is not one row per valid turn"
+    assert len(csv_df) == expected, "the CSV is not one row per valid DB turn"
+    assert len(csv_df) == 1179
+    assert csv_df["position_group"].eq("DB").all(), (
+        "figure 18 must draw only DB turns")
+    assert csv_df["drill_name"].nunique() == 10
+    assert int(csv_df["in_band"].sum()) == 26
     assert np.array_equal(csv_df["x_draw"].to_numpy(dtype=float),
                           csv_df["abs_turn_angle"].to_numpy(dtype=float))
     assert np.allclose(
@@ -4443,6 +4449,9 @@ def test_drill_angle_manifest_carries_claim_and_caveats(rendered):
     fig = man["figures"][DA_KEY]
     assert fig["stamp"] == STAMP
     assert fig["sources"] == ["outputs/turns/turns.parquet"]
+    assert fig["population"]["position_group"] == "DB"
+    assert fig["population"]["turns"] == 1179
+    assert fig["population"]["drills"] == 10
     assert fig["population"]["valid_only"] is True
     assert fig["population"]["game_turns"] is False
     assert fig["population"]["detector_floor_deg"] == 30.0
@@ -4453,6 +4462,8 @@ def test_drill_angle_manifest_carries_claim_and_caveats(rendered):
     assert fig["drawing"]["y_jitter"]["recorded_per_row"] == [
         "y_offset_rows", "y_draw"]
     assert "30–60°" in fig["claim"]
+    assert "DB" in fig["claim"]
+    assert "by position" not in fig["claim"]
     joined = " ".join(fig["caveats"])
     assert "floor" in joined
     assert "not a distribution" in joined

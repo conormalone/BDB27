@@ -900,21 +900,24 @@ turn_coverage:
       width_in: 13.2
       height_in: 11.0
 
-    # Stage 06 figure 18 ("Every Combine turn, against the drill that made
+    # Stage 06 figure 18 ("Every DB Combine turn, against the drill that made
     # it"). Direct request from Conor, 2026-11-10 16:08: "could you give me a
     # scatter plot of all the turns in the data, x axis is the angle (not
-    # bucketed) y axis is drill." Reporting only: one dot per valid Combine
-    # turn, no binning on x, no fitted curve, no test.
+    # bucketed) y axis is drill", narrowed the same day: "Just the dbs this
+    # time" / "And just the db drills", and standing policy since: "Unless I
+    # say otherwise everything is db only." Reporting only: one dot per valid
+    # DB Combine turn, no binning on x, no fitted curve, no test.
     #
     # `band_deg` is the DISPLAY band shaded behind the dots. It repeats
     # figure 1/5's merged 30-60 window (D178/D179) because that is the band
     # the case reads; the colour, tint and widths come from
     # `figures.focus_band` (D172) and are never restated here.
     #
-    # The y axis carries EVERY drill that produced a valid Combine turn, not
-    # a curated ten: Conor asked for all the turns, and the 5,536 valid
-    # Combine turns span 45 drill names. Rows are ordered by that drill's own
-    # median absolute angle, computed at render time, never declared here.
+    # `position_group` is the whole population, not an accent: only DB turns
+    # are drawn, so the y axis is exactly the drills DBs ran (ten of them).
+    # No drill whitelist is declared here; filtering the turns to DB produces
+    # the drill set. Rows are ordered by that drill's own median absolute
+    # angle, computed at render time.
     #
     # `jitter.span_rows` is a DRAWING device in row units (1.0 = one drill
     # row). Every offset is written per row into the figure CSV as
@@ -922,18 +925,18 @@ turn_coverage:
     # two renders are byte-identical.
     drill_angle_scatter:
       setting: combine
-      position_accent: DB
+      position_group: DB
       band_deg: [30, 60]
       jitter:
         span_rows: 0.55
         seed: 20270106
       x_lim: [28.5, 282.0]
       x_ticks: [30, 60, 90, 120, 150, 180, 210, 240, 270]
-      # Fixed render size: 45 drill rows need the height; width keeps the
-      # 244-degree angle span readable at 150 dpi.
+      # Fixed render size: 10 DB drill rows; width keeps the 244-degree angle
+      # span readable at 150 dpi.
       dpi: 150
       width_in: 13.6
-      height_in: 15.2
+      height_in: 7.6
 
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type

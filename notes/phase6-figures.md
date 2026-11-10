@@ -53,22 +53,24 @@ sourced from `notes/phase2-turns.md` and `outputs/audit/gate.json`.
 No per-player ranking, player names, scores, p-values or error bars on counts
 appear anywhere in the figure, CSV or manifest.
 
-## Figure 18 — "Every Combine turn, against the drill that made it" (D183)
-`outputs/figures/fig_drill_angle_scatter.png` (2040 × 2280 px, 150 dpi) plus
-`fig_drill_angle_scatter.csv` and a manifest entry. One dot per valid Combine
-turn: **5,536 turns, 45 drills, 5 positions, 508 players**. x = the measured
+## Figure 18 — "Every DB Combine turn, against the drill that made it" (D183)
+`outputs/figures/fig_drill_angle_scatter.png` (2040 × 1140 px, 150 dpi) plus
+`fig_drill_angle_scatter.csv` and a manifest entry. One dot per valid **DB**
+Combine turn: **1,179 turns, 10 drills, 122 players**. x = the measured
 absolute turn angle, continuous and unbucketed; y = the drill, one row per
-drill, ordered by that drill's own median angle. DB turns are accent blue
-(1,179 across 10 drills); every other position is grey. The 30–60° band is
-tinted and outlined from `figures.focus_band`; red marks the band, never a data
-point. Each row carries its median as a black tick and its own turn count at the
-right edge.
+drill, ordered by that drill's own median angle. No other position is drawn, as
+data or as background (standing policy: "unless I say otherwise everything is db
+only"). The 30–60° band is tinted and outlined from `figures.focus_band`; red
+marks the band, never a data point. Each row carries its median as a black tick
+and its own turn count at the right edge.
 
-Turns inside 30–60°: **304** — DL 95, WR 90, OL 62, TE 31, DB 26, i.e. DB 2.2%
-of its own turns against DL 4.6%, OL 6.5%, WR 8.6%, TE 10.5%. Two drill medians
-sit in the band (Circus route (left) 47.0°, OL pull: fold block right 55.4°);
-no DB drill median is below 71°. Seven rows hold fewer than ten turns and are
-labelled italic.
+The ten DB drills, median angle ascending: 40-yard dash 48.1° (1 turn), 3-cone
+70.6°, gauntlet 85.1°, back-pedal 90° break to ball 89.1°, back-pedal 45°
+reaction 113.1°, W drill 139.3°, box drill 139.3°, Teryl Austin 1 140.4°, Teryl
+Austin 2 148.2°, short shuttle 179.6°. Turns inside 30–60°: **26 of 1,179
+(2.2%)**. The 40-yard dash median sits in the band because its row is a single
+turn; the caption says so. One row holds fewer than ten turns and is labelled
+italic.
 
 Caption caveats: Combine turns only (a game turn carries no drill name); valid
 turns only; the 30° detector floor censors the shallow end of every row, so no
@@ -77,6 +79,6 @@ turn below 30° exists in the table; dots are individual turns, not players; the
 with x never moved. Deliberately absent: any mean, box, density curve, fit,
 ellipse or test. Two renders produce a byte-identical PNG.
 
-The new config block moves `config_sha` in every other figure CSV; every column
-except `config_sha` is unchanged in all 17, and every pre-existing PNG is
-byte-identical to `438c298` (D183).
+The DB-only narrowing moves `config_sha` in every other figure CSV (the config
+block changed); every column except `config_sha` is unchanged in all 17, and
+every pre-existing PNG is byte-identical to `fddb107` (D183).

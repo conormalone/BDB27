@@ -1,10 +1,11 @@
-"""Figure 18 contract: one row per turn, row order, band, jitter, refusal.
+"""Figure 18 contract: DB-only rows, row order, band, jitter, refusal.
 
-Figure 18 is the only figure that draws every valid Combine turn at its
+Figure 18 is the only figure that draws every valid DB Combine turn at its
 measured angle against the drill that produced it. These are unit-level tests:
 no stage run. The fixture is a small, fully deterministic turn table with DB
 and non-DB turns, angles chosen so the band counts, the per-drill medians and
-the row order can all be recomputed by hand.
+the row order can all be recomputed by hand. The non-DB rows are there to prove
+they are excluded: DB-only is standing policy (D183).
 """
 
 from __future__ import annotations
@@ -29,18 +30,25 @@ ROOT = Path(__file__).resolve().parents[1]
 #: (drill, position, count, angle start) — medians deliberately out of order in
 #: the input so the ascending row sort is exercised rather than assumed.
 DRILLS = [
-    ("DEEP_DRILL", "WR", 12, 150.0),
-    ("SHALLOW_ROUTE", "WR", 8, 31.0),
+    ("DEEP_DRILL", "DB", 12, 150.0),
+    ("SHALLOW_ROUTE", "DB", 8, 31.0),
     ("BOX", "DB", 10, 40.0),
     ("MID_ROUTE", "DB", 6, 90.0),
-    ("TINY_DRILL", "DL", 3, 200.0),
+    ("TINY_DRILL", "DB", 3, 200.0),
+]
+
+#: Turns in other position groups. None may be drawn, counted or sized: the
+#: figure is DB-only by policy, not by which positions happen to exist.
+NON_DB_DRILLS = [
+    ("WR_ROUTE", "WR", 5, 45.0),
+    ("OL_PULL", "OL", 4, 55.0),
 ]
 
 
 def _frame(seed: int = 7) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     rows = []
-    for drill, position, n, start in DRILLS:
+    for drill, position, n, start in DRILLS + NON_DB_DRILLS:
         angle = start + 0.7 * np.arange(n)
         angle = angle + rng.uniform(0.0, 0.2, n)
         for j in range(n):
@@ -75,12 +83,16 @@ def built(cfg):
     return figures.drill_angle_table(_frame(), cfg)
 
 
-def test_one_row_per_valid_combine_turn(built):
+def test_one_row_per_valid_db_combine_turn(built):
     table, context = built
     assert len(table) == sum(n for _, _, n, _ in DRILLS)
     assert context["n_turns"] == len(table)
     assert context["n_drills"] == len(DRILLS)
     assert table["setting"].eq("combine").all()
+    assert table["position_group"].eq("DB").all()
+    assert context["position_group"] == "DB"
+    assert set(table["drill_name"]) == {d for d, _, _, _ in DRILLS}
+    assert not set(table["drill_name"]) & {d for d, _, _, _ in NON_DB_DRILLS}
 
 
 def test_rows_ascend_by_each_drills_own_median(built):
@@ -133,14 +145,9 @@ def test_band_counts_and_shares_match_the_table(built):
               & (table["abs_turn_angle"] < focus["high"]))
     assert int(table["in_band"].sum()) == int(inside.sum())
     assert context["turns_in_band"] == int(inside.sum())
-    for position, n in context["by_position"].items():
-        part = table[table["position_group"] == position]
-        assert n == len(part)
-        assert context["band_by_position"][position] == int(part["in_band"].sum())
-        assert np.isclose(context["share_by_position"][position],
-                          part["in_band"].mean())
-    assert sum(context["by_position"].values()) == len(table)
-    assert sum(context["band_by_position"].values()) == context["turns_in_band"]
+    assert np.isclose(context["band_share"], table["in_band"].mean())
+    assert context["turns_in_band"] / len(table) == pytest.approx(
+        context["band_share"])
 
 
 def test_csv_frame_carries_every_turn_and_its_offset(built):
@@ -162,6 +169,8 @@ def test_manifest_payload_agrees_with_the_table(built, cfg):
     table, context = built
     payload = figures.drill_angle_manifest_payload(table, context, cfg)
     assert payload["figure"] == figures.FIGURE_KEY_DRILL_ANGLE
+    assert payload["population"]["position_group"] == "DB"
+    assert "by_position" not in payload["population"]
     assert payload["population"]["turns"] == len(table)
     assert payload["population"]["drills"] == context["n_drills"]
     assert payload["population"]["valid_only"] is True
@@ -260,7 +269,16 @@ def test_no_data_mark_is_drawn_in_the_focus_colour(built, cfg):
     assert dots, "no scatter marks were drawn"
     assert focus not in dots, "a data dot is drawn in the focus red"
     assert to_hex(to_rgba(figures.PALETTE["combine"])) in dots
-    assert to_hex(to_rgba(figures.BARS_GREY)) in dots
+    assert to_hex(to_rgba(figures.BARS_GREY)) not in dots, (
+        "a non-DB/muted mark was drawn; figure 18 is DB-only")
+    plt.close(fig)
+
+
+def test_no_legend_is_drawn_for_a_single_series(built, cfg):
+    table, context = built
+    fig = figures.plot_drill_angle(table, context, cfg)
+    fig.canvas.draw()
+    assert not fig.legends, "a single-series figure should carry no legend"
     plt.close(fig)
 
 
@@ -281,14 +299,18 @@ REPO_TURNS = ROOT / "outputs" / "turns" / "turns.parquet"
 
 @pytest.mark.skipif(not (REPO_CSV.exists() and REPO_TURNS.exists()),
                     reason="committed figure artefact not present")
-def test_committed_csv_holds_every_valid_combine_turn():
+def test_committed_csv_holds_every_valid_db_combine_turn():
     turns = pd.read_parquet(REPO_TURNS)
     valid = turns["valid"].fillna(False).astype(bool)
     expected = int((valid & (turns["setting"] == "combine")
+                    & (turns["position_group"] == "DB")
                     & pd.to_numeric(turns["abs_turn_angle"],
                                     errors="coerce").notna()).sum())
     csv = pd.read_csv(REPO_CSV)
-    assert len(csv) == expected
+    assert len(csv) == expected == 1179
+    assert csv["position_group"].eq("DB").all()
+    assert csv["drill_name"].nunique() == 10
+    assert int(csv["in_band"].sum()) == 26
     assert np.array_equal(csv["x_draw"].to_numpy(dtype=float),
                           csv["abs_turn_angle"].to_numpy(dtype=float))
     medians = csv.groupby("row_index")["row_median_deg"].first().to_dict()
