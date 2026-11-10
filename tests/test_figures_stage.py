@@ -4353,14 +4353,18 @@ MF_KEY = "fig_movement_family"
 def test_movement_family_end_to_end(rendered):
     _check_png(rendered["mf_png"])
     csv_df = pd.read_csv(rendered["mf_csv"])
-    assert len(csv_df) == 28
+    assert len(csv_df) == 24
     assert csv_df["panel"].unique().tolist() == [
         "apex_share", "peak_lateral_accel", "circle_fit_share", "peak_omega"]
     assert csv_df["panel_index"].tolist() == sorted(csv_df["panel_index"])
     assert csv_df.groupby("panel")["band_index"].apply(list).apply(
-        lambda v: v == list(range(7))).all()
-    assert csv_df["log_axis"].sum() == 7          # panel D only
+        lambda v: v == list(range(6))).all()
+    assert csv_df["log_axis"].sum() == 6          # panel D only
     assert csv_df.loc[csv_df["panel"] == "peak_omega", "log_axis"].all()
+    merged = csv_df[csv_df["band_index"] == 0]
+    assert merged["band"].unique().tolist() == ["30–60°"]
+    assert (merged["band_low_deg"] == 30).all()
+    assert (merged["band_high_deg"] == 60).all()
     circle = csv_df[csv_df["panel"] == "circle_fit_share"]
     assert (circle["value"].dropna().between(0.0, 1.0)).all()
     assert (circle["ci_low"].dropna().between(0.0, 1.0)).all()
@@ -4378,9 +4382,10 @@ def test_movement_family_end_to_end(rendered):
     joined = " ".join(fig["caveats"])
     assert "constant-radius arc model" in joined
     assert "detector floor" in joined
-    assert "shallow bucket is thin" in joined
+    assert "union of the 30–45° and 45–60° rows" in joined
     assert "these are game turns only" in joined
-    assert len(fig["rows"]) == 28
+    assert "shallow bucket is thin" not in joined
+    assert len(fig["rows"]) == 24
     assert fig["population"]["position_group"] == "DB"
     assert fig["population"]["settings"] == ["game"]
     assert fig["statistic"]["cluster_by"] == "nfl_id"

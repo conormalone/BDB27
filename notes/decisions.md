@@ -6766,8 +6766,10 @@ split at 45. `is_focus_band` is true on the 30–60° row and nowhere else.
 family starts above 120° (`edges[3]`, which was `edges[4]` on the seven-bucket
 axis). The claim that the merged bucket is an "ordinary member of the arc
 family" is kept only because it is still true — its four intervals overlap
-60–90°'s — and is now guarded at build time (`_mf_check_arc_family` raises if
-any panel's two arc intervals are disjoint). Two old supporting clauses were
+60–90°'s — and is now decided at build time (`_mf_arc_overlap` reads the drawn
+intervals; if any panel's two arc intervals are disjoint the caption and
+the manifest say the two buckets are not one family instead of printing
+the claim). Two old supporting clauses were
 dropped because the merged numbers contradict them: the merged bucket does
 **not** have the lowest entry-speed median (60–90° is 3.70 vs 3.79 yd/s), and
 it is **not** without a Combine counterpart (the 30–60° Combine bucket holds

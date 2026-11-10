@@ -2,7 +2,7 @@
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
   "config_sha": "cab5a24960f6d39b",
-  "generated_utc": "2026-11-10T14:29:54Z",
+  "generated_utc": "2026-11-10T15:05:46Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -5920,7 +5920,7 @@
           "bootstrap_seed": 115127792
         }
       ],
-      "claim": "The six game-only DB angle buckets are two families, not a gradient: 30\u201360\u00b0 and 60\u201390\u00b0 are statistically indistinguishable on all four panels (apex share 0.86/0.89, peak lateral acceleration 5.6/5.6 yd/s\u00b2, peak angular rate 83/84 deg/s, circle-fit usable share 1.000/0.998; every player-clustered interval overlaps between these two buckets). The break comes at 90\u2013120\u00b0, and from there the decline is monotone: the apex share falls 0.72 to 0.14 while peak lateral acceleration rises 7.5 to 32.6 yd/s\u00b2, peak angular rate rises 108 to 493 deg/s and the circle-fit usable share falls 0.97 to 0.46. The plant family starts above 120\u00b0. The merged 30\u201360\u00b0 bucket is an ordinary member of the arc family, not its extreme: its four intervals all overlap 60\u201390\u00b0's. Its median is taken over the union of the 30\u201345\u00b0 and 45\u201360\u00b0 turns, never as an average of the two old medians. These are descriptive medians and shares with player-clustered bootstrap intervals, not a test or a ranking of bands.",
+      "claim": "The six game-only DB angle buckets are two families, not a gradient: 30\u201360\u00b0 and 60\u201390\u00b0 are statistically indistinguishable on all four panels; every player-clustered interval overlaps between these two buckets (apex share 0.86/0.89, peak lateral acceleration 5.6/5.6 yd/s\u00b2, peak angular rate 83/84 deg/s, circle-fit usable share 1.000/0.998). The break comes at 90\u2013120\u00b0, and from there the decline is monotone: the apex share falls 0.72 to 0.14 while peak lateral acceleration rises 7.5 to 32.6 yd/s\u00b2, peak angular rate rises 108 to 493 deg/s and the circle-fit usable share falls 0.97 to 0.46. The plant family starts above 120\u00b0. The merged 30\u201360\u00b0 bucket is an ordinary member of the arc family, not its extreme: its four intervals all overlap 60\u201390\u00b0's. Its median is taken over the union of the 30\u201345\u00b0 and 45\u201360\u00b0 turns, never as an average of the two old medians. These are descriptive medians and shares with player-clustered bootstrap intervals, not a test or a ranking of bands.",
       "caveats": [
         "circle_fit_usable describes whether the constant-radius arc model fits the turn the detector found; it is evidence about the geometry of the detected path, not ground truth about the athlete.",
         "the 30\u00b0 detector floor sits immediately below the shallow bucket, so some turns there may be fragments of larger movements.",

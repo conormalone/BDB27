@@ -1,9 +1,12 @@
 """Figure 17 contract: ratio-of-medians, bootstrap truth, schema, log axis.
 
 Unit-level tests — no stage run. The fixture is a deterministic game-only DB
-turn table with one deliberately thin bucket (band 5: three turns from two
-players) so the "no estimate" path is exercised, and one band where the median
-of per-turn ratios is provably different from a ratio of medians.
+turn table. Figure 17 draws the merged six-band display axis
+(``figures.hole.plot_bands``: 30-60/60-90/90-120/120-150/150-180/>180), so the
+fixture has six buckets, one deliberately thin bucket (band 4: three turns from
+two players) so the "no estimate" path is exercised, and the merged 30-60 band
+holds turns from both sides of 45° where the median of per-turn ratios is
+provably different from a ratio of medians.
 """
 
 from __future__ import annotations
@@ -39,25 +42,39 @@ def cfg():
 
 @pytest.fixture(scope="module")
 def frame(cfg):
-    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    edges = [float(x) for x in cfg.get("figures.hole.plot_bands.turn_angle_deg")]
     rows = []
     for i in range(len(edges)):
         lo = edges[i]
         hi = edges[i + 1] if i + 1 < len(edges) else lo + 60.0
-        # Band 5 is below the ten-turn floor on purpose; every other band has
+        # Band 4 is below the ten-turn floor on purpose; every other band has
         # twenty turns from four players.
-        n = 3 if i == 5 else 20
-        players = [1000 + i * 10 + k for k in range(2 if i == 5 else 4)]
+        n = 3 if i == 4 else 20
+        players = [1000 + i * 10 + k for k in range(2 if i == 4 else 4)]
         for j in range(n):
             angle = lo + (hi - lo) * (j + 0.5) / n
-            if i == 1:
-                # Ten low-entry (ratio 0.2) and ten high-entry (ratio 0.9)
-                # turns: median of ratios = 0.55, ratio of medians = 0.725.
+            if i == 0:
+                # The merged 30-60 bucket: ten low-entry (ratio 0.2) turns from
+                # 30-45 and ten high-entry (ratio 0.9) turns from 45-60.
+                # Median of ratios = 0.55, ratio of medians = 0.725, and the
+                # median is taken over the union, not averaged from halves.
                 entry = 2.0 if j < 10 else 6.0
                 apex = 0.4 if j < 10 else 5.4
+                lat = 4.0
+                omega = 70.0
+            elif i == 1:
+                # The second arc bucket matches band 0's other panels, so the
+                # "one arc family" claim holds on the fixture as it does on
+                # the data; its apex ratios sit near band 0's median.
+                entry = 3.0 + 0.01 * j
+                apex = entry * (0.55 + 0.002 * (j % 2))
+                lat = 4.0
+                omega = 70.0
             else:
                 entry = 3.0 + 0.20 * i + 0.01 * j
                 apex = entry * (0.90 - 0.05 * i + 0.001 * j)
+                lat = 4.0 + 0.5 * (i - 1)
+                omega = 70.0 + 20.0 * (i - 1)
             rows.append({
                 "setting": "game",
                 "position_group": "DB",
@@ -66,10 +83,9 @@ def frame(cfg):
                 "nfl_id": int(players[j % len(players)]),
                 "apex_speed": float(apex),
                 "entry_speed": float(entry),
-                "peak_lateral_accel_yd_s2": float(
-                    4.0 + 0.5 * i + 0.01 * j),
+                "peak_lateral_accel_yd_s2": float(lat + 0.01 * j),
                 "circle_fit_usable": bool(j % 4 != 0),
-                "peak_omega_deg_s": float(70.0 + 20.0 * i + 0.5 * j),
+                "peak_omega_deg_s": float(omega + 0.5 * j),
             })
     # Rows the population filter must remove: Combine, non-DB, invalid.
     rows.append({
@@ -131,7 +147,7 @@ def _reference_bootstrap(values, clusters, *, reps, ci_level, label,
 
 
 def _bucket(frame, cfg, band_index):
-    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    edges = [float(x) for x in cfg.get("figures.hole.plot_bands.turn_angle_deg")]
     valid = frame["valid"].fillna(False).astype(bool)
     df = frame[valid & (frame["position_group"] == "DB")
                & (frame["setting"] == "game")].copy()
@@ -146,28 +162,30 @@ def _bucket(frame, cfg, band_index):
 def test_csv_schema_and_row_order(table, cfg):
     csv = figures.movement_family_csv_frame(table, {})
     assert list(csv.columns) == CSV_COLUMNS
-    assert len(csv) == 28
+    assert len(csv) == 24
     assert csv["panel"].unique().tolist() == PANELS
-    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    edges = [float(x) for x in cfg.get("figures.hole.plot_bands.turn_angle_deg")]
     overflow = str(cfg.get("figures.hole.bands.overflow_label"))
     labels = figures.band_labels(edges, overflow)
     for panel in PANELS:
         part = csv[csv["panel"] == panel]
-        assert part["band_index"].tolist() == list(range(7))
+        assert part["band_index"].tolist() == list(range(6))
         assert part["band"].tolist() == labels
-        assert part["bootstrap_reps"].tolist() == [2000] * 7
-    assert csv["panel_index"].tolist() == [p for p in range(4) for _ in range(7)]
+        assert part["bootstrap_reps"].tolist() == [2000] * 6
+    assert csv["panel_index"].tolist() == [p for p in range(4) for _ in range(6)]
     assert csv["ci_method"].unique().tolist() == [
         "percentile_cluster_bootstrap_by_player"]
-    assert csv["log_axis"].sum() == 7
+    assert csv["log_axis"].sum() == 6
     assert csv.loc[csv["panel"] == "peak_omega", "log_axis"].all()
     assert not csv.loc[csv["panel"] != "peak_omega", "log_axis"].any()
     assert csv.loc[csv["band_index"] == 0, "is_focus_band"].all()
     assert not csv.loc[csv["band_index"] != 0, "is_focus_band"].any()
+    assert csv.loc[csv["band_index"] == 0, "band"].unique().tolist() == [
+        "30–60°"]
 
 
 def test_median_of_per_turn_ratios_not_ratio_of_medians(table, frame, cfg):
-    part = _bucket(frame, cfg, 1)
+    part = _bucket(frame, cfg, 0)
     ratios = (part["apex_speed"] / part["entry_speed"]).to_numpy(dtype=float)
     per_turn_median = float(np.median(ratios))
     ratio_of_medians = float(np.median(part["apex_speed"])
@@ -175,7 +193,7 @@ def test_median_of_per_turn_ratios_not_ratio_of_medians(table, frame, cfg):
     assert per_turn_median != ratio_of_medians, (
         "fixture must distinguish the two estimators")
     row = table[(table["panel"] == "apex_share")
-                & (table["band_index"] == 1)].iloc[0]
+                & (table["band_index"] == 0)].iloc[0]
     assert float(row["value"]) == per_turn_median
     assert float(row["value"]) != ratio_of_medians
 
@@ -231,7 +249,7 @@ def test_ci_columns_and_non_estimable_bucket(table):
             assert pd.isna(row["value"])
             assert pd.isna(row["ci_low"])
             assert pd.isna(row["ci_high"])
-            assert int(row["band_index"]) == 5
+            assert int(row["band_index"]) == 4
             assert int(row["n_turns"]) == 3
 
 
@@ -245,15 +263,15 @@ def test_circle_fit_share_bounded_on_fixture_csv(table, context):
         assert (series >= 0.0).all() and (series <= 1.0).all()
     # A proportion bootstrap is not a ratio of two noisy quantities: it
     # cannot leave [0, 1] even though the fixture repeats within players.
-    assert len(values) == 6
+    assert len(values) == 5
 
 
 def test_population_is_game_db_only(table, context):
-    assert context["population_turns"] == 6 * 20 + 3
-    assert context["population_players"] == 26
-    # The thin bucket counts are carried once, for the footer and caveat (c).
+    assert context["population_turns"] == 5 * 20 + 3
+    assert context["population_players"] == 22
+    # The thin bucket counts are carried once, for the footer.
     row = table[(table["panel"] == "apex_share")
-                & (table["band_index"] == 5)].iloc[0]
+                & (table["band_index"] == 4)].iloc[0]
     assert int(row["n_turns"]) == 3
     assert int(row["n_players"]) == 2
 
@@ -281,10 +299,13 @@ def test_two_renders_are_byte_identical(table, context, cfg, tmp_path):
 
 def test_caption_does_not_claim_shallow_band_is_arc_extreme(context, cfg):
     text = " ".join(figures._mf_caption_lines(context, cfg)).lower()
-    assert "the three arc buckets are one family" in text
+    assert "the two arc buckets are one family" in text
     assert "ordinary member of the arc family, not its extreme" in text
     assert "plant family starts above" in text
     assert "break comes at" in text
+    assert "the three arc buckets" not in text
+    assert "shallow bucket is thin" not in text
+    assert "lowest entry speed" not in text
     for forbidden in (
         "shallow band is kinematically distinct",
         "kinematically distinct from 45",
@@ -300,6 +321,7 @@ def test_manifest_claim_states_two_family_structure(context, cfg):
     payload = figures.movement_family_manifest_payload(
         context["table"], context, cfg)
     claim = payload["claim"].lower()
+    assert "the six game-only db angle buckets" in claim
     assert "two families, not a gradient" in claim
     assert "ordinary member of the arc family, not its extreme" in claim
     assert "plant family starts above" in claim

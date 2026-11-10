@@ -9574,7 +9574,6 @@ def movement_family_table(turns: pd.DataFrame,
                 "bootstrap_seed": int(seed),
             })
     table = pd.DataFrame(rows)[MOVEMENT_FAMILY_CSV_COLUMNS]
-    _mf_check_arc_family(table, panels)
 
     n_estimable = {panel["panel"]: int(
         table[table["panel"] == panel["panel"]]["estimable"].sum())
@@ -9616,39 +9615,34 @@ def _mf_cell(table: pd.DataFrame, panel: str, band_index: int) -> pd.Series:
     return part.iloc[0]
 
 
-def _mf_check_arc_family(table: pd.DataFrame, panels: list[dict]) -> None:
-    """Refuse the caption's "one arc family" claim if the data contradict it.
+def _mf_arc_overlap(table: pd.DataFrame, panels: list[dict]) -> bool:
+    """Do the two arc buckets' intervals overlap on every panel?
 
     On the merged six-band axis the arc family is the 30–60° and 60–90°
-    buckets. The caption and the manifest claim every player-clustered interval
-    overlaps between them, on all four panels. That is checked against the
-    table actually drawn, never assumed: a band change that separates them
-    refuses instead of printing a false sentence.
+    buckets. The caption and the manifest may only call them one family when
+    every player-clustered interval overlaps between them, on all four panels.
+    That is read off the table actually drawn, never assumed: a band change
+    that separates them makes the text say so instead of printing a false
+    sentence. A panel that cannot estimate both buckets is not an overlap.
     """
     if len(table["band_index"].unique()) != 6:
-        return
+        return False
     for panel in panels:
         part = table[table["panel"] == panel["panel"]]
         first = part[part["band_index"] == 0]
         second = part[part["band_index"] == 1]
         if first.empty or second.empty:
-            raise ValueError(
-                f"{STAGE}: figure 17's caption calls 30–60° and 60–90° one "
-                f"family, but panel {panel['panel']} is missing one of them")
+            return False
         if not (bool(first["estimable"].iloc[0])
                 and bool(second["estimable"].iloc[0])):
-            raise ValueError(
-                f"{STAGE}: figure 17's caption calls 30–60° and 60–90° one "
-                f"family, but panel {panel['panel']} cannot estimate both — "
-                "fix the claim")
-        lo0, hi0 = float(first["ci_low"].iloc[0]), float(first["ci_high"].iloc[0])
-        lo1, hi1 = float(second["ci_low"].iloc[0]), float(second["ci_high"].iloc[0])
+            return False
+        lo0 = float(first["ci_low"].iloc[0])
+        hi0 = float(first["ci_high"].iloc[0])
+        lo1 = float(second["ci_low"].iloc[0])
+        hi1 = float(second["ci_high"].iloc[0])
         if hi0 < lo1 or hi1 < lo0:
-            raise ValueError(
-                f"{STAGE}: figure 17's caption calls 30–60° and 60–90° one "
-                f"family, but their intervals are disjoint on panel "
-                f"{panel['panel']} ([{lo0:.3f}, {hi0:.3f}] vs "
-                f"[{lo1:.3f}, {hi1:.3f}]) — fix the claim")
+            return False
+    return True
 
 
 def _mf_apex_span_phrase(table: pd.DataFrame, bands: list[str]) -> str:
@@ -9675,17 +9669,39 @@ def _mf_caption_lines(context: dict, cfg: common.Config) -> list[str]:
     if len(bands) == 6:
         # The merged 30-60 bucket joins 60-90 as the arc family; the break is
         # at 90-120 and the plant family starts above 120. Every number here is
-        # recomputed on the merged table and guarded by _mf_check_arc_family.
+        # recomputed on the merged table; the family clause is decided by
+        # _mf_arc_overlap, so it cannot outrun the intervals it describes.
+        overlap = _mf_arc_overlap(table, context["panels"])
+        if overlap:
+            family = (
+                f"The two arc buckets are one family: {bands[0]} and "
+                f"{bands[1]} give an apex share of "
+                f"{val('apex_share', 0):.2f} / {val('apex_share', 1):.2f}, "
+                f"peak lateral acceleration "
+                f"{val('peak_lateral_accel', 0):.1f} / "
+                f"{val('peak_lateral_accel', 1):.1f} yd/s², peak angular rate "
+                f"{val('peak_omega', 0):.0f} / {val('peak_omega', 1):.0f} "
+                f"deg/s and circle-fit usable share "
+                f"{val('circle_fit_share', 0):.3f} / "
+                f"{val('circle_fit_share', 1):.3f}, and their player-clustered "
+                f"intervals overlap on every panel. The merged {bands[0]} "
+                f"bucket is an ordinary member of the arc family, not its "
+                f"extreme: its four intervals all overlap {bands[1]}'s.")
+        else:
+            family = (
+                f"The two arc buckets are not one family on this table: "
+                f"{bands[0]} and {bands[1]} give an apex share of "
+                f"{val('apex_share', 0):.2f} / {val('apex_share', 1):.2f}, "
+                f"peak lateral acceleration "
+                f"{val('peak_lateral_accel', 0):.1f} / "
+                f"{val('peak_lateral_accel', 1):.1f} yd/s², peak angular rate "
+                f"{val('peak_omega', 0):.0f} / {val('peak_omega', 1):.0f} "
+                f"deg/s and circle-fit usable share "
+                f"{val('circle_fit_share', 0):.3f} / "
+                f"{val('circle_fit_share', 1):.3f}, and at least one panel's "
+                f"player-clustered intervals do not overlap.")
         point = (
-            (f"THE POINT, WITH THE NUMBERS. The two arc buckets are one "
-             f"family: {bands[0]} and {bands[1]} give an apex share of "
-             f"{val('apex_share', 0):.2f} / {val('apex_share', 1):.2f}, peak "
-             f"lateral acceleration {val('peak_lateral_accel', 0):.1f} / "
-             f"{val('peak_lateral_accel', 1):.1f} yd/s², peak angular rate "
-             f"{val('peak_omega', 0):.0f} / {val('peak_omega', 1):.0f} deg/s "
-             f"and circle-fit usable share {val('circle_fit_share', 0):.3f} / "
-             f"{val('circle_fit_share', 1):.3f}, and their player-clustered "
-             f"intervals overlap on every panel. The break comes at "
+            (f"THE POINT, WITH THE NUMBERS. {family} The break comes at "
              f"{bands[2]}: from there the apex share falls monotonically "
              f"({val('apex_share', 2):.2f} → {val('apex_share', 3):.2f} → "
              f"{val('apex_share', 4):.2f} → {val('apex_share', 5):.2f}) while "
@@ -9696,10 +9712,8 @@ def _mf_caption_lines(context: dict, cfg: common.Config) -> list[str]:
              f"{val('peak_omega', 5):.0f} deg/s) and the circle-fit usable "
              f"share falls ({val('circle_fit_share', 2):.2f} → "
              f"{val('circle_fit_share', 5):.2f}); the plant family starts "
-             f"above {edges[3]:g}°. The merged {bands[0]} bucket is an "
-             f"ordinary member of the arc family, not its extreme: its four "
-             f"intervals all overlap {bands[1]}'s. Its median is taken "
-             "over the union of both buckets' turns, not as an average "
+             f"above {edges[3]:g}°. Its median is taken over the union of "
+             "both buckets' turns, not as an average "
              "of the two old medians. Panel "
              "A is the median of per-turn ratios, not a ratio of medians. "
              "These are descriptive medians and shares of measured turns, not "
@@ -9896,19 +9910,26 @@ def movement_family_manifest_payload(table: pd.DataFrame, context: dict,
         return float(_mf_cell(table, panel, i)["value"])
 
     if len(bands) == 6:
-        claim = (
+        overlap = _mf_arc_overlap(table, context["panels"])
+        head = (
             f"The six {context['setting']}-only {context['position']} angle "
             f"buckets are two families, not a gradient: {bands[0]} and "
             f"{bands[1]} are statistically indistinguishable on all four "
-            f"panels (apex share {val('apex_share', 0):.2f}/"
+            f"panels; every player-clustered interval overlaps between these "
+            f"two buckets"
+            if overlap else
+            f"The six {context['setting']}-only {context['position']} angle "
+            f"buckets are not one arc family on this table: {bands[0]} and "
+            f"{bands[1]} do not overlap on every panel")
+        claim = (
+            f"{head} (apex share {val('apex_share', 0):.2f}/"
             f"{val('apex_share', 1):.2f}, peak lateral acceleration "
             f"{val('peak_lateral_accel', 0):.1f}/"
             f"{val('peak_lateral_accel', 1):.1f} yd/s², peak angular rate "
             f"{val('peak_omega', 0):.0f}/{val('peak_omega', 1):.0f} deg/s, "
             f"circle-fit usable share "
             f"{val('circle_fit_share', 0):.3f}/"
-            f"{val('circle_fit_share', 1):.3f}; every player-clustered "
-            f"interval overlaps between these two buckets). The break comes "
+            f"{val('circle_fit_share', 1):.3f}). The break comes "
             f"at {bands[2]}, and from there the decline is monotone: the apex "
             f"share falls {val('apex_share', 2):.2f} to "
             f"{val('apex_share', 5):.2f} while peak lateral acceleration "
@@ -9918,10 +9939,16 @@ def movement_family_manifest_payload(table: pd.DataFrame, context: dict,
             f"{val('peak_omega', 5):.0f} deg/s and the circle-fit usable "
             f"share falls {val('circle_fit_share', 2):.2f} to "
             f"{val('circle_fit_share', 5):.2f}. The plant family starts above "
-            f"{context['edges'][3]:g}°. The merged {bands[0]} bucket is an "
-            f"ordinary member of the arc family, not its extreme: its four "
-            f"intervals all overlap {bands[1]}'s. Its median is taken over "
-            f"the union of the "
+            f"{context['edges'][3]:g}°. "
+            + (
+                f"The merged {bands[0]} bucket is an ordinary member of the "
+                f"arc family, not its extreme: its four intervals all "
+                f"overlap {bands[1]}'s. "
+                if overlap else
+                f"The merged {bands[0]} bucket is not an ordinary member of "
+                f"the arc family: at least one interval does not overlap "
+                f"{bands[1]}'s. ")
+            + f"Its median is taken over the union of the "
             f"30–45° and 45–60° turns, never as an average of the two old "
             "medians. These are descriptive medians and shares with "
             "player-clustered bootstrap intervals, not a test or a ranking of "
