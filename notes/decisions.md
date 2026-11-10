@@ -6797,3 +6797,61 @@ sits in the merged 30–60° bucket) and the figure-17 assertions in
 `outputs/figures/fig_movement_family.{png,csv}`;
 `outputs/figures/figures_manifest.json`; `tests/test_movement_family_figure.py`;
 `tests/test_figures_stage.py`.
+
+## D182 — Figure 17 panel C carries headroom and a grey 1.0 rule; it stops clipping its own saturated values · 2026-11-10
+
+**Defect (Conor, 2026-11-10 15:18: "Plot c doesn't fit in that window").** Panel
+C draws `circle_fit_share` on `ax.set_ylim(0.0, 1.0)`, but the sample's share
+saturates at the ceiling: 1.000 in 30–60° and 0.998 in 60–90°, with `ci_high` =
+1.000 in both. The 30–60° marker therefore sat exactly on the top spine and both
+of its upper caps were drawn outside the axes. Nothing was wrong with the
+statistic, the intervals or the seeds — the axis was clipping real data.
+
+**Decision.** Panel C's top is a module constant, `MF_SHARE_AXIS_TOP = 1.15`
+(`src/bdb27/figures.py`), with the bottom left at 0.0 because a share cannot be
+negative. A proportion axis with headroom can read as "values above 1.0 are
+possible", so the panel now also draws one reference rule at exactly 1.0 —
+grey `#555555`, 0.9 pt, dashed `(0, (4, 3))`, the repo's existing reference-rule
+style (the turn-cost panel's 1.0 rule) — labelled once, right-aligned in the headroom strip, "1.0 =
+every turn arc-fit". Grey, never the focus red: the rule is a bound, not data.
+The markers, the player-clustered caps, the focus tint and rules, panels A/B/D,
+the footer counts and the caption are untouched.
+
+**Why 1.15 and not 1.05–1.08.** The panel label is drawn *inside* the axes at
+0.955 axes fraction. At a 1.05–1.08 top the 1.0 rule lands at 0.94–0.95 and
+runs straight through "C Circle-fit usable share", and the saturated marker at
+1.0 crowds the label's baseline. At 1.15 the rule sits ~7 px below the label's
+ink (at 100 dpi) and the marker's top edge ~10 px below it, so both the rule and
+the estimator are clear of the text as well as inside the axes. Measured on the
+drawn figure, not estimated: title ink bottom 587.6 px, rule 573.9 px, marker
+top 577.8 px.
+
+**Why a constant and not a config key.** `config.yaml` is untouched. A new key
+would move `config_sha` in every figure CSV, and nothing outside figure 17 was
+asked to change. The headroom is a display constant with no data in it: no
+value, interval, seed or claim depends on it.
+
+**Proof, not assertion.** `outputs/figures/fig_movement_family.csv` is
+byte-identical before and after (`0747f4de9af0e38be9235868f971270f8f37c95e829bbedc8c4b9db7493ee8a3`),
+so no value or interval moved. Every other figure PNG and CSV in
+`outputs/figures/` is byte-identical to `d11c81c` (SHA-256 compared before and
+after); only `fig_movement_family.png` changes
+(`5db26bafd1c28080c84f9a6b073720def7bd17eb1bc7209590f7f8208ab34523` ->
+`dd4b9b82c762530138e35d54b53c75b699b80a3fda9b8fe4f6126caeb8713e79`),
+and two consecutive renders of figure 17 are byte-identical. New tests in
+`tests/test_movement_family_figure.py`:
+`test_every_drawn_marker_and_cap_lies_inside_the_axes` converts each marker's
+radius and each cap's thickness to pixels with the figure's own dpi and checks
+every drawn artist against every panel's limits, and
+`test_panel_c_carries_headroom_and_a_grey_ceiling_rule` asserts the top clears
+the statistic's own 1.0 ceiling (not merely this fixture's maximum, so restoring
+a top of exactly 1.0 fails however flat the fixture is), that there is exactly
+one grey dashed rule at 1.0, that it is not the focus colour, that the ceiling
+is labelled once, and that neither label is crossed by the rule or falls outside
+the axes. Both new tests were confirmed to fail at a 1.0 top and pass at 1.15.
+`tests/test_movement_family_figure.py` now holds 14 tests; the whole suite is
+290 tests, all passing.
+
+**Evidence.** `src/bdb27/figures.py` (`MF_SHARE_AXIS_TOP`,
+`MF_SHARE_CEILING_LABEL`, `MF_REFERENCE_GREY`, `plot_movement_family`);
+`outputs/figures/fig_movement_family.png`; `tests/test_movement_family_figure.py`.

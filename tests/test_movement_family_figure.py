@@ -297,6 +297,93 @@ def test_two_renders_are_byte_identical(table, context, cfg, tmp_path):
     assert digests[0] == digests[1]
 
 
+def test_every_drawn_marker_and_cap_lies_inside_the_axes(table, context, cfg):
+    """No panel may clip its own marker or either interval cap (D182).
+
+    Read off the artists, not the table: the marker's radius and a cap's
+    thickness are converted to pixels with the figure's own dpi, so a limit
+    that puts an estimator on the spine fails here even though the underlying
+    value is correct.
+    """
+    import matplotlib.pyplot as plt
+
+    fig = figures.plot_movement_family(table, context, cfg)
+    try:
+        fig.canvas.draw()
+        for ax, panel in zip(fig.axes, context["panels"]):
+            drawn = table[(table["panel"] == panel["panel"])
+                          & table["estimable"]]
+            assert len(ax.containers) == 1, panel["panel"]
+            data_line, _caplines, cap_marks = ax.containers[0].lines
+            assert len(data_line.get_ydata()) == len(drawn)
+            y_bottom, y_top = ax.bbox.y0, ax.bbox.y1
+            half_marker = 0.5 * data_line.get_markersize() * fig.dpi / 72.0
+            for value in data_line.get_ydata():
+                px = ax.transData.transform((0.0, float(value)))[1]
+                assert y_bottom + half_marker <= px <= y_top - half_marker, (
+                    panel["panel"], "marker", float(value), px)
+            for cap in cap_marks:
+                half_cap = 0.5 * float(cap.get_linewidths()[0]) * fig.dpi / 72.0
+                cap_ys = {round(float(point[1]), 12)
+                          for segment in cap.get_segments()
+                          for point in segment}
+                for value in cap_ys:
+                    px = ax.transData.transform((0.0, value))[1]
+                    assert y_bottom + half_cap <= px <= y_top - half_cap, (
+                        panel["panel"], "cap", value, px)
+    finally:
+        plt.close(fig)
+
+
+def test_panel_c_carries_headroom_and_a_grey_ceiling_rule(table, context, cfg):
+    """Panel C drew a proportion on 0..1 and clipped its own 1.000 caps.
+
+    The sample's circle-fit share saturates at 1.000, so a 0..1 limit put the
+    estimator and both its caps on the top spine. The axis now carries
+    headroom *above the statistic's own ceiling* — the assertion is on 1.0, not
+    on this fixture's maximum, so restoring a top of exactly 1.0 fails here
+    however flat or saturated the fixture happens to be — with one grey
+    reference rule marking where the ceiling is.
+    """
+    import matplotlib.pyplot as plt
+
+    fig = figures.plot_movement_family(table, context, cfg)
+    try:
+        fig.canvas.draw()
+        assert context["panels"][2]["panel"] == "circle_fit_share"
+        ax = fig.axes[2]
+        assert ax.get_yscale() == "linear"
+        part = table[(table["panel"] == "circle_fit_share")
+                     & table["estimable"]]
+        y_bottom, y_top = ax.get_ylim()
+        assert y_bottom == 0.0  # a share has no room below zero
+        assert y_top > 1.0, "a proportion axis must clear its own ceiling"
+        assert y_top > float(part["ci_high"].max())
+
+        rules = [line for line in ax.lines
+                 if np.array_equal(np.asarray(line.get_ydata(), dtype=float),
+                                   np.array([1.0, 1.0]))]
+        assert len(rules) == 1, "exactly one ceiling rule"
+        rule = rules[0]
+        assert rule.get_color() == figures.MF_REFERENCE_GREY
+        assert rule.get_color() != context["focus"]["colour"]
+        assert rule.get_linestyle() != "-", "a reference rule, not a data line"
+
+        labels = [text for text in ax.texts
+                  if figures.MF_SHARE_CEILING_LABEL in text.get_text()]
+        assert len(labels) == 1, "the ceiling is labelled once"
+        renderer = fig.canvas.get_renderer()
+        y_rule = ax.transData.transform((0.0, 1.0))[1]
+        for text in ax.texts:
+            box = text.get_window_extent(renderer=renderer)
+            assert not (box.y0 <= y_rule <= box.y1), (
+                "the rule must not run through a label", text.get_text())
+            assert ax.bbox.y0 <= box.y0 and box.y1 <= ax.bbox.y1
+            assert ax.bbox.x0 <= box.x0 and box.x1 <= ax.bbox.x1
+    finally:
+        plt.close(fig)
+
+
 def test_caption_does_not_claim_shallow_band_is_arc_extreme(context, cfg):
     text = " ".join(figures._mf_caption_lines(context, cfg)).lower()
     assert "the two arc buckets are one family" in text

@@ -9269,6 +9269,20 @@ MOVEMENT_FAMILY_PANEL_TITLES = {
     "peak_omega": "Peak angular rate",
 }
 
+#: Panel C's axis top. The panel draws a proportion, whose true ceiling is
+#: 1.0, and the measured values saturate there (1.000 and 0.998, with interval
+#: caps at 1.000). A 0..1 axis puts those estimators *on* the top spine and
+#: clips their caps, so the axis carries headroom instead. The headroom also
+#: has to clear the panel label, which is drawn inside the axes at 0.955 axes
+#: fraction: at a 1.05-1.08 top the 1.0 reference rule would run straight
+#: through that label and the saturated marker would crowd its baseline, so the
+#: top is set where both sit clear of it. This is a display constant only — no
+#: value, interval or claim depends on it — and it is kept here rather than in
+#: config.yaml so config_sha moves for nothing (D182).
+MF_SHARE_AXIS_TOP = 1.15
+MF_SHARE_CEILING_LABEL = "1.0 = every turn arc-fit"
+MF_REFERENCE_GREY = "#555555"
+
 #: The four honesty clauses. These strings are carried verbatim in the
 #: manifest caveats and drawn (wrapped, never reworded) under the panels.
 MF_CAVEAT_CIRCLE = (
@@ -9818,7 +9832,18 @@ def plot_movement_family(table: pd.DataFrame, context: dict,
             if len(drawn):
                 ax.set_ylim(min(low) * 0.88, max(high) * 1.12)
         elif panel["panel"] == "circle_fit_share":
-            ax.set_ylim(0.0, 1.0)
+            # A proportion's ceiling is a bound, not a value: the headroom
+            # keeps the 1.000 estimate and both of its interval caps inside
+            # the axes, and the grey rule says where 1.0 is so the extra
+            # space cannot be read as "above 1.0 is possible". Grey, never
+            # the focus red — the rule is a reference, not data.
+            ax.set_ylim(0.0, MF_SHARE_AXIS_TOP)
+            ax.axhline(1.0, color=MF_REFERENCE_GREY, linewidth=0.9,
+                       linestyle=(0, (4, 3)), zorder=2)
+            ax.text(0.985, 1.012, MF_SHARE_CEILING_LABEL,
+                    transform=ax.get_yaxis_transform(), ha="right",
+                    va="bottom", fontsize=6.4, color=MF_REFERENCE_GREY,
+                    zorder=4)
         elif len(drawn):
             y_low, y_high = float(min(low)), float(max(high))
             pad = max(0.08, (y_high - y_low) * 0.12)
