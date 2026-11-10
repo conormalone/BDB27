@@ -1068,7 +1068,10 @@ AP_KEY = "fig_all_positions"
 def _ap_cells(turns: pd.DataFrame, cfg_path: Path):
     from bdb27 import common, figures
     cfg = common.load_config(cfg_path)
-    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    # Figure 5 draws figure 1's merged 30-60 display bands, not the shared
+    # 30/45/60 reporting split that figures 3/8/12/13/15 still read.
+    edges = [float(x) for x in
+             cfg.get("figures.hole.plot_bands.turn_angle_deg")]
     overflow = str(cfg.get("figures.hole.bands.overflow_label"))
     positions = [str(p) for p in cfg.get("figures.all_positions.positions")]
     return figures.positions_table(turns, edges, overflow, positions), cfg
@@ -1087,11 +1090,11 @@ def _ap_expected(turns: pd.DataFrame, position: str, lo: float,
 
 def _check_ap_csv(csv_df: pd.DataFrame, turns: pd.DataFrame) -> None:
     """Every plotted share and count must reconcile to the turn table."""
-    assert len(csv_df) == 5 * 7 * 2, "five positions x seven bands x two settings"
+    assert len(csv_df) == 5 * 6 * 2, "five positions x six bands x two settings"
     assert list(csv_df["position"].unique()) == ALL_POSITIONS
     for position in ALL_POSITIONS:
         part = csv_df[csv_df["position"] == position]
-        assert len(part) == 14
+        assert len(part) == 12
         valid = turns["valid"].fillna(False).astype(bool)
         totals = turns[valid & (turns["position_group"] == position)
                        ].groupby("setting").size().to_dict()
@@ -1141,8 +1144,8 @@ def test_all_positions_panels_share_one_scale(rendered):
         for ax in fig.axes:
             bars = [c for c in ax.collections
                     if isinstance(c, PolyCollection)]
-            assert sum(len(c.get_paths()) for c in bars) == 14, (
-                "each panel must hold 14 bars (7 bands x 2 settings)")
+            assert sum(len(c.get_paths()) for c in bars) == 12, (
+                "each panel must hold 12 bars (6 bands x 2 settings)")
         colours = {tuple(np.round(c, 2))
                    for c in fig.axes[0].collections[0].get_facecolors()}
         assert (0.0, 0.45, 0.7, 1.0) in colours  # accent at full opacity
@@ -1199,7 +1202,7 @@ def test_all_positions_counts_annotated_on_the_accent_panel_only(rendered):
         numeric = {p: [t.get_text() for t in ax.texts
                        if t.get_text().replace(",", "").isdigit()]
                    for p, ax in zip(ALL_POSITIONS, fig.axes)}
-        assert len(numeric["DB"]) == 14
+        assert len(numeric["DB"]) == 12
         for position in ALL_POSITIONS[1:]:
             assert numeric[position] == [], (
                 f"{position} panel must not carry count labels")
@@ -1268,10 +1271,9 @@ def test_all_positions_manifest_entry(rendered):
     assert fig["shared_axis"]["max_pct"] == 70.0
     assert set(fig["spec_status"]["statuses"]) == {"DB", "OL"}
     assert "TASK.md:63" in fig["spec_status"]["source"]
-    assert [b for b in fig["bands"]] == ["30–45°", "45–60°", "60–90°",
-                                         "90–120°", "120–150°", "150–180°",
-                                         ">180°"]
-    assert len(fig["counts"]) == 70
+    assert [b for b in fig["bands"]] == ["30–60°", "60–90°", "90–120°",
+                                         "120–150°", "150–180°", ">180°"]
+    assert len(fig["counts"]) == 60
     assert fig["count_labels"] == {"panel": "DB", "shown_for_other_panels": False}
     assert not any("rank" in k or "ratio" in k for k in fig), (
         "the manifest must not carry a ranking or ratio of positions")
@@ -1285,11 +1287,17 @@ def test_all_positions_caption_states_what_dl_shows(rendered):
     caption = figures.plot_all_positions(table, context, cfg, turns=turns
                                          ).labels.get("caption", "")
     assert "DL is included unchanged" in caption
+    assert "30–60°" in caption
+    assert "the Combine takes the smaller share there too" in caption
     assert "speed story" in caption
     assert 'No panel is labelled "fine"' in caption
     assert "no ranking" in caption
+    assert "shows no 30–45° shortfall" not in caption, (
+        "the pre-merge DL caveat must not survive at 30–60°")
     man = json.loads(rendered["manifest"].read_text())
     assert "fine" in man["figures"][AP_KEY]["claim"]
+    assert "shows no 30–45° shortfall" not in json.dumps(
+        man["figures"][AP_KEY])
 
 
 def test_all_positions_caption_names_the_turns_outside_the_panels(rendered):
@@ -1342,7 +1350,7 @@ def test_all_positions_checks_can_fail(rendered):
 
     bad = good.copy()
     idx = bad.index[(bad["position"] == "OL")
-                    & (bad["band"] == "30–45°") & (bad["setting"] == "game")][0]
+                    & (bad["band"] == "30–60°") & (bad["setting"] == "game")][0]
     bad.loc[idx, "count"] = int(bad.loc[idx, "count"]) + 1
     with pytest.raises(AssertionError):
         _check_ap_csv(bad, turns)

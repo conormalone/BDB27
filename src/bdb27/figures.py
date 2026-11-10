@@ -4,10 +4,11 @@ One figure, deliberately: the shallow-break window is the case's whole point,
 so the figure shows it two ways at once — raw counts (what the Combine produces
 versus what games demand) and each setting's own share (the exposure-corrected
 view). Every number on the image is counted from ``outputs/turns/turns.parquet``
-at render time; nothing is hard-coded. This figure displays the window as ONE
-30-60 degree band (Conor, 2026-11-10): the 30-45 and 45-60 rows are merged
-here, while every other figure keeps them apart (``figures.hole.plot_bands``
-is figure 1 only; ``figures.hole.bands`` stays the shared 30/45/60 list).
+at render time; nothing is hard-coded. Figures 1 and 5 display the window as
+ONE 30-60 degree band (Conor, 2026-11-10): the 30-45 and 45-60 rows are merged
+in those two figures only, while every other figure keeps them apart
+(``figures.hole.plot_bands`` is the merged display list;
+``figures.hole.bands`` stays the shared 30/45/60 list).
 
 Design rules honoured here:
   * reporting bands come from ``config.yaml`` (``figures.hole``, D164);
@@ -125,7 +126,8 @@ def focus_band(cfg: common.Config, edges: list[float] | tuple[float, ...] | None
     The colour is a *band* signal: rules, tint, outlines and labels only.
 
     ``edges`` overrides the *geometry* only, for a figure that displays the
-    window differently (figure 1 merges 30-45 and 45-60 into one 30-60 band).
+    window differently (figures 1 and 5 merge 30-45 and 45-60 into one 30-60
+    band).
     Colour, tint and rule width always come from ``figures.focus_band``, so
     the sentinel-colour contract holds for every figure, merged axis or not.
     """
@@ -2030,8 +2032,10 @@ def positions_table(turns: pd.DataFrame, edges: list[float],
 
     Reuses :func:`band_table` per position, so the banding, the share definition
     and the "no turn may fall outside the bands" check are literally figure 1's
-    code. Every position is required: a missing one refuses instead of quietly
-    producing a four-panel figure.
+    code. Figure 5 passes the merged display edges (``figures.hole.plot_bands``),
+    so each panel shows one 30-60 band exactly as figure 1 does. Every position
+    is required: a missing one refuses instead of quietly producing a four-panel
+    figure.
     """
     positions = [str(p) for p in positions]
     if not positions:
@@ -2183,10 +2187,43 @@ def all_positions_dl_speed_count(turns: pd.DataFrame, position: str,
     return int((speed > float(speed_floor)).sum())
 
 
+def _all_positions_band0_shares(table: pd.DataFrame,
+                                context: dict) -> tuple[pd.DataFrame, str]:
+    """Per-position Combine/game shares in the first (merged) display band.
+
+    The figure's title and claim say the Combine takes the smaller share in
+    *every* panel. That is checked against the table actually being drawn, so a
+    future band or position change refuses rather than printing a false
+    superlative. Returns the share pivot and the band's printed span.
+    """
+    band0 = context["bands"][0]
+    shares = table[table["band"] == band0].pivot(
+        index="position", columns="setting", values="share_within_setting")
+    span = f"{float(context['edges'][0]):g}–{float(context['edges'][1]):g}°"
+    bad = [p for p in context["positions"]
+           if not float(shares.loc[p, "combine"])
+           < float(shares.loc[p, "game"])]
+    if bad:
+        raise ValueError(
+            f"{STAGE}: figure 5's title/claim say the Combine takes the smaller "
+            f"{span} share in every panel, but {bad} contradict that — fix the "
+            "claim")
+    return shares, span
+
+
 def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
                        turns: pd.DataFrame | None = None) -> ggplot:
     block = "figures.all_positions"
-    focus = focus_band(cfg)
+    # Style always from figures.focus_band; geometry from figure 5's own
+    # display bands (30-45 and 45-60 are merged into one 30-60 band, as on
+    # figure 1). See figures.hole.plot_bands in config.yaml.
+    configured = focus_band(cfg)
+    focus = focus_band(cfg, edges=[float(e) for e in context["edges"][:2]])
+    if float(context["edges"][0]) != configured["low"]:
+        raise ValueError(
+            f"{STAGE}: figure 5 highlights its first display band, which must "
+            f"start at the configured focus floor {configured['low']:g}°; got "
+            f"{float(context['edges'][0]):g}°")
     focus_idx = focus_band_index(context["edges"], focus)
     frame = all_positions_plot_frame(table, context, cfg)
     labels = all_positions_count_labels(frame, cfg)
@@ -2201,6 +2238,7 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
     n_positions = len(context["positions"])
 
     band0 = context["bands"][0]
+    _, band0_span = _all_positions_band0_shares(table, context)
 
     dl_line = ""
     floor = float(cfg.get(f"{block}.dl_speed_floor_yd_s", 6.0))
@@ -2215,16 +2253,18 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
                              "share_within_setting"].iloc[0]) * 100.0
         dl_line = (
             f" DL is included unchanged and read as it is: {dl_c} Combine vs "
-            f"{dl_g} game turns in 30–45° ({dl_cs:.1f}% vs {dl_gs:.1f}% of DL's "
-            f"own turns), and only {dl_fast} game DL turns enter above "
-            f"{floor:g} yd/s — TASK.md §CURRENT FOCUS records DL's gap as a "
-            "speed story, not an angle one. No panel is labelled \"fine\".")
+            f"{dl_g} game turns in {band0_span} ({dl_cs:.1f}% vs {dl_gs:.1f}% "
+            "of DL's own turns) — the Combine takes the smaller share there "
+            f"too — and only {dl_fast} game DL turns enter above {floor:g} "
+            "yd/s; TASK.md §CURRENT FOCUS records DL's gap as a speed story, "
+            "not an angle one. No panel is labelled \"fine\".")
 
-    title = ("The same hole across positions: 30–45° breaks are rare in the "
-             "Combine and common in games")
+    title = (f"The same hole across positions: the Combine takes a smaller "
+             f"{band0_span} share in every panel")
     subtitle = _wrap_text(
         f"Paired bars: each position's own valid turns by absolute turn angle, "
-        f"Combine (accent) vs game (grey). Every panel uses the same 0–{x_max:g}% "
+        f"with 30–45° and 45–60° merged into one {band0_span} band, Combine "
+        f"(accent) vs game (grey). Every panel uses the same 0–{x_max:g}% "
         f"share-of-that-setting axis, so the panels compare by eye. Counts are "
         f"printed on the {emphasis} panel only.", 160)
 
@@ -2233,8 +2273,10 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
         (f"{n_positions} positions, {n_turns:,} valid turns in these panels. "
          f"Excluded from these panels: {context['n_excluded']:,} valid game "
          "turns with position_group OTHER (unclassified), so this is not a "
-         "census of all valid turns. Bands are figure 1's reporting bands "
-         "(figures.hole.bands), left-closed, final class >180°. "
+         "census of all valid turns. Bands are figure 1's merged display bands "
+         "(figures.hole.plot_bands), left-closed, final class >180°: 30–45° and "
+         f"45–60° are drawn as one {band0_span} band on this figure only; "
+         "figures 3, 8, 12, 13 and 15 keep the two bands separate. "
          f"Counts are printed once, on the {emphasis} panel; every other "
          "panel's counts are in the CSV beside this image."),
         (f"{EXPLORATORY_LABEL} is the spec's own status, not this figure's "
@@ -2351,23 +2393,27 @@ def all_positions_manifest_payload(table: pd.DataFrame, context: dict,
     emphasis = str(cfg.get(f"{block}.emphasis_position"))
     status = all_positions_status(context, cfg)
     per = context["per_position"]
+    shares, span = _all_positions_band0_shares(table, context)
     band0 = table[table["band"] == context["bands"][0]]
     dl_c = int(band0.loc[(band0["position"] == "DL")
                          & (band0["setting"] == "combine"), "count"].iloc[0])
     dl_g = int(band0.loc[(band0["position"] == "DL")
                          & (band0["setting"] == "game"), "count"].iloc[0])
+    dl_cs = float(shares.loc["DL", "combine"]) * 100.0
+    dl_gs = float(shares.loc["DL", "game"]) * 100.0
     return {
         "stage": STAGE,
         "artefact_version": ARTEFACT_VERSION,
         "figure": FIGURE_KEY_ALL_POSITIONS,
-        "title": ("The same hole across positions: 30–45° breaks are rare in "
-                  "the Combine and common in games"),
+        "title": ("The same hole across positions: the Combine takes a "
+                  f"smaller {span} share in every panel"),
         "claim": ("Every panel plots the same quantity — the share of that "
-                  "setting's own valid turns in each 30–45° reporting band, "
-                  "Combine vs game, on one identical 0–70% axis. What each "
-                  f"panel shows differs by position (DL: {dl_c} vs {dl_g} "
-                  "turns in 30–45°); the figure ranks no position and labels "
-                  "no panel \"fine\"."),
+                  "setting's own valid turns in each display band, Combine vs "
+                  "game, on one identical 0–70% axis, with 30–45° and 45–60° "
+                  f"merged into one {span} band on this figure only. In every "
+                  f"panel the Combine takes a smaller {span} share than games "
+                  f"do (DL: {dl_c} vs {dl_g} turns); the figure ranks no "
+                  "position and labels no panel \"fine\"."),
         "sources": ["outputs/turns/turns.parquet"],
         "positions": list(context["positions"]),
         "position_order_note": ("Order as TASK.md §1 lists the positions; not a "
@@ -2410,10 +2456,14 @@ def all_positions_manifest_payload(table: pd.DataFrame, context: dict,
             (f"{emphasis} is both the case's focus and marked exploratory in "
              "the spec (TASK.md:63, TASK.md:153). Both signals are drawn as "
              "specified; the tension is left open for Conor."),
-            ("DL is included unchanged and is not annotated as \"fine\": its "
-             "panel shows no 30–45° shortfall, and TASK.md §CURRENT FOCUS "
-             "records DL's gap as a speed story rather than an angle one."),
-            ("Bands are left-closed; the final class is >180°."),
+            ("DL is included unchanged and is not annotated as \"fine\": in "
+             f"{span} its Combine share is {dl_cs:.1f}% against games' "
+             f"{dl_gs:.1f}% ({dl_c} vs {dl_g} turns), while TASK.md §CURRENT "
+             "FOCUS records DL's gap as a speed story rather than an angle "
+             "one."),
+            (f"Bands are left-closed; the final class is >180°. This figure "
+             f"merges 30–45° and 45–60° into one {span} band; figures 3, 8, "
+             "12, 13 and 15 report the two bands separately."),
         ],
         "counts": table.assign(
             share_pct=(table["share_within_setting"] * 100.0)).to_dict(

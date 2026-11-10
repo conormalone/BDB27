@@ -6,7 +6,8 @@
                           one angle x entry-speed grid.
   4. "Tempo break"      — a schematic tempo-break drill drawn to scale.
   5. "Same hole"        — figure 1's paired share panel repeated for DB, WR,
-                          TE, OL and DL on one identical axis.
+                          TE, OL and DL on one identical axis, on figure 1's
+                          merged 30-60 degree display bands.
   6. "Measurement limits" — why per-player ranking is not supported: variance
                           components at the boundary, and the reversal zone
                           that is not physical capacity.
@@ -159,8 +160,8 @@ def main(argv=None) -> int:
     common.require_inputs([turns_path, variance_path], stage=STAGE)
 
     edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
-    # Figure 1's own DISPLAY bands (30-60 merged); every other figure keeps
-    # `edges`. See figures.hole.plot_bands in config.yaml.
+    # Figures 1 and 5's own DISPLAY bands (30-60 merged); every other figure
+    # keeps `edges`. See figures.hole.plot_bands in config.yaml.
     hole_edges = [float(x) for x in
                   cfg.get("figures.hole.plot_bands.turn_angle_deg")]
     overflow = str(cfg.get("figures.hole.bands.overflow_label"))
@@ -236,7 +237,7 @@ def main(argv=None) -> int:
         ap_block = "figures.all_positions"
         ap_positions = [str(p) for p in cfg.get(f"{ap_block}.positions")]
         ap_table, ap_context = figures.positions_table(
-            turns, edges, overflow, ap_positions)
+            turns, hole_edges, overflow, ap_positions)
         ap_csv = figures.all_positions_csv_frame(ap_table, ap_context, cfg)
         ap_png = outdir / f"{figures.FIGURE_KEY_ALL_POSITIONS}.png"
         ap_csv_path = outdir / f"{figures.FIGURE_KEY_ALL_POSITIONS}.csv"

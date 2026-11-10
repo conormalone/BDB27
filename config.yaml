@@ -363,11 +363,12 @@ turn_coverage:
       bands:
         turn_angle_deg: [30, 45, 60, 90, 120, 150, 180]
         overflow_label: ">180"
-      # Figure 1's DISPLAY bands only. Conor asked the headline figure to show
-      # one 30-60 band instead of splitting it at 45, so the 30-45 and 45-60
-      # rows are merged here and nowhere else (new D-number, notes/decisions.md).
-      # `bands` above is deliberately NOT changed: figures 3, 5, 8, 12, 13 and
-      # 15 read it and must keep reporting 30-45 and 45-60 separately.
+      # Merged DISPLAY bands for figures 1 and 5 only. Conor asked the headline
+      # figure (and then the across-position figure) to show one 30-60 band
+      # instead of splitting it at 45, so the 30-45 and 45-60 rows are merged
+      # here and nowhere else (D178/D179, notes/decisions.md).
+      # `bands` above is deliberately NOT changed: figures 3, 8, 12, 13 and 15
+      # read it and must keep reporting 30-45 and 45-60 separately.
       plot_bands:
         turn_angle_deg: [30, 60, 90, 120, 150, 180]
       # Fixed render size: width >= 1500 px at this DPI, readable in a
@@ -468,11 +469,13 @@ turn_coverage:
       height_in: 7.0
 
     # Stage 06 figure 5 ("The same hole across positions"): figure 1's paired
-    # share panel repeated once per position on ONE identical axis. The
-    # reporting bands are NOT repeated here — they are read from
-    # `figures.hole.bands` so the two figures cannot drift apart. Position order
-    # is the order TASK.md §1 lists them (DB, WR, TE, OL, DL); it is NOT a
-    # ranking by gap size, and nothing in the figure ranks positions.
+    # share panel repeated once per position on ONE identical axis. The display
+    # bands are NOT repeated here — they are read from `figures.hole.plot_bands`
+    # (30-60 merged), the same list figures 1 uses, so the two figures cannot
+    # drift apart. `figures.hole.bands` still serves figures 3, 8, 12, 13 and
+    # 15. Position order is the order TASK.md §1 lists them (DB, WR, TE, OL,
+    # DL); it is NOT a ranking by gap size, and nothing in the figure ranks
+    # positions.
     all_positions:
       positions: [DB, WR, TE, OL, DL]
       # Full accent on the case's focus panel; every other panel is the same

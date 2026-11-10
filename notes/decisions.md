@@ -6588,3 +6588,60 @@ this decision governs figure 1's display only, not the task spec.
 `_annotations`, `manifest_payload`, `render`); `src/06_figures.py`;
 `tests/test_figures_stage.py` (fig_the_hole assertions, `HOLE_EDGES`);
 `outputs/figures/fig_the_hole.{png,csv}`, `outputs/figures/figures_manifest.json`.
+
+## D179 — Figure 5 shares figure 1's merged 30–60° display bands · 2026-11-10
+
+**Decision (Conor, 09:19).** Figure 5 ("The same hole across positions") now
+draws the same merged **30–60°** band as figure 1: five position panels × six
+bands × two settings = 60 count rows (was 70). The highlight, title, subtitle,
+caption, on-image labels, CSV and manifest are rewritten for that band.
+
+**Geometry is shared with figure 1, not re-declared.** `src/06_figures.py` now
+passes `figures.hole.plot_bands.turn_angle_deg` (30/60/90/120/150/180) to
+`figures.positions_table`. `figures.hole.bands` stays `[30, 45, 60, 90, 120,
+150, 180]` and still serves figures 3, 8, 12, 13 and 15 — those figures do not
+move. No second band key was introduced.
+
+**The DB highlight follows the merged band.** Style still comes from
+`figures.focus_band` (colour `#C00000`, tint, rule width); only the geometry is
+overridden, via `focus_band(cfg, edges=context["edges"][:2])`. The first display
+band must start at the configured focus floor (30°), mirroring figure 1's guard;
+`figures.focus_band.edges_deg` remains `[30, 45]` for the other figures.
+`focus_band_index` is still used, and now resolves the 30–60° pair on figure 5's
+own axis.
+
+**The wording changed because the numbers changed.** Merged 30–60° shares
+(valid turns, `outputs/turns/turns.parquet`, computed at render time):
+
+| position | Combine | Game |
+|---|---|---|
+| DB | 26 / 1,179 = 2.2% | 326 / 2,262 = 14.4% |
+| WR | 90 / 1,044 = 8.6% | 222 / 1,504 = 14.8% |
+| TE | 31 / 294 = 10.5% | 42 / 294 = 14.3% |
+| OL | 62 / 952 = 6.5% | 128 / 1,250 = 10.2% |
+| DL | 95 / 2,067 = 4.6% | 101 / 1,078 = 9.4% |
+
+Every panel now shows a Combine share below its game share, so the old DL
+caveat ("its panel shows no 30–45° shortfall") is false at 30–60° and has been
+replaced: DL's Combine share is 4.6% against games' 9.4% (95 vs 101 turns),
+while only 8 game DL turns enter above 6 yd/s and TASK.md §CURRENT FOCUS still
+records DL's gap as a speed story. The title claim ("the Combine takes a smaller
+30–60° share in every panel") is guarded at render time by
+`_all_positions_band0_shares`, which refuses to draw if any panel contradicts
+it. The figure still carries **no rank and no ratio across positions**; the
+manifest keeps that omission.
+
+**Deliberately unchanged.** Figure 5 keeps its on-image sample stamp (the
+figure-1 stamp removal was figure-1 only). Figure 8's caption still names
+figures 1, 3 and 5 as readers of `figures.hole.bands`; that string predates this
+change and sits outside figure 5's scope, so it was not touched.
+
+**Evidence.** `config.yaml` (`figures.hole.plot_bands` comment, figure-5 block);
+`src/06_figures.py`; `src/bdb27/figures.py` (`positions_table`,
+`_all_positions_band0_shares`, `plot_all_positions`,
+`all_positions_manifest_payload`); `tests/test_figures_stage.py` (figure-5
+assertions), `tests/test_focus_band.py` (figure-5 fixture);
+`outputs/figures/fig_all_positions.{png,csv}`,
+`outputs/figures/figures_manifest.json`. Two consecutive sample renders are
+byte-identical; the other 16 figure PNGs and every other CSV are unchanged
+apart from `config_sha`/`stamp`/`generated_utc`.

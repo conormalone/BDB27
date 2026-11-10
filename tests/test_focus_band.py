@@ -103,7 +103,9 @@ def drawn(sentinel_cfg, turns):
         figures.plot_before_after(bat, bac, bap, cfg))
 
     ap_positions = [str(p) for p in cfg.get("figures.all_positions.positions")]
-    apt, apc = figures.positions_table(turns, edges, overflow, ap_positions)
+    ap_edges = [float(x) for x in
+                cfg.get("figures.hole.plot_bands.turn_angle_deg")]
+    apt, apc = figures.positions_table(turns, ap_edges, overflow, ap_positions)
     figures_out["fig_all_positions"] = _draw(
         figures.plot_all_positions(apt, apc, cfg, turns=turns))
 

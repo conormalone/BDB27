@@ -2,7 +2,7 @@
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
   "config_sha": "087d63f05679ec5c",
-  "generated_utc": "2026-11-10T08:24:23Z",
+  "generated_utc": "2026-11-10T09:41:16Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -1374,8 +1374,8 @@
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_all_positions",
-      "title": "The same hole across positions: 30\u201345\u00b0 breaks are rare in the Combine and common in games",
-      "claim": "Every panel plots the same quantity \u2014 the share of that setting's own valid turns in each 30\u201345\u00b0 reporting band, Combine vs game, on one identical 0\u201370% axis. What each panel shows differs by position (DL: 34 vs 25 turns in 30\u201345\u00b0); the figure ranks no position and labels no panel \"fine\".",
+      "title": "The same hole across positions: the Combine takes a smaller 30\u201360\u00b0 share in every panel",
+      "claim": "Every panel plots the same quantity \u2014 the share of that setting's own valid turns in each display band, Combine vs game, on one identical 0\u201370% axis, with 30\u201345\u00b0 and 45\u201360\u00b0 merged into one 30\u201360\u00b0 band on this figure only. In every panel the Combine takes a smaller 30\u201360\u00b0 share than games do (DL: 95 vs 101 turns); the figure ranks no position and labels no panel \"fine\".",
       "sources": [
         "outputs/turns/turns.parquet"
       ],
@@ -1397,8 +1397,7 @@
         "identical_in_all_panels": true
       },
       "bands": [
-        "30\u201345\u00b0",
-        "45\u201360\u00b0",
+        "30\u201360\u00b0",
         "60\u201390\u00b0",
         "90\u2013120\u00b0",
         "120\u2013150\u00b0",
@@ -1483,61 +1482,37 @@
         "Descriptive shares of a census of turns: no confidence bands, no per-position significance test, no ranking of positions by gap size.",
         "Exposure differs by setting and by position (one Combine session vs several player-games per player), which is why each bar is that setting's own share rather than a count.",
         "DB is both the case's focus and marked exploratory in the spec (TASK.md:63, TASK.md:153). Both signals are drawn as specified; the tension is left open for Conor.",
-        "DL is included unchanged and is not annotated as \"fine\": its panel shows no 30\u201345\u00b0 shortfall, and TASK.md \u00a7CURRENT FOCUS records DL's gap as a speed story rather than an angle one.",
-        "Bands are left-closed; the final class is >180\u00b0."
+        "DL is included unchanged and is not annotated as \"fine\": in 30\u201360\u00b0 its Combine share is 4.6% against games' 9.4% (95 vs 101 turns), while TASK.md \u00a7CURRENT FOCUS records DL's gap as a speed story rather than an angle one.",
+        "Bands are left-closed; the final class is >180\u00b0. This figure merges 30\u201345\u00b0 and 45\u201360\u00b0 into one 30\u201360\u00b0 band; figures 3, 8, 12, 13 and 15 report the two bands separately."
       ],
       "counts": [
         {
           "position": "DB",
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "combine",
-          "count": 4,
+          "count": 26,
           "setting_total": 1179,
-          "share_within_setting": 0.0033927056827820186,
-          "share_pct": 0.33927056827820185
+          "share_within_setting": 0.02205258693808312,
+          "share_pct": 2.205258693808312
         },
         {
           "position": "DB",
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "game",
-          "count": 97,
+          "count": 326,
           "setting_total": 2262,
-          "share_within_setting": 0.04288240495137047,
-          "share_pct": 4.288240495137047
+          "share_within_setting": 0.14412024756852343,
+          "share_pct": 14.412024756852343
         },
         {
           "position": "DB",
           "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "combine",
-          "count": 22,
-          "setting_total": 1179,
-          "share_within_setting": 0.018659881255301103,
-          "share_pct": 1.8659881255301103
-        },
-        {
-          "position": "DB",
-          "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "game",
-          "count": 229,
-          "setting_total": 2262,
-          "share_within_setting": 0.10123784261715296,
-          "share_pct": 10.123784261715297
-        },
-        {
-          "position": "DB",
-          "band_index": 3,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -1549,7 +1524,7 @@
         },
         {
           "position": "DB",
-          "band_index": 3,
+          "band_index": 2,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -1561,7 +1536,7 @@
         },
         {
           "position": "DB",
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -1573,7 +1548,7 @@
         },
         {
           "position": "DB",
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -1585,7 +1560,7 @@
         },
         {
           "position": "DB",
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -1597,7 +1572,7 @@
         },
         {
           "position": "DB",
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -1609,7 +1584,7 @@
         },
         {
           "position": "DB",
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -1621,7 +1596,7 @@
         },
         {
           "position": "DB",
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -1633,7 +1608,7 @@
         },
         {
           "position": "DB",
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
@@ -1645,7 +1620,7 @@
         },
         {
           "position": "DB",
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
@@ -1658,54 +1633,30 @@
         {
           "position": "WR",
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "combine",
-          "count": 25,
+          "count": 90,
           "setting_total": 1044,
-          "share_within_setting": 0.023946360153256706,
-          "share_pct": 2.3946360153256707
+          "share_within_setting": 0.08620689655172414,
+          "share_pct": 8.620689655172415
         },
         {
           "position": "WR",
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "game",
-          "count": 58,
+          "count": 222,
           "setting_total": 1504,
-          "share_within_setting": 0.03856382978723404,
-          "share_pct": 3.856382978723404
+          "share_within_setting": 0.14760638297872342,
+          "share_pct": 14.760638297872342
         },
         {
           "position": "WR",
           "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "combine",
-          "count": 65,
-          "setting_total": 1044,
-          "share_within_setting": 0.06226053639846743,
-          "share_pct": 6.226053639846743
-        },
-        {
-          "position": "WR",
-          "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "game",
-          "count": 164,
-          "setting_total": 1504,
-          "share_within_setting": 0.10904255319148937,
-          "share_pct": 10.904255319148938
-        },
-        {
-          "position": "WR",
-          "band_index": 3,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -1717,7 +1668,7 @@
         },
         {
           "position": "WR",
-          "band_index": 3,
+          "band_index": 2,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -1729,7 +1680,7 @@
         },
         {
           "position": "WR",
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -1741,7 +1692,7 @@
         },
         {
           "position": "WR",
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -1753,7 +1704,7 @@
         },
         {
           "position": "WR",
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -1765,7 +1716,7 @@
         },
         {
           "position": "WR",
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -1777,7 +1728,7 @@
         },
         {
           "position": "WR",
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -1789,7 +1740,7 @@
         },
         {
           "position": "WR",
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -1801,7 +1752,7 @@
         },
         {
           "position": "WR",
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
@@ -1813,7 +1764,7 @@
         },
         {
           "position": "WR",
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
@@ -1826,54 +1777,30 @@
         {
           "position": "TE",
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "combine",
-          "count": 3,
+          "count": 31,
           "setting_total": 294,
-          "share_within_setting": 0.01020408163265306,
-          "share_pct": 1.0204081632653061
+          "share_within_setting": 0.1054421768707483,
+          "share_pct": 10.54421768707483
         },
         {
           "position": "TE",
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "game",
-          "count": 14,
+          "count": 42,
           "setting_total": 294,
-          "share_within_setting": 0.047619047619047616,
-          "share_pct": 4.761904761904762
+          "share_within_setting": 0.14285714285714285,
+          "share_pct": 14.285714285714285
         },
         {
           "position": "TE",
           "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "combine",
-          "count": 28,
-          "setting_total": 294,
-          "share_within_setting": 0.09523809523809523,
-          "share_pct": 9.523809523809524
-        },
-        {
-          "position": "TE",
-          "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "game",
-          "count": 28,
-          "setting_total": 294,
-          "share_within_setting": 0.09523809523809523,
-          "share_pct": 9.523809523809524
-        },
-        {
-          "position": "TE",
-          "band_index": 3,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -1885,7 +1812,7 @@
         },
         {
           "position": "TE",
-          "band_index": 3,
+          "band_index": 2,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -1897,7 +1824,7 @@
         },
         {
           "position": "TE",
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -1909,7 +1836,7 @@
         },
         {
           "position": "TE",
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -1921,7 +1848,7 @@
         },
         {
           "position": "TE",
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -1933,7 +1860,7 @@
         },
         {
           "position": "TE",
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -1945,7 +1872,7 @@
         },
         {
           "position": "TE",
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -1957,7 +1884,7 @@
         },
         {
           "position": "TE",
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -1969,7 +1896,7 @@
         },
         {
           "position": "TE",
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
@@ -1981,7 +1908,7 @@
         },
         {
           "position": "TE",
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
@@ -1994,54 +1921,30 @@
         {
           "position": "OL",
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "combine",
-          "count": 5,
+          "count": 62,
           "setting_total": 952,
-          "share_within_setting": 0.005252100840336135,
-          "share_pct": 0.5252100840336135
+          "share_within_setting": 0.06512605042016807,
+          "share_pct": 6.512605042016808
         },
         {
           "position": "OL",
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "game",
-          "count": 34,
+          "count": 128,
           "setting_total": 1250,
-          "share_within_setting": 0.0272,
-          "share_pct": 2.7199999999999998
+          "share_within_setting": 0.1024,
+          "share_pct": 10.24
         },
         {
           "position": "OL",
           "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "combine",
-          "count": 57,
-          "setting_total": 952,
-          "share_within_setting": 0.059873949579831935,
-          "share_pct": 5.987394957983193
-        },
-        {
-          "position": "OL",
-          "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "game",
-          "count": 94,
-          "setting_total": 1250,
-          "share_within_setting": 0.0752,
-          "share_pct": 7.5200000000000005
-        },
-        {
-          "position": "OL",
-          "band_index": 3,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -2053,7 +1956,7 @@
         },
         {
           "position": "OL",
-          "band_index": 3,
+          "band_index": 2,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -2065,7 +1968,7 @@
         },
         {
           "position": "OL",
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -2077,7 +1980,7 @@
         },
         {
           "position": "OL",
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -2089,7 +1992,7 @@
         },
         {
           "position": "OL",
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -2101,7 +2004,7 @@
         },
         {
           "position": "OL",
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -2113,7 +2016,7 @@
         },
         {
           "position": "OL",
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -2125,7 +2028,7 @@
         },
         {
           "position": "OL",
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -2137,7 +2040,7 @@
         },
         {
           "position": "OL",
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
@@ -2149,7 +2052,7 @@
         },
         {
           "position": "OL",
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
@@ -2162,54 +2065,30 @@
         {
           "position": "DL",
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "combine",
-          "count": 34,
+          "count": 95,
           "setting_total": 2067,
-          "share_within_setting": 0.01644895984518626,
-          "share_pct": 1.644895984518626
+          "share_within_setting": 0.045960328979196906,
+          "share_pct": 4.596032897919691
         },
         {
           "position": "DL",
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "game",
-          "count": 25,
+          "count": 101,
           "setting_total": 1078,
-          "share_within_setting": 0.023191094619666047,
-          "share_pct": 2.3191094619666046
+          "share_within_setting": 0.09369202226345083,
+          "share_pct": 9.369202226345083
         },
         {
           "position": "DL",
           "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "combine",
-          "count": 61,
-          "setting_total": 2067,
-          "share_within_setting": 0.029511369134010642,
-          "share_pct": 2.951136913401064
-        },
-        {
-          "position": "DL",
-          "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "game",
-          "count": 76,
-          "setting_total": 1078,
-          "share_within_setting": 0.07050092764378478,
-          "share_pct": 7.050092764378478
-        },
-        {
-          "position": "DL",
-          "band_index": 3,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -2221,7 +2100,7 @@
         },
         {
           "position": "DL",
-          "band_index": 3,
+          "band_index": 2,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -2233,7 +2112,7 @@
         },
         {
           "position": "DL",
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -2245,7 +2124,7 @@
         },
         {
           "position": "DL",
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -2257,7 +2136,7 @@
         },
         {
           "position": "DL",
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -2269,7 +2148,7 @@
         },
         {
           "position": "DL",
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -2281,7 +2160,7 @@
         },
         {
           "position": "DL",
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -2293,7 +2172,7 @@
         },
         {
           "position": "DL",
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -2305,7 +2184,7 @@
         },
         {
           "position": "DL",
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
@@ -2317,7 +2196,7 @@
         },
         {
           "position": "DL",
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
