@@ -363,6 +363,13 @@ turn_coverage:
       bands:
         turn_angle_deg: [30, 45, 60, 90, 120, 150, 180]
         overflow_label: ">180"
+      # Figure 1's DISPLAY bands only. Conor asked the headline figure to show
+      # one 30-60 band instead of splitting it at 45, so the 30-45 and 45-60
+      # rows are merged here and nowhere else (new D-number, notes/decisions.md).
+      # `bands` above is deliberately NOT changed: figures 3, 5, 8, 12, 13 and
+      # 15 read it and must keep reporting 30-45 and 45-60 separately.
+      plot_bands:
+        turn_angle_deg: [30, 60, 90, 120, 150, 180]
       # Fixed render size: width >= 1500 px at this DPI, readable in a
       # Kaggle writeup. Fixed values keep the PNG reproducible.
       dpi: 150

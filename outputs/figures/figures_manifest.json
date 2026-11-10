@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "78dc7f83eca60469",
-  "generated_utc": "2026-11-09T22:20:41Z",
+  "config_sha": "087d63f05679ec5c",
+  "generated_utc": "2026-11-10T08:24:23Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -11,20 +11,19 @@
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_the_hole",
-      "title": "The hole: games demand 30\u201345\u00b0 DB breaks the Combine does not test",
-      "claim": "The Combine contains no deliberate 30\u201345\u00b0 DB break at speed: the 4 sample detections are incidental fragments, not a test, while games demand 97 such turns.",
+      "title": "The hole: games demand 6.5\u00d7 the share of 30\u201360\u00b0 DB breaks the Combine supplies",
+      "claim": "Games spend 6.5\u00d7 the share of DB turns in 30\u201360\u00b0 that the Combine supplies (14.4% vs 2.2%; 326 game turns vs 26 Combine detections). The Combine detections are incidental fragments, not a test, and 30\u201360\u00b0 is the largest proportional shortfall of any band in this figure.",
       "sources": [
         "outputs/turns/turns.parquet"
       ],
       "caveats": [
         "Exposure: 122 Combine players \u00d7 one session vs 33 game players \u00d7 299 player-games; the share panel exists because the two settings are not sampled alike.",
         "DB demand denominator is all 2,262 valid DB game turns; the snap-classified COVERAGE subset is 1,111, and 1,121 turns (49.6%) are snapped as \"other\".",
-        "Bands are left-closed; the final class is >180\u00b0."
+        "Bands are left-closed; the final class is >180\u00b0. This figure merges 30\u201345\u00b0 and 45\u201360\u00b0 into one 30\u201360\u00b0 band; every other figure reports the two bands separately."
       ],
       "position_group": "DB",
       "bands": [
-        "30\u201345\u00b0",
-        "45\u201360\u00b0",
+        "30\u201360\u00b0",
         "60\u201390\u00b0",
         "90\u2013120\u00b0",
         "120\u2013150\u00b0",
@@ -34,46 +33,26 @@
       "counts": [
         {
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "combine",
-          "count": 4,
+          "count": 26,
           "setting_total": 1179,
-          "share_within_setting": 0.0033927056827820186
+          "share_within_setting": 0.02205258693808312
         },
         {
           "band_index": 1,
-          "band": "30\u201345\u00b0",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
-          "band_high_deg": 45.0,
+          "band_high_deg": 60.0,
           "setting": "game",
-          "count": 97,
+          "count": 326,
           "setting_total": 2262,
-          "share_within_setting": 0.04288240495137047
+          "share_within_setting": 0.14412024756852343
         },
         {
           "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "combine",
-          "count": 22,
-          "setting_total": 1179,
-          "share_within_setting": 0.018659881255301103
-        },
-        {
-          "band_index": 2,
-          "band": "45\u201360\u00b0",
-          "band_low_deg": 45.0,
-          "band_high_deg": 60.0,
-          "setting": "game",
-          "count": 229,
-          "setting_total": 2262,
-          "share_within_setting": 0.10123784261715296
-        },
-        {
-          "band_index": 3,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -83,7 +62,7 @@
           "share_within_setting": 0.2010178117048346
         },
         {
-          "band_index": 3,
+          "band_index": 2,
           "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
@@ -93,7 +72,7 @@
           "share_within_setting": 0.21043324491600354
         },
         {
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -103,7 +82,7 @@
           "share_within_setting": 0.13486005089058525
         },
         {
-          "band_index": 4,
+          "band_index": 3,
           "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
@@ -113,7 +92,7 @@
           "share_within_setting": 0.22458001768346597
         },
         {
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -123,7 +102,7 @@
           "share_within_setting": 0.42324003392705684
         },
         {
-          "band_index": 5,
+          "band_index": 4,
           "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
@@ -133,7 +112,7 @@
           "share_within_setting": 0.20335985853227231
         },
         {
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -143,7 +122,7 @@
           "share_within_setting": 0.1085665818490246
         },
         {
-          "band_index": 6,
+          "band_index": 5,
           "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
@@ -153,7 +132,7 @@
           "share_within_setting": 0.13572060123784263
         },
         {
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
@@ -163,7 +142,7 @@
           "share_within_setting": 0.1102629346904156
         },
         {
-          "band_index": 7,
+          "band_index": 6,
           "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,

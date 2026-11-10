@@ -6539,3 +6539,52 @@ title is "The tempo break: a 40° cut at speed, both sides". The proposal-badge,
 subtitle and footer removals from this decision are unchanged and still absent.
 `config.yaml` is back to `break_angles_deg: [40]` /
 `break_band_labels: ["30–45°"]`.
+
+## D178 — Figure 1 displays ONE 30–60° band, and drops its on-image sample stamp · 2026-11-10
+
+**Decision (Conor, 08:03).** In figure 1 ("The hole"), merge the 30–45° and
+45–60° reporting bands into a single **30–60°** band, rewrite the title, subtitle,
+caption, callouts, CSV and manifest to match, keep the red highlight on that
+merged band, and remove the placeholder banner from the image.
+
+**Geometry is figure-1-only.** `config.yaml` gains
+`figures.hole.plot_bands.turn_angle_deg = [30, 60, 90, 120, 150, 180]`.
+`figures.hole.bands.turn_angle_deg` stays `[30, 45, 60, 90, 120, 150, 180]` and
+is still what figures 3, 5, 8, 12, 13 and 15 read — they continue to report
+30–45° and 45–60° separately, and figure 5's band assertions are unchanged.
+
+**The highlight stays, on 30–60°.** Style still comes from
+`figures.focus_band` (colour `#C00000`, `tint_alpha`, `rule_width_pt`) so the
+sentinel-colour contract passes; only the *geometry* is overridden, via
+`focus_band(cfg, edges=...)`. `figures.focus_band.edges_deg` is untouched
+(seven other figures share it). Figure 1 now asserts its first display band
+starts at the configured focus floor (30°), instead of forcing the global
+30–45° pair to be that band.
+
+**The claim is a shortfall, not an absence.** The old title said the Combine
+"does not test" 30–45°; at 30–60° that is false — 26 detections exist. The
+figure now says games demand **6.5× the share** of DB turns in 30–60° that the
+Combine supplies (2.21% of 1,179 Combine turns vs 14.41% of 2,262 game turns;
+26 vs 326 turns), which is the largest proportional shortfall of any band in
+the merged table. A render-time guard recomputes every band's share ratio and
+refuses to draw the "largest" claim if another band ever exceeds it. No "does
+not test", no "no break", no 24× (that was the un-merged 30–45° ratio).
+
+**The on-image placeholder banner is gone; provenance is not.** Figure 1 no
+longer draws `PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT` in the top-right
+corner or as the first caption line. The CSV keeps `provenance` / `label` /
+`stamp` and the manifest keeps its `stamp`, so artefact-level provenance is
+intact. `render(..., stamp=False)` is figure 1 only; every other figure's banner
+renders byte-identically. `figures.stamp_text(mode)` is new so a future full
+run writes `FULL DATA OUTPUT`, never a false PLACEHOLDER stamp.
+
+**What did not change.** Figures 2–17 PNGs are byte-identical to `55f4a57`;
+their CSVs differ only in `config_sha` (the config fingerprint includes the new
+block). TASK.md line 20 still calls 30–45° the focus band and still quotes 24×;
+this decision governs figure 1's display only, not the task spec.
+
+**Evidence.** `config.yaml` (`figures.hole.plot_bands`);
+`src/bdb27/figures.py` (`stamp_text`, `focus_band(..., edges=)`, `build_plot`,
+`_annotations`, `manifest_payload`, `render`); `src/06_figures.py`;
+`tests/test_figures_stage.py` (fig_the_hole assertions, `HOLE_EDGES`);
+`outputs/figures/fig_the_hole.{png,csv}`, `outputs/figures/figures_manifest.json`.

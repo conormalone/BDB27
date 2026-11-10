@@ -34,6 +34,9 @@ BAND_COUNTS = [
     (180.0, 400.0, 130, 185),
 ]
 EDGES = [30.0, 45.0, 60.0, 90.0, 120.0, 150.0, 180.0]
+# Figure 1 displays ONE merged 30-60 band (Conor, 2026-11-10);
+# `figures.hole.bands` keeps the 30/45/60 split for every other figure.
+HOLE_EDGES = [30.0, 60.0, 90.0, 120.0, 150.0, 180.0]
 
 # Figure 5 needs every plotted position. These mirror the verified sample band
 # counts for the non-DB positions: (band_index, combine, game) per band, in the
@@ -330,6 +333,10 @@ def _write_config(tmp: Path, *, edges=None) -> Path:
     block["paths"]["run_log"] = str(tmp / "outputs" / "run_log.csv")
     if edges is not None:
         block["figures"]["hole"]["bands"]["turn_angle_deg"] = edges
+        # figure 1 draws `plot_bands` (its own display bands); keep the two in
+        # step in the test config so an override is observable on the figure.
+        block["figures"]["hole"].setdefault("plot_bands", {})[
+            "turn_angle_deg"] = edges
     (tmp / "outputs" / "turns").mkdir(parents=True, exist_ok=True)
     (tmp / "outputs" / "envelope").mkdir(parents=True, exist_ok=True)
     (tmp / "outputs").mkdir(parents=True, exist_ok=True)
@@ -451,8 +458,8 @@ def test_png_exists_non_empty_and_wide(rendered):
 def test_csv_matches_artefact_counts_for_every_band(rendered):
     turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
     csv_df = pd.read_csv(rendered["csv"])
-    assert len(csv_df) == 14
-    _check_counts(csv_df, turns, EDGES)
+    assert len(csv_df) == 12
+    _check_counts(csv_df, turns, HOLE_EDGES)
 
 
 def test_provenance_stamp_in_csv_and_manifest(rendered):
@@ -463,7 +470,10 @@ def test_provenance_stamp_in_csv_and_manifest(rendered):
     assert man["provenance"] == "PLACEHOLDER_SAMPLE"
     assert man["label"] == "UNVALIDATED SAMPLE OUTPUT"
     fig = man["figures"]["fig_the_hole"]
-    assert "30–45°" in fig["claim"]
+    assert "30–60°" in fig["claim"]
+    assert "30–45°" not in fig["claim"]
+    assert fig["bands"][0] == "30–60°"
+    assert "45–60°" not in fig["bands"]
     assert "2,262" in fig["caveats"][1]
     assert "1,111" in fig["caveats"][1]
     assert "49.6%" in fig["caveats"][1]
@@ -492,13 +502,13 @@ def test_checks_can_fail(rendered, tmp_path):
     """The contracts above are only meaningful if a wrong artefact fails them."""
     turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
     good = pd.read_csv(rendered["csv"])
-    _check_counts(good, turns, EDGES)  # sanity: the checker passes on the real file
+    _check_counts(good, turns, HOLE_EDGES)  # sanity: the checker passes on the real file
 
     bad = good.copy()
-    idx = bad.index[(bad["band"] == "30–45°") & (bad["setting"] == "combine")][0]
+    idx = bad.index[(bad["band"] == "30–60°") & (bad["setting"] == "combine")][0]
     bad.loc[idx, "count"] = 5
     with pytest.raises(AssertionError):
-        _check_counts(bad, turns, EDGES)
+        _check_counts(bad, turns, HOLE_EDGES)
 
     empty = tmp_path / "empty.png"
     empty.write_bytes(b"")
@@ -998,7 +1008,7 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
     assert res.returncode == 0, res.stderr
     for k in keys:
         assert hashlib.sha256(rendered[k].read_bytes()).hexdigest() == before[k]
-    assert len(pd.read_csv(rendered["csv"])) == 14
+    assert len(pd.read_csv(rendered["csv"])) == 12  # 6 bands x 2 settings
     assert len(pd.read_csv(rendered["drill_csv"])) == 11
     assert len(pd.read_csv(rendered["ba_csv"])) == 44
     assert len(pd.read_csv(rendered["ds_csv"])) == 21

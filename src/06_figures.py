@@ -142,7 +142,7 @@ def _write_manifest(payload: dict, path: Path, mode: str,
         {
             "stage": STAGE,
             "artefact_version": figures.ARTEFACT_VERSION,
-            "stamp": figures.STAMP,
+            "stamp": figures.stamp_text(mode),
             "figures": existing,
         },
         path, mode, cfg,
@@ -159,6 +159,10 @@ def main(argv=None) -> int:
     common.require_inputs([turns_path, variance_path], stage=STAGE)
 
     edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    # Figure 1's own DISPLAY bands (30-60 merged); every other figure keeps
+    # `edges`. See figures.hole.plot_bands in config.yaml.
+    hole_edges = [float(x) for x in
+                  cfg.get("figures.hole.plot_bands.turn_angle_deg")]
     overflow = str(cfg.get("figures.hole.bands.overflow_label"))
     position = str(cfg.get("figures.hole.position_group"))
 
@@ -169,15 +173,15 @@ def main(argv=None) -> int:
 
     with common.StageTimer(STAGE, args.mode, cfg) as timer:
         turns = figures.load_turns(turns_path)
-        table, context = figures.band_table(turns, edges, overflow, position)
+        table, context = figures.band_table(turns, hole_edges, overflow, position)
         table_csv = figures.csv_frame(table)
         common.write_csv(table_csv, csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY})
         plot = figures.build_plot(table, context, cfg)
-        figures.render(plot, cfg, png_path)
+        figures.render(plot, cfg, png_path, stamp=False)
         payload = figures.manifest_payload(table, context)
-        payload["stamp"] = figures.STAMP
+        payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(payload, manifest_path, args.mode, cfg)
 
         drill_turns = figures.load_drill_turns(turns_path)
@@ -186,12 +190,12 @@ def main(argv=None) -> int:
         drill_png = outdir / f"{figures.FIGURE_KEY_DRILLS}.png"
         drill_csv_path = outdir / f"{figures.FIGURE_KEY_DRILLS}.csv"
         common.write_csv(drill_csv, drill_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_DRILLS})
         drill_plot = figures.plot_drill_coverage(drill_table, drill_context, cfg)
         figures.render(drill_plot, cfg, drill_png, block="drill_coverage")
         drill_payload = figures.drill_manifest_payload(drill_table, drill_context)
-        drill_payload["stamp"] = figures.STAMP
+        drill_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(drill_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 3: before and after (measured supply vs supply + drill)
@@ -209,13 +213,13 @@ def main(argv=None) -> int:
         ba_png = outdir / f"{figures.FIGURE_KEY_BEFORE_AFTER}.png"
         ba_csv_path = outdir / f"{figures.FIGURE_KEY_BEFORE_AFTER}.csv"
         common.write_csv(ba_csv, ba_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_BEFORE_AFTER})
         ba_plot = figures.plot_before_after(ba_table, ba_context, ba_proj, cfg)
         figures.render(ba_plot, cfg, ba_png, block="before_after")
         ba_payload = figures.before_after_manifest_payload(
             ba_table, ba_context, ba_proj)
-        ba_payload["stamp"] = figures.STAMP
+        ba_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(ba_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 4: the tempo-break drill, drawn (a diagram, no data)
@@ -237,14 +241,14 @@ def main(argv=None) -> int:
         ap_png = outdir / f"{figures.FIGURE_KEY_ALL_POSITIONS}.png"
         ap_csv_path = outdir / f"{figures.FIGURE_KEY_ALL_POSITIONS}.csv"
         common.write_csv(ap_csv, ap_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_ALL_POSITIONS})
         ap_plot = figures.plot_all_positions(ap_table, ap_context, cfg,
                                              turns=turns)
         figures.render(ap_plot, cfg, ap_png, block="all_positions")
         ap_payload = figures.all_positions_manifest_payload(
             ap_table, ap_context, cfg)
-        ap_payload["stamp"] = figures.STAMP
+        ap_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(ap_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 6: the measurement limits (slot e)
@@ -257,14 +261,14 @@ def main(argv=None) -> int:
         ml_png = outdir / f"{figures.FIGURE_KEY_MEASUREMENT_LIMITS}.png"
         ml_csv_path = outdir / f"{figures.FIGURE_KEY_MEASUREMENT_LIMITS}.csv"
         common.write_csv(ml_table, ml_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_MEASUREMENT_LIMITS})
         ml_fig = figures.build_measurement_limits(
             ml_left, ml_right, {"left": ml_lctx, "right": ml_rctx}, cfg)
         figures.render_measurement_limits(ml_fig, cfg, ml_png)
         ml_payload = figures.measurement_limits_manifest_payload(
             ml_left, ml_right, ml_lctx, ml_rctx, cfg)
-        ml_payload["stamp"] = figures.STAMP
+        ml_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(ml_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 7: how big is the gap, really? (the exposure attack)
@@ -273,13 +277,13 @@ def main(argv=None) -> int:
         gh_png = outdir / f"{figures.FIGURE_KEY_GAP_HONEST}.png"
         gh_csv_path = outdir / f"{figures.FIGURE_KEY_GAP_HONEST}.csv"
         common.write_csv(gh_csv, gh_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_GAP_HONEST})
         gh_plot = figures.plot_gap_honest(gh_table, gh_context, cfg)
         figures.render(gh_plot, cfg, gh_png, block="gap_honest")
         gh_payload = figures.gap_honest_manifest_payload(
             gh_table, gh_context, cfg)
-        gh_payload["stamp"] = figures.STAMP
+        gh_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(gh_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 8: what a turn costs, and who pays for it
@@ -288,13 +292,13 @@ def main(argv=None) -> int:
         tc_png = outdir / f"{figures.FIGURE_KEY_TURN_COST}.png"
         tc_csv_path = outdir / f"{figures.FIGURE_KEY_TURN_COST}.csv"
         common.write_csv(tc_csv, tc_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_TURN_COST})
         tc_fig = figures.plot_turn_cost(tc_table, tc_context, cfg)
         figures.render_turn_cost(tc_fig, cfg, tc_png)
         tc_payload = figures.turn_cost_manifest_payload(
             tc_table, tc_context, cfg)
-        tc_payload["stamp"] = figures.STAMP
+        tc_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(tc_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 9: same stopwatch, different turn
@@ -305,13 +309,13 @@ def main(argv=None) -> int:
         sw_png = outdir / f"{figures.FIGURE_KEY_STOPWATCH}.png"
         sw_csv_path = outdir / f"{figures.FIGURE_KEY_STOPWATCH}.csv"
         common.write_csv(sw_csv, sw_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_STOPWATCH})
         sw_fig = figures.plot_stopwatch(sw_table, sw_context, cfg)
         figures.render_stopwatch(sw_fig, cfg, sw_png)
         sw_payload = figures.stopwatch_manifest_payload(
             sw_table, sw_context, cfg)
-        sw_payload["stamp"] = figures.STAMP
+        sw_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(sw_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 10: the test never checks which way he turns
@@ -358,13 +362,13 @@ def main(argv=None) -> int:
         bh_png = outdir / f"{figures.FIGURE_KEY_BOTH_HIPS}.png"
         bh_csv_path = outdir / f"{figures.FIGURE_KEY_BOTH_HIPS}.csv"
         common.write_csv(bh_csv, bh_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_BOTH_HIPS})
         bh_plot = figures.plot_both_hips(bh_table, bh_context, cfg)
         figures.render_both_hips(bh_plot, cfg, bh_png)
         bh_payload = figures.both_hips_manifest_payload(
             bh_table, bh_context, cfg)
-        bh_payload["stamp"] = figures.STAMP
+        bh_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(bh_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 11: where the shallow turns come from
@@ -374,13 +378,13 @@ def main(argv=None) -> int:
         ss_png = outdir / f"{figures.FIGURE_KEY_SHALLOW_SOURCES}.png"
         ss_csv_path = outdir / f"{figures.FIGURE_KEY_SHALLOW_SOURCES}.csv"
         common.write_csv(ss_csv, ss_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_SHALLOW_SOURCES})
         ss_plot = figures.plot_shallow_sources(ss_table, ss_context, cfg)
         figures.render_shallow_sources(ss_plot, cfg, ss_png)
         ss_payload = figures.shallow_sources_manifest_payload(
             ss_table, ss_context, cfg)
-        ss_payload["stamp"] = figures.STAMP
+        ss_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(ss_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 12: the ninety-second ledger
@@ -390,12 +394,12 @@ def main(argv=None) -> int:
         lg_png = outdir / f"{figures.FIGURE_KEY_LEDGER}.png"
         lg_csv_path = outdir / f"{figures.FIGURE_KEY_LEDGER}.csv"
         common.write_csv(lg_csv, lg_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_LEDGER})
         lg_fig = figures.plot_ledger(lg_table, lg_context, cfg)
         figures.render_ledger(lg_fig, cfg, lg_png)
         lg_payload = figures.ledger_manifest_payload(lg_table, lg_context, cfg)
-        lg_payload["stamp"] = figures.STAMP
+        lg_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(lg_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 13: bars of doubt
@@ -405,13 +409,13 @@ def main(argv=None) -> int:
         bd_png = outdir / f"{figures.FIGURE_KEY_BARS_OF_DOUBT}.png"
         bd_csv_path = outdir / f"{figures.FIGURE_KEY_BARS_OF_DOUBT}.csv"
         common.write_csv(bd_csv, bd_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_BARS_OF_DOUBT})
         bd_plot = figures.plot_bars_of_doubt(bd_table, bd_context, cfg)
         figures.render_bars_of_doubt(bd_plot, cfg, bd_png)
         bd_payload = figures.bars_of_doubt_manifest_payload(
             bd_table, bd_context, cfg)
-        bd_payload["stamp"] = figures.STAMP
+        bd_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(bd_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 14: where the Combine's turns come from
@@ -421,14 +425,14 @@ def main(argv=None) -> int:
         sc_png = outdir / f"{figures.FIGURE_KEY_SUPPLY_COMPOSITION}.png"
         sc_csv_path = outdir / f"{figures.FIGURE_KEY_SUPPLY_COMPOSITION}.csv"
         common.write_csv(sc_csv, sc_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure":
                                     figures.FIGURE_KEY_SUPPLY_COMPOSITION})
         sc_fig = figures.plot_supply_composition(sc_table, sc_context, cfg)
         figures.render_supply_composition(sc_fig, cfg, sc_png)
         sc_payload = figures.supply_composition_manifest_payload(
             sc_table, sc_context, cfg)
-        sc_payload["stamp"] = figures.STAMP
+        sc_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(sc_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 15: the 30-45 degree band on its own
@@ -438,13 +442,13 @@ def main(argv=None) -> int:
         bo_png = outdir / f"{figures.FIGURE_KEY_BAND_ONLY}.png"
         bo_csv_path = outdir / f"{figures.FIGURE_KEY_BAND_ONLY}.csv"
         common.write_csv(bo_csv, bo_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY_BAND_ONLY})
         bo_fig = figures.plot_band_only(bo_table, bo_context, cfg)
         figures.render_band_only(bo_fig, cfg, bo_png)
         bo_payload = figures.band_only_manifest_payload(
             bo_table, bo_context, cfg)
-        bo_payload["stamp"] = figures.STAMP
+        bo_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(bo_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 16: entry and exit speed by angle band
@@ -454,14 +458,14 @@ def main(argv=None) -> int:
         ees_png = outdir / f"{figures.FIGURE_KEY_ENTRY_EXIT_SPEED}.png"
         ees_csv_path = outdir / f"{figures.FIGURE_KEY_ENTRY_EXIT_SPEED}.csv"
         common.write_csv(ees_csv, ees_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure":
                                     figures.FIGURE_KEY_ENTRY_EXIT_SPEED})
         ees_fig = figures.plot_entry_exit_speed(ees_table, ees_context, cfg)
         figures.render_entry_exit_speed(ees_fig, cfg, ees_png)
         ees_payload = figures.entry_exit_speed_manifest_payload(
             ees_table, ees_context, cfg)
-        ees_payload["stamp"] = figures.STAMP
+        ees_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(ees_payload, manifest_path, args.mode, cfg)
 
         # ---- figure 17: the movement family by angle band
@@ -471,14 +475,14 @@ def main(argv=None) -> int:
         mf_png = outdir / f"{figures.FIGURE_KEY_MOVEMENT_FAMILY}.png"
         mf_csv_path = outdir / f"{figures.FIGURE_KEY_MOVEMENT_FAMILY}.csv"
         common.write_csv(mf_csv, mf_csv_path, args.mode, cfg,
-                         extra={"stamp": figures.STAMP,
+                         extra={"stamp": figures.stamp_text(args.mode),
                                 "figure":
                                     figures.FIGURE_KEY_MOVEMENT_FAMILY})
         mf_fig = figures.plot_movement_family(mf_table, mf_context, cfg)
         figures.render_movement_family(mf_fig, cfg, mf_png)
         mf_payload = figures.movement_family_manifest_payload(
             mf_table, mf_context, cfg)
-        mf_payload["stamp"] = figures.STAMP
+        mf_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(mf_payload, manifest_path, args.mode, cfg)
 
         timer.rows = context["n_valid"]

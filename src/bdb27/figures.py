@@ -1,17 +1,21 @@
 """Stage 06 figure 1 — "The Hole" (DB supply vs demand by turn-angle band).
 
-One figure, deliberately: the 30-45 degree band is the case's whole point, so
-the figure shows it two ways at once — raw counts (what the Combine produces
+One figure, deliberately: the shallow-break window is the case's whole point,
+so the figure shows it two ways at once — raw counts (what the Combine produces
 versus what games demand) and each setting's own share (the exposure-corrected
 view). Every number on the image is counted from ``outputs/turns/turns.parquet``
-at render time; nothing is hard-coded.
+at render time; nothing is hard-coded. This figure displays the window as ONE
+30-60 degree band (Conor, 2026-11-10): the 30-45 and 45-60 rows are merged
+here, while every other figure keeps them apart (``figures.hole.plot_bands``
+is figure 1 only; ``figures.hole.bands`` stays the shared 30/45/60 list).
 
 Design rules honoured here:
   * reporting bands come from ``config.yaml`` (``figures.hole``, D164);
   * no pie charts, no 3-D, no chart junk; grey panel, colour-blind-safe palette;
   * direct labels on the highlighted band and each setting's peak, with a
     compact legend for the rest;
-  * an on-image provenance stamp, repeated in the CSV and the JSON manifest;
+  * figure 1 carries no on-image provenance banner: the sample stamp lives in
+    the CSV and the JSON manifest (``render(..., stamp=False)``);
   * two runs produce a byte-identical PNG (fixed DPI/style, no timestamp).
 """
 
@@ -89,6 +93,20 @@ SUPPLY_COLUMNS = [
 
 STAMP = f"{common.PROVENANCE_SAMPLE} — {common.SAMPLE_LABEL}"
 
+
+def stamp_text(mode: str) -> str:
+    """The banner written into the CSV and manifest for ``mode``.
+
+    Sample runs carry the placeholder banner; a full run says so plainly, so a
+    full-data artefact can never be mistaken for unvalidated sample output.
+    The drawn figures keep using the sample banner (``STAMP``) unchanged.
+    """
+    if mode == "sample":
+        return STAMP
+    if mode == "full":
+        return "FULL DATA OUTPUT"
+    raise ValueError(f"{STAGE}: mode must be sample|full, got {mode!r}")
+
 #: Okabe-Ito, colour-blind-safe. Combine = blue, game = vermillion.
 PALETTE = {"combine": "#0072B2", "game": "#D55E00"}
 ALERT = "#B00020"
@@ -100,13 +118,24 @@ ALERT = "#B00020"
 FOCUS_BAND_KEY = "figures.focus_band"
 
 
-def focus_band(cfg: common.Config) -> dict:
+def focus_band(cfg: common.Config, edges: list[float] | tuple[float, ...] | None = None) -> dict:
     """Read and validate the single focus-band style block.
 
     Returns the band edges, the colour and the style flags every figure uses.
     The colour is a *band* signal: rules, tint, outlines and labels only.
+
+    ``edges`` overrides the *geometry* only, for a figure that displays the
+    window differently (figure 1 merges 30-45 and 45-60 into one 30-60 band).
+    Colour, tint and rule width always come from ``figures.focus_band``, so
+    the sentinel-colour contract holds for every figure, merged axis or not.
     """
-    low, high = (float(x) for x in cfg.get(f"{FOCUS_BAND_KEY}.edges_deg"))
+    if edges is None:
+        low, high = (float(x) for x in cfg.get(f"{FOCUS_BAND_KEY}.edges_deg"))
+    else:
+        if len(edges) != 2:
+            raise ValueError(
+                f"{STAGE}: focus-band edge override must be a pair, got {edges}")
+        low, high = (float(x) for x in edges)
     if not low < high:
         raise ValueError(
             f"{STAGE}: {FOCUS_BAND_KEY}.edges_deg must be increasing, got "
@@ -336,7 +365,7 @@ def plot_frame(table: pd.DataFrame) -> pd.DataFrame:
 
 
 def _labels(table: pd.DataFrame, bands: list[str]) -> pd.DataFrame:
-    """Direct labels: the 30-45 band in both panels, plus each setting's peak."""
+    """Direct labels: the focus band in both panels, plus each setting's peak."""
     frame = plot_frame(table)
     rows = []
     for panel, part in frame.groupby("panel", observed=True):
@@ -373,6 +402,22 @@ def _annotations(table: pd.DataFrame, context: dict) -> tuple[pd.DataFrame, dict
                          "share_within_setting"].iloc[0])
     ratio = (gs / cs) if cs else float("inf")
 
+    # The headline claim is "largest proportional shortfall of any band". That
+    # is checked against the table actually being drawn, never assumed: if a
+    # future band configuration makes another band the biggest gap, the figure
+    # refuses rather than printing a false superlative.
+    shares = table.pivot(index="band", columns="setting",
+                         values="share_within_setting")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratios = (shares["game"] / shares["combine"]).replace(
+            [np.inf, -np.inf], np.nan)
+    if ratios.notna().any() and not np.isclose(
+            float(ratios.max()), ratio, rtol=1e-12, atol=0.0):
+        raise ValueError(
+            f"{STAGE}: figure 1 claims the first band is the largest "
+            f"proportional shortfall, but {ratios.idxmax()} is "
+            f"({float(ratios.max()):.2f}x vs {ratio:.2f}x) — fix the claim")
+
     top_a = float(frame.loc[frame["panel"] == frame["panel"].cat.categories[0],
                             "value"].max())
     top_b = float(frame.loc[frame["panel"] == frame["panel"].cat.categories[1],
@@ -381,10 +426,10 @@ def _annotations(table: pd.DataFrame, context: dict) -> tuple[pd.DataFrame, dict
         {"panel": frame["panel"].cat.categories[0], "x": 1.0, "y": top_a * 0.30,
          "label": f"THE HOLE\n{c} vs {g} turns"},
         {"panel": frame["panel"].cat.categories[1], "x": 1.0, "y": top_b * 0.20,
-         "label": f"{ratio:.1f}× more often\nin games"},
+         "label": f"{ratio:.1f}× the share\nin games"},
     ])
     return rect, {"rect": rect, "text": texts, "combine": c, "game": g,
-                  "ratio": ratio}
+                  "ratio": ratio, "combine_share": cs, "game_share": gs}
 
 
 def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot:
@@ -392,11 +437,15 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
     labels = _labels(table, context["bands"])
     rect, ann = _annotations(table, context)
     texts = ann["text"]
-    focus = focus_band(cfg)
-    if focus_band_index([float(e) for e in context["edges"]], focus) != 0:
+    # Style always from figures.focus_band; geometry from this figure's own
+    # display bands (figure 1 merges 30-45 and 45-60 into one 30-60 band).
+    configured = focus_band(cfg)
+    focus = focus_band(cfg, edges=[float(e) for e in context["edges"][:2]])
+    if float(context["edges"][0]) != configured["low"]:
         raise ValueError(
-            f"{STAGE}: figure 1 highlights its first reporting band; "
-            f"{FOCUS_BAND_KEY} must be that band")
+            f"{STAGE}: figure 1 highlights its first display band, which must "
+            f"start at the configured focus floor {configured['low']:g}°; got "
+            f"{float(context['edges'][0]):g}°")
     focus_label = pd.DataFrame([
         {"panel": panel,
          "x": 1.0,
@@ -414,22 +463,25 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
     other = context["other_turns"]
     other_pct = context["other_share"] * 100.0
 
-    title = "The hole: games demand 30–45° DB breaks the Combine does not test"
+    title = (f"The hole: games demand {ann['ratio']:.1f}× the share of 30–60° "
+             "DB breaks the Combine supplies")
     subtitle = (f"Valid {context['position']} turns by absolute turn angle — "
                 f"Combine ({players['combine']} players, one session) vs game "
                 f"({players['game']} players, {pg} player-games). Bands are left-closed.")
 
     caption = "\n".join([
-        STAMP,
-        ("The Combine contains no deliberate 30–45° break at speed: the "
-         f"{c} detections are incidental fragments, not a test."),
+        (f"Games spend {ann['game_share'] * 100.0:.1f}% of their DB turns in "
+         f"30–60° against the Combine's {ann['combine_share'] * 100.0:.1f}% — "
+         f"{ann['ratio']:.1f}× the share. The {c} Combine detections are "
+         "incidental fragments, not a deliberate break test."),
         (f"Exposure: {players['combine']} Combine players × one session vs "
          f"{players['game']} game players × {pg} player-games — the settings are not "
          "sampled alike, which is why panel (b) shows each setting's own share."),
         (f"DB demand denominator: all {total:,} valid DB game turns. The snap-classified "
          f"COVERAGE subset is {cov:,}; {other:,} turns ({other_pct:.1f}%) are snapped "
          "\"other\"."),
-        ("Bands are left-closed; the final class is >180°. Source: "
+        ("Bands are left-closed; 30–45° and 45–60° are merged into one 30–60° band "
+         "on this figure only. The final class is >180°. Source: "
          "outputs/turns/turns.parquet (valid turns), stage 02. Counts computed at render time."),
     ])
 
@@ -487,13 +539,18 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
 
 
 def render(plot: ggplot, cfg: common.Config, out_png: Path,
-           block: str = "hole") -> plt.Figure:
-    """Draw and save once, with fixed metadata so repeated runs are identical."""
+           block: str = "hole", stamp: bool = True) -> plt.Figure:
+    """Draw and save once, with fixed metadata so repeated runs are identical.
+
+    ``stamp=False`` omits the on-image provenance banner (figure 1 only: the
+    banner is replaced by the CSV/manifest stamp, so it is not lost).
+    """
     dpi = int(cfg.get(f"figures.{block}.dpi"))
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig = plot.draw()
-    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.2,
-             fontweight="bold", color=ALERT)
+    if stamp:
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.2,
+                 fontweight="bold", color=ALERT)
     fig.savefig(out_png, dpi=dpi, facecolor="white",
                 metadata={"Software": "bdb27-figures"})
     plt.close(fig)
@@ -517,14 +574,23 @@ def manifest_payload(table: pd.DataFrame, context: dict) -> dict:
     cov = context["coverage_turns"]
     other = context["other_turns"]
     other_pct = context["other_share"] * 100.0
+    shares = table.pivot(index="band", columns="setting",
+                         values="share_within_setting")
+    cs = float(shares.loc[context["bands"][0], "combine"])
+    gs = float(shares.loc[context["bands"][0], "game"])
+    ratio = (gs / cs) if cs else float("inf")
     return {
         "stage": STAGE,
         "artefact_version": ARTEFACT_VERSION,
         "figure": FIGURE_KEY,
-        "title": "The hole: games demand 30–45° DB breaks the Combine does not test",
-        "claim": ("The Combine contains no deliberate 30–45° DB break at speed: "
-                  f"the {c} sample detections are incidental fragments, not a test, "
-                  f"while games demand {g} such turns."),
+        "title": (f"The hole: games demand {ratio:.1f}× the share of 30–60° "
+                  "DB breaks the Combine supplies"),
+        "claim": (f"Games spend {ratio:.1f}× the share of DB turns in 30–60° "
+                  f"that the Combine supplies ({gs * 100.0:.1f}% vs "
+                  f"{cs * 100.0:.1f}%; {g} game turns vs {c} Combine "
+                  "detections). The Combine detections are incidental "
+                  "fragments, not a test, and 30–60° is the largest "
+                  "proportional shortfall of any band in this figure."),
         "sources": ["outputs/turns/turns.parquet"],
         "caveats": [
             (f"Exposure: {players['combine']} Combine players × one session vs "
@@ -534,7 +600,9 @@ def manifest_payload(table: pd.DataFrame, context: dict) -> dict:
             (f"DB demand denominator is all {total:,} valid DB game turns; the "
              f"snap-classified COVERAGE subset is {cov:,}, and {other:,} turns "
              f"({other_pct:.1f}%) are snapped as \"other\"."),
-            ("Bands are left-closed; the final class is >180°."),
+            ("Bands are left-closed; the final class is >180°. This figure "
+             "merges 30–45° and 45–60° into one 30–60° band; every other "
+             "figure reports the two bands separately."),
         ],
         "position_group": context["position"],
         "bands": context["bands"],
