@@ -486,6 +486,22 @@ def main(argv=None) -> int:
         mf_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(mf_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 18: every Combine turn, against the drill that made it
+        da_turns = figures.load_drill_angle_turns(turns_path)
+        da_table, da_context = figures.drill_angle_table(da_turns, cfg)
+        da_csv = figures.drill_angle_csv_frame(da_table, da_context)
+        da_png = outdir / f"{figures.FIGURE_KEY_DRILL_ANGLE}.png"
+        da_csv_path = outdir / f"{figures.FIGURE_KEY_DRILL_ANGLE}.csv"
+        common.write_csv(da_csv, da_csv_path, args.mode, cfg,
+                         extra={"stamp": figures.stamp_text(args.mode),
+                                "figure": figures.FIGURE_KEY_DRILL_ANGLE})
+        da_fig = figures.plot_drill_angle(da_table, da_context, cfg)
+        figures.render_drill_angle(da_fig, cfg, da_png)
+        da_payload = figures.drill_angle_manifest_payload(
+            da_table, da_context, cfg)
+        da_payload["stamp"] = figures.stamp_text(args.mode)
+        _write_manifest(da_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -593,7 +609,13 @@ def main(argv=None) -> int:
                         f"turns={mf_context['population_turns']} "
                         f"players={mf_context['population_players']} "
                         f"rows={mf_context['table_rows']} "
-                        f"estimable={sum(mf_context['n_estimable'].values())} ")
+                        f"estimable={sum(mf_context['n_estimable'].values())}; "
+                        f"{figures.FIGURE_KEY_DRILL_ANGLE}: "
+                        f"turns={da_context['n_turns']} "
+                        f"drills={da_context['n_drills']} "
+                        f"in_band={da_context['turns_in_band']} "
+                        f"({da_context['accent']} "
+                        f"{da_context['accent_band_turns']}) ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -610,6 +632,7 @@ def main(argv=None) -> int:
           f"{bo_png.name}, {bo_csv_path.name}, "
           f"{ees_png.name}, {ees_csv_path.name}, "
           f"{mf_png.name}, {mf_csv_path.name}, "
+          f"{da_png.name}, {da_csv_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -661,6 +684,10 @@ def main(argv=None) -> int:
           f"{mf_context['population_players']} players, "
           f"{sum(mf_context['n_estimable'].values())} of "
           f"{mf_context['table_rows']} cells estimable"
+          f"; figure 18 every Combine turn "
+          f"{da_context['n_turns']} across {da_context['n_drills']} drills, "
+          f"{da_context['turns_in_band']} in the 30-60 band "
+          f"({da_context['accent']} {da_context['accent_band_turns']})"
           f")")
     return 0
 

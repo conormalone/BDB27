@@ -10042,3 +10042,600 @@ def movement_family_manifest_payload(table: pd.DataFrame, context: dict,
         "claim": claim,
         "caveats": caveats,
     }
+
+
+# ---------------------------------------------------------------------------
+# Figure 18 — every Combine turn, against the drill that made it.
+#
+# Conor, 2026-11-10: "could you give me a scatter plot of all the turns in the
+# data, x axis is the angle (not bucketed) y axis is drill." So: one dot per
+# valid Combine turn, x = the measured absolute angle (continuous — no band, no
+# bin, no jitter on x), y = the drill that produced it. Rows are ordered by each
+# drill's own median angle so the shallow drills sit at the bottom.
+#
+# Nothing is summarised away: the 5,536 valid Combine turns span 45 drill
+# names, and every one is drawn. Game turns cannot appear — they carry no drill
+# name — so the figure is Combine-only by construction, not by choice.
+#
+# The only drawing device is a small vertical jitter inside each row, from a
+# fixed seed and a configured span, written per row into the CSV. The 30-60
+# degree display band is styled from `figures.focus_band` (D172) and its
+# geometry repeats figures 1/5's merged band (D178/D179); it marks the band,
+# never a data point.
+# ---------------------------------------------------------------------------
+FIGURE_KEY_DRILL_ANGLE = "fig_drill_angle_scatter"
+
+DRILL_ANGLE_COLUMNS = [
+    "setting",
+    "drill_name",
+    "abs_turn_angle",
+    "position_group",
+    "nfl_id",
+    "valid",
+]
+
+#: Figure-local readable names for drills the shared map does not cover. The
+#: shared map (`SUPPLY_COMPOSITION_DISPLAY`) is deliberately NOT extended: a
+#: new label there would change figure 14's PNG. Every raw `drill_name` stays
+#: its own row — including PASS_PRO-MIRROR_DRILL and PASS_PRO_MIRROR_DRILL,
+#: which differ only in spelling and are kept apart rather than merged.
+DRILL_ANGLE_LABELS = {
+    "CIRCUS_ROUTE_LEFT": "Circus route (left)",
+    "OL_PULL_DRILL_FOLD_BLOCK_RIGHT": "OL pull: fold block right",
+    "BLOCK_EXPLOSION": "Block explosion",
+    "DAGGER_ROUTE_LEFT": "Dagger route (left)",
+    "POST_CORNER_ROUTE_LEFT": "Post-corner route (left)",
+    "PASS_RUSH_DRILL": "Pass rush drill",
+    "SCREEN_DRILL": "Screen drill",
+    "SPEED_OUT_LEFT": "Speed out (left)",
+    "IN_ROUTE_LEFT": "In route (left)",
+    "SPEED_OUT_ROUTE_LEFT": "Speed out route (left)",
+    "FLAT_ROUTE_LEFT": "Flat route (left)",
+    "SHORT_ZONE_BREAK_FORWARD": "Short zone break: forward",
+    "SLOT_SAIL_ROUTE_RIGHT": "Slot sail route (right)",
+    "BODY_CONTROL_DRILL": "Body control drill",
+    "SHORT_ZONE_BREAKS": "Short zone breaks",
+    "OL_PULL_DRILL_LONG_PULL_RIGHT": "OL pull: long pull right",
+    "CORNER_ROUTE": "Corner route",
+    "CURL_ROUTE_RIGHT": "Curl route (right)",
+    "COMEBACK_ROUTE_RIGHT": "Comeback route (right)",
+    "RUN_THE_HOOP_DRILL": "Run the hoop drill",
+    "HOOK_ROUTE_RIGHT": "Hook route (right)",
+    "BACK_PEDAL_AND_REACT": "Back pedal and react",
+    "FOUR_BAG_AGILITY_DRILL": "Four-bag agility drill",
+    "FIVE_YARD_WAVE_DRILL_SLIDE_AND_SHUFFLE":
+        "Five-yard wave: slide and shuffle",
+    "SHORT_ZONE_BREAK_INSIDE": "Short zone break: inside",
+    "SHORT_ZONE_BREAK_FLAT_WHEEL": "Short zone break: flat/wheel",
+    "SLOT_STRIKE_ROUTE_LEFT": "Slot strike route (left)",
+    "FOUR_BAG_SHUFFLE_DRILL": "Four-bag shuffle drill",
+    "OL_PULL_DRILL_DEEP_SHORT_PULL_LEFT": "OL pull: deep short pull left",
+    "RUN_AND_CLUB_DRILL": "Run and club drill",
+    "FRONT_START_WAVE_DRILL_AND_LATERAL_REACTION":
+        "Front start wave: lateral reaction",
+    "PASS_PRO-MIRROR_DRILL": "Pass pro-mirror drill",
+    "PASS_PRO_MIRROR_DRILL": "Pass pro mirror drill",
+    "WAVE_DRILL": "Wave drill",
+    "SHUFFLE_SPRINT_AND_COD_DRILL": "Shuffle sprint and COD drill",
+}
+
+#: Per-drill row totals below this are named in the caption: a single dot is
+#: drawn, but the reader is told the row is a list, not a distribution.
+DRILL_ANGLE_THIN_ROW = 10
+
+
+def _da_display(name: str) -> str:
+    """A drill's readable name; an unmapped drill is title-cased, not dropped."""
+    raw = str(name)
+    if raw in SUPPLY_COMPOSITION_DISPLAY:
+        return SUPPLY_COMPOSITION_DISPLAY[raw]
+    if raw in DRILL_ANGLE_LABELS:
+        return DRILL_ANGLE_LABELS[raw]
+    return " ".join(part.capitalize() for part in raw.split("_"))
+
+
+def load_drill_angle_turns(path: Path) -> pd.DataFrame:
+    """Read the columns figure 18 needs; refuse if the turn table is absent."""
+    path = Path(path)
+    if not path.exists():
+        raise common.StageRefused(
+            f"{STAGE}: the per-turn table is absent ({path}) — run 02_turns first")
+    df = pd.read_parquet(path)
+    if df.empty:
+        raise common.StageRefused(f"{STAGE}: turns.parquet is empty")
+    missing = [c for c in DRILL_ANGLE_COLUMNS if c not in df.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: turns.parquet has no {missing} column(s); figure 18 "
+            "places every turn by its drill and angle and cannot invent either")
+    return df[DRILL_ANGLE_COLUMNS]
+
+
+def drill_angle_table(turns: pd.DataFrame,
+                      cfg: common.Config) -> tuple[pd.DataFrame, dict]:
+    """One row per valid Combine turn, with its drill row and drawn y.
+
+    ``x_draw`` is the measured angle, unchanged. ``y_draw`` is the drill row
+    index plus a deterministic vertical offset; the offset is recorded per row
+    so nothing is silently moved. Rows are ordered by each drill's own median
+    absolute angle, ascending (shallowest drill at the bottom).
+    """
+    block = "figures.drill_angle_scatter"
+    setting = str(cfg.get(f"{block}.setting"))
+    accent = str(cfg.get(f"{block}.position_accent"))
+    band_edges = [float(x) for x in cfg.get(f"{block}.band_deg")]
+    span = float(cfg.get(f"{block}.jitter.span_rows"))
+    seed = int(cfg.get(f"{block}.jitter.seed"))
+    if len(band_edges) != 2:
+        raise common.StageRefused(
+            f"{STAGE}: figures.drill_angle_scatter.band_deg must be a pair")
+    if not 0.0 < span < 1.0:
+        raise common.StageRefused(
+            f"{STAGE}: figures.drill_angle_scatter.jitter.span_rows is "
+            f"{span:g}; a span of 1.0 row or more would let a dot cross into "
+            "another drill's row")
+    if seed < 0:
+        raise common.StageRefused(
+            f"{STAGE}: figures.drill_angle_scatter.jitter.seed must be >= 0")
+    focus = focus_band(cfg, band_edges)
+    if (focus["low"], focus["high"]) != (30.0, 60.0):
+        raise common.StageRefused(
+            f"{STAGE}: figures.drill_angle_scatter.band_deg is "
+            f"{focus['label']}, not the 30–60° display band figures 1 and 5 "
+            "use; a different band would label a window the case does not read")
+
+    missing = [c for c in DRILL_ANGLE_COLUMNS if c not in turns.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: the turn table has no {missing} column(s); figure 18 "
+            "cannot place a turn by its drill and angle")
+
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    scope = valid & (turns["setting"] == setting) & angle.notna()
+    frame = turns[scope].copy()
+    if frame.empty:
+        raise common.StageRefused(
+            f"{STAGE}: no valid {setting} turns — nothing to draw")
+    frame["abs_turn_angle"] = pd.to_numeric(frame["abs_turn_angle"],
+                                            errors="coerce")
+    if frame["drill_name"].isna().any():
+        raise common.StageRefused(
+            f"{STAGE}: {int(frame['drill_name'].isna().sum())} valid {setting} "
+            "turns carry no drill_name; figure 18 names every turn by the "
+            "drill that produced it")
+    frame["drill_name"] = frame["drill_name"].astype(str)
+    floor = float(cfg.get("detector.min_turn_angle_deg"))
+    below = frame["abs_turn_angle"] < floor
+    if below.any():
+        raise common.StageRefused(
+            f"{STAGE}: {int(below.sum())} valid turns sit below the "
+            f"{floor:g}° detector floor; the table and the detector disagree "
+            "and the shallow end of every row would lie")
+
+    # ---- row order: each drill's own median, ascending, ties by name.
+    per_drill = (frame.groupby("drill_name", sort=False)["abs_turn_angle"]
+                 .median().sort_index())
+    order = sorted(per_drill.index,
+                   key=lambda d: (float(per_drill[d]), d))
+    row_of = {d: i for i, d in enumerate(order)}
+    frame["row_index"] = frame["drill_name"].map(row_of).astype(int)
+    frame["drill_label"] = [_da_display(d) for d in frame["drill_name"]]
+    frame["row_median_deg"] = frame["drill_name"].map(
+        {d: float(per_drill[d]) for d in order}).astype(float)
+    frame["drill_turns"] = frame["drill_name"].map(
+        frame["drill_name"].value_counts()).astype(int)
+
+    # ---- the only drawing offset: a small vertical jitter inside the row.
+    # Drawn in a fixed (drill, angle, position) order so the offset for a turn
+    # never depends on the input row order.
+    frame = frame.sort_values(
+        ["drill_name", "abs_turn_angle", "position_group"],
+        kind="mergesort").reset_index(drop=True)
+    rng = np.random.default_rng(seed)
+    offsets = rng.uniform(-span / 2.0, span / 2.0, len(frame))
+    frame["y_offset_rows"] = offsets
+    frame["y_draw"] = frame["row_index"].astype(float) + frame["y_offset_rows"]
+    frame["x_draw"] = frame["abs_turn_angle"]
+    frame["in_band"] = ((frame["abs_turn_angle"] >= focus["low"])
+                        & (frame["abs_turn_angle"] < focus["high"]))
+    frame["band_low_deg"] = focus["low"]
+    frame["band_high_deg"] = focus["high"]
+    frame["jitter_span_rows"] = span
+    frame["row_order"] = np.arange(len(frame), dtype=int)
+
+    if frame.groupby("drill_name")["row_index"].nunique().max() != 1:
+        raise ValueError(f"{STAGE}: a drill occupies more than one row")
+    sizes = frame.groupby("drill_name").size()
+    if not np.array_equal(
+            frame["drill_turns"].to_numpy(dtype=int),
+            frame["drill_name"].map(sizes).to_numpy(dtype=int)):
+        raise ValueError(
+            f"{STAGE}: a row's drill count is not its drill's own total")
+    if not frame["y_draw"].between(-0.5, len(order) - 0.5).all():
+        raise ValueError(
+            f"{STAGE}: a jittered dot left its drill row's half-open span")
+
+    rows = []
+    for drill in order:
+        part = frame[frame["drill_name"] == drill]
+        values = part["abs_turn_angle"].astype(float)
+        rows.append({
+            "row_index": int(row_of[drill]),
+            "drill_name": drill,
+            "drill_label": _da_display(drill),
+            "turns": int(len(part)),
+            "players": int(part["nfl_id"].nunique()) if "nfl_id" in part else 0,
+            "median_deg": float(np.median(values)),
+            "min_deg": float(values.min()),
+            "max_deg": float(values.max()),
+            "turns_in_band": int(part["in_band"].sum()),
+            "share_in_band": float(part["in_band"].mean()),
+            "positions": {str(p): int(c) for p, c in
+                          part["position_group"].value_counts().sort_index()
+                          .items()},
+        })
+
+    positions = ["DB", "DL", "OL", "TE", "WR"]
+    present = [p for p in positions
+               if (frame["position_group"] == p).any()]
+    by_position = {p: int((frame["position_group"] == p).sum())
+                   for p in present}
+    band_by_position = {p: int(((frame["position_group"] == p)
+                                & frame["in_band"]).sum()) for p in present}
+    share_by_position = {p: (band_by_position[p] / by_position[p])
+                         for p in present}
+    medians_in_band = [r["drill_label"] for r in rows
+                       if focus["low"] <= r["median_deg"] < focus["high"]]
+    accent_rows = [r for r in rows if accent in r["positions"]]
+    context = {
+        "setting": setting,
+        "accent": accent,
+        "focus": focus,
+        "n_turns": int(len(frame)),
+        "n_drills": len(order),
+        "n_players": int(frame["nfl_id"].nunique()),
+        "positions": present,
+        "by_position": by_position,
+        "band_by_position": band_by_position,
+        "share_by_position": share_by_position,
+        "turns_in_band": int(frame["in_band"].sum()),
+        "drills": rows,
+        "accent_turns": int((frame["position_group"] == accent).sum()),
+        "accent_drills": [r["drill_name"] for r in accent_rows],
+        "accent_band_turns": int(band_by_position.get(accent, 0)),
+        "medians_in_band": medians_in_band,
+        "thin_rows": [r["drill_label"] for r in rows
+                      if r["turns"] < DRILL_ANGLE_THIN_ROW],
+        "jitter_span": span,
+        "jitter_seed": seed,
+        "floor_deg": floor,
+        "duplicate_spellings": [r["drill_label"] for r in rows
+                                if r["drill_name"] in
+                                ("PASS_PRO-MIRROR_DRILL",
+                                 "PASS_PRO_MIRROR_DRILL")],
+    }
+    return frame, context
+
+
+def drill_angle_csv_frame(table: pd.DataFrame, context: dict) -> pd.DataFrame:
+    """One row per drawn turn: the measured angle, the row, and its offset."""
+    columns = [
+        "row_order", "row_index", "drill_name", "drill_label", "row_median_deg",
+        "drill_turns", "position_group", "setting", "abs_turn_angle",
+        "x_draw", "y_offset_rows", "y_draw", "in_band", "band_low_deg",
+        "band_high_deg", "jitter_span_rows",
+    ]
+    out = table[columns].reset_index(drop=True)
+    if not np.allclose(out["x_draw"].to_numpy(dtype=float),
+                       out["abs_turn_angle"].to_numpy(dtype=float),
+                       rtol=0.0, atol=0.0):
+        raise ValueError(f"{STAGE}: a drawn x is not its measured angle")
+    if not np.allclose(out["y_draw"].to_numpy(dtype=float),
+                       out["row_index"].to_numpy(dtype=float)
+                       + out["y_offset_rows"].to_numpy(dtype=float),
+                       rtol=0.0, atol=1e-12):
+        raise ValueError(f"{STAGE}: a drawn y is not its row plus its offset")
+    return out
+
+
+def _da_pct(value: float) -> str:
+    return f"{100.0 * value:.1f}%"
+
+
+def _da_caption(context: dict, cfg: common.Config) -> list[str]:
+    """Caption lines; every number comes from the rendered table."""
+    focus = context["focus"]
+    n = context["n_turns"]
+    n_pos = len(context["positions"])
+    band_bits = ", ".join(
+        f"{p} {context['band_by_position'][p]:,}"
+        for p in context["positions"] if p != context["accent"])
+    share_bits = ", ".join(
+        f"{p} {_da_pct(context['share_by_position'][p])}"
+        for p in context["positions"])
+    accent = context["accent"]
+    accent_band_share = (context["share_by_position"][accent]
+                         if accent in context["share_by_position"] else 0.0)
+    thin = context["thin_rows"]
+    med_in = context["medians_in_band"]
+    if med_in:
+        med_text = (f"{len(med_in)} of the {context['n_drills']} drill "
+                    f"medians sit inside the band ({'; '.join(med_in)})")
+    else:
+        med_text = (f"No drill median sits inside the band: the closest is "
+                    f"{context['drills'][0]['drill_label']} at "
+                    f"{context['drills'][0]['median_deg']:.1f}°")
+    return [
+        *stamp_lines(cfg),
+        (f"WHAT THIS IS. One dot per valid Combine turn — {n:,} turns, "
+         f"{context['n_drills']} drills, {n_pos} positions. x = the measured "
+         f"absolute turn angle, continuous, never bucketed and never jittered; "
+         f"y = the drill, one row per drill, ordered by that drill's own "
+         f"median angle. Valid turns only, and Combine turns only: a game turn "
+         f"carries no drill name, so none can appear here."),
+        (f"THE BAND. Red tint and outline are the {focus['label']} band "
+         f"(figures.focus_band); red marks the band, never a point. "
+         f"{context['turns_in_band']} of {n:,} turns fall in it ({band_bits}). "
+         f"Of each position's own turns that is {share_bits}: {accent} is the "
+         f"lowest — {_da_pct(accent_band_share)} — but the other positions do "
+         f"produce shallow turns, so the hole is a matter of degree."),
+        (f"{accent.upper()}, AND THE MEDIANS. {accent} turns are blue: "
+         f"{context['accent_turns']:,} of the {n:,}, across "
+         f"{len(context['accent_drills'])} drills. {med_text}. Each row's "
+         f"median is the black tick and its own turn count is at the right "
+         f"edge; both are columns in the CSV."),
+        (f"THE FLOOR, AND THE THIN ROWS. The detector's floor is "
+         f"{context['floor_deg']:g}°, so the table holds no turn below it: the "
+         f"shallow end of every row is censored, not empty. "
+         f"{len(thin)} of {context['n_drills']} rows hold fewer than "
+         f"{DRILL_ANGLE_THIN_ROW} turns (italic labels) — a short list of "
+         f"detected moments, not a distribution. PASS_PRO-MIRROR_DRILL and "
+         f"PASS_PRO_MIRROR_DRILL differ only in spelling and stay two rows."),
+        (f"DOTS ARE TURNS, NOT PLAYERS. The {n:,} turns come from "
+         f"{context['n_players']:,} players, one player can supply many, and "
+         f"no player value or id is drawn. Vertical jitter of "
+         f"±{context['jitter_span'] / 2:.2f} of a row (fixed seed "
+         f"{context['jitter_seed']}) separates coincident turns; every offset "
+         f"is in the CSV as y_offset_rows and no x is moved."),
+        (f"WHAT IS NOT HERE. No mean, box, density curve, fit or test; no "
+         f"ranking of drills or athletes; one Combine session, not the 2027 "
+         f"class. Two runs give a byte-identical PNG. Every plotted value is "
+         f"in outputs/figures/{FIGURE_KEY_DRILL_ANGLE}.csv."),
+    ]
+
+
+def plot_drill_angle(table: pd.DataFrame, context: dict,
+                     cfg: common.Config):
+    """One dot per turn, angle x drill, with the 30-60 degree band behind."""
+    from matplotlib.colors import to_rgba
+    from matplotlib.lines import Line2D
+    from matplotlib.transforms import blended_transform_factory
+
+    block = "figures.drill_angle_scatter"
+    # The band's GEOMETRY comes from the table that was drawn; its COLOUR,
+    # tint and widths are re-read from figures.focus_band here, so a change to
+    # the shared style block reaches the artist and no colour is hard-coded.
+    focus = focus_band(cfg, [context["focus"]["low"], context["focus"]["high"]])
+    if (float(table["band_low_deg"].iloc[0]),
+            float(table["band_high_deg"].iloc[0])) != (focus["low"],
+                                                       focus["high"]):
+        raise ValueError(
+            f"{STAGE}: the drawn band does not match figures.focus_band")
+    tint = to_rgba(focus["colour"], focus["tint_alpha"])
+    accent = PALETTE["combine"]
+    grey = BARS_GREY
+    n_rows = context["n_drills"]
+    x_lim = [float(x) for x in cfg.get(f"{block}.x_lim")]
+    x_ticks = [float(x) for x in cfg.get(f"{block}.x_ticks")]
+    labels = [r["drill_label"] for r in context["drills"]]
+
+    fig = plt.figure(figsize=(float(cfg.get(f"{block}.width_in")),
+                              float(cfg.get(f"{block}.height_in"))))
+    ax = fig.add_axes([0.185, 0.128, 0.741, 0.788])
+    ax.set_facecolor("#EBEBEB")
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color("#B3B3B3")
+    ax.tick_params(axis="both", labelsize=7.6, colors="#333333", length=2)
+    ax.set_axisbelow(True)
+
+    y_lo, y_hi = -1.55, n_rows - 1 + 1.30
+    ax.add_patch(plt.Rectangle(
+        (focus["low"], y_lo), focus["high"] - focus["low"], y_hi - y_lo,
+        facecolor=tint, edgecolor=focus["colour"],
+        linewidth=focus["outline_width"], zorder=1))
+    ax.text((focus["low"] + focus["high"]) / 2.0, y_lo + 0.45,
+            f"{focus['label']} band", ha="center", va="center", fontsize=9.2,
+            fontweight="bold", color=focus["colour"], zorder=7)
+
+    ax.set_yticks(range(n_rows))
+    ax.set_yticklabels(labels)
+    for tick, row in zip(ax.get_yticklabels(), context["drills"]):
+        if row["turns"] < DRILL_ANGLE_THIN_ROW:
+            tick.set_color("#666666")
+            tick.set_fontstyle("italic")
+
+    ax.grid(axis="y", color="white", linewidth=0.55, zorder=0)
+    ax.grid(axis="x", color="white", linewidth=0.45, zorder=0)
+
+    others = table[table["position_group"] != context["accent"]]
+    accent_rows = table[table["position_group"] == context["accent"]]
+    ax.scatter(others["x_draw"], others["y_draw"], s=7.0, color=grey,
+               alpha=0.42, edgecolor="none", zorder=3)
+    ax.scatter(accent_rows["x_draw"], accent_rows["y_draw"], s=15.0,
+               color=accent, alpha=0.78, edgecolor="white", linewidth=0.30,
+               zorder=5)
+
+    for row in context["drills"]:
+        y = float(row["row_index"])
+        ax.plot([row["median_deg"], row["median_deg"]], [y - 0.30, y + 0.30],
+                color="#111111", linewidth=1.7, solid_capstyle="butt",
+                zorder=8)
+
+    trans = blended_transform_factory(ax.transAxes, ax.transData)
+    for row in context["drills"]:
+        ax.text(1.006, float(row["row_index"]), f"{row['turns']:,}",
+                transform=trans, ha="left", va="center", fontsize=6.8,
+                color="#444444", zorder=9)
+    ax.text(1.006, y_hi - 0.40, "turns", transform=trans, ha="left",
+            va="center", fontsize=6.8, color="#777777", style="italic",
+            zorder=9)
+
+    ax.set_xlim(*x_lim)
+    ax.set_ylim(y_lo, y_hi)
+    ax.set_xticks(x_ticks)
+    ax.set_xlabel("Absolute turn angle (°) — measured, not bucketed",
+                  fontsize=9.6, color="#333333", labelpad=6)
+    ax.set_ylabel("Drill, ordered by median angle", fontsize=9.6,
+                  color="#333333", labelpad=6)
+
+    handles = [
+        Line2D([], [], marker="o", linestyle="none", markersize=5.2,
+               markerfacecolor=accent, markeredgecolor="white",
+               markeredgewidth=0.4, label=f"{context['accent']} turn"),
+        Line2D([], [], marker="o", linestyle="none", markersize=4.0,
+               markerfacecolor=grey, markeredgecolor="none", alpha=0.7,
+               label="Other position turn"),
+        Line2D([], [], marker="|", linestyle="none", markersize=9.0,
+               markeredgewidth=1.7, color="#111111", label="Drill median"),
+    ]
+    fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.998, 0.9405),
+               ncol=3, frameon=False, fontsize=8.4, handletextpad=0.45,
+               columnspacing=1.5)
+
+    fig.text(0.010, 0.988, "Every Combine turn, against the drill that made it",
+             fontsize=17.5, fontweight="bold", ha="left", va="top",
+             color="#111111")
+    fig.text(0.010, 0.969,
+             f"One dot per valid Combine turn: {context['n_turns']:,} turns "
+             f"across {n_rows} drills, all positions. x = absolute turn angle, "
+             f"continuous; y = drill, rows sorted by that drill's median angle.",
+             fontsize=9.2, ha="left", va="top", color="#333333")
+    fig.text(0.010, 0.954,
+             f"{context['accent']} turns in blue "
+             f"({context['accent_turns']:,}); every other position in grey. "
+             f"The red band is the case's {focus['label']} window "
+             f"(figures.focus_band): it marks the band, never a data point.",
+             fontsize=9.2, ha="left", va="top", color="#222222")
+
+    caption = "\n".join(_wrap_text(line, 196)
+                        for line in _da_caption(context, cfg))
+    fig.text(0.010, 0.008, caption, ha="left", va="bottom", fontsize=5.9,
+             color="#333333", linespacing=1.28)
+    return fig
+
+
+def render_drill_angle(fig, cfg: common.Config, out_png: Path) -> Path:
+    """Save figure 18 once with fixed metadata, so two runs are identical."""
+    dpi = int(cfg.get("figures.drill_angle_scatter.dpi"))
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+                 fontweight="bold", color=ALERT)
+    fig.savefig(out_png, dpi=dpi, facecolor="white",
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def drill_angle_manifest_payload(table: pd.DataFrame, context: dict,
+                                 cfg: common.Config) -> dict:
+    """Figure 18's manifest entry: the population, every drill row, caveats."""
+    if int(len(table)) != context["n_turns"]:
+        raise ValueError(f"{STAGE}: manifest counts do not match the table")
+    if int(table["drill_name"].nunique()) != context["n_drills"]:
+        raise ValueError(f"{STAGE}: table drill count does not match")
+    if int(table["in_band"].sum()) != context["turns_in_band"]:
+        raise ValueError(f"{STAGE}: table band count does not match")
+    focus = context["focus"]
+    accent = context["accent"]
+    band_line = ", ".join(
+        f"{p} {context['band_by_position'][p]:,}"
+        for p in context["positions"])
+    share_line = ", ".join(
+        f"{p} {_da_pct(context['share_by_position'][p])}"
+        for p in context["positions"])
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_DRILL_ANGLE,
+        "title": "Every Combine turn, against the drill that made it",
+        "sources": ["outputs/turns/turns.parquet"],
+        "png": f"outputs/figures/{FIGURE_KEY_DRILL_ANGLE}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_DRILL_ANGLE}.csv",
+        "population": {
+            "setting": context["setting"],
+            "turns": context["n_turns"],
+            "drills": context["n_drills"],
+            "players": context["n_players"],
+            "by_position": context["by_position"],
+            "valid_only": True,
+            "game_turns": False,
+            "game_turn_reason": "a game turn carries no drill_name",
+            "detector_floor_deg": context["floor_deg"],
+        },
+        "band": {
+            "label": focus["label"],
+            "edges_deg": [focus["low"], focus["high"]],
+            "styling": "figures.focus_band (colour, tint, outline width)",
+            "red_marks_data": False,
+            "turns_inside": context["turns_in_band"],
+            "inside_by_position": context["band_by_position"],
+            "share_of_position_turns": context["share_by_position"],
+        },
+        "rows": context["drills"],
+        "drawing": {
+            "one_dot_per_turn": True,
+            "x_continuous": True,
+            "x_binned": False,
+            "x_jitter": False,
+            "y_jitter": {
+                "axis": "drill row",
+                "span_rows": context["jitter_span"],
+                "seed": context["jitter_seed"],
+                "recorded_per_row": ["y_offset_rows", "y_draw"],
+            },
+            "mean": False,
+            "box_plot": False,
+            "density_curve": False,
+            "fit": False,
+            "test": False,
+        },
+        "claim": (f"Across all {context['n_turns']:,} valid Combine turns and "
+                  f"{context['n_drills']} drills, only "
+                  f"{context['turns_in_band']} turns fall inside the "
+                  f"{focus['label']} band; by position that is {band_line} "
+                  f"({share_line} of each position's own turns). The "
+                  f"{accent} share, {_da_pct(context['share_by_position'].get(accent, 0.0))}, "
+                  f"is the lowest of the {len(context['positions'])} positions, "
+                  f"while the other positions do produce shallow turns; no "
+                  f"drill's median angle sits inside the band."),
+        "not_claimed": [
+            "That the drills or positions are sampled alike; this counts "
+            "detected turns in one Combine session.",
+            "That any turn below 30° exists; the detector's floor censors the "
+            "shallow end of every row.",
+            "That a dot is a player, or that a player's own angle "
+            "distribution looks like his position's.",
+            "That the band share is a shortfall of ability, or that the "
+            "Combine turns transfer to game demands.",
+            "Anything about the 2027 class; this covers one Combine session.",
+        ],
+        "caveats": [
+            (f"One dot per turn at its measured x. Only the y coordinate is "
+             f"jittered (±{context['jitter_span'] / 2:.2f} of a row, seed "
+             f"{context['jitter_seed']}); every offset is written per row."),
+            (f"{len(context['thin_rows'])} of {context['n_drills']} drills hold "
+             f"fewer than {DRILL_ANGLE_THIN_ROW} turns: those rows are a list "
+             "of detected moments, not a distribution."),
+            (f"The detector's {context['floor_deg']:g}° floor means the shallow "
+             "end of every row is censored, not empty."),
+            ("PASS_PRO-MIRROR_DRILL and PASS_PRO_MIRROR_DRILL are kept as two "
+             "rows; the raw drill names differ only in spelling."),
+            ("No player names or ids appear in the figure, the CSV or this "
+             "entry."),
+        ],
+    }

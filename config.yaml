@@ -900,6 +900,41 @@ turn_coverage:
       width_in: 13.2
       height_in: 11.0
 
+    # Stage 06 figure 18 ("Every Combine turn, against the drill that made
+    # it"). Direct request from Conor, 2026-11-10 16:08: "could you give me a
+    # scatter plot of all the turns in the data, x axis is the angle (not
+    # bucketed) y axis is drill." Reporting only: one dot per valid Combine
+    # turn, no binning on x, no fitted curve, no test.
+    #
+    # `band_deg` is the DISPLAY band shaded behind the dots. It repeats
+    # figure 1/5's merged 30-60 window (D178/D179) because that is the band
+    # the case reads; the colour, tint and widths come from
+    # `figures.focus_band` (D172) and are never restated here.
+    #
+    # The y axis carries EVERY drill that produced a valid Combine turn, not
+    # a curated ten: Conor asked for all the turns, and the 5,536 valid
+    # Combine turns span 45 drill names. Rows are ordered by that drill's own
+    # median absolute angle, computed at render time, never declared here.
+    #
+    # `jitter.span_rows` is a DRAWING device in row units (1.0 = one drill
+    # row). Every offset is written per row into the figure CSV as
+    # `y_offset_rows`; the x coordinate is never moved. The seed is fixed so
+    # two renders are byte-identical.
+    drill_angle_scatter:
+      setting: combine
+      position_accent: DB
+      band_deg: [30, 60]
+      jitter:
+        span_rows: 0.55
+        seed: 20270106
+      x_lim: [28.5, 282.0]
+      x_ticks: [30, 60, 90, 120, 150, 180, 210, 240, 270]
+      # Fixed render size: 45 drill rows need the height; width keeps the
+      # 244-degree angle span readable at 150 dpi.
+      dpi: 150
+      width_in: 13.6
+      height_in: 15.2
+
   demand:
     # TASK.md §4: DL pass-rush; WR/TE route; DB/OL exploratory. The snap-type
     # scope is the mapping already used by 02_turns (snap_types.rules).

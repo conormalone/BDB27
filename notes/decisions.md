@@ -6855,3 +6855,79 @@ the axes. Both new tests were confirmed to fail at a 1.0 top and pass at 1.15.
 **Evidence.** `src/bdb27/figures.py` (`MF_SHARE_AXIS_TOP`,
 `MF_SHARE_CEILING_LABEL`, `MF_REFERENCE_GREY`, `plot_movement_family`);
 `outputs/figures/fig_movement_family.png`; `tests/test_movement_family_figure.py`.
+
+## D183 — Figure 18 draws every Combine turn at its measured angle, one row per drill, all 45 drills · 2026-11-10
+
+**Request (Conor, 2026-11-10 16:08, verbatim).** "could you give me a scatter
+plot of all the turns in the data, x axis is the angle (not bucketed) y axis is
+drill." What he is reading off it: how wide each drill's turn-angle
+distribution actually is, and where each drill sits relative to the 30–60° band
+the case cares about. So it is one dot per turn, not a summary.
+
+**What is drawn.** `figures.drill_angle_scatter` (new config block) wires
+`src/bdb27/figures.py::plot_drill_angle` into stage 06. x =
+`abs_turn_angle`, continuous, at its measured value: no band, no bin, no jitter
+on x. y = the drill, one row per drill, rows ordered by that drill's own median
+absolute angle (shallowest at the bottom). The 30–60° band (figures 1/5's merged
+display band) is drawn behind the dots with figure 1's shared style block,
+`figures.focus_band` — colour, tint and widths are re-read from config at draw
+time, so the sentinel-colour test still reaches the artist and the red marks the
+band, never a point. The only drawing device is a vertical jitter of ±0.275 of a
+row (span 0.55, fixed seed 20270106), recorded per row as `y_offset_rows`.
+
+**Deviation from the brief, and why.** The brief specified "the ten drills".
+The ten are the drills DB turns come from; they hold 1,179 of the 5,536 valid
+Combine turns. The other 4,357 turns sit in 35 further drill names (routes,
+OL pulls, wave drills, body control), and Conor asked for *all* the turns. A
+ten-row axis would have dropped 79% of the data and broken the
+row-count-equals-turns-plotted rule. The figure therefore carries all 45 drill
+names, DB in the accent blue and every other position in grey. The consequence
+is honest and is stated in the caption: only 3-cone, short shuttle, gauntlet and
+the 40-yard dash hold both DB and non-DB turns, so the grey dots in the other 35
+rows are other positions' own drills.
+
+**Measured, not asserted (recomputed at render time from turns.parquet).**
+5,536 valid Combine turns, 45 drills, 5 positions, 508 players. Turns inside
+30–60°: 304 in total — DL 95, WR 90, OL 62, TE 31, DB 26. As a share of each
+position's own turns: DB 2.2%, DL 4.6%, OL 6.5%, WR 8.6%, TE 10.5%. DB is the
+lowest, and the figure says so without claiming DB is the only shallow-turn
+producer. Two of the 45 drill medians fall inside the band (Circus route (left)
+47.0°, OL pull: fold block right 55.4°); no DB drill's median is anywhere near
+it — the ten DB drills run 71.3° (3-cone) to 180.1° (short shuttle). Seven rows
+hold fewer than ten turns and are labelled italic; PASS_PRO-MIRROR_DRILL and
+PASS_PRO_MIRROR_DRILL stay two rows because the raw names differ only in
+spelling.
+
+**Config and `config_sha`.** The new `figures.drill_angle_scatter` block changes
+`config_fingerprint`, so every other figure CSV gains a new `config_sha` on the
+next stage-06 run. Proven rather than asserted: all 17 pre-existing CSVs are
+identical to `438c298` in every column except `config_sha` (same row count, same
+stamp, same cells), and all 17 pre-existing PNGs are byte-identical (SHA-256).
+Only `fig_drill_angle_scatter.png` is new. Two consecutive renders of figure 18
+are byte-identical.
+
+**A regression caught before it landed.** An early edit used a global string
+replace for a `tick_params(... labelsize=8.2 ...)` line and silently changed
+figure 17's panel tick size, moving `fig_movement_family.png` by ~9.5k pixels.
+It was found by comparing every PNG against `438c298`, reverted, and the
+additions to `figures.py` are now purely additive (no deleted line). This is why
+the "no other PNG changed" check is a byte comparison, not a visual one.
+
+**Tests.** `tests/test_drill_angle_figure.py` (17 tests): one row per valid
+Combine turn; rows ascending by each drill's own median; x equals the measured
+angle and y reconstructs row + offset; seeded, span-bounded jitter; band counts
+and shares; CSV frame completeness (no `nfl_id`); manifest agreement; refusals
+for a missing parquet, a missing column, a turn below the 30° floor, a turn with
+no drill, and a jitter span that could cross rows; two byte-identical renders;
+the sentinel focus colour reaching the artist; no data mark in the focus red;
+every dot drawn; and the committed artefact holding every valid Combine turn.
+`tests/test_figures_stage.py` adds three end-to-end tests (CSV row count equals
+the turns plotted, determinism, manifest claim/caveats).
+
+**Evidence.** `config.yaml` (`figures.drill_angle_scatter`);
+`src/bdb27/figures.py` (`FIGURE_KEY_DRILL_ANGLE`, `DRILL_ANGLE_LABELS`,
+`drill_angle_table`, `plot_drill_angle`, `render_drill_angle`,
+`drill_angle_manifest_payload`); `src/06_figures.py`;
+`outputs/figures/fig_drill_angle_scatter.{png,csv}`;
+`outputs/figures/figures_manifest.json`; `tests/test_drill_angle_figure.py`;
+`tests/test_figures_stage.py`.

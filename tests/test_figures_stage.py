@@ -448,6 +448,8 @@ def rendered(tmp_path_factory):
             "ees_csv": out / "fig_entry_exit_speed.csv",
             "mf_png": out / "fig_movement_family.png",
             "mf_csv": out / "fig_movement_family.csv",
+            "da_png": out / "fig_drill_angle_scatter.png",
+            "da_csv": out / "fig_drill_angle_scatter.csv",
             "manifest": out / "figures_manifest.json"}
 
 
@@ -4390,3 +4392,67 @@ def test_movement_family_end_to_end(rendered):
     assert fig["population"]["settings"] == ["game"]
     assert fig["statistic"]["cluster_by"] == "nfl_id"
     assert fig["statistic"]["reps"] == 2000
+
+
+# ---------------------------------------------------------------------------
+# Figure 18 — every Combine turn, against the drill that made it.
+# ---------------------------------------------------------------------------
+DA_KEY = "fig_drill_angle_scatter"
+
+
+def test_drill_angle_end_to_end(rendered):
+    _check_png(rendered["da_png"])
+    turns = pd.read_parquet(
+        rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    valid = turns["valid"].fillna(False).astype(bool)
+    angle = pd.to_numeric(turns["abs_turn_angle"], errors="coerce")
+    expected = int((valid & (turns["setting"] == "combine")
+                    & angle.notna()).sum())
+    csv_df = pd.read_csv(rendered["da_csv"])
+    assert len(csv_df) == expected, "the CSV is not one row per valid turn"
+    assert np.array_equal(csv_df["x_draw"].to_numpy(dtype=float),
+                          csv_df["abs_turn_angle"].to_numpy(dtype=float))
+    assert np.allclose(
+        csv_df["y_draw"].to_numpy(dtype=float),
+        csv_df["row_index"].to_numpy(dtype=float)
+        + csv_df["y_offset_rows"].to_numpy(dtype=float), rtol=0.0, atol=1e-12)
+    assert csv_df["setting"].eq("combine").all()
+    assert (csv_df["band_low_deg"] == 30.0).all()
+    assert (csv_df["band_high_deg"] == 60.0).all()
+
+    # one row per drill, ascending by that drill's own median
+    medians = csv_df.groupby("row_index")["row_median_deg"].first()
+    assert list(medians.index) == sorted(medians.index)
+    assert list(medians.values) == sorted(medians.values)
+    assert csv_df.groupby("drill_name")["row_index"].nunique().max() == 1
+    assert int(csv_df["row_index"].max()) + 1 == csv_df["drill_name"].nunique()
+
+
+def test_drill_angle_two_renders_are_byte_identical(rendered):
+    before = hashlib.sha256(rendered["da_png"].read_bytes()).hexdigest()
+    res = _run(rendered["cfg"])
+    assert res.returncode == 0, res.stderr
+    after = hashlib.sha256(rendered["da_png"].read_bytes()).hexdigest()
+    assert before == after, "two renders of figure 18 differ"
+
+
+def test_drill_angle_manifest_carries_claim_and_caveats(rendered):
+    man = json.loads(rendered["manifest"].read_text())
+    fig = man["figures"][DA_KEY]
+    assert fig["stamp"] == STAMP
+    assert fig["sources"] == ["outputs/turns/turns.parquet"]
+    assert fig["population"]["valid_only"] is True
+    assert fig["population"]["game_turns"] is False
+    assert fig["population"]["detector_floor_deg"] == 30.0
+    assert fig["band"]["edges_deg"] == [30.0, 60.0]
+    assert fig["band"]["red_marks_data"] is False
+    assert fig["drawing"]["x_binned"] is False
+    assert fig["drawing"]["x_jitter"] is False
+    assert fig["drawing"]["y_jitter"]["recorded_per_row"] == [
+        "y_offset_rows", "y_draw"]
+    assert "30–60°" in fig["claim"]
+    joined = " ".join(fig["caveats"])
+    assert "floor" in joined
+    assert "not a distribution" in joined
+    assert len(fig["rows"]) == fig["population"]["drills"]
+    assert all(row["turns"] > 0 for row in fig["rows"])

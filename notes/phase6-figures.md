@@ -52,3 +52,31 @@ planted 45° turns (48 turns) and three-cone precision 0.915 / recall 0.931,
 sourced from `notes/phase2-turns.md` and `outputs/audit/gate.json`.
 No per-player ranking, player names, scores, p-values or error bars on counts
 appear anywhere in the figure, CSV or manifest.
+
+## Figure 18 — "Every Combine turn, against the drill that made it" (D183)
+`outputs/figures/fig_drill_angle_scatter.png` (2040 × 2280 px, 150 dpi) plus
+`fig_drill_angle_scatter.csv` and a manifest entry. One dot per valid Combine
+turn: **5,536 turns, 45 drills, 5 positions, 508 players**. x = the measured
+absolute turn angle, continuous and unbucketed; y = the drill, one row per
+drill, ordered by that drill's own median angle. DB turns are accent blue
+(1,179 across 10 drills); every other position is grey. The 30–60° band is
+tinted and outlined from `figures.focus_band`; red marks the band, never a data
+point. Each row carries its median as a black tick and its own turn count at the
+right edge.
+
+Turns inside 30–60°: **304** — DL 95, WR 90, OL 62, TE 31, DB 26, i.e. DB 2.2%
+of its own turns against DL 4.6%, OL 6.5%, WR 8.6%, TE 10.5%. Two drill medians
+sit in the band (Circus route (left) 47.0°, OL pull: fold block right 55.4°);
+no DB drill median is below 71°. Seven rows hold fewer than ten turns and are
+labelled italic.
+
+Caption caveats: Combine turns only (a game turn carries no drill name); valid
+turns only; the 30° detector floor censors the shallow end of every row, so no
+turn below 30° exists in the table; dots are individual turns, not players; the
+±0.275-row vertical jitter is seeded and written per row as `y_offset_rows`,
+with x never moved. Deliberately absent: any mean, box, density curve, fit,
+ellipse or test. Two renders produce a byte-identical PNG.
+
+The new config block moves `config_sha` in every other figure CSV; every column
+except `config_sha` is unchanged in all 17, and every pre-existing PNG is
+byte-identical to `438c298` (D183).

@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "cab5a24960f6d39b",
-  "generated_utc": "2026-11-10T15:05:46Z",
+  "config_sha": "5f85512f55ba56c7",
+  "generated_utc": "2026-11-10T17:34:13Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -5926,6 +5926,782 @@
         "the 30\u00b0 detector floor sits immediately below the shallow bucket, so some turns there may be fragments of larger movements.",
         "the 30\u201360\u00b0 bucket is the union of the 30\u201345\u00b0 and 45\u201360\u00b0 rows figures 3, 8, 12 and 15 report separately; its median is taken over the union of both buckets' turns and its interval is bootstrapped on that union \u2014 never an average of the two old medians or intervals.",
         "these are game turns only; the Combine is not drawn here (figure 16 covers it), and its 30\u201360\u00b0 bucket holds 26 turns."
+      ],
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_drill_angle_scatter": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_drill_angle_scatter",
+      "title": "Every Combine turn, against the drill that made it",
+      "sources": [
+        "outputs/turns/turns.parquet"
+      ],
+      "png": "outputs/figures/fig_drill_angle_scatter.png",
+      "csv": "outputs/figures/fig_drill_angle_scatter.csv",
+      "population": {
+        "setting": "combine",
+        "turns": 5536,
+        "drills": 45,
+        "players": 508,
+        "by_position": {
+          "DB": 1179,
+          "DL": 2067,
+          "OL": 952,
+          "TE": 294,
+          "WR": 1044
+        },
+        "valid_only": true,
+        "game_turns": false,
+        "game_turn_reason": "a game turn carries no drill_name",
+        "detector_floor_deg": 30.0
+      },
+      "band": {
+        "label": "30\u201360\u00b0",
+        "edges_deg": [
+          30.0,
+          60.0
+        ],
+        "styling": "figures.focus_band (colour, tint, outline width)",
+        "red_marks_data": false,
+        "turns_inside": 304,
+        "inside_by_position": {
+          "DB": 26,
+          "DL": 95,
+          "OL": 62,
+          "TE": 31,
+          "WR": 90
+        },
+        "share_of_position_turns": {
+          "DB": 0.02205258693808312,
+          "DL": 0.045960328979196906,
+          "OL": 0.06512605042016807,
+          "TE": 0.1054421768707483,
+          "WR": 0.08620689655172414
+        }
+      },
+      "rows": [
+        {
+          "row_index": 0,
+          "drill_name": "CIRCUS_ROUTE_LEFT",
+          "drill_label": "Circus route (left)",
+          "turns": 11,
+          "players": 11,
+          "median_deg": 46.98563766479492,
+          "min_deg": 34.33522415161133,
+          "max_deg": 67.90829467773438,
+          "turns_in_band": 10,
+          "share_in_band": 0.9090909090909091,
+          "positions": {
+            "WR": 11
+          }
+        },
+        {
+          "row_index": 1,
+          "drill_name": "OL_PULL_DRILL_FOLD_BLOCK_RIGHT",
+          "drill_label": "OL pull: fold block right",
+          "turns": 31,
+          "players": 30,
+          "median_deg": 55.412086486816406,
+          "min_deg": 43.68704605102539,
+          "max_deg": 159.310546875,
+          "turns_in_band": 19,
+          "share_in_band": 0.6129032258064516,
+          "positions": {
+            "OL": 31
+          }
+        },
+        {
+          "row_index": 2,
+          "drill_name": "BLOCK_EXPLOSION",
+          "drill_label": "Block explosion",
+          "turns": 1,
+          "players": 1,
+          "median_deg": 61.839046478271484,
+          "min_deg": 61.839046478271484,
+          "max_deg": 61.839046478271484,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "TE": 1
+          }
+        },
+        {
+          "row_index": 3,
+          "drill_name": "THREE_CONE_DRILL",
+          "drill_label": "3-cone drill",
+          "turns": 628,
+          "players": 159,
+          "median_deg": 71.25834655761719,
+          "min_deg": 41.60383987426758,
+          "max_deg": 221.70445251464844,
+          "turns_in_band": 84,
+          "share_in_band": 0.1337579617834395,
+          "positions": {
+            "DB": 98,
+            "DL": 193,
+            "OL": 170,
+            "TE": 84,
+            "WR": 83
+          }
+        },
+        {
+          "row_index": 4,
+          "drill_name": "DAGGER_ROUTE_LEFT",
+          "drill_label": "Dagger route (left)",
+          "turns": 45,
+          "players": 37,
+          "median_deg": 73.70989990234375,
+          "min_deg": 55.67637252807617,
+          "max_deg": 104.79286193847656,
+          "turns_in_band": 3,
+          "share_in_band": 0.06666666666666667,
+          "positions": {
+            "WR": 45
+          }
+        },
+        {
+          "row_index": 5,
+          "drill_name": "POST_CORNER_ROUTE_LEFT",
+          "drill_label": "Post-corner route (left)",
+          "turns": 37,
+          "players": 30,
+          "median_deg": 77.23383331298828,
+          "min_deg": 49.25028610229492,
+          "max_deg": 93.0080337524414,
+          "turns_in_band": 5,
+          "share_in_band": 0.13513513513513514,
+          "positions": {
+            "WR": 37
+          }
+        },
+        {
+          "row_index": 6,
+          "drill_name": "PASS_RUSH_DRILL",
+          "drill_label": "Pass rush drill",
+          "turns": 214,
+          "players": 115,
+          "median_deg": 77.41731262207031,
+          "min_deg": 49.38346862792969,
+          "max_deg": 95.28595733642578,
+          "turns_in_band": 1,
+          "share_in_band": 0.004672897196261682,
+          "positions": {
+            "DL": 214
+          }
+        },
+        {
+          "row_index": 7,
+          "drill_name": "SCREEN_DRILL",
+          "drill_label": "Screen drill",
+          "turns": 31,
+          "players": 30,
+          "median_deg": 77.41783142089844,
+          "min_deg": 42.68796157836914,
+          "max_deg": 173.61192321777344,
+          "turns_in_band": 4,
+          "share_in_band": 0.12903225806451613,
+          "positions": {
+            "OL": 31
+          }
+        },
+        {
+          "row_index": 8,
+          "drill_name": "SPEED_OUT_LEFT",
+          "drill_label": "Speed out (left)",
+          "turns": 37,
+          "players": 24,
+          "median_deg": 78.6183090209961,
+          "min_deg": 35.67176818847656,
+          "max_deg": 95.86006927490234,
+          "turns_in_band": 4,
+          "share_in_band": 0.10810810810810811,
+          "positions": {
+            "WR": 37
+          }
+        },
+        {
+          "row_index": 9,
+          "drill_name": "IN_ROUTE_LEFT",
+          "drill_label": "In route (left)",
+          "turns": 50,
+          "players": 39,
+          "median_deg": 78.7511978149414,
+          "min_deg": 52.946537017822266,
+          "max_deg": 103.2132339477539,
+          "turns_in_band": 2,
+          "share_in_band": 0.04,
+          "positions": {
+            "TE": 50
+          }
+        },
+        {
+          "row_index": 10,
+          "drill_name": "FORTY_YARD_DASH",
+          "drill_label": "40-yard dash",
+          "turns": 2,
+          "players": 2,
+          "median_deg": 79.90236282348633,
+          "min_deg": 48.06786346435547,
+          "max_deg": 111.73686218261719,
+          "turns_in_band": 1,
+          "share_in_band": 0.5,
+          "positions": {
+            "DB": 1,
+            "OL": 1
+          }
+        },
+        {
+          "row_index": 11,
+          "drill_name": "SPEED_OUT_ROUTE_LEFT",
+          "drill_label": "Speed out route (left)",
+          "turns": 101,
+          "players": 71,
+          "median_deg": 80.25043487548828,
+          "min_deg": 33.146514892578125,
+          "max_deg": 111.42742156982422,
+          "turns_in_band": 17,
+          "share_in_band": 0.16831683168316833,
+          "positions": {
+            "WR": 101
+          }
+        },
+        {
+          "row_index": 12,
+          "drill_name": "FLAT_ROUTE_LEFT",
+          "drill_label": "Flat route (left)",
+          "turns": 2,
+          "players": 2,
+          "median_deg": 81.62190246582031,
+          "min_deg": 78.55968475341797,
+          "max_deg": 84.68412017822266,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "TE": 2
+          }
+        },
+        {
+          "row_index": 13,
+          "drill_name": "SHORT_ZONE_BREAK_FORWARD",
+          "drill_label": "Short zone break: forward",
+          "turns": 10,
+          "players": 10,
+          "median_deg": 84.98201370239258,
+          "min_deg": 77.01013946533203,
+          "max_deg": 93.74456787109375,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "DL": 10
+          }
+        },
+        {
+          "row_index": 14,
+          "drill_name": "GAUNTLET_DRILL",
+          "drill_label": "Gauntlet",
+          "turns": 189,
+          "players": 138,
+          "median_deg": 85.87958526611328,
+          "min_deg": 75.1799087524414,
+          "max_deg": 102.7439193725586,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "DB": 41,
+            "TE": 12,
+            "WR": 136
+          }
+        },
+        {
+          "row_index": 15,
+          "drill_name": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+          "drill_label": "Back pedal and 90\u00b0 break to ball",
+          "turns": 118,
+          "players": 102,
+          "median_deg": 89.06024169921875,
+          "min_deg": 43.04576873779297,
+          "max_deg": 116.53555297851562,
+          "turns_in_band": 4,
+          "share_in_band": 0.03389830508474576,
+          "positions": {
+            "DB": 118
+          }
+        },
+        {
+          "row_index": 16,
+          "drill_name": "SLOT_SAIL_ROUTE_RIGHT",
+          "drill_label": "Slot sail route (right)",
+          "turns": 81,
+          "players": 66,
+          "median_deg": 89.91911315917969,
+          "min_deg": 57.136714935302734,
+          "max_deg": 101.51589965820312,
+          "turns_in_band": 1,
+          "share_in_band": 0.012345679012345678,
+          "positions": {
+            "WR": 81
+          }
+        },
+        {
+          "row_index": 17,
+          "drill_name": "BODY_CONTROL_DRILL",
+          "drill_label": "Body control drill",
+          "turns": 189,
+          "players": 103,
+          "median_deg": 101.33057403564453,
+          "min_deg": 39.362491607666016,
+          "max_deg": 162.33059692382812,
+          "turns_in_band": 11,
+          "share_in_band": 0.0582010582010582,
+          "positions": {
+            "DL": 189
+          }
+        },
+        {
+          "row_index": 18,
+          "drill_name": "SHORT_ZONE_BREAKS",
+          "drill_label": "Short zone breaks",
+          "turns": 111,
+          "players": 39,
+          "median_deg": 106.26031494140625,
+          "min_deg": 45.584659576416016,
+          "max_deg": 175.69265747070312,
+          "turns_in_band": 1,
+          "share_in_band": 0.009009009009009009,
+          "positions": {
+            "DL": 111
+          }
+        },
+        {
+          "row_index": 19,
+          "drill_name": "OL_PULL_DRILL_LONG_PULL_RIGHT",
+          "drill_label": "OL pull: long pull right",
+          "turns": 106,
+          "players": 93,
+          "median_deg": 108.8591079711914,
+          "min_deg": 56.5603141784668,
+          "max_deg": 154.2722625732422,
+          "turns_in_band": 4,
+          "share_in_band": 0.03773584905660377,
+          "positions": {
+            "OL": 106
+          }
+        },
+        {
+          "row_index": 20,
+          "drill_name": "CORNER_ROUTE",
+          "drill_label": "Corner route",
+          "turns": 3,
+          "players": 3,
+          "median_deg": 109.03888702392578,
+          "min_deg": 84.65885162353516,
+          "max_deg": 120.60816192626953,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "TE": 3
+          }
+        },
+        {
+          "row_index": 21,
+          "drill_name": "CURL_ROUTE_RIGHT",
+          "drill_label": "Curl route (right)",
+          "turns": 186,
+          "players": 92,
+          "median_deg": 111.20181655883789,
+          "min_deg": 34.010948181152344,
+          "max_deg": 273.19146728515625,
+          "turns_in_band": 18,
+          "share_in_band": 0.0967741935483871,
+          "positions": {
+            "WR": 186
+          }
+        },
+        {
+          "row_index": 22,
+          "drill_name": "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION",
+          "drill_label": "Back pedal and transition 45\u00b0 reaction",
+          "turns": 133,
+          "players": 71,
+          "median_deg": 113.1486587524414,
+          "min_deg": 48.44483947753906,
+          "max_deg": 146.4388885498047,
+          "turns_in_band": 1,
+          "share_in_band": 0.007518796992481203,
+          "positions": {
+            "DB": 133
+          }
+        },
+        {
+          "row_index": 23,
+          "drill_name": "COMEBACK_ROUTE_RIGHT",
+          "drill_label": "Comeback route (right)",
+          "turns": 149,
+          "players": 95,
+          "median_deg": 115.51160430908203,
+          "min_deg": 34.27580642700195,
+          "max_deg": 245.74388122558594,
+          "turns_in_band": 12,
+          "share_in_band": 0.08053691275167785,
+          "positions": {
+            "WR": 149
+          }
+        },
+        {
+          "row_index": 24,
+          "drill_name": "RUN_THE_HOOP_DRILL",
+          "drill_label": "Run the hoop drill",
+          "turns": 407,
+          "players": 109,
+          "median_deg": 115.78726196289062,
+          "min_deg": 30.019933700561523,
+          "max_deg": 241.03961181640625,
+          "turns_in_band": 14,
+          "share_in_band": 0.0343980343980344,
+          "positions": {
+            "DL": 407
+          }
+        },
+        {
+          "row_index": 25,
+          "drill_name": "HOOK_ROUTE_RIGHT",
+          "drill_label": "Hook route (right)",
+          "turns": 76,
+          "players": 36,
+          "median_deg": 115.91205978393555,
+          "min_deg": 40.03302764892578,
+          "max_deg": 157.6031951904297,
+          "turns_in_band": 7,
+          "share_in_band": 0.09210526315789473,
+          "positions": {
+            "TE": 76
+          }
+        },
+        {
+          "row_index": 26,
+          "drill_name": "BACK_PEDAL_AND_REACT",
+          "drill_label": "Back pedal and react",
+          "turns": 177,
+          "players": 59,
+          "median_deg": 120.16724395751953,
+          "min_deg": 36.627037048339844,
+          "max_deg": 242.31512451171875,
+          "turns_in_band": 19,
+          "share_in_band": 0.10734463276836158,
+          "positions": {
+            "DL": 177
+          }
+        },
+        {
+          "row_index": 27,
+          "drill_name": "FOUR_BAG_AGILITY_DRILL",
+          "drill_label": "Four-bag agility drill",
+          "turns": 88,
+          "players": 87,
+          "median_deg": 124.94891357421875,
+          "min_deg": 88.82363891601562,
+          "max_deg": 166.15577697753906,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "DL": 88
+          }
+        },
+        {
+          "row_index": 28,
+          "drill_name": "FIVE_YARD_WAVE_DRILL_SLIDE_AND_SHUFFLE",
+          "drill_label": "Five-yard wave: slide and shuffle",
+          "turns": 343,
+          "players": 96,
+          "median_deg": 133.16650390625,
+          "min_deg": 32.440208435058594,
+          "max_deg": 236.53277587890625,
+          "turns_in_band": 22,
+          "share_in_band": 0.0641399416909621,
+          "positions": {
+            "OL": 343
+          }
+        },
+        {
+          "row_index": 29,
+          "drill_name": "SHORT_ZONE_BREAK_INSIDE",
+          "drill_label": "Short zone break: inside",
+          "turns": 22,
+          "players": 18,
+          "median_deg": 135.57035064697266,
+          "min_deg": 78.86982727050781,
+          "max_deg": 148.4423370361328,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "DL": 22
+          }
+        },
+        {
+          "row_index": 30,
+          "drill_name": "SHORT_ZONE_BREAK_FLAT_WHEEL",
+          "drill_label": "Short zone break: flat/wheel",
+          "turns": 38,
+          "players": 20,
+          "median_deg": 135.69210815429688,
+          "min_deg": 45.74736404418945,
+          "max_deg": 170.664794921875,
+          "turns_in_band": 1,
+          "share_in_band": 0.02631578947368421,
+          "positions": {
+            "DL": 38
+          }
+        },
+        {
+          "row_index": 31,
+          "drill_name": "W_DRILL",
+          "drill_label": "W drill",
+          "turns": 107,
+          "players": 56,
+          "median_deg": 139.25393676757812,
+          "min_deg": 40.335418701171875,
+          "max_deg": 155.9834442138672,
+          "turns_in_band": 1,
+          "share_in_band": 0.009345794392523364,
+          "positions": {
+            "DB": 107
+          }
+        },
+        {
+          "row_index": 32,
+          "drill_name": "BOX_DRILL",
+          "drill_label": "Box drill",
+          "turns": 304,
+          "players": 119,
+          "median_deg": 139.33717346191406,
+          "min_deg": 37.17597198486328,
+          "max_deg": 207.2738037109375,
+          "turns_in_band": 1,
+          "share_in_band": 0.003289473684210526,
+          "positions": {
+            "DB": 304
+          }
+        },
+        {
+          "row_index": 33,
+          "drill_name": "TERYL_AUSTIN_DRILL_1",
+          "drill_label": "Teryl Austin drill 1",
+          "turns": 108,
+          "players": 101,
+          "median_deg": 140.3947525024414,
+          "min_deg": 56.712554931640625,
+          "max_deg": 154.4347686767578,
+          "turns_in_band": 1,
+          "share_in_band": 0.009259259259259259,
+          "positions": {
+            "DB": 108
+          }
+        },
+        {
+          "row_index": 34,
+          "drill_name": "SLOT_STRIKE_ROUTE_LEFT",
+          "drill_label": "Slot strike route (left)",
+          "turns": 110,
+          "players": 100,
+          "median_deg": 142.58087158203125,
+          "min_deg": 74.4703369140625,
+          "max_deg": 209.9113311767578,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "WR": 110
+          }
+        },
+        {
+          "row_index": 35,
+          "drill_name": "TERYL_AUSTIN_DRILL_2",
+          "drill_label": "Teryl Austin drill 2",
+          "turns": 199,
+          "players": 111,
+          "median_deg": 148.2266387939453,
+          "min_deg": 51.34968185424805,
+          "max_deg": 220.4933319091797,
+          "turns_in_band": 2,
+          "share_in_band": 0.010050251256281407,
+          "positions": {
+            "DB": 199
+          }
+        },
+        {
+          "row_index": 36,
+          "drill_name": "FOUR_BAG_SHUFFLE_DRILL",
+          "drill_label": "Four-bag shuffle drill",
+          "turns": 6,
+          "players": 3,
+          "median_deg": 162.90638732910156,
+          "min_deg": 133.00050354003906,
+          "max_deg": 189.5714874267578,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "DL": 6
+          }
+        },
+        {
+          "row_index": 37,
+          "drill_name": "OL_PULL_DRILL_DEEP_SHORT_PULL_LEFT",
+          "drill_label": "OL pull: deep short pull left",
+          "turns": 1,
+          "players": 1,
+          "median_deg": 163.28660583496094,
+          "min_deg": 163.28660583496094,
+          "max_deg": 163.28660583496094,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "OL": 1
+          }
+        },
+        {
+          "row_index": 38,
+          "drill_name": "RUN_AND_CLUB_DRILL",
+          "drill_label": "Run and club drill",
+          "turns": 128,
+          "players": 112,
+          "median_deg": 166.0492935180664,
+          "min_deg": 33.23638153076172,
+          "max_deg": 181.2384490966797,
+          "turns_in_band": 17,
+          "share_in_band": 0.1328125,
+          "positions": {
+            "DL": 128
+          }
+        },
+        {
+          "row_index": 39,
+          "drill_name": "FRONT_START_WAVE_DRILL_AND_LATERAL_REACTION",
+          "drill_label": "Front start wave: lateral reaction",
+          "turns": 382,
+          "players": 111,
+          "median_deg": 168.8323745727539,
+          "min_deg": 40.5444450378418,
+          "max_deg": 241.1626434326172,
+          "turns_in_band": 9,
+          "share_in_band": 0.02356020942408377,
+          "positions": {
+            "DL": 382
+          }
+        },
+        {
+          "row_index": 40,
+          "drill_name": "PASS_PRO-MIRROR_DRILL",
+          "drill_label": "Pass pro-mirror drill",
+          "turns": 83,
+          "players": 46,
+          "median_deg": 175.35162353515625,
+          "min_deg": 49.78124237060547,
+          "max_deg": 231.7815704345703,
+          "turns_in_band": 5,
+          "share_in_band": 0.060240963855421686,
+          "positions": {
+            "OL": 83
+          }
+        },
+        {
+          "row_index": 41,
+          "drill_name": "WAVE_DRILL",
+          "drill_label": "Wave drill",
+          "turns": 14,
+          "players": 4,
+          "median_deg": 177.3725357055664,
+          "min_deg": 134.6172332763672,
+          "max_deg": 189.5782928466797,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "DL": 14
+          }
+        },
+        {
+          "row_index": 42,
+          "drill_name": "PASS_PRO_MIRROR_DRILL",
+          "drill_label": "Pass pro mirror drill",
+          "turns": 55,
+          "players": 24,
+          "median_deg": 177.49037170410156,
+          "min_deg": 38.2048454284668,
+          "max_deg": 214.07456970214844,
+          "turns_in_band": 1,
+          "share_in_band": 0.01818181818181818,
+          "positions": {
+            "OL": 55
+          }
+        },
+        {
+          "row_index": 43,
+          "drill_name": "SHUFFLE_SPRINT_AND_COD_DRILL",
+          "drill_label": "Shuffle sprint and COD drill",
+          "turns": 4,
+          "players": 4,
+          "median_deg": 178.89590454101562,
+          "min_deg": 174.07618713378906,
+          "max_deg": 182.72396850585938,
+          "turns_in_band": 0,
+          "share_in_band": 0.0,
+          "positions": {
+            "DL": 4
+          }
+        },
+        {
+          "row_index": 44,
+          "drill_name": "SHORT_SHUTTLE",
+          "drill_label": "Short shuttle",
+          "turns": 419,
+          "players": 169,
+          "median_deg": 180.11898803710938,
+          "min_deg": 37.226234436035156,
+          "max_deg": 203.98617553710938,
+          "turns_in_band": 2,
+          "share_in_band": 0.00477326968973747,
+          "positions": {
+            "DB": 70,
+            "DL": 84,
+            "OL": 131,
+            "TE": 66,
+            "WR": 68
+          }
+        }
+      ],
+      "drawing": {
+        "one_dot_per_turn": true,
+        "x_continuous": true,
+        "x_binned": false,
+        "x_jitter": false,
+        "y_jitter": {
+          "axis": "drill row",
+          "span_rows": 0.55,
+          "seed": 20270106,
+          "recorded_per_row": [
+            "y_offset_rows",
+            "y_draw"
+          ]
+        },
+        "mean": false,
+        "box_plot": false,
+        "density_curve": false,
+        "fit": false,
+        "test": false
+      },
+      "claim": "Across all 5,536 valid Combine turns and 45 drills, only 304 turns fall inside the 30\u201360\u00b0 band; by position that is DB 26, DL 95, OL 62, TE 31, WR 90 (DB 2.2%, DL 4.6%, OL 6.5%, TE 10.5%, WR 8.6% of each position's own turns). The DB share, 2.2%, is the lowest of the 5 positions, while the other positions do produce shallow turns; no drill's median angle sits inside the band.",
+      "not_claimed": [
+        "That the drills or positions are sampled alike; this counts detected turns in one Combine session.",
+        "That any turn below 30\u00b0 exists; the detector's floor censors the shallow end of every row.",
+        "That a dot is a player, or that a player's own angle distribution looks like his position's.",
+        "That the band share is a shortfall of ability, or that the Combine turns transfer to game demands.",
+        "Anything about the 2027 class; this covers one Combine session."
+      ],
+      "caveats": [
+        "One dot per turn at its measured x. Only the y coordinate is jittered (\u00b10.28 of a row, seed 20270106); every offset is written per row.",
+        "7 of 45 drills hold fewer than 10 turns: those rows are a list of detected moments, not a distribution.",
+        "The detector's 30\u00b0 floor means the shallow end of every row is censored, not empty.",
+        "PASS_PRO-MIRROR_DRILL and PASS_PRO_MIRROR_DRILL are kept as two rows; the raw drill names differ only in spelling.",
+        "No player names or ids appear in the figure, the CSV or this entry."
       ],
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     }
