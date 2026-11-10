@@ -9152,7 +9152,9 @@ def entry_exit_speed_manifest_payload(table: pd.DataFrame, context: dict,
             "focus_edges_deg": [context["focus"]["low"],
                                 context["focus"]["high"]],
             "declares_own_edges": False,
-            "shared_with": "figures.hole.bands (D164)",
+            "shared_with": ("figures.hole.plot_bands (D181); "
+                            "figures.hole.bands (D164) still splits at 45 for "
+                            "figures 3, 8, 12 and 15"),
         },
         "statistic": {
             "name": "median",
@@ -9197,16 +9199,22 @@ def entry_exit_speed_manifest_payload(table: pd.DataFrame, context: dict,
 # ---------------------------------------------------------------------------
 # Figure 17 — the movement family by angle band, four panels, game turns only.
 #
-# One panel per movement measure over the SAME seven reporting bands that
-# `figures.hole.bands` (D164) defines; the edges are read, never redeclared. All
-# intervals are player-clustered percentile bootstraps: players (nfl_id) are
-# resampled, because turns repeat within a player. Panel A is deliberately the
-# MEDIAN OF PER-TURN RATIOS (apex/entry on each turn, then median), never a
-# ratio of medians. Panel D is drawn on a log y axis because peak angular rate
-# spans an order of magnitude across the bands.
+# One panel per movement measure over the SAME six DISPLAY bands that figures 1
+# and 5 use, `figures.hole.plot_bands` (D181): 30-45 and 45-60 are merged into
+# one 30-60 band here too, and only the display changes — `figures.hole.bands`
+# still splits at 45 for figures 3, 8, 12 and 15, and is left untouched. The
+# edges are read, never redeclared. All intervals are player-clustered
+# percentile bootstraps: players (nfl_id) are resampled, because turns repeat
+# within a player. Panel A is deliberately the MEDIAN OF PER-TURN RATIOS
+# (apex/entry on each turn, then median), never a ratio of medians. A merged
+# bucket's median is taken over the UNION of its turns, never as an average of
+# the two old medians, and its interval is bootstrapped on that union too.
+# Panel D is drawn on a log y axis because peak angular rate spans an order of
+# magnitude across the bands.
 #
-# The population is game turns only. The Combine is not drawn: its 30-45 degree
-# bucket holds four turns (figure 16), so nothing there is estimable.
+# The population is game turns only. The Combine is not drawn (figure 16 covers
+# it); its 30-60 degree bucket holds 26 turns from 16 players, which the figure
+# quotes rather than pretending the old four-turn 30-45 bucket still applies.
 # ---------------------------------------------------------------------------
 FIGURE_KEY_MOVEMENT_FAMILY = "fig_movement_family"
 
@@ -9272,13 +9280,15 @@ MF_CAVEAT_FLOOR = (
     "the 30° detector floor sits immediately below the shallow bucket, so some "
     "turns there may be fragments of larger movements."
 )
-MF_CAVEAT_THIN = (
-    "the shallow bucket is thin ({n_turns} turns from {n_players} players) and "
-    "its intervals are the widest."
+MF_CAVEAT_MERGE = (
+    "the 30–60° bucket is the union of the 30–45° and 45–60° rows figures 3, 8, "
+    "12 and 15 report separately; its median is taken over the union of both "
+    "buckets' turns and its interval is bootstrapped on that union — never an "
+    "average of the two old medians or intervals."
 )
 MF_CAVEAT_COMBINE = (
-    "these are game turns only; the Combine is not drawn because its 30–45° "
-    "bucket holds {n_combine} turns, so no comparison is estimable there."
+    "these are game turns only; the Combine is not drawn here (figure 16 covers "
+    "it), and its 30–60° bucket holds {n_combine} turns."
 )
 
 
@@ -9424,17 +9434,22 @@ def movement_family_table(turns: pd.DataFrame,
     reps = conf["reps"]
     ci_level = conf["ci_level"]
 
-    edges = [float(x) for x in cfg.get("figures.hole.bands.turn_angle_deg")]
+    edges = [float(x) for x in cfg.get("figures.hole.plot_bands.turn_angle_deg")]
     if len(edges) < 2 or any(b <= a for a, b in zip(edges, edges[1:])):
         raise common.StageRefused(
-            f"{STAGE}: figures.hole.bands.turn_angle_deg must be increasing, "
+            f"{STAGE}: figures.hole.plot_bands.turn_angle_deg must be increasing, "
             f"got {edges}")
     overflow = str(cfg.get("figures.hole.bands.overflow_label"))
-    focus = focus_band(cfg)
-    if focus_band_index(edges, focus) != 0:
+    # Style always from figures.focus_band; geometry from this figure's own
+    # display bands (30-45 and 45-60 are merged into one 30-60 band, as on
+    # figures 1 and 5). See figures.hole.plot_bands in config.yaml.
+    configured = focus_band(cfg)
+    focus = focus_band(cfg, edges=edges[:2])
+    if float(edges[0]) != configured["low"]:
         raise common.StageRefused(
-            f"{STAGE}: the {focus['label']} focus band is not the first "
-            f"reporting band in {edges}; figure 17 shades band 0 only")
+            f"{STAGE}: figure 17 highlights its first display band, which must "
+            f"start at the configured focus floor {configured['low']:g}°; got "
+            f"{float(edges[0]):g}°")
 
     missing = [c for c in MOVEMENT_FAMILY_COLUMNS if c not in turns.columns]
     if missing:
@@ -9559,11 +9574,11 @@ def movement_family_table(turns: pd.DataFrame,
                 "bootstrap_seed": int(seed),
             })
     table = pd.DataFrame(rows)[MOVEMENT_FAMILY_CSV_COLUMNS]
+    _mf_check_arc_family(table, panels)
 
     n_estimable = {panel["panel"]: int(
         table[table["panel"] == panel["panel"]]["estimable"].sum())
         for panel in panels}
-    shallow_entries = entries.loc[df["band_index"] == 0]
     context = {
         "table": table,
         "bands": bands,
@@ -9577,7 +9592,6 @@ def movement_family_table(turns: pd.DataFrame,
         "population_turns": int(len(df)),
         "population_players": int(df["nfl_id"].nunique()),
         "combine_shallow_n": combine_shallow,
-        "shallow_entry_speed": float(shallow_entries.median()),
         "min_n_for_estimate": min_n,
         "min_players_for_estimate": min_players,
         "reps": reps,
@@ -9602,6 +9616,41 @@ def _mf_cell(table: pd.DataFrame, panel: str, band_index: int) -> pd.Series:
     return part.iloc[0]
 
 
+def _mf_check_arc_family(table: pd.DataFrame, panels: list[dict]) -> None:
+    """Refuse the caption's "one arc family" claim if the data contradict it.
+
+    On the merged six-band axis the arc family is the 30–60° and 60–90°
+    buckets. The caption and the manifest claim every player-clustered interval
+    overlaps between them, on all four panels. That is checked against the
+    table actually drawn, never assumed: a band change that separates them
+    refuses instead of printing a false sentence.
+    """
+    if len(table["band_index"].unique()) != 6:
+        return
+    for panel in panels:
+        part = table[table["panel"] == panel["panel"]]
+        first = part[part["band_index"] == 0]
+        second = part[part["band_index"] == 1]
+        if first.empty or second.empty:
+            raise ValueError(
+                f"{STAGE}: figure 17's caption calls 30–60° and 60–90° one "
+                f"family, but panel {panel['panel']} is missing one of them")
+        if not (bool(first["estimable"].iloc[0])
+                and bool(second["estimable"].iloc[0])):
+            raise ValueError(
+                f"{STAGE}: figure 17's caption calls 30–60° and 60–90° one "
+                f"family, but panel {panel['panel']} cannot estimate both — "
+                "fix the claim")
+        lo0, hi0 = float(first["ci_low"].iloc[0]), float(first["ci_high"].iloc[0])
+        lo1, hi1 = float(second["ci_low"].iloc[0]), float(second["ci_high"].iloc[0])
+        if hi0 < lo1 or hi1 < lo0:
+            raise ValueError(
+                f"{STAGE}: figure 17's caption calls 30–60° and 60–90° one "
+                f"family, but their intervals are disjoint on panel "
+                f"{panel['panel']} ([{lo0:.3f}, {hi0:.3f}] vs "
+                f"[{lo1:.3f}, {hi1:.3f}]) — fix the claim")
+
+
 def _mf_apex_span_phrase(table: pd.DataFrame, bands: list[str]) -> str:
     """First-to-last estimable apex-share phrase for non-default band sets."""
     rows = [_mf_cell(table, "apex_share", i) for i in range(len(bands))
@@ -9618,46 +9667,43 @@ def _mf_caption_lines(context: dict, cfg: common.Config) -> list[str]:
     table = context["table"]
     bands = context["bands"]
     edges = context["edges"]
-    shallow = _mf_cell(table, "apex_share", 0)
-    thin = MF_CAVEAT_THIN.format(n_turns=int(shallow["n_turns"]),
-                                 n_players=int(shallow["n_players"]))
+    thin = MF_CAVEAT_MERGE
     combine = MF_CAVEAT_COMBINE.format(n_combine=context["combine_shallow_n"])
     def val(panel: str, i: int) -> float:
         return float(_mf_cell(table, panel, i)["value"])
 
-    if len(bands) == 7:
+    if len(bands) == 6:
+        # The merged 30-60 bucket joins 60-90 as the arc family; the break is
+        # at 90-120 and the plant family starts above 120. Every number here is
+        # recomputed on the merged table and guarded by _mf_check_arc_family.
         point = (
-            (f"THE POINT, WITH THE NUMBERS. The three arc buckets are one "
-             f"family: {bands[0]}, {bands[1]} and {bands[2]} give an apex "
-             f"share of {val('apex_share', 0):.2f} / "
-             f"{val('apex_share', 1):.2f} / {val('apex_share', 2):.2f}, peak "
+            (f"THE POINT, WITH THE NUMBERS. The two arc buckets are one "
+             f"family: {bands[0]} and {bands[1]} give an apex share of "
+             f"{val('apex_share', 0):.2f} / {val('apex_share', 1):.2f}, peak "
              f"lateral acceleration {val('peak_lateral_accel', 0):.1f} / "
-             f"{val('peak_lateral_accel', 1):.1f} / "
-             f"{val('peak_lateral_accel', 2):.1f} yd/s², peak angular rate "
-             f"{val('peak_omega', 0):.0f} / {val('peak_omega', 1):.0f} / "
-             f"{val('peak_omega', 2):.0f} deg/s and circle-fit usable share "
-             f"{val('circle_fit_share', 0):.3f} / "
-             f"{val('circle_fit_share', 1):.3f} / "
-             f"{val('circle_fit_share', 2):.3f}, and their player-clustered "
+             f"{val('peak_lateral_accel', 1):.1f} yd/s², peak angular rate "
+             f"{val('peak_omega', 0):.0f} / {val('peak_omega', 1):.0f} deg/s "
+             f"and circle-fit usable share {val('circle_fit_share', 0):.3f} / "
+             f"{val('circle_fit_share', 1):.3f}, and their player-clustered "
              f"intervals overlap on every panel. The break comes at "
-             f"{bands[3]}: from there the apex share falls monotonically "
-             f"({val('apex_share', 3):.2f} → {val('apex_share', 4):.2f} → "
-             f"{val('apex_share', 5):.2f} → {val('apex_share', 6):.2f}) while "
+             f"{bands[2]}: from there the apex share falls monotonically "
+             f"({val('apex_share', 2):.2f} → {val('apex_share', 3):.2f} → "
+             f"{val('apex_share', 4):.2f} → {val('apex_share', 5):.2f}) while "
              f"peak lateral acceleration rises "
-             f"({val('peak_lateral_accel', 3):.1f} → "
-             f"{val('peak_lateral_accel', 6):.1f} yd/s²), peak angular rate "
-             f"rises ({val('peak_omega', 3):.0f} → "
-             f"{val('peak_omega', 6):.0f} deg/s) and the circle-fit usable "
-             f"share falls ({val('circle_fit_share', 3):.2f} → "
-             f"{val('circle_fit_share', 6):.2f}); the plant family starts "
-             f"above {edges[4]:g}°. The {bands[0]} bucket is an ordinary "
-             f"member of the arc family, not its extreme: its distinguishing "
-             f"features are the lowest entry speed "
-             f"({context['shallow_entry_speed']:.2f} yd/s) and the absence of "
-             f"a Combine counterpart ({context['combine_shallow_n']} turns). "
-             "Panel A is the median of per-turn ratios, not a ratio of "
-             "medians. These are descriptive medians and shares of measured "
-             "turns, not outcomes.")
+             f"({val('peak_lateral_accel', 2):.1f} → "
+             f"{val('peak_lateral_accel', 5):.1f} yd/s²), peak angular rate "
+             f"rises ({val('peak_omega', 2):.0f} → "
+             f"{val('peak_omega', 5):.0f} deg/s) and the circle-fit usable "
+             f"share falls ({val('circle_fit_share', 2):.2f} → "
+             f"{val('circle_fit_share', 5):.2f}); the plant family starts "
+             f"above {edges[3]:g}°. The merged {bands[0]} bucket is an "
+             f"ordinary member of the arc family, not its extreme: its four "
+             f"intervals all overlap {bands[1]}'s. Its median is taken "
+             "over the union of both buckets' turns, not as an average "
+             "of the two old medians. Panel "
+             "A is the median of per-turn ratios, not a ratio of medians. "
+             "These are descriptive medians and shares of measured turns, not "
+             "outcomes.")
         )
     else:
         point = (
@@ -9671,9 +9717,11 @@ def _mf_caption_lines(context: dict, cfg: common.Config) -> list[str]:
          f"turn in outputs/turns/turns.parquet "
          f"({context['population_turns']:,} turns from "
          f"{context['population_players']} players), banded by absolute turn "
-         f"angle on the seven reporting bands "
+         f"angle on the six reporting bands "
          f"{edges[0]:g}–{edges[-1]:g}° plus the {context['overflow']}° "
-         f"overflow class. Four panels share one categorical axis; every "
+         f"overflow class, with {edges[0]:g}–{edges[1]:g}° drawing the merged "
+         f"30–45° and 45–60° rows as one bucket. Four panels share one "
+         f"categorical axis; every "
          f"interval is a {context['ci_level']:.0%} percentile bootstrap with "
          f"{context['reps']:,} replicates resampling players (`nfl_id`) with "
          f"replacement. Key {FIGURE_KEY_MOVEMENT_FAMILY}."),
@@ -9775,7 +9823,8 @@ def plot_movement_family(table: pd.DataFrame, context: dict,
                 transform=ax.transAxes, ha="left", va="top",
                 fontsize=9.6, fontweight="bold", color="#111111")
 
-    axes[0].text(0.5, 0.975, "30–45° band", transform=axes[0].transAxes,
+    axes[0].text(0.5, 0.975, f"{focus['label']} band",
+                 transform=axes[0].transAxes,
                  ha="center", va="top", fontsize=8.6, fontweight="bold",
                  color=focus["colour"], zorder=6)
 
@@ -9796,8 +9845,9 @@ def plot_movement_family(table: pd.DataFrame, context: dict,
              fontsize=17.0, fontweight="bold", ha="left", va="top",
              color="#111111")
     fig.text(0.010, 0.950,
-             f"Valid {context['position']} {context['setting']} turns, seven "
-             f"reporting bands — median (A, B, D) or share (C) with a "
+             f"Valid {context['position']} {context['setting']} turns, six "
+             f"reporting bands with 30–45° and 45–60° merged — median (A, B, "
+             f"D) or share (C) with a "
              f"{context['ci_level']:.0%} player-clustered percentile bootstrap "
              f"interval ({context['reps']:,} replicates). Panel D is on a log "
              "y axis.",
@@ -9836,48 +9886,46 @@ def movement_family_manifest_payload(table: pd.DataFrame, context: dict,
     """Figure 17's manifest entry: population, statistic, every row, caveats."""
     table = context["table"]
     bands = context["bands"]
-    shallow = _mf_cell(table, "apex_share", 0)
     caveats = [
         MF_CAVEAT_CIRCLE,
         MF_CAVEAT_FLOOR,
-        MF_CAVEAT_THIN.format(n_turns=int(shallow["n_turns"]),
-                              n_players=int(shallow["n_players"])),
+        MF_CAVEAT_MERGE,
         MF_CAVEAT_COMBINE.format(n_combine=context["combine_shallow_n"]),
     ]
     def val(panel: str, i: int) -> float:
         return float(_mf_cell(table, panel, i)["value"])
 
-    if len(bands) == 7:
+    if len(bands) == 6:
         claim = (
-            f"The seven {context['setting']}-only {context['position']} angle "
-            f"buckets are two families, not a gradient: {bands[0]}, {bands[1]} "
-            f"and {bands[2]} are statistically indistinguishable on all four "
+            f"The six {context['setting']}-only {context['position']} angle "
+            f"buckets are two families, not a gradient: {bands[0]} and "
+            f"{bands[1]} are statistically indistinguishable on all four "
             f"panels (apex share {val('apex_share', 0):.2f}/"
-            f"{val('apex_share', 1):.2f}/{val('apex_share', 2):.2f}, peak "
-            f"lateral acceleration {val('peak_lateral_accel', 0):.1f}/"
-            f"{val('peak_lateral_accel', 1):.1f}/"
-            f"{val('peak_lateral_accel', 2):.1f} yd/s², peak angular rate "
-            f"{val('peak_omega', 0):.0f}/{val('peak_omega', 1):.0f}/"
-            f"{val('peak_omega', 2):.0f} deg/s, circle-fit usable share "
+            f"{val('apex_share', 1):.2f}, peak lateral acceleration "
+            f"{val('peak_lateral_accel', 0):.1f}/"
+            f"{val('peak_lateral_accel', 1):.1f} yd/s², peak angular rate "
+            f"{val('peak_omega', 0):.0f}/{val('peak_omega', 1):.0f} deg/s, "
+            f"circle-fit usable share "
             f"{val('circle_fit_share', 0):.3f}/"
-            f"{val('circle_fit_share', 1):.3f}/"
-            f"{val('circle_fit_share', 2):.3f}; every player-clustered "
-            f"interval overlaps within these three buckets). The break comes "
-            f"at {bands[3]}, and from there the decline is monotone: the apex "
-            f"share falls {val('apex_share', 3):.2f} to "
-            f"{val('apex_share', 6):.2f} while peak lateral acceleration "
-            f"rises {val('peak_lateral_accel', 3):.1f} to "
-            f"{val('peak_lateral_accel', 6):.1f} yd/s², peak angular rate "
-            f"rises {val('peak_omega', 3):.0f} to "
-            f"{val('peak_omega', 6):.0f} deg/s and the circle-fit usable "
-            f"share falls {val('circle_fit_share', 3):.2f} to "
-            f"{val('circle_fit_share', 6):.2f}. The plant family starts above "
-            f"{context['edges'][4]:g}°. The {bands[0]} bucket is an ordinary "
-            f"member of the arc family, not its extreme: it has the lowest "
-            f"entry speed ({context['shallow_entry_speed']:.2f} yd/s) and no "
-            f"Combine counterpart ({context['combine_shallow_n']} turns). "
-            "These are descriptive medians and shares with player-clustered "
-            "bootstrap intervals, not a test or a ranking of bands.")
+            f"{val('circle_fit_share', 1):.3f}; every player-clustered "
+            f"interval overlaps between these two buckets). The break comes "
+            f"at {bands[2]}, and from there the decline is monotone: the apex "
+            f"share falls {val('apex_share', 2):.2f} to "
+            f"{val('apex_share', 5):.2f} while peak lateral acceleration "
+            f"rises {val('peak_lateral_accel', 2):.1f} to "
+            f"{val('peak_lateral_accel', 5):.1f} yd/s², peak angular rate "
+            f"rises {val('peak_omega', 2):.0f} to "
+            f"{val('peak_omega', 5):.0f} deg/s and the circle-fit usable "
+            f"share falls {val('circle_fit_share', 2):.2f} to "
+            f"{val('circle_fit_share', 5):.2f}. The plant family starts above "
+            f"{context['edges'][3]:g}°. The merged {bands[0]} bucket is an "
+            f"ordinary member of the arc family, not its extreme: its four "
+            f"intervals all overlap {bands[1]}'s. Its median is taken over "
+            f"the union of the "
+            f"30–45° and 45–60° turns, never as an average of the two old "
+            "medians. These are descriptive medians and shares with "
+            "player-clustered bootstrap intervals, not a test or a ranking of "
+            "bands.")
     else:
         claim = (
             f"Across the {context['setting']}-only {context['position']} "

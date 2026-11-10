@@ -6720,3 +6720,78 @@ captions/caveats); `src/06_figures.py`; `src/bdb27/figure_text_scan.py`;
 `scripts/scan_figure_text.py`; `tests/test_figures_stage.py`;
 `outputs/figures/*.png`, `outputs/figures/*.csv`,
 `outputs/figures/figures_manifest.json`.
+
+## D181 — Figure 17 draws figure 1's merged 30–60° display band, as a median over the union · 2026-11-10
+
+**Decision (Conor, 2026-11-10 14:05: "Please redo 'the movement family by
+angle band' with one bucket for 30 to 60").** Figure 17 now bands its four
+panels on `figures.hole.plot_bands` — `[30, 60, 90, 120, 150, 180]` plus the
+`>180°` overflow class — the same six display buckets figures 1 and 5 already
+draw. The 30–45° and 45–60° rows are merged into one 30–60° bucket; the panel
+statistics, the player-clustered percentile bootstrap, the seeds and the four
+panels are unchanged. Row count per panel goes 7 → 6 and the CSV 28 → 24.
+
+**No config key was added or edited.** `figures.hole.plot_bands` already exists
+(added for figure 1 in D178) and figure 17 simply reads it instead of
+`figures.hole.bands`. This is deliberate: a new key would move `config_sha` on
+every figure's CSV, and Conor asked for figure 17 only. `figures.hole.bands`
+still splits at 45 and still serves figures 3, 8, 12 and 15 — none of them was
+re-rendered into a different image, and their CSVs are byte-identical.
+
+**The merge is a median over the union, never an average of medians.** A turn
+in 30–45° or 45–60° is now in one bucket; the per-turn ratios/values are pooled
+and the median is taken on that pool, and the player-clustered bootstrap is
+re-run on the pooled turns. Averaging the two old medians or intervals would be
+a different (and wrong) statistic. Old → merged values for DB game turns:
+
+| panel | 30–45° (97 turns, 25 players) | 45–60° (229, 29) | 30–60° (326, 30) |
+|---|---|---|---|
+| apex share | 0.819 | 0.876 | **0.859** |
+| peak lateral accel (yd/s²) | 5.38 | 5.69 | **5.64** |
+| circle-fit usable share | 1.000 | 1.000 | **1.000** |
+| peak angular rate (deg/s) | 86.9 | 80.4 | **82.6** |
+
+The merged apex share (0.859) is neither of the two old medians nor their
+average (0.8475): the union rule gives a different number, which is the
+point.
+
+**The focus highlight follows the merge.** Style still comes from
+`figures.focus_band`; only the geometry is overridden with
+`focus_band(cfg, edges=edges[:2])`, exactly as D178/D179 did for figures 1 and
+5. `figures.focus_band.edges_deg` stays `[30, 45]` for the figures that still
+split at 45. `is_focus_band` is true on the 30–60° row and nowhere else.
+
+**Text was recomputed, not patched.** With six buckets the arc family is
+30–60° and 60–90° (not three buckets); the break is at 90–120° and the plant
+family starts above 120° (`edges[3]`, which was `edges[4]` on the seven-bucket
+axis). The claim that the merged bucket is an "ordinary member of the arc
+family" is kept only because it is still true — its four intervals overlap
+60–90°'s — and is now guarded at build time (`_mf_check_arc_family` raises if
+any panel's two arc intervals are disjoint). Two old supporting clauses were
+dropped because the merged numbers contradict them: the merged bucket does
+**not** have the lowest entry-speed median (60–90° is 3.70 vs 3.79 yd/s), and
+it is **not** without a Combine counterpart (the 30–60° Combine bucket holds
+26 turns from 16 players, not 4). The "shallow bucket is thin (97 turns / 25
+players)" caveat was also false at 326 turns / 30 players and is replaced by a
+merge caveat: the bucket is the union of the two rows figures 3, 8, 12 and 15
+report separately, with its median and interval computed on that union. The
+Combine caveat now quotes 26 turns in 30–60° and no longer claims nothing is
+estimable there. Caveat (b), the 30° detector floor, is unchanged and still
+reads correctly under the merged bucket.
+
+**Proof, not assertion.** All 17 figures were re-rendered twice; every PNG and
+CSV outside `fig_movement_family` is byte-identical to `5ef925f` (SHA-256
+compared before/after, and again between the two renders), and the manifest
+diff contains only figure 17's entry plus `generated_utc`. Two consecutive
+renders of figure 17 are byte-identical. `config_sha` is unchanged in every
+CSV. Tests: `tests/test_movement_family_figure.py` rebuilt on the six-band
+axis (24 rows, thin bucket moved to 150–180°, the median-of-ratios fixture now
+sits in the merged 30–60° bucket) and the figure-17 assertions in
+`tests/test_figures_stage.py` updated for 24 rows and the new caveat.
+
+**Evidence.** `src/bdb27/figures.py` (`MF_CAVEAT_MERGE`,
+`_mf_check_arc_family`, `movement_family_table`, `_mf_caption_lines`,
+`plot_movement_family`, `movement_family_manifest_payload`);
+`outputs/figures/fig_movement_family.{png,csv}`;
+`outputs/figures/figures_manifest.json`; `tests/test_movement_family_figure.py`;
+`tests/test_figures_stage.py`.
