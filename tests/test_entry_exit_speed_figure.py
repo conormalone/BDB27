@@ -158,7 +158,8 @@ def test_no_ci_is_drawn_on_the_four_turn_bucket(table, context, cfg):
 
 
 def test_caption_and_manifest_carry_the_honesty_clauses(table, context, cfg):
-    text = " ".join(" ".join(figures._entry_exit_speed_caption(context)).split())
+    text = " ".join(
+        " ".join(figures._entry_exit_speed_caption(context, cfg)).split())
     assert "exit speed is measured at the end of the detector window, not at a fixed distance, so exit > entry mostly means the athlete was accelerating when the window closed" in text
     shallow = context["duration"]["shallow_median_s"]
     other = context["duration"]["other_median_s"]

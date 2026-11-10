@@ -15,8 +15,9 @@ Design rules honoured here:
   * no pie charts, no 3-D, no chart junk; grey panel, colour-blind-safe palette;
   * direct labels on the highlighted band and each setting's peak, with a
     compact legend for the rest;
-  * figure 1 carries no on-image provenance banner: the sample stamp lives in
-    the CSV and the JSON manifest (``render(..., stamp=False)``);
+  * no figure carries an on-image provenance banner by default: the stamp
+    lives in the CSV and the JSON manifest, while
+    ``figures.provenance.on_image_stamp`` (D180) can switch it back on;
   * two runs produce a byte-identical PNG (fixed DPI/style, no timestamp).
 """
 
@@ -94,13 +95,31 @@ SUPPLY_COLUMNS = [
 
 STAMP = f"{common.PROVENANCE_SAMPLE} — {common.SAMPLE_LABEL}"
 
+#: Config key for the on-image provenance banner (D180). The default is
+#: ``false``: Conor treats every figure as production output. Provenance is
+#: still written into every data CSV's ``stamp`` column and every manifest
+#: entry's ``stamp`` field by ``stamp_text(mode)``; only the drawn banner and
+#: its caption line are switched off.
+PROVENANCE_STAMP_KEY = "figures.provenance.on_image_stamp"
+
+
+def on_image_stamp(cfg: common.Config) -> bool:
+    """True when drawn figures should carry the provenance banner."""
+    return bool(cfg.get(PROVENANCE_STAMP_KEY, False))
+
+
+def stamp_lines(cfg: common.Config) -> list[str]:
+    """The caption's provenance line, or nothing when the switch is off."""
+    return [STAMP] if on_image_stamp(cfg) else []
+
 
 def stamp_text(mode: str) -> str:
     """The banner written into the CSV and manifest for ``mode``.
 
-    Sample runs carry the placeholder banner; a full run says so plainly, so a
-    full-data artefact can never be mistaken for unvalidated sample output.
-    The drawn figures keep using the sample banner (``STAMP``) unchanged.
+    Sample runs carry the sample banner; a full run says so plainly, so a
+    full-data artefact can never be mistaken for sample output. This is the
+    artefact-level stamp only: whether the same banner is DRAWN on a figure
+    is separately controlled by ``figures.provenance.on_image_stamp`` (D180).
     """
     if mode == "sample":
         return STAMP
@@ -541,16 +560,17 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
 
 
 def render(plot: ggplot, cfg: common.Config, out_png: Path,
-           block: str = "hole", stamp: bool = True) -> plt.Figure:
+           block: str = "hole") -> plt.Figure:
     """Draw and save once, with fixed metadata so repeated runs are identical.
 
-    ``stamp=False`` omits the on-image provenance banner (figure 1 only: the
-    banner is replaced by the CSV/manifest stamp, so it is not lost).
+    The on-image provenance banner is drawn only when
+    ``figures.provenance.on_image_stamp`` is true (default false, D180); the
+    CSV and manifest always carry the stamp, so it is never lost.
     """
     dpi = int(cfg.get(f"figures.{block}.dpi"))
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig = plot.draw()
-    if stamp:
+    if on_image_stamp(cfg):
         fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.2,
                  fontweight="bold", color=ALERT)
     fig.savefig(out_png, dpi=dpi, facecolor="white",
@@ -811,7 +831,7 @@ def plot_drill_coverage(table: pd.DataFrame, context: dict,
                 f"{context['n_drills']} drills, {context['n_turns']:,} valid "
                 f"Combine DB turns from {context['n_players']} players.")
     caption = "\n".join([
-        STAMP,
+        *stamp_lines(cfg),
         (f"The ten-drill inventory is {context['n_drills']} drills and "
          f"{context['n_turns']:,} valid DB turns ({context['n_reps']:,} reps) "
          f"from {context['n_players']} players."),
@@ -1178,7 +1198,7 @@ def plot_before_after(table: pd.DataFrame, context: dict, proj: dict,
                 f"supply with the proposed drill added. Grid "
                 f"{context['grid_shape'][0]} × {context['grid_shape'][1]}.")
     caption = "\n".join([
-        STAMP,
+        *stamp_lines(cfg),
         (f"LEFT is MEASURED: every valid DB Combine turn in "
          f"outputs/turns/turns.parquet, counted at render time. RIGHT is the same "
          f"measured supply PLUS an ARITHMETIC projection: {proj['reps']} reps × "
@@ -1368,9 +1388,9 @@ def before_after_manifest_payload(table: pd.DataFrame, context: dict,
 
 # ------------------------------- figure 4: the tempo-break drill, drawn
 #: A DIAGRAM, not a data plot. Every dimension is copied from the drill source
-#: note (§2). Nothing on this figure is measured, so it is deliberately NOT
-#: stamped with ``STAMP`` (the sample-data provenance banner): it carries its
-#: own SCHEMATIC status line instead, and the manifest records that choice.
+#: note (§2). Nothing on this figure is measured, so it carries its own
+#: SCHEMATIC status line instead of a data-provenance banner, and the manifest
+#: records that choice.
 FIGURE_KEY_DRILL_SCHEMATIC = "fig_drill_schematic"
 
 DRILL_SCHEMATIC_COLUMNS = [
@@ -1916,13 +1936,13 @@ def drill_schematic_csv_frame(table: pd.DataFrame,
 
 def write_drill_schematic_csv(table: pd.DataFrame, path: Path,
                               cfg: common.Config) -> Path:
-    """Write the geometry CSV WITHOUT the sample-data provenance columns.
+    """Write the geometry CSV WITHOUT the data-provenance columns.
 
-    ``common.write_csv`` prefixes every row with ``PLACEHOLDER_SAMPLE`` /
-    ``UNVALIDATED SAMPLE OUTPUT`` because it writes data artefacts. This figure
-    is a drawing: nothing on it is measured, so stamping it as sample data
-    would be a false provenance claim. The SCHEMATIC status is the correct
-    stamp, and it is written into the leading columns instead.
+    ``common.write_csv`` prefixes every row with the stage's provenance stamp
+    because it writes data artefacts. This figure is a drawing: nothing on it
+    is measured, so a data-provenance stamp would be a false claim. The
+    SCHEMATIC status is the correct stamp, and it is written into the leading
+    columns instead.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1945,10 +1965,9 @@ def drill_schematic_manifest_payload(table: pd.DataFrame,
         "stamp": context["status_stamp"],
         "provenance_applied": False,
         "provenance_note": (
-            "Deliberately NOT stamped with the PLACEHOLDER_SAMPLE / "
-            "UNVALIDATED SAMPLE OUTPUT banner used by figures 1-3: this is a "
-            "schematic drawing, not a data artefact, and nothing on it is "
-            "measured. The SCHEMATIC status line is the correct stamp."),
+            "This is a schematic drawing, not a data artefact: nothing on it "
+            "is measured. The SCHEMATIC status line is the correct stamp, and "
+            "the diagram carries no data-provenance banner."),
         "claim": (
             "Schematic of a Combine tempo-break drill: walk in, accelerate over "
             "an 8-10 yd approach to 3-5 yd/s, single plant, break 40 and 55 "
@@ -2269,7 +2288,7 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
         f"printed on the {emphasis} panel only.", 160)
 
     caption_lines = [
-        STAMP,
+        *stamp_lines(cfg),
         (f"{n_positions} positions, {n_turns:,} valid turns in these panels. "
          f"Excluded from these panels: {context['n_excluded']:,} valid game "
          "turns with position_group OTHER (unclassified), so this is not a "
@@ -2951,12 +2970,12 @@ def build_measurement_limits(left: pd.DataFrame, right: pd.DataFrame,
     # ------------------------------------------------------------- caption
     d = DETECTOR_EVIDENCE
     caption_lines = [
-        STAMP,
+        *stamp_lines(cfg),
         (f"AT_BOUNDARY means the between-player variance is at the floor of "
          f"the envelope's grid to the precision this data supports: {lctx['n_at_boundary']} "
          f"of {lctx['n_components']} components, drawn as empty bars on the "
          "baseline. It is a finding about the data, not an error, and it is "
-         "why no per-player ranking is offered: this sample cannot tell these "
+         "why no per-player ranking is offered: the available turns cannot tell these "
          "players apart on these measures."),
         (f"Right: peak lateral acceleration is pooled over both settings and "
          f"rises from {right.loc[0, 'median_lateral_accel_yd_s2']:.1f} yd/s² "
@@ -2989,8 +3008,9 @@ def build_measurement_limits(left: pd.DataFrame, right: pd.DataFrame,
     fig.text(0.012, 0.195, "\n".join(wrapped), fontsize=6.35,
              ha="left", va="top", color="#333333", linespacing=1.42)
 
-    fig.text(0.988, 0.985, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.988, 0.985, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
     return fig
 
 
@@ -3437,7 +3457,7 @@ def plot_gap_honest(table: pd.DataFrame, context: dict,
             "moves.", 178))
 
     caption_lines = [
-        STAMP,
+        *stamp_lines(cfg),
         (f"Panel a: {h['n_band']['combine']} Combine vs {h['n_band']['game']} "
          f"game turns in {context['band_deg'][0]:g}–{context['band_deg'][1]:g}°; "
          f"{h['n_players']['combine']} Combine players × one session vs "
@@ -4093,7 +4113,7 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
         f"({game_shallow:.2f}) on {game_n_shallow} turns.")
 
     caption_lines = [
-        STAMP,
+        *stamp_lines(cfg),
         "FINDING, AS MEASURED. " + verdict,
         (f"The sharpest plants, 150–180°: median apex ÷ entry {deep_txt}. "
          "Apex retention is apex speed divided by entry speed, so "
@@ -4124,8 +4144,8 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
          "outputs/turns/turns.parquet (valid turns, stage 02); every value is "
          "in outputs/figures/fig_turn_cost.csv. Bands are the reporting bands "
          "of figures 1, 3 and 5 (figures.hole.bands), left-closed. Descriptive "
-         "only: no per-player values, no ranking, no p-values. Sample data: "
-         "nothing here is a finding about the 2027 class."),
+         "only: no per-player values, no ranking, no p-values. This describes "
+         "the measured turns only; it is not a projection to the 2027 class."),
     ]
     wrapped: list[str] = []
     for line in caption_lines:
@@ -4133,8 +4153,9 @@ def plot_turn_cost(table: pd.DataFrame, context: dict,
     fig.text(0.012, 0.262, "\n".join(wrapped), fontsize=6.2,
              ha="left", va="top", color="#333333", linespacing=1.33)
 
-    fig.text(0.988, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.988, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
 
     # Draw audit: what was drawn as a value, and what was not. A test can read
     # this instead of counting artists, and the figure raises if it disagrees
@@ -4258,7 +4279,8 @@ def turn_cost_manifest_payload(table: pd.DataFrame, context: dict,
         "n_valid": context["n_valid"],
         "n_by_setting": context["n_by_setting"],
         "caveats": [
-            ("Sample data: nothing here is a finding about the 2027 class."),
+            ("This describes the measured turns only; it is not a projection "
+             "to the 2027 class."),
             ("apex_retention is apex_speed / entry_speed: the speed lost at "
              "the plant. speed_retention (exit / entry) is above 1 by "
              "construction because the window runs between speed maxima and "
@@ -4631,9 +4653,9 @@ def plot_stopwatch(table: pd.DataFrame, context: dict,
              fontsize=8.4, ha="left", va="top", color="#333333")
 
     caption_lines = [
-        STAMP,
+        *stamp_lines(cfg),
         ("FINDING, AS MEASURED. The three-cone is published as a single scalar, "
-         f"and this sample's drills contained {context['turns_per_player_min']}"
+         f"and these drills contained {context['turns_per_player_min']}"
          f"–{context['turns_per_player_max']} detected turns each across "
          f"{context['n_players']} players ({context['n_turns']} turns), "
          f"spanning {context['angle_min']:.0f}° to {context['angle_max']:.0f}° "
@@ -4658,16 +4680,16 @@ def plot_stopwatch(table: pd.DataFrame, context: dict,
          "draw a thin case."),
         (f"ATTEMPTS. {context['n_multi_attempt_players']} of "
          f"{context['n_players']} players have more than one three-cone "
-         "attempt in the sample; turns are pooled across attempts inside the "
+         "attempt in the data; turns are pooled across attempts inside the "
          "drill, as in every other figure here. "
          f"{context['duplicate_times']} players share an identical published "
          "time with another player, which is why panel (b) shows overlapping "
          "columns rather than one point per time."),
         ("Dots are the detector's valid turns, recomputed at render time from "
          "outputs/turns/turns.parquet; every value is in "
-         "outputs/figures/fig_stopwatch.csv. Sample data: this shows what the "
-         "metric compresses, not how well it predicts, and nothing here is a "
-         "finding about the 2027 class."),
+         "outputs/figures/fig_stopwatch.csv. This shows what the metric "
+         "compresses, not how well it predicts; it is not a projection to the "
+         "2027 class."),
     ]
     wrapped: list[str] = []
     for line in caption_lines:
@@ -4675,8 +4697,9 @@ def plot_stopwatch(table: pd.DataFrame, context: dict,
     fig.text(0.012, 0.258, "\n".join(wrapped), fontsize=6.05,
              ha="left", va="top", color="#333333", linespacing=1.30)
 
-    fig.text(0.988, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.988, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
 
     # Draw audit: every turn row is exactly one dot in each panel.
     if len(table) != context["n_turns"]:
@@ -4796,8 +4819,8 @@ def stopwatch_manifest_payload(table: pd.DataFrame, context: dict,
             "Any correlation, R², regression, p-value or fitted curve.",
         ],
         "caveats": [
-            ("Sample data: one session of sample data; nothing here is a "
-             "finding about the 2027 class."),
+            ("Exposure: one Combine session and the game tracking in this "
+             "dataset; this is not a projection to the 2027 class."),
             ("Descriptive only: the figure shows what the metric compresses, "
              "not how well it predicts. With this many matched players an "
              "association test would be underpowered, so none is run."),
@@ -5511,7 +5534,7 @@ def plot_both_hips(table: pd.DataFrame, context: dict,
         "axis, counts on the bars.")
 
     caption_lines = [
-        STAMP,
+        *stamp_lines(cfg),
         ("FINDING, AS MEASURED. The Combine's "
          f"{context['totals']['combine']} shallow turns in this band come from "
          f"{context['players']['combine']} players, a median of "
@@ -5553,10 +5576,10 @@ def plot_both_hips(table: pd.DataFrame, context: dict,
          "produce a left/right asymmetry; nothing in this figure is a modelled "
          "effect, an estimate, or an input to the envelope."),
         ("Counts are recomputed at render time from outputs/turns/turns.parquet "
-         "(valid turns), the raw game tracking sample and data/raw/"
+         "(valid turns), the raw game tracking data and data/raw/"
          "player_play.csv; every value shown is in "
-         "outputs/figures/fig_both_hips.csv. Sample data: this says what the "
-         "Combine does and does not test, not what any player can do."),
+         "outputs/figures/fig_both_hips.csv. This says what the Combine does "
+         "and does not test, not what any player can do."),
     ]
     wrapped: list[str] = []
     for line in caption_lines:
@@ -5613,8 +5636,9 @@ def render_both_hips(plot: ggplot, cfg: common.Config, out_png: Path) -> Path:
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig = plot.draw()
-    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
     fig.savefig(out_png, dpi=dpi, facecolor="white",
                 metadata={"Software": "bdb27-figures"})
     plt.close(fig)
@@ -5763,8 +5787,8 @@ def both_hips_manifest_payload(table: pd.DataFrame, context: dict,
             "correlation or fitted effect for the split.",
         ],
         "caveats": [
-            ("Sample data: one session of sample data; nothing here is a "
-             "finding about the 2027 class."),
+            ("Exposure: one Combine session and the game tracking in this "
+             "dataset; this is not a projection to the 2027 class."),
             ("Descriptive counts only. The split is not tested for symmetry and "
              "no p-value is computed anywhere in the figure's code path."),
             ("The capacity envelope is fitted on |turn_angle| with no direction "
@@ -6134,10 +6158,10 @@ def plot_shallow_sources(table: pd.DataFrame, context: dict,
         "session per player), games below. Nothing is averaged.")
 
     caption_lines = [
-        STAMP,
+        *stamp_lines(cfg),
         ("FINDING, AS MEASURED. The Combine produces "
          f"{c_tot} valid {context['position']} turns of {low:g}–{high:g}° in "
-         f"this sample, from {c_pl} players: {c_one} of those {c_pl} produced "
+         f"these data, from {c_pl} players: {c_one} of those {c_pl} produced "
          f"exactly one, and the largest single count is "
          f"{context['max_turns']['combine']}. Games produce {g_tot} such turns "
          f"from {g_pl} players, a median of {_num(context['medians']['game'])} "
@@ -6168,10 +6192,11 @@ def plot_shallow_sources(table: pd.DataFrame, context: dict,
          "coverage score, no per-player ranking. A dot at 1 is one incidental "
          "turn, not one measured ability, and no exposure correction is "
          "applied: the Combine row is one session per player, the game row is "
-         "whatever snaps the sample contains, and the two rows are not "
+         "whatever snaps the game tracking contains, and the two rows are not "
          "sampled alike."),
-        (f"Sample data: one session of sample data. Counts are recomputed at "
-         f"render time from outputs/turns/turns.parquet (valid turns); every "
+        (f"One Combine session and the game tracking in this dataset. Counts "
+         f"are recomputed at render time from outputs/turns/turns.parquet "
+         f"(valid turns); every "
          f"value shown is in outputs/figures/{FIGURE_KEY_SHALLOW_SOURCES}.csv. "
          "This says what the Combine does not test, not what any player can "
          "do."),
@@ -6246,8 +6271,9 @@ def render_shallow_sources(plot: ggplot, cfg: common.Config,
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig = plot.draw()
-    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
     fig.savefig(out_png, dpi=dpi, facecolor="white",
                 metadata={"Software": "bdb27-figures"})
     plt.close(fig)
@@ -6330,8 +6356,8 @@ def shallow_sources_manifest_payload(table: pd.DataFrame, context: dict,
             "a modelling requirement.",
         ],
         "caveats": [
-            ("Sample data: one session of sample data; nothing here is a "
-             "finding about the 2027 class."),
+            ("Exposure: one Combine session and the game tracking in this "
+             "dataset; this is not a projection to the 2027 class."),
             ("Dots are drawn as counted; sparse rows are not aggregated into "
              "bars and no player with a turn in the band is dropped."),
             ("Direction, drill purpose and player names are outside this "
@@ -6557,7 +6583,8 @@ def ledger_table(turns: pd.DataFrame,
     return table, context
 
 
-def _ledger_caption(table: pd.DataFrame, context: dict) -> str:
+def _ledger_caption(table: pd.DataFrame, context: dict,
+                    cfg: common.Config) -> str:
     """The ledger's caption, with every count taken from the rendered table."""
     g = context["game_turns"]
     g_pl = context["game_players"]
@@ -6573,12 +6600,12 @@ def _ledger_caption(table: pd.DataFrame, context: dict) -> str:
     low, high = context["angle_low"], context["angle_high"]
     wl, wh = context["rel_low"], context["rel_high"]
     return "\n".join([
-        STAMP,
+        *stamp_lines(cfg),
         ("WHAT THIS IS. Three counts of DB turns in the "
          f"{low:g}–{high:g}° band on one shared axis, each count printed at "
          "its bar end. Two bars are MEASURED from outputs/turns/turns.parquet "
          "at render time; the third is ARITHMETIC on a drill that does not "
-         "exist in this sample."),
+         "exist in this dataset."),
         (f"GAME DEMAND — MEASURED. {g} valid DB game turns of "
          f"{low:g}–{high:g}°: {g_pl} players across {g_pg} player-games."),
         (f"COMBINE SUPPLY — MEASURED. {c} valid Combine DB turns of "
@@ -6610,8 +6637,8 @@ def _ledger_caption(table: pd.DataFrame, context: dict) -> str:
         (f"WHAT IS NOT DRAWN. The bars are not subtracted: {g} − {c} would be a "
          "difference in recorded turns, not in how many players can turn, and "
          "no such difference is drawn or interpreted. No player names appear. "
-         "Sample data: one session of sample data; nothing here is a finding "
-         "about the 2027 class."),
+         "Exposure: one Combine session and the game tracking in this dataset; "
+         "this is not a projection to the 2027 class."),
     ])
 
 
@@ -6703,7 +6730,7 @@ def plot_ledger(table: pd.DataFrame, context: dict,
              fontsize=8.8, ha="left", va="top", color="#333333")
 
     caption = "\n".join(_wrap_text(line, 240)
-                        for line in _ledger_caption(table, context).split("\n"))
+                        for line in _ledger_caption(table, context, cfg).split("\n"))
     fig.text(0.010, 0.014, caption, ha="left", va="bottom", fontsize=6.0,
              color="#333333", linespacing=1.32)
     return fig
@@ -6715,8 +6742,9 @@ def render_ledger(fig: plt.Figure, cfg: common.Config,
     dpi = int(cfg.get("figures.ledger.dpi"))
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
     fig.savefig(out_png, dpi=dpi, facecolor="white",
                 metadata={"Software": "bdb27-figures"})
     plt.close(fig)
@@ -6849,15 +6877,16 @@ def ledger_manifest_payload(table: pd.DataFrame, context: dict,
             "That the difference between the two measured bars is a difference "
             "in how many players can turn.",
             "That six reps would make any player's turn estimate reliable in "
-            "this sample.",
-            "Anything about the 2027 class; this is one session of sample data.",
+            "these data.",
+            "Anything about the 2027 class; this covers one Combine session "
+            "and the games in this dataset.",
         ],
         "caveats": [
-            ("Sample data: one session of sample data; nothing here is a "
-             "finding about the 2027 class."),
+            ("Exposure: one Combine session and the game tracking in this "
+             "dataset; this is not a projection to the 2027 class."),
             ("The projection assumes every rep yields exactly one valid turn "
-             "in the band, which the sample cannot verify because the drill "
-             "does not exist."),
+             "in the band, which cannot be verified because the drill was "
+             "not run."),
             ("The axis is logarithmic: bar lengths are not proportional to the "
              "counts and the printed numbers are the evidence."),
             ("Player names are outside this figure: only counts and player "
@@ -6878,7 +6907,7 @@ def ledger_manifest_payload(table: pd.DataFrame, context: dict,
 #:
 #: The whiskers are CAPPED for drawing only (config key
 #: ``figures.bars_of_doubt.max_whisker_width_deg``). The uncapped range has
-#: p90 = 98.7 degrees on this sample because an alternative smoother can latch
+#: p90 = 98.7 degrees on this dataset because an alternative smoother can latch
 #: onto a different corner near the same centre time; drawn uncapped it would
 #: swamp the 15-degree band. The CSV keeps the uncapped values and the count
 #: of cut rows is printed on the image.
@@ -7043,12 +7072,12 @@ def bars_of_doubt_table(turns: pd.DataFrame,
     return band, context
 
 
-def _bars_of_doubt_caption(context: dict) -> list[str]:
+def _bars_of_doubt_caption(context: dict, cfg: common.Config) -> list[str]:
     """Caption lines; the two detector facts are deliberately separate lines."""
     ev = DETECTOR_EVIDENCE
     n = context["n_rows"]
     return [
-        STAMP,
+        *stamp_lines(cfg),
         (f"WHAT THIS IS. One horizontal row per valid DB turn with a measured "
          f"|turn_angle| in the {context['angle_low']:g}–"
          f"{context['angle_high']:g}° band — {n} turns "
@@ -7087,8 +7116,8 @@ def _bars_of_doubt_caption(context: dict) -> list[str]:
          "no smoothing of the smoothing, no player names. Rows are turns, not "
          "players."),
         ("SOURCE. outputs/turns/turns.parquet (valid DB turns, stage 02); every "
-         "value is recomputed at render time. Sample data: one session of "
-         "sample data; nothing here is a finding about the 2027 class."),
+         "value is recomputed at render time (one Combine session and the game "
+         "tracking in this dataset); this is not a projection to the 2027 class."),
     ]
 
 
@@ -7189,7 +7218,7 @@ def plot_bars_of_doubt(table: pd.DataFrame, context: dict,
              fontsize=8.2, ha="left", va="top", color="#333333")
 
     caption = "\n".join(_wrap_text(line, 238)
-                        for line in _bars_of_doubt_caption(context))
+                        for line in _bars_of_doubt_caption(context, cfg))
     fig.text(0.008, 0.012, caption, ha="left", va="bottom", fontsize=6.0,
              color="#333333", linespacing=1.30)
     return fig
@@ -7201,8 +7230,9 @@ def render_bars_of_doubt(fig: plt.Figure, cfg: common.Config,
     dpi = int(cfg.get("figures.bars_of_doubt.dpi"))
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
     fig.savefig(out_png, dpi=dpi, facecolor="white",
                 metadata={"Software": "bdb27-figures"})
     plt.close(fig)
@@ -7317,7 +7347,8 @@ def bars_of_doubt_manifest_payload(table: pd.DataFrame, context: dict,
             "band; the figure says the neighbouring band is plausible.",
             "That the two detector checks are one combined test; they are "
             "separate facts, stated separately.",
-            "Anything about the 2027 class; this is one session of sample data.",
+            "Anything about the 2027 class; this covers one Combine session "
+            "and the games in this dataset.",
         ],
         "caveats": [
             (f"Whiskers are capped at {context['cap_width']:g}° total width "
@@ -7329,8 +7360,8 @@ def bars_of_doubt_manifest_payload(table: pd.DataFrame, context: dict,
             ("Rows are turns, not players; no player names appear."),
             ("No histogram, no p-value, no error bar on counts, and no "
              "smoothing of the smoothing."),
-            ("Sample data: one session of sample data; nothing here is a "
-             "finding about the 2027 class."),
+            ("Exposure: one Combine session and the game tracking in this "
+             "dataset; this is not a projection to the 2027 class."),
         ],
         "png": f"outputs/figures/{FIGURE_KEY_BARS_OF_DOUBT}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_BARS_OF_DOUBT}.csv",
@@ -7599,8 +7630,8 @@ def _sc_shallow_phrase(context: dict) -> str:
     return "".join(items)
 
 
-def _supply_composition_caption(table: pd.DataFrame,
-                                context: dict) -> list[str]:
+def _supply_composition_caption(table: pd.DataFrame, context: dict,
+                                cfg: common.Config) -> list[str]:
     """Caption lines, every count read from the rendered table."""
     n = context["n_turns"]
     n_drills = context["n_drills"]
@@ -7613,7 +7644,7 @@ def _supply_composition_caption(table: pd.DataFrame,
     pooled = ", ".join(f"{b} {c}" for b, c in
                        zip(context["bands"], context["band_totals"]))
     return [
-        STAMP,
+        *stamp_lines(cfg),
         (f"WHAT THIS IS. A drill x angle-band matrix: {n_drills} drills "
          f"(rows, sorted by that drill's own turn total) carrying {n:,} "
          f"valid DB Combine turns from {n_players} players, against the "
@@ -7649,8 +7680,8 @@ def _supply_composition_caption(table: pd.DataFrame,
          "only. Counts are recomputed at render time from "
          "outputs/turns/turns.parquet (valid turns); every value is in "
          f"outputs/figures/{FIGURE_KEY_SUPPLY_COMPOSITION}.csv."),
-        ("SAMPLE DATA. One session of sample data. Nothing here is a finding "
-         "about the 2027 class, and equal-sized cells do not mean equal drill "
+        ("ONE COMBINE SESSION. Nothing here is a projection to the 2027 "
+         "class, and equal-sized cells do not mean equal drill "
          "volume: read the turn counts on the row labels."),
     ]
 
@@ -7759,7 +7790,7 @@ def plot_supply_composition(table: pd.DataFrame, context: dict,
              fontsize=7.8, ha="left", va="top", color=focus["colour"])
 
     caption = "\n".join(_wrap_text(line, 150)
-                        for line in _supply_composition_caption(table, context))
+                        for line in _supply_composition_caption(table, context, cfg))
     fig.text(0.010, 0.012, caption, ha="left", va="bottom", fontsize=6.0,
              color="#333333", linespacing=1.30)
     return fig
@@ -7771,8 +7802,9 @@ def render_supply_composition(fig: plt.Figure, cfg: common.Config,
     dpi = int(cfg.get("figures.supply_composition.dpi"))
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
     fig.savefig(out_png, dpi=dpi, facecolor="white",
                 metadata={"Software": "bdb27-figures"})
     plt.close(fig)
@@ -7888,7 +7920,8 @@ def supply_composition_manifest_payload(table: pd.DataFrame, context: dict,
             "share is a share of its own drill's turns.",
             "That the large cells are a target; they are where turns "
             "currently exist.",
-            "Anything about the 2027 class; this is one session of sample data.",
+            "Anything about the 2027 class; this covers one Combine session "
+            "and the games in this dataset.",
         ],
         "caveats": [
             ("Shares are within a drill; each row sums to 100%. The pooled "
@@ -7898,8 +7931,8 @@ def supply_composition_manifest_payload(table: pd.DataFrame, context: dict,
              f"({sh['turns']} turns); its counts and within-drill shares are "
              "printed in the cells and listed in the CSV."),
             ("No player names and no per-player values appear."),
-            ("Sample data: one session of sample data; nothing here is a "
-             "finding about the 2027 class."),
+            ("Exposure: one Combine session and the game tracking in this "
+             "dataset; this is not a projection to the 2027 class."),
         ],
         "png": f"outputs/figures/{FIGURE_KEY_SUPPLY_COMPOSITION}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_SUPPLY_COMPOSITION}.csv",
@@ -8165,7 +8198,7 @@ def band_only_csv_frame(table: pd.DataFrame, context: dict) -> pd.DataFrame:
     return table[columns].reset_index(drop=True)
 
 
-def _band_only_caption(context: dict) -> list[str]:
+def _band_only_caption(context: dict, cfg: common.Config) -> list[str]:
     """Caption lines; every number comes from the rendered table."""
     r = context["ranges"]
     c, g = context["by_setting"]["combine"], context["by_setting"]["game"]
@@ -8177,7 +8210,7 @@ def _band_only_caption(context: dict) -> list[str]:
         f"{row['abs_turn_angle']:.1f}°)"
         for row in context["combine_rows"])
     return [
-        STAMP,
+        *stamp_lines(cfg),
         (f"WHAT THIS IS. One panel, one band: every valid "
          f"{context['position']} turn whose absolute angle lies in "
          f"[{context['angle_low']:g}, {context['angle_high']:g}) — "
@@ -8205,7 +8238,7 @@ def _band_only_caption(context: dict) -> list[str]:
          "turns, not a distribution: four points cannot support a density "
          "curve, a fit, a box plot or a confidence ellipse, and none is "
          "drawn. No mean, no interval, no smoothing. What the figure cannot "
-         f"show is any Combine turn at game speed: the sample has none in "
+         f"show is any Combine turn at game speed: the data has none in "
          f"this band above {r['combine_entry']['max']:.2f} yd/s, so a Combine "
          "distribution at those speeds cannot be estimated from it — only "
          "stated as absent here."),
@@ -8226,10 +8259,11 @@ def _band_only_caption(context: dict) -> list[str]:
          "and angle are unchanged. No jitter is used anywhere else."),
         ("WHAT IS NOT HERE. No other angle band, no pooled comparison, no "
          "player-level value, no inference, no p-value. Game turns come from "
-         "whatever snaps the sample contains and the Combine from one session "
+         "whatever snaps the game tracking contains and the Combine from one session "
          "of drills; the two are not sampled alike, and nothing here compares "
-         "them beyond their own measured ranges. Sample data: one session of "
-         "sample data; nothing here is a finding about the 2027 class. Every "
+         "them beyond their own measured ranges. One Combine session and the "
+         "game tracking in this dataset; nothing here is a projection to the "
+         "2027 class. Every "
          f"value is in outputs/figures/{FIGURE_KEY_BAND_ONLY}.csv."),
     ]
 
@@ -8319,7 +8353,7 @@ def plot_band_only(table: pd.DataFrame, context: dict,
              fontsize=8.0, ha="left", va="top", color="#333333")
 
     caption = "\n".join(_wrap_text(line, 170)
-                        for line in _band_only_caption(context))
+                        for line in _band_only_caption(context, cfg))
     fig.text(0.010, 0.010, caption, ha="left", va="bottom", fontsize=6.0,
              color="#333333", linespacing=1.30)
     return fig
@@ -8331,8 +8365,9 @@ def render_band_only(fig: plt.Figure, cfg: common.Config,
     dpi = int(cfg.get("figures.band_only.dpi"))
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
     fig.savefig(out_png, dpi=dpi, facecolor="white",
                 metadata={"Software": "bdb27-figures"})
     plt.close(fig)
@@ -8427,12 +8462,13 @@ def band_only_manifest_payload(table: pd.DataFrame, context: dict,
             "That the Combine turns are a distribution, a mean, or a typical "
             "value; four points are a list.",
             "That any Combine turn exists at game speeds in this band; the "
-            "sample has none.",
+            "data has none.",
             (f"That the {c} Combine turns are {c} players; they are {c} "
              f"turns from {context['combine_players']} players."),
             "That the two settings are sampled alike or that the gap is a "
             "shortfall of ability.",
-            "Anything about the 2027 class; this is one session of sample data.",
+            "Anything about the 2027 class; this covers one Combine session "
+            "and the games in this dataset.",
         ],
         "caveats": [
             ("One dot per turn at its measured coordinates. "
@@ -8452,8 +8488,8 @@ def band_only_manifest_payload(table: pd.DataFrame, context: dict,
                 "; no player supplies more than one.")),
             ("No player names or ids appear in the figure, the CSV or this "
              "entry."),
-            ("Sample data: one session of sample data; nothing here is a "
-             "finding about the 2027 class."),
+            ("Exposure: one Combine session and the game tracking in this "
+             "dataset; this is not a projection to the 2027 class."),
         ],
         "png": f"outputs/figures/{FIGURE_KEY_BAND_ONLY}.png",
         "csv": f"outputs/figures/{FIGURE_KEY_BAND_ONLY}.csv",
@@ -8786,7 +8822,7 @@ def _ee_cell(table: pd.DataFrame, band_index: int, setting: str,
     return part.iloc[0]
 
 
-def _entry_exit_speed_caption(context: dict) -> list[str]:
+def _entry_exit_speed_caption(context: dict, cfg: common.Config) -> list[str]:
     """Caption lines; every number comes from the computed table."""
     table = context["table"]
     bands = context["bands"]
@@ -8826,7 +8862,7 @@ def _entry_exit_speed_caption(context: dict) -> list[str]:
     shallow = context["duration"]["shallow_median_s"]
     other = context["duration"]["other_median_s"]
     return [
-        STAMP,
+        *stamp_lines(cfg),
         (f"WHAT THIS IS. Every valid {context['position']} turn in "
          f"outputs/turns/turns.parquet, both settings, banded by absolute turn "
          f"angle on the seven reporting bands "
@@ -8859,8 +8895,8 @@ def _entry_exit_speed_caption(context: dict) -> list[str]:
          "player-level value; the intervals are bootstrap intervals, not "
          "posteriors. The exit-speed definition is detector-window-dependent "
          "(see honesty (a)), so no exit value is a free-standing measure of "
-         "acceleration. Sample data: nothing here is a finding about the 2027 "
-         f"class. Every value is in outputs/figures/"
+         "acceleration. This describes the measured turns only; it is not a "
+         f"projection to the 2027 class. Every value is in outputs/figures/"
          f"{FIGURE_KEY_ENTRY_EXIT_SPEED}.csv."),
     ]
 
@@ -9016,7 +9052,7 @@ def plot_entry_exit_speed(table: pd.DataFrame, context: dict,
              fontsize=9.2, ha="left", va="top", color="#333333")
 
     caption = "\n".join(_wrap_text(line, 180)
-                        for line in _entry_exit_speed_caption(context))
+                        for line in _entry_exit_speed_caption(context, cfg))
     fig.text(0.010, 0.010, caption, ha="left", va="bottom", fontsize=6.0,
              color="#333333", linespacing=1.30)
     return fig
@@ -9028,8 +9064,9 @@ def render_entry_exit_speed(fig: plt.Figure, cfg: common.Config,
     dpi = int(cfg.get("figures.entry_exit_speed.dpi"))
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
     fig.savefig(out_png, dpi=dpi, facecolor="white",
                 metadata={"Software": "bdb27-figures"})
     plt.close(fig)
@@ -9141,7 +9178,8 @@ def entry_exit_speed_manifest_payload(table: pd.DataFrame, context: dict,
             "Any player-level value; no player id or name is printed.",
             "That exit speed is a fixed-distance measurement; it is measured "
             "at the end of the detector window.",
-            "Anything about the 2027 class; this is one session of sample data.",
+            "Anything about the 2027 class; this covers one Combine session "
+            "and the games in this dataset.",
         ],
         "caveats": [
             _EE_EXIT_POSITION + ".",
@@ -9150,7 +9188,8 @@ def entry_exit_speed_manifest_payload(table: pd.DataFrame, context: dict,
             f"{_EE_FLOOR_SENTENCE}: " + "; ".join(
                 f"{b['band']} holds {b['n_turns']} turns from "
                 f"{b['n_players']} players" for b in below) + ".",
-            "Sample data: nothing here is a finding about the 2027 class.",
+            "This describes the measured turns only; it is not a projection "
+             "to the 2027 class.",
         ],
     }
 
@@ -9574,7 +9613,7 @@ def _mf_apex_span_phrase(table: pd.DataFrame, bands: list[str]) -> str:
             f"{float(rows[-1]['value']):.2f} in {rows[-1]['band']}")
 
 
-def _mf_caption_lines(context: dict) -> list[str]:
+def _mf_caption_lines(context: dict, cfg: common.Config) -> list[str]:
     """Caption lines; the four fixed honesty clauses are passed through."""
     table = context["table"]
     bands = context["bands"]
@@ -9627,7 +9666,7 @@ def _mf_caption_lines(context: dict) -> list[str]:
             "per-turn ratios, not a ratio of medians. These are descriptive "
             "medians and shares of measured turns, not outcomes.")
     return [
-        STAMP,
+        *stamp_lines(cfg),
         (f"WHAT THIS IS. Every valid {context['position']} {context['setting']} "
          f"turn in outputs/turns/turns.parquet "
          f"({context['population_turns']:,} turns from "
@@ -9645,8 +9684,8 @@ def _mf_caption_lines(context: dict) -> list[str]:
         "HONESTY (d). " + combine,
         ("WHAT IS NOT HERE. No test, no p-value, no ranking of bands and no "
          "player-level value; the intervals are bootstrap intervals, not "
-         "posteriors. Sample data: nothing here is a finding about the 2027 "
-         f"class. Every value is in outputs/figures/"
+         "posteriors. This describes the measured turns only; it is not a "
+         f"projection to the 2027 class. Every value is in outputs/figures/"
          f"{FIGURE_KEY_MOVEMENT_FAMILY}.csv."),
     ]
 
@@ -9771,7 +9810,7 @@ def plot_movement_family(table: pd.DataFrame, context: dict,
              fontsize=8.8, ha="left", va="top", color="#333333")
 
     caption = "\n".join(_wrap_text(line, 185)
-                        for line in _mf_caption_lines(context))
+                        for line in _mf_caption_lines(context, cfg))
     fig.text(0.010, 0.008, caption, ha="left", va="bottom", fontsize=5.9,
              color="#333333", linespacing=1.28)
     return fig
@@ -9783,8 +9822,9 @@ def render_movement_family(fig: plt.Figure, cfg: common.Config,
     dpi = int(cfg.get("figures.movement_family.dpi"))
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.text(0.995, 0.994, STAMP, ha="right", va="top", fontsize=8.0,
-             fontweight="bold", color=ALERT)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.994, STAMP, ha="right", va="top", fontsize=8.0,
+            fontweight="bold", color=ALERT)
     fig.savefig(out_png, dpi=dpi, facecolor="white",
                 metadata={"Software": "bdb27-figures"})
     plt.close(fig)

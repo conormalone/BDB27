@@ -279,8 +279,8 @@ def test_two_renders_are_byte_identical(table, context, cfg, tmp_path):
     assert digests[0] == digests[1]
 
 
-def test_caption_does_not_claim_shallow_band_is_arc_extreme(context):
-    text = " ".join(figures._mf_caption_lines(context)).lower()
+def test_caption_does_not_claim_shallow_band_is_arc_extreme(context, cfg):
+    text = " ".join(figures._mf_caption_lines(context, cfg)).lower()
     assert "the three arc buckets are one family" in text
     assert "ordinary member of the arc family, not its extreme" in text
     assert "plant family starts above" in text

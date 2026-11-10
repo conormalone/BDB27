@@ -6645,3 +6645,78 @@ assertions), `tests/test_focus_band.py` (figure-5 fixture);
 `outputs/figures/figures_manifest.json`. Two consecutive sample renders are
 byte-identical; the other 16 figure PNGs and every other CSV are unchanged
 apart from `config_sha`/`stamp`/`generated_utc`.
+
+## D180 — No figure draws the placeholder banner; one switch can bring it back · 2026-11-10
+
+**Decision (Conor, 10:40).** *"Stop putting placeholder in every plot, I'll
+decide whether to use it or not, but treat everything as if it will be used"*.
+No figure draws a placeholder/validation banner any more. Every figure is
+treated as production output; provenance is recorded in the artefacts, not
+painted over the drawing.
+
+**One switch, default off.** `config.yaml` gains
+`turn_coverage.figures.provenance.on_image_stamp: false`.
+`figures.on_image_stamp(cfg)` reads it (`PROVENANCE_STAMP_KEY`),
+`figure.stamp_lines(cfg)` returns the caption's provenance line only when it
+is true, and every `fig.text(...)` corner banner sits behind
+`if on_image_stamp(cfg):`. Setting the key to `true` restores the pre-D180
+image behaviour exactly — the same banner in the same place, from one key, with
+no code change. D178's `render(..., stamp=False)` parameter is removed: figure 1
+now uses the same switch as every other figure, so there is no longer a
+figure-1-only special case. `src/06_figures.py` calls `figures.render(plot, cfg,
+png_path)` with no flag.
+
+**Provenance moved, it did not disappear.** Every data CSV keeps its
+`provenance`, `label`, `stamp` and `stamp_text(mode)` column/field, and every
+manifest entry keeps `stamp` (plus `provenance`, `label`, `generated_utc`,
+`config_sha`). `stamp_text(mode)` is unchanged: a sample run writes
+`PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT`, a full run writes
+`FULL DATA OUTPUT`. So the artefact still says what it is; only the image stops
+saying it.
+
+**Scope: figures 1–17.** All 17 carry the switch. With the flag false, none of
+them draws the banner; with it true, 16 do. Figure 4 (the tempo-break
+schematic) is the one exception and stays as D177 left it: it is a diagram, not
+a data plot, so it keeps its own **"SCHEMATIC — illustrative geometry, not
+measured data"** status line and never takes the data-provenance banner — that
+line describes the drawing, so it is not hedging and is not removed.
+
+**Hedging in prose was removed; substantive caveats stayed.** The banner was
+not the only place figures said "sample". Captions and manifest caveats that
+called the work provisional — "Sample data: nothing here is a finding about the
+2027 class", "this sample's", "in the sample" — are rewritten as statements
+about what was measured: "This describes the measured turns only; it is not a
+projection to the 2027 class", "Exposure: one Combine session and the game
+tracking in this dataset". Every substantive caveat is kept verbatim in
+substance: exposure denominators (one Combine session vs the games in this
+dataset, the two not sampled alike), snap-classification `other` share and
+excluded turns, left-closed band definitions and the reversal class, the
+n-threshold / turns-per-player floor annotations, and the detector limits
+(window-defined exit speed, smoother sensitivity, capped whiskers).
+
+**Proof, not assertion.** `src/bdb27/figure_text_scan.py` (CLI:
+`scripts/scan_figure_text.py`) rebuilds all 17 figures with every render entry
+point wrapped, reads back the drawn matplotlib text (`fig.texts`, axis text,
+titles, tick labels, legends) plus the ggplot caption, and fails on any of
+`PLACEHOLDER`, `UNVALIDATED`, `SAMPLE OUTPUT`, `PENDING FULL RUN`. On the sample
+render: **17 figures scanned, 0 hits**. Flipped to `true`: 16 banners return,
+93 hits — so the scan is not vacuous and the restore path is live. Committed as
+`test_no_figure_draws_placeholder_text`, with
+`test_on_image_stamp_switch_controls_the_banner` covering the flag in both
+directions on figure 3 (caption text and `fig.texts`).
+
+**What changed in the artefacts.** All 17 PNGs are re-rendered (16 change;
+`fig_the_hole.png` and `fig_drill_schematic.png` were already banner-free and
+are byte-identical). Every figure CSV is byte-identical except its `config_sha`
+column, which necessarily moves because the config fingerprint hashes the whole
+task block including the new key; all data columns, and the `stamp` column,
+are unchanged. The manifest changes in `config_sha`, `generated_utc` and the
+caveat prose above. Two consecutive sample renders produce byte-identical PNGs.
+
+**Evidence.** `config.yaml` (`figures.provenance.on_image_stamp`);
+`src/bdb27/figures.py` (`PROVENANCE_STAMP_KEY`, `on_image_stamp`,
+`stamp_lines`, the 13 `fig.text` guards, 15 caption call sites, the reworded
+captions/caveats); `src/06_figures.py`; `src/bdb27/figure_text_scan.py`;
+`scripts/scan_figure_text.py`; `tests/test_figures_stage.py`;
+`outputs/figures/*.png`, `outputs/figures/*.csv`,
+`outputs/figures/figures_manifest.json`.

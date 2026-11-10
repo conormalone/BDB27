@@ -331,6 +331,16 @@ turn_coverage:
     speed_band: [0.0, 2.0, 4.0, 6.0, 8.0, 12.0]
 
   figures:
+    # Provenance banner ON THE IMAGE. Conor, 2026-11-10 (D180): plots are
+    # production output — "treat everything as if it will be used" — so the
+    # drawn PLACEHOLDER_SAMPLE / UNVALIDATED SAMPLE OUTPUT banner is OFF.
+    # Provenance is not hidden: every data CSV keeps its `stamp` column and
+    # every manifest entry keeps its `stamp` field (figures.stamp_text(mode)).
+    # Set true to draw the banner on every figure again: that restores the
+    # pre-D180 image behaviour exactly, from this one switch.
+    provenance:
+      on_image_stamp: false
+
     # The case's focus band, styled once for every figure that has a band or
     # angle axis (D172). Red marks the BAND only: on figures 1/3/5/14 the bars
     # already encode Combine vs game, so the focus colour is used for rules,

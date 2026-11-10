@@ -1,8 +1,8 @@
 {
   "provenance": "PLACEHOLDER_SAMPLE",
   "label": "UNVALIDATED SAMPLE OUTPUT",
-  "config_sha": "087d63f05679ec5c",
-  "generated_utc": "2026-11-10T09:41:16Z",
+  "config_sha": "cab5a24960f6d39b",
+  "generated_utc": "2026-11-10T11:07:28Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
@@ -920,7 +920,7 @@
       "status_stamp": "SCHEMATIC \u2014 illustrative geometry, not measured data",
       "stamp": "SCHEMATIC \u2014 illustrative geometry, not measured data",
       "provenance_applied": false,
-      "provenance_note": "Deliberately NOT stamped with the PLACEHOLDER_SAMPLE / UNVALIDATED SAMPLE OUTPUT banner used by figures 1-3: this is a schematic drawing, not a data artefact, and nothing on it is measured. The SCHEMATIC status line is the correct stamp.",
+      "provenance_note": "This is a schematic drawing, not a data artefact: nothing on it is measured. The SCHEMATIC status line is the correct stamp, and the diagram carries no data-provenance banner.",
       "claim": "Schematic of a Combine tempo-break drill: walk in, accelerate over an 8-10 yd approach to 3-5 yd/s, single plant, break 40 and 55 degrees either side, re-accelerate 5 yd through an exit gate; 6 reps (3 left, 3 right, alternating) in ~90 s per player on the existing 3-cone footprint.",
       "spec": {
         "approach_length_yd": [
@@ -3166,7 +3166,7 @@
         "game": 2262
       },
       "caveats": [
-        "Sample data: nothing here is a finding about the 2027 class.",
+        "This describes the measured turns only; it is not a projection to the 2027 class.",
         "apex_retention is apex_speed / entry_speed: the speed lost at the plant. speed_retention (exit / entry) is above 1 by construction because the window runs between speed maxima and includes re-acceleration; it is a definitional footnote, never a cost.",
         "Descriptive only: no per-player values, no ranking, no p-values, no smoothing or fitted curve.",
         "Bands are figures.hole.bands, left-closed; the last class is the reversal class and carries no retention value."
@@ -3257,7 +3257,7 @@
         "Any correlation, R\u00b2, regression, p-value or fitted curve."
       ],
       "caveats": [
-        "Sample data: one session of sample data; nothing here is a finding about the 2027 class.",
+        "Exposure: one Combine session and the game tracking in this dataset; this is not a projection to the 2027 class.",
         "Descriptive only: the figure shows what the metric compresses, not how well it predicts. With this many matched players an association test would be underpowered, so none is run.",
         "Turns are pooled across attempts within the drill; the attempt count per player is printed in the CSV and stated in the caption.",
         "A player's row is the detector's own valid turns, not a scout's reading of the drill; detection limits apply as in every other figure."
@@ -3503,7 +3503,7 @@
         "Any symmetry test, binomial p-value, confidence interval, correlation or fitted effect for the split."
       ],
       "caveats": [
-        "Sample data: one session of sample data; nothing here is a finding about the 2027 class.",
+        "Exposure: one Combine session and the game tracking in this dataset; this is not a projection to the 2027 class.",
         "Descriptive counts only. The split is not tested for symmetry and no p-value is computed anywhere in the figure's code path.",
         "The capacity envelope is fitted on |turn_angle| with no direction term, so it deliberately cannot model a left/right asymmetry; this figure is not a modelled effect.",
         "Direction labels come from the recorded chirality and route checks, not from convention alone; where either fails the bars fall back to SIDE A / SIDE B."
@@ -3619,7 +3619,7 @@
         "That the envelope floor is a property of these players rather than a modelling requirement."
       ],
       "caveats": [
-        "Sample data: one session of sample data; nothing here is a finding about the 2027 class.",
+        "Exposure: one Combine session and the game tracking in this dataset; this is not a projection to the 2027 class.",
         "Dots are drawn as counted; sparse rows are not aggregated into bars and no player with a turn in the band is dropped.",
         "Direction, drill purpose and player names are outside this figure: only counts and drill labels appear."
       ],
@@ -3725,12 +3725,12 @@
       "not_claimed": [
         "That the projected turns are comparable to the measured turns; the projection is arithmetic, not observation.",
         "That the difference between the two measured bars is a difference in how many players can turn.",
-        "That six reps would make any player's turn estimate reliable in this sample.",
-        "Anything about the 2027 class; this is one session of sample data."
+        "That six reps would make any player's turn estimate reliable in these data.",
+        "Anything about the 2027 class; this covers one Combine session and the games in this dataset."
       ],
       "caveats": [
-        "Sample data: one session of sample data; nothing here is a finding about the 2027 class.",
-        "The projection assumes every rep yields exactly one valid turn in the band, which the sample cannot verify because the drill does not exist.",
+        "Exposure: one Combine session and the game tracking in this dataset; this is not a projection to the 2027 class.",
+        "The projection assumes every rep yields exactly one valid turn in the band, which cannot be verified because the drill was not run.",
         "The axis is logarithmic: bar lengths are not proportional to the counts and the printed numbers are the evidence.",
         "Player names are outside this figure: only counts and player counts appear."
       ],
@@ -3810,14 +3810,14 @@
         "That the smoother spread is a confidence interval or a standard error; it is a processing range across smoothers.",
         "That turns whose range crosses an edge belong to the neighbouring band; the figure says the neighbouring band is plausible.",
         "That the two detector checks are one combined test; they are separate facts, stated separately.",
-        "Anything about the 2027 class; this is one session of sample data."
+        "Anything about the 2027 class; this covers one Combine session and the games in this dataset."
       ],
       "caveats": [
         "Whiskers are capped at 20\u00b0 total width for drawing; 31 of 101 rows are cut and marked with a caret. The CSV retains the uncapped values. The uncapped p90 spread is 98.7\u00b0.",
         "3 of 101 rows matched only one smoother; for those no spread is available and the whisker is zero-length.",
         "Rows are turns, not players; no player names appear.",
         "No histogram, no p-value, no error bar on counts, and no smoothing of the smoothing.",
-        "Sample data: one session of sample data; nothing here is a finding about the 2027 class."
+        "Exposure: one Combine session and the game tracking in this dataset; this is not a projection to the 2027 class."
       ],
       "png": "outputs/figures/fig_bars_of_doubt.png",
       "csv": "outputs/figures/fig_bars_of_doubt.csv",
@@ -4467,13 +4467,13 @@
         "That any drill is good or bad, easier or harder; this is an inventory of turns, not a ranking of drill quality.",
         "That the band shares are pooled across drills; every printed share is a share of its own drill's turns.",
         "That the large cells are a target; they are where turns currently exist.",
-        "Anything about the 2027 class; this is one session of sample data."
+        "Anything about the 2027 class; this covers one Combine session and the games in this dataset."
       ],
       "caveats": [
         "Shares are within a drill; each row sums to 100%. The pooled band totals are the labelled footer row, a count and never a share segment.",
         "The 30\u201345\u00b0 band is its own column in the matrix (4 turns); its counts and within-drill shares are printed in the cells and listed in the CSV.",
         "No player names and no per-player values appear.",
-        "Sample data: one session of sample data; nothing here is a finding about the 2027 class."
+        "Exposure: one Combine session and the game tracking in this dataset; this is not a projection to the 2027 class."
       ],
       "png": "outputs/figures/fig_supply_composition.png",
       "csv": "outputs/figures/fig_supply_composition.csv",
@@ -4604,17 +4604,17 @@
       "claim": "In the 30\u201345\u00b0 DB band the 4 Combine turns sit at 2.66\u20133.40 yd/s while the 97 game turns run 2.00\u20137.80 yd/s; all 4 Combine turns and 89 of 97 game turns are inside the 2\u20136 yd/s window, so within this one band the Combine samples only the slow end of the speed range games use.",
       "not_claimed": [
         "That the Combine turns are a distribution, a mean, or a typical value; four points are a list.",
-        "That any Combine turn exists at game speeds in this band; the sample has none.",
+        "That any Combine turn exists at game speeds in this band; the data has none.",
         "That the 4 Combine turns are 4 players; they are 4 turns from 3 players.",
         "That the two settings are sampled alike or that the gap is a shortfall of ability.",
-        "Anything about the 2027 class; this is one session of sample data."
+        "Anything about the 2027 class; this covers one Combine session and the games in this dataset."
       ],
       "caveats": [
         "One dot per turn at its measured coordinates. 3 pairs of near-coincident game turns are separated by 0.08 yd/s for drawing; the measured speed and angle are unchanged in the CSV.",
         "No density curve, fit, box plot, confidence ellipse, mean or interval is drawn: four Combine points cannot support any of them.",
         "The 4 Combine turns are incidental fragments of drills built for other purposes (figure 11); two of the four come from the same player.",
         "No player names or ids appear in the figure, the CSV or this entry.",
-        "Sample data: one session of sample data; nothing here is a finding about the 2027 class."
+        "Exposure: one Combine session and the game tracking in this dataset; this is not a projection to the 2027 class."
       ],
       "png": "outputs/figures/fig_band_only.png",
       "csv": "outputs/figures/fig_band_only.csv",
@@ -5319,13 +5319,13 @@
         "That any band ranks above another; no test and no ranking is run.",
         "Any player-level value; no player id or name is printed.",
         "That exit speed is a fixed-distance measurement; it is measured at the end of the detector window.",
-        "Anything about the 2027 class; this is one session of sample data."
+        "Anything about the 2027 class; this covers one Combine session and the games in this dataset."
       ],
       "caveats": [
         "exit speed is measured at the end of the detector window, not at a fixed distance, so exit > entry mostly means the athlete was accelerating when the window closed.",
         "the shallow 30\u201345\u00b0 bucket holds short turns (median 1.0 s vs 2.0 s), so a fixed-length window flatters sharp cuts and the shallow bucket differently.",
         "Combine confidence intervals are drawn only where a band holds at least 10 turns: 30\u201345\u00b0 holds 4 turns from 3 players.",
-        "Sample data: nothing here is a finding about the 2027 class."
+        "This describes the measured turns only; it is not a projection to the 2027 class."
       ],
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },

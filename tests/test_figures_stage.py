@@ -737,13 +737,13 @@ def test_before_after_provenance_stamp_present(rendered):
     fig = man["figures"]["fig_before_after"]
     assert fig["stamp"] == STAMP
     assert man["provenance"] == "PLACEHOLDER_SAMPLE"
-    # the stamp is also on the image itself (caption text of the drawn plot)
+    # the stamp lives in the CSV/manifest, never on the drawn image (D180)
     turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
     table, context = _ba_cells(turns)
     proj = figures.projected_block(table, context, _cfg_obj(rendered["cfg"]))
     plot = figures.plot_before_after(table, context, proj,
                                      _cfg_obj(rendered["cfg"]))
-    assert STAMP in plot.labels.get("caption", "")
+    assert STAMP not in plot.labels.get("caption", "")
 
 
 def test_before_after_manifest_entry(rendered):
@@ -758,6 +758,60 @@ def test_before_after_manifest_entry(rendered):
     assert "arithmetic projection" in fig["panels"]["right"]
     assert fig["figure"] == "fig_before_after"
     assert fig["counts"] and len(fig["counts"]) == 42
+
+
+def test_on_image_stamp_switch_controls_the_banner(rendered, tmp_path):
+    """D180: the banner is off by default and returns when the switch is on.
+
+    The switch must control BOTH places the banner appears — the drawn corner
+    text and the caption line — and the restore path must be live, not a
+    comment: flipping one config key puts the stamp back on the same figure.
+    """
+    from bdb27 import figures
+
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    table, context = _ba_cells(turns)
+    cfg = _cfg_obj(rendered["cfg"])
+    proj = figures.projected_block(table, context, cfg)
+
+    # ---- default: no banner on the image and none in the caption
+    assert figures.on_image_stamp(cfg) is False
+    plot = figures.plot_before_after(table, context, proj, cfg)
+    assert STAMP not in plot.labels.get("caption", "")
+    fig_off = figures.render(plot, cfg, tmp_path / "stamp_off.png",
+                             block="before_after")
+    assert not [t.get_text() for t in fig_off.texts if STAMP in t.get_text()]
+
+    # ---- flip the one switch: the same data draws the banner again
+    cfg.raw["turn_coverage"]["figures"]["provenance"]["on_image_stamp"] = True
+    assert figures.on_image_stamp(cfg) is True
+    plot_on = figures.plot_before_after(table, context, proj, cfg)
+    assert STAMP in plot_on.labels.get("caption", "")
+    fig_on = figures.render(plot_on, cfg, tmp_path / "stamp_on.png",
+                            block="before_after")
+    drawn = [t.get_text() for t in fig_on.texts]
+    assert STAMP in drawn, "the corner banner did not return"
+    assert any(STAMP in line for line in drawn)
+
+
+def test_no_figure_draws_placeholder_text(rendered):
+    """Every one of the 17 figures is scanned for placeholder hedging (D180).
+
+    Rebuilds each figure in-process and reads the drawn text back — the PNG
+    cannot be searched as text, so the figure objects are the evidence.
+    """
+    from bdb27.figure_text_scan import BANNED_TOKENS, scan_figures
+
+    report = scan_figures(rendered["cfg"])
+    assert report["exit_code"] == 0
+    assert report["figures_scanned"] == 17, report["figures_scanned"]
+    assert report["total_hits"] == 0, [
+        (f["png"], f["hits"]) for f in report["figures"] if f["hits"]]
+    assert BANNED_TOKENS == ("PLACEHOLDER", "UNVALIDATED", "SAMPLE OUTPUT",
+                             "PENDING FULL RUN")
+    # The switch is off, so no figure carries the data-provenance banner; the
+    # schematic keeps its own SCHEMATIC status line (it is not data).
+    assert not any(f["banner_on_image"] for f in report["figures"])
 
 
 def test_before_after_edges_come_from_config(rendered, tmp_path):
@@ -925,8 +979,12 @@ def test_drill_schematic_is_not_stamped_as_sample_data(rendered):
     assert fig["stamp"] == DS_STAMP
     assert fig["status_stamp"] == DS_STAMP
     assert fig["provenance_applied"] is False
-    assert "deliberately NOT stamped" in fig["provenance_note"].lower() or \
-        "Deliberately NOT stamped" in fig["provenance_note"]
+    # D180 removed the data-provenance banner from every data figure, so the
+    # note no longer contrasts itself with one: it states the schematic's own
+    # status instead. The claim it must still make is the same one.
+    note = fig["provenance_note"].lower()
+    assert "schematic drawing, not a data artefact" in note
+    assert "no data-provenance banner" in note
     assert fig["spec"]["break_angles_deg"] == [40]
     assert fig["spec"]["break_band_labels"] == ["30–45°"]
     assert fig["spec"]["gate_distance_yd"] == 5
@@ -1258,7 +1316,7 @@ def test_all_positions_provenance_stamp(rendered):
     (table, context), cfg = _ap_cells(turns, rendered["cfg"])
     caption = figures.plot_all_positions(table, context, cfg, turns=turns
                                          ).labels.get("caption", "")
-    assert STAMP in caption
+    assert STAMP not in caption
 
 
 def test_all_positions_manifest_entry(rendered):

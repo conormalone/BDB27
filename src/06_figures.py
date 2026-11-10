@@ -180,7 +180,7 @@ def main(argv=None) -> int:
                          extra={"stamp": figures.stamp_text(args.mode),
                                 "figure": figures.FIGURE_KEY})
         plot = figures.build_plot(table, context, cfg)
-        figures.render(plot, cfg, png_path, stamp=False)
+        figures.render(plot, cfg, png_path)
         payload = figures.manifest_payload(table, context)
         payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(payload, manifest_path, args.mode, cfg)
