@@ -10348,12 +10348,15 @@ def _da_caption(context: dict, cfg: common.Config) -> list[str]:
     focus = context["focus"]
     n = context["n_turns"]
     n_pos = len(context["positions"])
+    # Band counts read largest-first and end on the accent position, which is
+    # the comparison the caption makes; the shares follow the same order.
+    ordered = sorted(context["positions"],
+                     key=lambda p: (-context["band_by_position"][p],
+                                    p != context["accent"], p))
     band_bits = ", ".join(
-        f"{p} {context['band_by_position'][p]:,}"
-        for p in context["positions"] if p != context["accent"])
+        f"{p} {context['band_by_position'][p]:,}" for p in ordered)
     share_bits = ", ".join(
-        f"{p} {_da_pct(context['share_by_position'][p])}"
-        for p in context["positions"])
+        f"{p} {_da_pct(context['share_by_position'][p])}" for p in ordered)
     accent = context["accent"]
     accent_band_share = (context["share_by_position"][accent]
                          if accent in context["share_by_position"] else 0.0)
