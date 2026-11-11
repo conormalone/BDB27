@@ -299,7 +299,13 @@ must exist and be frozen at that moment.
 **Evidence.** `data/raw` contains `game_tracking_2023_sample.csv` only. The three
 full-season files named in `config.yaml` (`game_tracking_2023.csv`,
 `game_tracking_2024.csv`, `game_tracking_2025.csv`) do not exist; there are no
-Kaggle credentials at `~/.kaggle`.
+Kaggle credentials at `~/.kaggle`. `config.yaml` now carries the per-season list
+explicitly (`turn_coverage.files.game_tracking_seasons`), and
+`notebooks/bdb27_full_game_turns.ipynb` consumes that layout as shipped — every
+season file present, no renaming and no concatenation (D184 extension,
+2026-11-11). The seven-stage pipeline still takes one `files.game_tracking`
+path, which is why `bdb27_full_run.ipynb` still reports `PENDING FULL RUN` on a
+per-season folder.
 
 **What would clear it.** The full tracking files on the larger machine. The code
 path is already shared: `--mode full` selects them by config key and refuses to

@@ -7199,7 +7199,9 @@ still drawn.
 **What it is.** `notebooks/bdb27_full_game_turns.ipynb`. Conor opens it, sets `DATA_DIR` (his
 folder) and `INPUT_MODE` in §1 — the only cell he edits — and presses Run All. There is no
 terminal step and no command to type: the notebook is the whole interface, and it is the only
-place a full-data turn count comes from. It analyses `game_tracking.csv` with the pipeline's own
+place a full-data turn count comes from. It analyses your full game tracking file(s) — the
+release ships three per-season files, and a concatenated `game_tracking.csv` is also accepted
+(see the extension below) — with the pipeline's own
 `Engine` (`src/bdb27/turns.py`) and every threshold read from `config.yaml`; no detection maths
 lives in the notebook. It writes three files to `bdb27_run/artefacts/` for him to send back: the
 band counts, the DB turn rows in the stage-02 turn schema, and a manifest carrying the config
@@ -7296,3 +7298,89 @@ artefacts; default `INPUT_MODE = "full"`); `tests/test_notebook_portability.py`;
 `bdb27_run/windows_probe.py` + `.log` (blocked-import and backslash-path proof);
 `bdb27_run/artefacts/` from that run — bands CSV 2,168 B / 36 rows, DB turns parquet 375,784 B /
 2,262 rows, manifest 8,519 B (no memory field).
+
+### D184 (extended) — full data ships per season, and the notebook reads it as it is · 2026-11-11 18:40
+
+**The defect.** Conor ran `notebooks/bdb27_full_game_turns.ipynb` on his laptop and it stopped at
+§3 with `Missing required input(s) … game_tracking.csv`. His folder holds the three files the
+2027 release actually ships — `game_tracking_2023.csv`, `game_tracking_2024.csv`,
+`game_tracking_2025.csv` — which `data/README.md`, `notes/blockers.md` (B7) and several decisions
+already name as the layout. The notebook had been built against a single concatenated file, and
+`config.yaml` named only that file. His constraint: he will not rename or concatenate his files.
+
+**What changed.**
+
+* **`config.yaml`** — `files.game_tracking_seasons` now lists the three documented per-season
+  filenames. `files.game_tracking` stays as the single concatenated-file alternative because
+  `common.raw_file()` and every stage take one path; `sample_files.game_tracking` is untouched.
+* **§3 inputs** — resolves a *list* of tracking files: every per-season file present is used, in
+  season order, exactly as named; the single-file name is the fallback. Nothing is renamed,
+  concatenated or silently substituted. A folder matching neither is refused with every
+  looked-for filename **and** every `game_tracking*.csv` that was found. Missing season files are
+  reported, not fatal.
+* **§4 conversion** — each file becomes its own Parquet. `season` (SMALLINT) is written from the
+  filename; a single `game_tracking.csv` has no season in its name, so its season is joined per
+  game from `games.csv` when present, else NULL and recorded as unknown. A checkpoint is reused
+  only when it carries the columns now required, including `season`, so a parquet converted by
+  the old notebook is rebuilt.
+* **§5 detection** — all season Parquets are read together; each game's season goes into the
+  engine context, so every turn row records it. A game whose season differs between files stops
+  the run rather than mixing seasons. Chunk receipts carry a `source_key` over the tracking-file
+  set, so adding/removing a season cannot reuse stale chunks.
+* **Turn schema** — the notebook's schema is stage 02's `TURN_SCHEMA` plus a nullable `season`.
+  The Combine side writes `season = null`. The global pipeline schema is deliberately untouched.
+* **§8 artefacts** — the band table is unchanged by this work (on the sample: same 36 rows, same
+  numbers, same bytes). The DB turn parquet gains `season`. The manifest names every input file with bytes, rows, games and
+  SHA-256, records the gate sample the same way, states where season came from, and reports game
+  turns and valid DB turns by season.
+* Season is **carried only** — detection, smoothing, thresholds and banding never read it.
+
+**Why the filename, not `game_id`.** A `game_id` begins with the game's calendar year
+(`2024021100`), and the 2023 season's playoffs are played in 2024, so the prefix is not the
+season. `games.csv` maps 1,002 game ids to seasons (2023: 334, 2024: 334, 2025: 334, no
+duplicates); a per-season tracking file is authoritative and the filename is its label.
+Re-counted from the data on 2026-11-11: `player_play.csv` (314,197 rows, 1,001 games, 497 players)
+spans all three seasons — its game-id prefixes are 2023/2024/2025/2026, where the 2026-prefixed
+rows are the 2025 playoffs — so `player_play` is one file and needs no split.
+
+**Acceptance criteria (written before implementation, all met).**
+
+1. On `INPUT_MODE="sample"`, §6 prints `FIDELITY GATE PASSED` with **2,262 / 326 / 33 / 299**
+   and `12 published rows, 0 difference(s)`, both settings compared.
+2. The sample run's `bdb27_full_game_bands.csv` is **byte-identical** to the pre-change artefact
+   (sha256 `a3739f05…5e65dc`): the band table is unchanged by this work.
+3. A folder holding only the three per-season files is consumed end to end in `INPUT_MODE="full"`
+   with **no renaming and no concatenation**; the manifest lists all three with per-file row
+   counts and SHA-256; turn rows carry `season`; per-season counts sum to the totals.
+4. A folder matching no expected name is refused, naming every looked-for file and any lookalike
+   `game_tracking*.csv` it found; the sample is never substituted.
+5. The test suite passes, including the static portability checks (UTF-8 I/O, no `resource`, every
+   SQL path through `.as_posix()`).
+
+**Proof (2026-11-11, this host, Raspberry Pi arm64).**
+
+* Sample run (`bdb27_run/verify_executed.ipynb`): gate numbers PASS/PASS/PASS/PASS; 12 published
+  rows, 0 differences, settings `['combine', 'game']`; 28 chunks, 7,143 game turn rows, 7,137
+  valid. Bands CSV 2,168 B / 36 rows, sha256 `a3739f05376611c530fc6786748f3173098c4c220b733d58d7dd77f44f5e65dc`
+  — identical to `bdb27_run/artefacts_utf8/` produced before this change. DB turn parquet
+  376,075 B / 2,262 rows, sha256 `3a4bbd2b…` (the +291 B is the new `season` column).
+* Three-file demonstration (`bdb27_run/verify_season_files.ipynb`): the repo sample (333 games,
+  1,048,575 rows) was split by game into `game_tracking_2023.csv` (365,584 rows / 111 games),
+  `game_tracking_2024.csv` (325,637 / 111) and `game_tracking_2025.csv` (357,354 / 111). The
+  notebook consumed the folder exactly as named (`DATA_DIR` pointed at it; no rename, no
+  concatenation). Manifest: all three files listed with their SHA-256; seasons `[2023]`, `[2024]`,
+  `[2025]`; game turns **2,546 / 2,212 / 2,385 = 7,143**; valid DB turns **813 / 720 / 729 =
+  2,262**; DB turn parquet 2,262 rows with all three seasons present; gate passed again (the gate
+  sample is unchanged, so its chunks were reused). The game rows of that band table are
+  **identical, row for row and share for share**, to the single-file sample run (36 rows,
+  maximum share difference 0.0) — detection does not depend on how the file is partitioned.
+* Wrong-name rejection: folder containing `game_tracking_23.csv` → `RuntimeError` naming
+  `game_tracking_2023.csv`, `game_tracking_2024.csv`, `game_tracking_2025.csv`,
+  `game_tracking.csv`, the lookalike `game_tracking_23.csv`, "nothing was renamed" and "sample is
+  NOT substituted" (`tests/test_notebook_season_inputs.py`).
+
+**Evidence.** `notebooks/bdb27_full_game_turns.ipynb`; `config.yaml`
+(`turn_coverage.files.game_tracking_seasons`); `tests/test_notebook_season_inputs.py`;
+`bdb27_run/verify_executed.ipynb` (sample, gate passed); `bdb27_run/verify_season_files.ipynb`
+(three per-season files, full mode, gate passed); `bdb27_run/artefacts_sample/` (sample-run
+artefacts, kept because the full-mode demonstration overwrote `artefacts/`).

@@ -44,15 +44,23 @@ turn_coverage:
     prereg: notes/prereg.md
 
   files:
-    # Filenames relative to paths.raw. THE FULL GAME TRACKING FILE IS NOT ON THIS
-    # HOST: its absence is what makes `--mode full` refuse loudly here.
+    # Filenames relative to paths.raw. THE FULL GAME TRACKING FILES ARE NOT ON
+    # THIS HOST: their absence is what makes `--mode full` refuse loudly here.
     combine_tracking: combine_tracking.csv
     combine_results: combine_results.csv
     players: players.csv
     games: games.csv
     player_play: player_play.csv
     player_career_successes: player_career_successes.csv
+    # The 2027 release ships game tracking as THREE per-season files
+    # (data/README.md). This list is the documented full-data layout. The
+    # notebook consumes every file present exactly as named — no renaming and no
+    # concatenation — and carries `season` from the filename into the turn rows.
     game_tracking: game_tracking.csv
+    game_tracking_seasons:
+      - game_tracking_2023.csv
+      - game_tracking_2024.csv
+      - game_tracking_2025.csv
 
   sample_files:
     # A ~100 MB row-sampled slice of 2023 tracking: 333 games, 4,228 plays,
