@@ -7175,3 +7175,21 @@ is ever drawn back, and fails if any drawn text uses the focus colour, while
 asserting the bar data labels, band labels, facet strips and legend are still
 drawn; `test_hole_canvas_has_no_dead_band` fails if more than 30 px of white
 sits above the heading or below the legend.
+
+**Added the same morning (Conor, 2026-11-11 09:15, verbatim).** "remove the
+tiny percentage markings on the body of the plot as well". This supersedes the
+"percentages in panel (b)" clause above: the four small percentage labels drawn
+on panel (b)'s bars ("2.2%", "42.3%", "14.4%", "22.5%" on the committed render)
+are no longer drawn. The panel (a) count labels ("26", "499", "326", "508")
+stay for now — the brief said to keep them until Conor says otherwise.
+`_labels()` still builds both layers, so the numbers it computes remain the
+data record; `build_plot()` filters out the rows whose panel label starts with
+"(b)" at draw time. This is drawing-only again: `fig_the_hole.csv` is still
+SHA-256 `a7cef5d8…f35cf4`, byte-identical to `e6a3818` and to `670a790`.
+Canvas unchanged at 1725 × 1140, top/bottom white 17/19 px, longest blank
+vertical run still the 58 px interior gap above the legend. The only PNG that
+changes is `fig_the_hole.png` (57,636 → 56,379 bytes; SHA-256 `45558a79…2620b`),
+two consecutive renders byte-identical, and the manifest changes only in
+`generated_utc`. The drawn-text test now requires that no bare percentage
+(`\d+(\.\d+)?%`) appears anywhere on the figure while the panel (a) counts are
+still drawn.

@@ -493,7 +493,12 @@ def _caption_lines(context: dict, ann: dict) -> list[str]:
 
 def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot:
     frame = plot_frame(table)
+    # Panel (a)'s counts stay; panel (b)'s small percentage labels are not
+    # drawn (D183, 2026-11-11: "remove the tiny percentage markings on the
+    # body of the plot"). `_labels` still builds both layers, so the numbers
+    # it computes remain the data record.
     labels = _labels(table, context["bands"])
+    labels = labels[~labels["panel"].astype(str).str.startswith("(b)")].copy()
     rect, ann = _annotations(table, context)
     # Style always from figures.focus_band; geometry from this figure's own
     # display bands (figure 1 merges 30-45 and 45-60 into one 30-60 band).

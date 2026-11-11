@@ -529,12 +529,20 @@ def test_hole_draws_a_heading_and_nothing_else(rendered):
                     and to_hex(t.get_color()).lower() == "#c00000"]
         assert red_text == [], f"red on-plot text survived: {red_text}"
 
-        # Kept by the same change: the bar data labels, band tick labels,
-        # facet strips and the colour legend.
+        # Kept by the same change: panel (a)'s count labels, band tick
+        # labels, facet strips and the colour legend.
         all_text = [t.get_text() for t in fig.findobj(matplotlib.text.Text)
                     if t.get_visible() and t.get_text().strip()]
-        for label in ("26", "326", "2.2%", "42.3%"):
+        for label in ("26", "499", "326", "508"):
             assert label in all_text, f"bar data label {label} disappeared"
+        # D183 (2026-11-11): the tiny percentage markings on panel (b)'s bars
+        # are gone. Counts in panel (a) stay. No bare percentage may be drawn
+        # anywhere (the facet strip "(b) Share … (%)" ends in "%)").
+        import re
+        percentages = [text for text in all_text
+                       if re.fullmatch(r"\d+(?:\.\d+)?%", text)]
+        assert percentages == [], (
+            f"panel (b) percentage labels are still drawn: {percentages}")
         for band in ("30–60°", "60–90°", "90–120°", "120–150°",
                      "150–180°", ">180°"):
             assert band in all_text, f"band label {band} disappeared"
