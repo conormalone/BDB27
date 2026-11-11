@@ -162,4 +162,23 @@ def test_an_unexpected_layout_names_what_was_looked_for(tmp_path):
         assert name in message, f"{name} was not named"
     assert "game_tracking_23.csv" in message, "the lookalike file was not listed"
     assert "nothing was renamed" in message.lower()
+    assert "will use     : nothing" in message
     assert "sample is NOT substituted" in message
+
+
+def test_a_single_file_without_a_season_gets_a_null_season_column(tmp_path):
+    """The single-file layout has no season in its name; the column must still exist."""
+    data = _data_dir(tmp_path)
+    _write_tracking(data / "game_tracking.csv", 2023090700)
+    ns = _notebook_functions(tmp_path)
+
+    csv_path = data / "game_tracking.csv"
+    out = ns["RUN"] / "game_tracking.parquet"
+    assert ns["season_of_tracking"](csv_path) is None
+    ns["convert"](csv_path, ["game_id", "play_id", "nfl_id", "time", "x", "y", "o", "dir"],
+                  out, "game_id, play_id, nfl_id, time", with_season=True)
+
+    frame = pq.read_table(out).to_pandas()
+    assert "season" in frame.columns
+    assert frame["season"].isna().all()
+    assert len(frame) == 4

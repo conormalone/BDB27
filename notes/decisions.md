@@ -7384,3 +7384,80 @@ rows are the 2025 playoffs — so `player_play` is one file and needs no split.
 `bdb27_run/verify_executed.ipynb` (sample, gate passed); `bdb27_run/verify_season_files.ipynb`
 (three per-season files, full mode, gate passed); `bdb27_run/artefacts_sample/` (sample-run
 artefacts, kept because the full-mode demonstration overwrote `artefacts/`).
+
+### D184 (extended again) — a cold start cannot die on the input path · 2026-11-11 19:20
+
+**Conor's constraint (17:26).** Two of his runs died within two seconds on an input-path
+assumption, before anything useful printed. The proof must therefore come from whole-notebook,
+fresh-kernel runs over every folder shape, and the inputs cell must print an inventory before it
+raises. No commit until all three shapes pass. (Commit `7a7e295` was created before this
+constraint arrived; this addendum is the follow-up commit on top of it.)
+
+**Two defects the shape tests found, both fixed.**
+
+1. **A folder without the optional Combine files failed the fidelity gate.** §6 compared every
+   published row in `fig_the_hole.csv`, including the Combine rows, and appended a diff when they
+   were absent — even though the notebook's own text says "both settings when the Combine files
+   are present". A folder with only game tracking could therefore never pass. Now the gate skips
+   `setting == "combine"` **only** when `combine_tracking.csv` or `combine_results.csv` is
+   absent, prints which setting was not compared, and still requires all four numbers plus every
+   game row. With the Combine files present the comparison is unchanged (12 rows, both settings).
+2. **A single `game_tracking.csv` produced a Parquet with no `season` column**, so detection
+   failed with a DuckDB `BinderException`. `convert()` gained `with_season=True`: a tracking file
+   whose filename carries no season, and with no `games.csv` to join, now gets a NULL season
+   column instead of no column. Without this, the single-file shape could not run at all.
+
+**The inputs cell is now an inventory.** Before any resolution it prints one line per expected
+name — single file and each per-season file, plus `player_play`, `players` and the optional
+Combine files — with found/absent, kind, size and row count. It then prints `will use: …`. Files
+that look like tracking but are not expected (`game_tracking*.csv`) are listed as "NOT expected,
+will NOT be read". Only after that does a missing layout raise; the error repeats every looked-for
+name, the lookalikes it found, and that nothing was renamed, concatenated or substituted. Row
+counts come from DuckDB; an unreadable file is shown as `unreadable/unknown` rather than crashing
+the inventory (the conversion step still raises properly).
+
+**Three folder shapes, each a whole-notebook run in a fresh kernel.** The tracking files are real
+rows sliced from the repo sample (the first 24 games), not synthetic values: 8 games per season
+file, 35,135 / 40,405 / 33,555 rows; the single-file shape concatenates the same 24 games
+(109,095 rows); the "both" shape adds a single file holding a **different** 6 games (22,953 rows)
+that must be ignored. `player_play.csv` and `players.csv` are the real files, symlinked. The gate
+runs the real 1,048,575-row sample in every case, so these runs prove wiring, not counts.
+
+| shape | files the notebook chose | wall (fresh kernel) | first artefact | gate |
+|---|---|---|---|---|
+| three per-season files, no `game_tracking.csv` | `game_tracking_2023/24/25.csv` | **36.0 s** | **34.8 s** | PASSED (2,262 / 326 / 33 / 299; 12 rows, 0 diffs; game only; combine skipped) |
+| single `game_tracking.csv`, no season files | `game_tracking.csv` (109,095 rows; season NULL) | **40.5 s** | **37.0 s** | PASSED (same four numbers; game only) |
+| both layouts present | the three season files; the single file is listed and **not read** | **39.9 s** | **38.6 s** | PASSED (same four numbers; game only) |
+
+All three wrote the same band table (sha256 `c5a4bd5b870f…`) from the same 24 games, which also
+shows detection is independent of file partitioning.
+
+**Truly cold timing.** With `bdb27_run/gate/` and the run checkpoints deleted, the three-file
+shape from a fresh kernel reached its first artefact in **316.9 s** (whole notebook 318.1 s):
+28 gate chunks over the real sample dominate; the 24-game run is 2 chunks. On this Raspberry Pi
+that is the honest cold cost. With the gate checkpoints warm, the same run is ~36 s. Neither is a
+two-second failure, and the input-path decision is made and printed before any detection starts.
+
+**Wrong-name proof.** A folder holding `game_tracking_23.csv` (and valid `player_play`/`players`)
+printed the inventory, then raised a readable `RuntimeError`:
+
+```
+no game tracking file found in /tmp/bdb27_shape_wrong
+  looked for, in this order:
+    - game_tracking_2023.csv    (config.yaml files.game_tracking_seasons)
+    - game_tracking_2024.csv    (config.yaml files.game_tracking_seasons)
+    - game_tracking_2025.csv    (config.yaml files.game_tracking_seasons)
+    - game_tracking.csv    (single concatenated file; config.yaml files.game_tracking)
+  game_tracking*.csv files that ARE in the folder:
+    - game_tracking_23.csv
+  (none of these has an expected name — nothing was renamed, concatenated or read)
+  the repo sample is NOT substituted here.
+  Put the full file(s) in this folder, or set INPUT_MODE = "sample".
+```
+
+**Evidence.** `bdb27_run/verify_shape_seasons.ipynb`, `verify_shape_single.ipynb`,
+`verify_shape_both.ipynb`, `verify_shape_seasons_cold.ipynb`, `verify_shape_wrong.ipynb`;
+artefacts per shape in `bdb27_run/shape_<shape>_artefacts/`; the sample fidelity proof remains
+`bdb27_run/verify_executed.ipynb` (2,262 / 326 / 33 / 299, 12 rows, 0 differences).
+`tests/test_notebook_season_inputs.py` covers the three-file resolution, the single-file
+fallback, the NULL-season conversion and the wrong-name message.
