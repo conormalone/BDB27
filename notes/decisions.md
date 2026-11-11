@@ -7193,3 +7193,63 @@ two consecutive renders byte-identical, and the manifest changes only in
 `generated_utc`. The drawn-text test now requires that no bare percentage
 (`\d+(\.\d+)?%`) appears anywhere on the figure while the panel (a) counts are
 still drawn.
+
+## D184 — The notebook is the only interface for the full-data turn counts · 2026-11-11
+
+**What it is.** `notebooks/bdb27_full_game_turns.ipynb`. Conor opens it, sets `DATA_DIR` (his
+folder) and `INPUT_MODE` in §1 — the only cell he edits — and presses Run All. There is no
+terminal step and no command to type: the notebook is the whole interface, and it is the only
+place a full-data turn count comes from. It analyses `game_tracking.csv` with the pipeline's own
+`Engine` (`src/bdb27/turns.py`) and every threshold read from `config.yaml`; no detection maths
+lives in the notebook. It writes three files to `bdb27_run/artefacts/` for him to send back: the
+band counts, the DB turn rows in the stage-02 turn schema, and a manifest carrying the config
+SHA, git revision, every count, the per-chunk timings and the SHA-256 of the other two files.
+
+**The gate is a precondition, not a report.** §6 re-runs §4–§5 on the repo's 2023 sample and
+requires all four published numbers — 2,262 valid DB game turns, 326 of them in the merged
+30–60° band, 33 DB players, 299 DB player-games — plus a row-for-row match against
+`outputs/figures/fig_the_hole.csv`: `count`, `setting_total` and `share_within_setting`, band
+for band, both settings. A mismatch prints the diff and raises, so no full-data number is
+produced past a failed gate. The gate reads the sample whatever `INPUT_MODE` says, so a full run
+cannot skip it, and `GATE_READY` records the outcome in the manifest.
+
+**Why the 2^20−1 cap matters.** `game_tracking_2023_sample.csv` is exactly 1,048,575 data rows
+= 2²⁰ − 1 — the vendor's cap, not a season prefix. Re-counted 2026-11-11: 333 games, 4,228
+plays, 154 players, and **14,544 `game_id` transitions** in file order. The sample was cut by row
+count alone, so its games are interleaved in dozens of runs each: "read the first N rows" is
+never a game, and nothing may treat file order as game order.
+
+**DuckDB CSV→Parquet is required, not an optimisation.** §2 converts each CSV once with DuckDB,
+`ORDER BY game_id, play_id, nfl_id, time` — precisely because the sample's rows are not
+game-contiguous. The tracking file is then never loaded whole: pandas sees one chunk of
+`resources.game_chunk_games` (12) games at a time. Each chunk writes its own Parquet plus a JSON
+receipt, and a re-run reuses a chunk whose receipt matches the current `config_sha`, so a closed
+laptop resumes at the next unfinished chunk.
+
+**Merge to 30–60° happens only when reporting.** The detector's turn table and `bands_table()`
+keep 30–45° and 45–60° as separate rows — figures 3, 8, 12, 13 and 15 read those bands. The
+30–60° row exists only in the reporting frame: the §6 comparison against figure 1's CSV and the
+§8 `bdb27_full_game_bands.csv`, which is the same six-band shape as figure 1 (30–60°, 60–90°,
+90–120°, 120–150°, 150–180°, >180°) and is what Conor uploads.
+
+**Defect found and fixed the same day (14:29).** `merge_30_60()` selected `BAND_LABELS[:2]`,
+summed them and returned **only** the merged row, so §6's comparison reported "12 published
+rows, 10 difference(s)" — five bands per setting recorded as `absent from the notebook's table`.
+The band counts themselves were never wrong (60–90°: game 476 of 2,262, combine 237 of 1,179;
+the stored table reproduced every published number). Only the reporting frame was incomplete.
+It now returns the merged 30–60° row plus the five remaining bands untouched, with `band_index`,
+`band_low_deg` and `band_high_deg` on the reporting edges `[30, 60, 90, 120, 150, 180]`, and §8
+writes that frame rather than the seven-band stored table. Detection was not touched: 7,143 turn
+rows (7,137 valid) over 28 chunks, DB 2,262 / DL 1,078 / OL 1,250 / TE 294 / WR 1,504 / OTHER 749,
+and the four published numbers unchanged.
+
+**Measured on the sample, 2026-11-11 (Raspberry Pi, arm64).** Gate: 12 published rows, 0
+differences, all four counts exact, gate chunks reused from their checkpoints. §7 over the full
+1,048,575 rows: 276.6 s wall, 4.6 min of chunk time, 3,792 frames/s across 28 chunks. Whole
+notebook from `t_start` to the manifest, Combine side included and CSV conversion cached: 397.2 s;
+peak RSS 429.7 MB.
+
+**Evidence.** `notebooks/bdb27_full_game_turns.ipynb` (§6 gate, `merge_30_60`, §7 run, §8
+artefacts; default `INPUT_MODE = "full"`); `bdb27_run/verify_executed.ipynb` (sample execution
+printing `FIDELITY GATE PASSED`); `bdb27_run/artefacts/` from that run — bands CSV 2,168 B /
+36 rows, DB turns parquet 375,784 B / 2,262 rows, manifest 8,543 B.
