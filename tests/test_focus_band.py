@@ -16,6 +16,7 @@ matplotlib.use("Agg")
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pytest
 from matplotlib.colors import to_hex, to_rgba
 
@@ -45,6 +46,13 @@ def _hexes(value) -> set[str]:
     """Normalise any matplotlib colour value (scalar or RGBA array)."""
     if value is None:
         return set()
+    array = np.asarray(value)
+    if array.ndim == 2 and array.shape[-1] in (3, 4):
+        # A collection's get_colors(): one row per drawn segment.
+        found: set[str] = set()
+        for row in array:
+            found |= _hexes(row)
+        return found
     try:
         arr = to_rgba(value)
     except (TypeError, ValueError):
@@ -55,7 +63,8 @@ def _hexes(value) -> set[str]:
 def _drawn_colours(fig) -> set[str]:
     found: set[str] = set()
     for artist in fig.findobj():
-        for name in ("get_color", "get_facecolor", "get_edgecolor"):
+        for name in ("get_color", "get_facecolor", "get_edgecolor",
+                     "get_colors"):
             getter = getattr(artist, name, None)
             if getter is None:
                 continue

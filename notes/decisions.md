@@ -7037,3 +7037,70 @@ normal margin and nothing is clipped or drawn off-canvas. The stage-level
 figure-18 tests gain two: the drawn text of a real render carries one heading,
 no subtitle, no caption and no "bucketed", and the manifest caveats plus the
 CSV provenance columns are unchanged by the drawing edit.
+
+### D183 (extended) — figure 5 carries a heading, bands and bars, nothing else · 2026-11-11 08:35
+
+**The instruction (Conor, 2026-11-11 07:47, verbatim, sent against the rendered
+image).** "remove the extra text from the top and bottom and the 30 to 60 text
+from the plot, the exploratory task text as well". This is the treatment figure
+18 received in `06702a0`, now applied to figure 5; the figure, its contract and
+its caveats are the same artefact, so D183 is extended rather than a new
+decision opened.
+
+**What was removed.** Four text blocks and nothing else. (1) The subtitle under
+the heading (`labs(subtitle=…)`), the two wrapped grey lines beginning "Paired
+bars: each position's own valid turns…". The bold heading stays. (2) The whole
+bottom caption block (`labs(caption=…)`) — every caption line, including the
+provenance stamp line and the DL/exposure/ordering caveats. (3) The per-panel
+in-plot focus callout `"{focus['label']} band"` (e.g. "30–60° band"), drawn once
+per position panel with `geom_text`. The band tint and its two horizontal rules
+are untouched. (4) The per-panel EXPLORATORY badge `"EXPLORATORY\n(TASK.md:63)"`
+in `ALERT`, also drawn with `geom_text`.
+
+**What the removal is not.** No number, caveat or claim was dropped from the
+artefact. The caption construction moved into `_all_positions_caption()`, which
+still builds exactly the same prose with the same render-time numbers and is
+currently uncalled; its docstring says so, following `_da_caption` on figure 18.
+The manifest's `claim` and `caveats` are unchanged, including the DL paragraph,
+the exploratory-status caveat and the "not a census" caveat. `all_positions_status()`
+still feeds the CSV's `spec_status` / `spec_status_source` columns, and
+`all_positions_badges()` is retained uncalled for the contract tests. The proof
+that this is a drawing change is `fig_all_positions.csv`: SHA-256
+`aec381c7e40d49dfb5a7be432c6a4a1e43517c352119242f2045ed2ef36260dd`, identical
+before and after.
+
+**Layout.** With the subtitle and caption gone the panels and legend already
+reflowed to fill the canvas; no config change was needed and `config.yaml` is
+untouched. Canvas is 13.0 × 6.6 in at 150 dpi = 1950 × 990 px (unchanged).
+Measured on the committed render: top white band 19 px (0.13 in above the
+heading), bottom white band 22 px (0.15 in below the legend), left/right 21/20
+px. The longest blank vertical run anywhere is 60 px (0.40 in), the gap between
+the x-axis title and the legend; it is interior spacing, not a dead band, and
+both top and bottom edges are filled.
+
+**Draw unchanged.** The shared 0–70% axis, the bar geometry and opacity, the
+band tint and rules, the DB panel's twelve count labels, the empty grey panel
+background, the facet strips and the bottom Combine/game legend are all exactly
+as before. Only the four text blocks above stopped being drawn.
+
+**Proof nothing else moved.** `outputs/figures/fig_all_positions.png` is the
+only PNG that changes (236,962 → 72,226 bytes; SHA-256 68b92d90…b2834 →
+3304f950…cc13); all 17 other figure PNGs are byte-identical (SHA-256). Every
+figure CSV is byte-identical, `config_sha` included — `config.yaml` does not
+change. The manifest changes only in its top-level `generated_utc`; the
+`fig_all_positions` entry, caveats included, is unchanged. `run_log.csv` gains
+the one line every stage-06 run appends. Two consecutive stage renders of
+figure 5 are byte-identical (3304f950…cc13 both times).
+
+**Tests.** `tests/test_figures_stage.py` keeps every figure-5 test and adds two:
+`test_all_positions_draws_a_heading_and_nothing_else` fails if a subtitle, the
+caption block, an EXPLORATORY badge or the "30–60° band" callout is ever drawn
+back, while asserting the band tick labels, facet strips and legend labels are
+still drawn; `test_all_positions_canvas_has_no_dead_band` fails if more than
+30 px of white sits above the heading or below the legend. The status test now
+asserts the CSV still carries DB/OL exploratory status with no drawn badge, and
+the two caption-prose tests read the retained uncalled caption builder. In
+`tests/test_focus_band.py` the sentinel-colour walk now also reads
+`get_colors()`: with the callout text gone, figure 5's configured focus colour
+reaches the canvas through the band rules (`LineCollection`), which the old
+walk could not see.

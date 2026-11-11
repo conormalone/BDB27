@@ -1219,7 +1219,7 @@ def test_all_positions_panels_share_one_scale(rendered):
 
 
 def test_all_positions_marks_only_the_positions_the_spec_flags(rendered):
-    """Exploratory marks come from TASK.md, not from the figure's taste."""
+    """Statuses come from TASK.md; D183 removed the drawn mark, not the data."""
     import matplotlib.pyplot as plt
 
     from bdb27 import figures
@@ -1235,21 +1235,108 @@ def test_all_positions_marks_only_the_positions_the_spec_flags(rendered):
     status = figures.all_positions_status(context, cfg)
     assert set(status) == {"DB", "OL"}, f"statuses drawn: {sorted(status)}"
 
+    # The badge builder is retained for the contract, but D183 removed the
+    # drawn mark: nothing on the image may say EXPLORATORY again.
     badges = figures.all_positions_badges(context, cfg)
     assert set(badges["position"].astype(str)) == {"DB", "OL"}
+    assert set(badges["label"]) == {"EXPLORATORY\n(TASK.md:63)"}
 
     plot = figures.plot_all_positions(table, context, cfg, turns=turns)
     fig = plot.draw()
     try:
-        marked = {}
-        for position, ax in zip(ALL_POSITIONS, fig.axes):
-            marked[position] = [t.get_text() for t in ax.texts
-                                if "EXPLORATORY" in t.get_text()]
-        assert marked["DB"] and marked["OL"]
-        assert not marked["WR"] and not marked["TE"] and not marked["DL"]
+        drawn = " ".join(
+            [t.get_text() for t in fig.texts]
+            + [t.get_text() for ax in fig.axes for t in ax.texts])
+        assert "EXPLORATORY" not in drawn
+        assert "(TASK.md:63)" not in drawn
     finally:
         plt.close(fig)
 
+    # The status still reaches the CSV: the removal is drawing-only.
+    csv_df = pd.read_csv(rendered["ap_csv"])
+    assert set(csv_df.loc[csv_df["spec_status"] == "exploratory",
+                          "position"]) == {"DB", "OL"}
+    assert csv_df.loc[csv_df["position"] == "DB", "spec_status"].eq(
+        "exploratory").all()
+    assert not csv_df.loc[csv_df["position"] == "WR", "spec_status"].eq(
+        "exploratory").any()
+
+
+def test_all_positions_draws_a_heading_and_nothing_else(rendered):
+    """D183: heading, bands and bars only — no subtitle, caption or callouts."""
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    from bdb27 import figures
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    (table, context), cfg = _ap_cells(turns, rendered["cfg"])
+    plot = figures.plot_all_positions(table, context, cfg, turns=turns)
+    fig = plot.draw()
+    try:
+        visible_figure_text = [t.get_text() for t in fig.texts
+                               if t.get_visible() and t.get_text().strip()]
+        headings = [text for text in visible_figure_text
+                    if text.startswith("The same hole across positions")]
+        assert len(headings) == 1, (
+            f"figure 5 must draw exactly one heading, got {visible_figure_text}")
+        assert visible_figure_text == [
+            headings[0], "Share of that setting's own valid turns (%)"
+        ], f"unexpected figure-level text: {visible_figure_text}"
+
+        drawn = "\n".join(
+            [t.get_text() for t in fig.texts if t.get_visible()]
+            + [t.get_text() for ax in fig.axes for t in ax.texts
+               if t.get_visible()]
+            + [t.get_text() for ax in fig.axes for t in ax.get_xticklabels()
+               if t.get_visible()]
+            + [t.get_text() for ax in fig.axes for t in ax.get_yticklabels()
+               if t.get_visible()])
+        assert "Paired bars" not in drawn, "the subtitle is still drawn"
+        assert "Excluded from these panels" not in drawn, (
+            "the caption block is still drawn at the foot of the figure")
+        assert "EXPLORATORY" not in drawn, "the badge is still drawn"
+        assert "(TASK.md:63)" not in drawn
+        assert "30–60° band" not in drawn, (
+            "the in-plot focus callout is still drawn")
+        assert "band band" not in drawn
+
+        # Kept by the same change: band tick labels and the colour legend.
+        band_labels = [t.get_text() for t in fig.axes[0].get_yticklabels()
+                       if t.get_visible()]
+        assert band_labels == ["30–60°", "60–90°", "90–120°", "120–150°",
+                               "150–180°", ">180°"]
+        all_text = [t.get_text() for t in fig.findobj(
+            matplotlib.text.Text) if t.get_visible()]
+        assert "Combine" in all_text and "Game" in all_text, (
+            "the colour legend labels must stay drawn")
+        for strip in ("DB", "WR", "TE", "OL", "DL"):
+            assert strip in all_text, f"facet strip {strip} disappeared"
+    finally:
+        plt.close(fig)
+
+
+def test_all_positions_canvas_has_no_dead_band(rendered):
+    """The freed subtitle/caption space goes to the plot, not to white bands."""
+    import matplotlib.pyplot as plt
+
+    from bdb27 import figures
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    (table, context), cfg = _ap_cells(turns, rendered["cfg"])
+    plot = figures.plot_all_positions(table, context, cfg, turns=turns)
+    fig = plot.draw()
+    out = rendered["tmp"] / "ap_canvas.png"
+    try:
+        fig.savefig(out, dpi=150, facecolor="white",
+                    metadata={"Software": "bdb27-figures"})
+    finally:
+        plt.close(fig)
+    with Image.open(out) as im:
+        pixels = np.asarray(im.convert("RGB"))
+    rows = np.where(np.any(pixels < 250, axis=2).any(axis=1))[0]
+    top_blank = int(rows.min())
+    bottom_blank = int(pixels.shape[0] - 1 - rows.max())
+    assert top_blank <= 30, f"{top_blank} px of white above the heading"
+    assert bottom_blank <= 30, f"{bottom_blank} px of white below the legend"
 
 def test_all_positions_counts_annotated_on_the_accent_panel_only(rendered):
     import matplotlib.pyplot as plt
@@ -1341,12 +1428,15 @@ def test_all_positions_manifest_entry(rendered):
 
 
 def test_all_positions_caption_states_what_dl_shows(rendered):
-    """DL is included, not excused: the caption states its panel, not 'fine'."""
+    """DL is included, not excused — now in the manifest, not on the image."""
     from bdb27 import figures
     turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
     (table, context), cfg = _ap_cells(turns, rendered["cfg"])
-    caption = figures.plot_all_positions(table, context, cfg, turns=turns
-                                         ).labels.get("caption", "")
+    plot = figures.plot_all_positions(table, context, cfg, turns=turns)
+    assert plot.labels.get("caption", "") == "", (
+        "figure 5 must not draw a caption (D183)")
+    caption = "\n".join(figures._all_positions_caption(
+        table, context, cfg, turns))
     assert "DL is included unchanged" in caption
     assert "30–60°" in caption
     assert "the Combine takes the smaller share there too" in caption
@@ -1362,12 +1452,12 @@ def test_all_positions_caption_states_what_dl_shows(rendered):
 
 
 def test_all_positions_caption_names_the_turns_outside_the_panels(rendered):
-    """The count is not a census: unclassified game turns are named."""
+    """The count is not a census: the caveat survives in the uncalled caption."""
     from bdb27 import figures
     turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
     (table, context), cfg = _ap_cells(turns, rendered["cfg"])
-    caption = figures.plot_all_positions(table, context, cfg, turns=turns
-                                         ).labels.get("caption", "")
+    caption = "\n".join(figures._all_positions_caption(
+        table, context, cfg, turns))
     flat = " ".join(caption.split())
     assert (f"Excluded from these panels: {context['n_excluded']:,} valid game "
             "turns with position_group OTHER") in flat
@@ -1380,8 +1470,8 @@ def test_all_positions_caption_names_the_turns_outside_the_panels(rendered):
                         & (tweaked["setting"] == "game")][:7]
     tweaked.loc[idx, "position_group"] = "OTHER"
     (t2, context2), cfg2 = _ap_cells(tweaked, rendered["cfg"])
-    caption2 = figures.plot_all_positions(t2, context2, cfg2, turns=tweaked
-                                          ).labels.get("caption", "")
+    caption2 = "\n".join(figures._all_positions_caption(
+        t2, context2, cfg2, tweaked))
     flat2 = " ".join(caption2.split())
     assert context2["n_excluded"] == context["n_excluded"] + 7
     assert (f"{context2['n_excluded']:,} valid game turns with position_group "

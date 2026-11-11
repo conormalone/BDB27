@@ -2179,7 +2179,14 @@ def all_positions_status(context: dict, cfg: common.Config) -> dict[str, str]:
 
 
 def all_positions_badges(context: dict, cfg: common.Config) -> pd.DataFrame:
-    """The per-panel spec-status mark, drawn inside the panel it applies to."""
+    """The per-panel spec-status mark.
+
+    Kept for the contract tests only: D183 (2026-11-11) removed the drawn
+    EXPLORATORY badge from figure 5 on Conor's instruction, so this function
+    is currently uncalled. The status mapping itself is still live through
+    :func:`all_positions_status`, which feeds the CSV's ``spec_status`` and
+    ``spec_status_source`` columns; only the drawing went.
+    """
     block = "figures.all_positions"
     status = all_positions_status(context, cfg)
     x = float(cfg.get(f"{block}.x_max_pct")) - 1.5
@@ -2230,32 +2237,21 @@ def _all_positions_band0_shares(table: pd.DataFrame,
     return shares, span
 
 
-def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
-                       turns: pd.DataFrame | None = None) -> ggplot:
-    block = "figures.all_positions"
-    # Style always from figures.focus_band; geometry from figure 5's own
-    # display bands (30-45 and 45-60 are merged into one 30-60 band, as on
-    # figure 1). See figures.hole.plot_bands in config.yaml.
-    configured = focus_band(cfg)
-    focus = focus_band(cfg, edges=[float(e) for e in context["edges"][:2]])
-    if float(context["edges"][0]) != configured["low"]:
-        raise ValueError(
-            f"{STAGE}: figure 5 highlights its first display band, which must "
-            f"start at the configured focus floor {configured['low']:g}°; got "
-            f"{float(context['edges'][0]):g}°")
-    focus_idx = focus_band_index(context["edges"], focus)
-    frame = all_positions_plot_frame(table, context, cfg)
-    labels = all_positions_count_labels(frame, cfg)
-    badges = all_positions_badges(context, cfg)
-    bands = list(context["bands"])
-    x_max = float(cfg.get(f"{block}.x_max_pct"))
-    x_breaks = [float(b) for b in cfg.get(f"{block}.x_breaks_pct")]
-    emphasis = str(cfg.get(f"{block}.emphasis_position"))
+def _all_positions_caption(table: pd.DataFrame, context: dict,
+                           cfg: common.Config,
+                           turns: pd.DataFrame | None = None) -> list[str]:
+    """Caption lines; every number comes from the rendered table.
 
+    Kept for the manifest/CSV wording, which still owns every caveat (D183,
+    2026-11-11): the figure draws no caption at all — Conor asked for the
+    heading and the data, nothing else — so this function is currently
+    uncalled. Its numbers still have to be true if it is ever drawn again.
+    """
+    block = "figures.all_positions"
+    emphasis = str(cfg.get(f"{block}.emphasis_position"))
     per = context["per_position"]
     n_turns = context["n_turns"]
     n_positions = len(context["positions"])
-
     band0 = context["bands"][0]
     _, band0_span = _all_positions_band0_shares(table, context)
 
@@ -2277,15 +2273,6 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
             f"too — and only {dl_fast} game DL turns enter above {floor:g} "
             "yd/s; TASK.md §CURRENT FOCUS records DL's gap as a speed story, "
             "not an angle one. No panel is labelled \"fine\".")
-
-    title = (f"The same hole across positions: the Combine takes a smaller "
-             f"{band0_span} share in every panel")
-    subtitle = _wrap_text(
-        f"Paired bars: each position's own valid turns by absolute turn angle, "
-        f"with 30–45° and 45–60° merged into one {band0_span} band, Combine "
-        f"(accent) vs game (grey). Every panel uses the same 0–{x_max:g}% "
-        f"share-of-that-setting axis, so the panels compare by eye. Counts are "
-        f"printed on the {emphasis} panel only.", 160)
 
     caption_lines = [
         *stamp_lines(cfg),
@@ -2312,19 +2299,40 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
          "several player-games). Source: outputs/turns/turns.parquet (valid "
          "turns), stage 02; counts computed at render time."),
     ]
-    caption = "\n".join(_wrap_text(line, 172) for line in caption_lines if line)
+    return [line for line in caption_lines if line]
+
+
+def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
+                       turns: pd.DataFrame | None = None) -> ggplot:
+    block = "figures.all_positions"
+    # Style always from figures.focus_band; geometry from figure 5's own
+    # display bands (30-45 and 45-60 are merged into one 30-60 band, as on
+    # figure 1). See figures.hole.plot_bands in config.yaml.
+    configured = focus_band(cfg)
+    focus = focus_band(cfg, edges=[float(e) for e in context["edges"][:2]])
+    if float(context["edges"][0]) != configured["low"]:
+        raise ValueError(
+            f"{STAGE}: figure 5 highlights its first display band, which must "
+            f"start at the configured focus floor {configured['low']:g}°; got "
+            f"{float(context['edges'][0]):g}°")
+    focus_idx = focus_band_index(context["edges"], focus)
+    frame = all_positions_plot_frame(table, context, cfg)
+    labels = all_positions_count_labels(frame, cfg)
+    bands = list(context["bands"])
+    x_max = float(cfg.get(f"{block}.x_max_pct"))
+    x_breaks = [float(b) for b in cfg.get(f"{block}.x_breaks_pct")]
+    _, band0_span = _all_positions_band0_shares(table, context)
+
+    title = (f"The same hole across positions: the Combine takes a smaller "
+             f"{band0_span} share in every panel")
 
     n_bands = len(bands)
     focus_y = -float(focus_idx + 1)
-    focus_label = pd.DataFrame([
-        {"position": position, "x": x_max - 0.4, "y": focus_y,
-         "label": f"{focus['label']} band"}
-        for position in context["positions"]
-    ])
-    focus_label["position"] = pd.Categorical(
-        focus_label["position"], categories=list(context["positions"]),
-        ordered=True)
 
+    # Heading, bands and bars only (D183, 2026-11-11): no subtitle under the
+    # heading, no caption at the foot, no in-plot "… band" callout and no
+    # EXPLORATORY badge. Every caveat those carried is in the CSV and the
+    # manifest entry, which are the provenance record.
     plot = (
         ggplot(frame, aes(xmin="xmin", xmax="xmax", ymin="ymin", ymax="ymax",
                           fill="setting", alpha="emphasis"))
@@ -2332,17 +2340,10 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
         + geom_hline(yintercept=[focus_y - 0.5, focus_y + 0.5],
                      inherit_aes=False, colour=focus["colour"],
                      size=focus["rule_width"])
-        + geom_text(data=focus_label,
-                    mapping=aes(x="x", y="y", label="label"),
-                    inherit_aes=False, size=2.5, colour=focus["colour"],
-                    fontweight="bold", ha="right", va="center")
         + geom_text(data=labels,
                     mapping=aes(x="lab_x", y="lab_y", label="label"),
                     inherit_aes=False, size=2.55,
                     colour="#1A1A1A", ha="left", va="center", show_legend=False)
-        + geom_text(data=badges, mapping=aes(x="x", y="y", label="label"),
-                    inherit_aes=False, size=2.5, colour=ALERT,
-                    fontweight="bold", ha="right", va="center")
         + facet_wrap("~ position", nrow=1)
         + scale_fill_manual(values=["#0072B2", "#7F7F7F"],
                             labels=[COMBINE_LABEL, GAME_LABEL], name=None)
@@ -2354,7 +2355,7 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
                             labels=bands,
                             limits=(-float(n_bands) - 0.6, -0.4),
                             expand=(0, 0))
-        + labs(title=title, subtitle=subtitle, caption=caption,
+        + labs(title=title,
                x="Share of that setting's own valid turns (%)", y=None)
         + theme_bw(base_size=9)
         + theme(
@@ -2367,9 +2368,6 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
             strip_background=element_rect(fill="#D9D9D9", colour="#B3B3B3"),
             strip_text=element_text(weight="bold", size=11),
             plot_title=element_text(size=14, weight="bold"),
-            plot_subtitle=element_text(size=8.4, colour="#333333"),
-            plot_caption=element_text(size=6.5, colour="#333333", ha="left",
-                                      linespacing=1.35),
             axis_title_x=element_text(size=8.6),
             axis_title_y=element_blank(),
             axis_text_x=element_text(size=7.6),
