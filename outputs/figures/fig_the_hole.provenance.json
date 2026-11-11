@@ -1,0 +1,102 @@
+{
+  "provenance": "FULL",
+  "label": "FULL DATA OUTPUT",
+  "config_sha": "a4b45b6f476ddae5",
+  "generated_utc": "2026-11-11T22:53:48Z",
+  "figure": "fig_the_hole",
+  "title": "The hole: games demand 6.0\u00d7 the share of 30\u201360\u00b0 DB breaks the Combine supplies",
+  "claim": "Games spend 6.0\u00d7 the share of DB turns in 30\u201360\u00b0 that the Combine supplies (13.3% vs 2.2%; 7,777 game turns vs 26 Combine detections). The Combine detections are incidental fragments, not a test, and 30\u201360\u00b0 is the largest proportional shortfall of any band in this figure.",
+  "source_artefacts": [
+    {
+      "name": "bdb27_full_db_turns.parquet",
+      "path": "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
+      "bytes": 9773407,
+      "sha256": "f2e7cd01db214b7d88ab3f029876fe0fe7ced1530d2f014b9ad55b1b2dfb8e04",
+      "role": "game-only, DB-only turn table (2023-2025)"
+    },
+    {
+      "name": "bdb27_full_game_bands.csv",
+      "path": "data/interim/full_run_20261111/bdb27_full_game_bands.csv",
+      "bytes": 4249,
+      "sha256": "7cd10b9db2b9ccae21099c2bab8fe5d5f1420e295aec6e9dc09ed2c6ade454a1",
+      "role": "the notebook's own band table, all positions, both settings"
+    },
+    {
+      "name": "bdb27_full_game_manifest.json",
+      "path": "data/interim/full_run_20261111/bdb27_full_game_manifest.json",
+      "bytes": 35281,
+      "sha256": "dc8888a0e98d0d67a165106c29638fbe75f6b29d8dbce9a77e87c3dcc3c9de73",
+      "role": "run manifest: inputs, counts, chunks, artefact checksums"
+    }
+  ],
+  "source_run": {
+    "manifest": "bdb27_full_game_manifest.json",
+    "git_rev": "aeb483c",
+    "config_sha": "a4b45b6f476ddae5",
+    "runtime_seconds": 6660.2
+  },
+  "identity": {
+    "run_git_rev": "aeb483c",
+    "render_git_rev": "2306dd6",
+    "config_sha": "a4b45b6f476ddae5",
+    "detection_files_unchanged_since_run": true,
+    "detection_files": [
+      "src/bdb27/figures.py",
+      "src/bdb27/common.py",
+      "src/bdb27/turns.py",
+      "src/bdb27/kinematics.py",
+      "src/bdb27/geometry.py",
+      "src/bdb27/envelope.py",
+      "src/02_turns.py"
+    ]
+  },
+  "crosscheck": {
+    "rows_checked": 12,
+    "matches_uploaded_band_table": true
+  },
+  "season_coverage": {
+    "pooled": true,
+    "by_season": {
+      "2023": {
+        "valid_db_turns": 8016,
+        "players": 33,
+        "games": 227,
+        "game_turns": 25019
+      },
+      "2024": {
+        "valid_db_turns": 21275,
+        "players": 77,
+        "games": 305,
+        "game_turns": 53511
+      },
+      "2025": {
+        "valid_db_turns": 29373,
+        "players": 101,
+        "games": 326,
+        "game_turns": 74917
+      }
+    },
+    "note": "Figure 1 pools 2023-2025. Valid DB game turns are 8,016 / 21,275 / 29,373 and whole-file game turns 25,019 / 53,511 / 74,917. The 2023 tracking file is about a third the size of the 2025 file for the same number of games (333 vs 334), so season-level rates are not comparable. The pooled figure is reported; the unevenness is an open question, not resolved here."
+  },
+  "counts": {
+    "combine_30_60": 26,
+    "combine_total": 1179,
+    "combine_share": 0.02205258693808312,
+    "game_30_60": 7777,
+    "game_total": 58664,
+    "game_share": 0.13256852584208373,
+    "ratio": 6.0114727679929505,
+    "players_by_setting": {
+      "combine": 122,
+      "game": 115
+    },
+    "player_games": 2234
+  },
+  "manifest_provenance": "MIXED",
+  "outputs": {
+    "png": "/home/conormalone/.openclaw/workspace/BDB27/outputs/figures/fig_the_hole.png",
+    "csv": "/home/conormalone/.openclaw/workspace/BDB27/outputs/figures/fig_the_hole.csv",
+    "manifest": "/home/conormalone/.openclaw/workspace/BDB27/outputs/figures/figures_manifest.json",
+    "drawn_text": "/home/conormalone/.openclaw/workspace/BDB27/outputs/figures/fig_the_hole.drawn_text.json"
+  }
+}
