@@ -7249,7 +7249,35 @@ differences, all four counts exact, gate chunks reused from their checkpoints. �
 notebook from `t_start` to the manifest, Combine side included and CSV conversion cached: 397.2 s;
 peak RSS 429.7 MB.
 
+**Portability — the notebook must stay cross-platform.** Windows is a *supported* host: this
+notebook is run on Conor's laptop, and `resource` is a Unix-only stdlib module, so §8's
+`import resource` killed the run with `ModuleNotFoundError` **after** the expensive detection
+pass. The import is now inside `try/except ImportError` (`resource = None`); `peak_rss_mb()`
+reads `resource.getrusage(ru_maxrss)` where the module exists, falls back to
+`psutil.Process().memory_info().rss` **only when psutil is already installed** — never installed
+by the notebook, never added to §2's `_NEEDED` — and otherwise returns
+`(None, "unavailable on this platform")`. The manifest keeps `peak_rss_mb` and gains
+`peak_rss_method`: a number when measurable, `null` plus the reason when not. Never a fabricated
+value, never a missing key, and never a failed artefact write. `src/bdb27/common.py` carried the
+same bare import at module level, which would have failed §2 before the notebook started; it now
+guards it and `log_run()` writes an empty `peak_rss_mb` instead of crashing. Every filesystem
+path interpolated into DuckDB SQL is `.as_posix()`, so a Windows path never reaches DuckDB with
+backslashes. Nothing else in the notebook or the conversion/detection code is Unix-only: no
+`fcntl`, `pwd`, `grp`, `os.fork`, `signal`, hardcoded `/tmp` or `du`/`df`; `epoch_ms(time)` and
+every `ORDER BY` treat `time` as a plain number, so no timezone is assumed anywhere.
+
+**Proof of the Windows path (2026-11-11, 16:10).** The whole notebook was re-run end-to-end with
+a meta-path finder raising `ImportError` for both `resource` and `psutil`: the gate still printed
+`FIDELITY GATE PASSED` with 12 published rows and 0 differences, both data artefacts were written
+**byte-identically** (bands CSV sha256 `a3739f05…5e65dc`, DB turns parquet `d2b6cc40…b0cc983a`),
+and the manifest recorded `"peak_rss_mb": null`, `"peak_rss_method": "unavailable on this
+platform"`. On Linux the same run records 431.6 MB via `resource.getrusage`.
+`tests/test_notebook_portability.py` (7 static tests, no data) fails on any bare
+`import resource` outside a `try` in the notebook or in `common.py`, forbids installing psutil,
+and executes the notebook's own probe with both modules blocked.
+
 **Evidence.** `notebooks/bdb27_full_game_turns.ipynb` (§6 gate, `merge_30_60`, §7 run, §8
-artefacts; default `INPUT_MODE = "full"`); `bdb27_run/verify_executed.ipynb` (sample execution
+artefacts; default `INPUT_MODE = "full"`); `src/bdb27/common.py` (`peak_rss_mb()`) and
+`tests/test_notebook_portability.py`; `bdb27_run/verify_executed.ipynb` (sample execution
 printing `FIDELITY GATE PASSED`); `bdb27_run/artefacts/` from that run — bands CSV 2,168 B /
-36 rows, DB turns parquet 375,784 B / 2,262 rows, manifest 8,543 B.
+36 rows, DB turns parquet 375,784 B / 2,262 rows, manifest 8,609 B.

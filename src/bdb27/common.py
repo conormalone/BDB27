@@ -18,7 +18,6 @@ import hashlib
 import json
 import math
 import os
-import resource
 import subprocess
 import sys
 import time
@@ -26,6 +25,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Sequence
+
+try:  # `resource` is Unix-only; Windows has no such module (D184)
+    import resource
+except ImportError:  # pragma: no cover - the Windows path
+    resource = None
 
 import duckdb
 import pandas as pd
@@ -146,10 +150,26 @@ def require_inputs(paths: Iterable[Path], *, stage: str) -> None:
 _RUN_LOG_LOCK = None
 
 
+def peak_rss_mb() -> float | None:
+    """Peak RSS in MiB where the platform reports it, else None.
+
+    ``resource`` exists on Unix only. ``psutil`` is optional and never required: if it
+    happens to be installed it gives *current* RSS, which is still a measurement, not a
+    guess. A platform with neither records None rather than breaking the run log.
+    """
+    if resource is not None:
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+    try:  # pragma: no cover - only reached off Unix
+        import psutil
+    except ImportError:  # pragma: no cover - only reached off Unix
+        return None
+    return psutil.Process().memory_info().rss / (1024.0 ** 2)
+
+
 def log_run(stage: str, mode: str, wall_s: float, rows: int, status: str,
             detail: str = "", cfg: Config | None = None) -> None:
     """Append one row to outputs/run_log.csv (peak RSS of this process)."""
-    peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+    peak_mb = peak_rss_mb()
     row = {
         "utc": utc_now(),
         "stage": stage,
@@ -157,7 +177,7 @@ def log_run(stage: str, mode: str, wall_s: float, rows: int, status: str,
         "provenance": provenance(mode),
         "status": status,
         "wall_s": round(wall_s, 3),
-        "peak_rss_mb": round(peak_mb, 1),
+        "peak_rss_mb": None if peak_mb is None else round(peak_mb, 1),
         "rows": int(rows),
         "detail": detail,
     }
