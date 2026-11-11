@@ -406,7 +406,13 @@ def _labels(table: pd.DataFrame, bands: list[str]) -> pd.DataFrame:
 
 
 def _annotations(table: pd.DataFrame, context: dict) -> tuple[pd.DataFrame, dict]:
-    """Highlight rectangles (one per panel) and the two callout texts."""
+    """Highlight rectangles (one per panel) and the two callout texts.
+
+    The rectangles are still drawn. The callout texts are not (D183,
+    2026-11-11): Conor removed the red on-plot copy, so ``ann["text"]`` is
+    retained for the contract tests and the ratio/counts it carries still
+    feed the title, the manifest and the CSV — only the drawing went.
+    """
     frame = plot_frame(table)
     rects = []
     for panel, part in frame.groupby("panel", observed=True):
@@ -453,44 +459,22 @@ def _annotations(table: pd.DataFrame, context: dict) -> tuple[pd.DataFrame, dict
                   "ratio": ratio, "combine_share": cs, "game_share": gs}
 
 
-def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot:
-    frame = plot_frame(table)
-    labels = _labels(table, context["bands"])
-    rect, ann = _annotations(table, context)
-    texts = ann["text"]
-    # Style always from figures.focus_band; geometry from this figure's own
-    # display bands (figure 1 merges 30-45 and 45-60 into one 30-60 band).
-    configured = focus_band(cfg)
-    focus = focus_band(cfg, edges=[float(e) for e in context["edges"][:2]])
-    if float(context["edges"][0]) != configured["low"]:
-        raise ValueError(
-            f"{STAGE}: figure 1 highlights its first display band, which must "
-            f"start at the configured focus floor {configured['low']:g}°; got "
-            f"{float(context['edges'][0]):g}°")
-    focus_label = pd.DataFrame([
-        {"panel": panel,
-         "x": 1.0,
-         "y": float(part["value"].max()) * 1.15,
-         "label": f"{focus['label']} band"}
-        for panel, part in frame.groupby("panel", observed=True)
-    ])
+def _caption_lines(context: dict, ann: dict) -> list[str]:
+    """Caption lines; every number comes from the rendered table.
 
+    Kept for the manifest/CSV wording, which still owns every caveat (D183,
+    2026-11-11): the figure draws no caption — Conor asked for the heading and
+    the data, nothing else — so this function is currently uncalled. Its
+    numbers still have to be true if it is ever drawn again.
+    """
     c = ann["combine"]
-    g = ann["game"]
     players = context["players_by_setting"]
     pg = context["player_games"]
     total = context["n_by_setting"]["game"]
     cov = context["coverage_turns"]
     other = context["other_turns"]
     other_pct = context["other_share"] * 100.0
-
-    title = (f"The hole: games demand {ann['ratio']:.1f}× the share of 30–60° "
-             "DB breaks the Combine supplies")
-    subtitle = (f"Valid {context['position']} turns by absolute turn angle — "
-                f"Combine ({players['combine']} players, one session) vs game "
-                f"({players['game']} players, {pg} player-games). Bands are left-closed.")
-
-    caption = "\n".join([
+    return [
         (f"Games spend {ann['game_share'] * 100.0:.1f}% of their DB turns in "
          f"30–60° against the Combine's {ann['combine_share'] * 100.0:.1f}% — "
          f"{ann['ratio']:.1f}× the share. The {c} Combine detections are "
@@ -504,9 +488,32 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
         ("Bands are left-closed; 30–45° and 45–60° are merged into one 30–60° band "
          "on this figure only. The final class is >180°. Source: "
          "outputs/turns/turns.parquet (valid turns), stage 02. Counts computed at render time."),
-    ])
+    ]
+
+
+def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot:
+    frame = plot_frame(table)
+    labels = _labels(table, context["bands"])
+    rect, ann = _annotations(table, context)
+    # Style always from figures.focus_band; geometry from this figure's own
+    # display bands (figure 1 merges 30-45 and 45-60 into one 30-60 band).
+    configured = focus_band(cfg)
+    focus = focus_band(cfg, edges=[float(e) for e in context["edges"][:2]])
+    if float(context["edges"][0]) != configured["low"]:
+        raise ValueError(
+            f"{STAGE}: figure 1 highlights its first display band, which must "
+            f"start at the configured focus floor {configured['low']:g}°; got "
+            f"{float(context['edges'][0]):g}°")
+
+    title = (f"The hole: games demand {ann['ratio']:.1f}× the share of 30–60° "
+             "DB breaks the Combine supplies")
 
     dodge = position_dodge(width=0.8)
+    # Heading, bands and bars only (D183, 2026-11-11): no subtitle under the
+    # heading, no caption at the foot, and none of the three red callouts
+    # ("THE HOLE …", "…× the share", "… band"). The band tint and its two
+    # rules stay; every caveat the caption carried is in the CSV and the
+    # manifest entry, which are the provenance record.
     plot = (
         ggplot(frame, aes(x="band", y="value", fill="setting"))
         + geom_rect(data=rect, mapping=aes(xmin="xmin", xmax="xmax",
@@ -520,19 +527,11 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
                                              group="setting"),
                     position=dodge, size=2.9, colour="#1A1A1A", va="bottom",
                     show_legend=False)
-        + geom_text(data=texts, mapping=aes(x="x", y="y", label="label"),
-                    inherit_aes=False, size=3.2, colour=focus["colour"],
-                    fontweight="bold",
-                    ha="center", va="center")
-        + geom_text(data=focus_label, mapping=aes(x="x", y="y", label="label"),
-                    inherit_aes=False, size=3.3, colour=focus["colour"],
-                    fontweight="bold", ha="center", va="bottom")
         + facet_wrap("~ panel", nrow=1, scales="free_y")
         + scale_fill_manual(values=[PALETTE["combine"], PALETTE["game"]],
                             labels=[COMBINE_LABEL, GAME_LABEL], name=None)
         + scale_x_discrete(limits=list(context["bands"]))
-        + labs(title=title, subtitle=subtitle, caption=caption,
-               x=None, y=None)
+        + labs(title=title, x=None, y=None)
         + theme_bw(base_size=9)
         + theme(
             figure_size=(float(cfg.get("figures.hole.width_in")),
@@ -544,9 +543,6 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
             strip_background=element_rect(fill="#D9D9D9", colour="#B3B3B3"),
             strip_text=element_text(weight="bold", size=10),
             plot_title=element_text(size=15, weight="bold"),
-            plot_subtitle=element_text(size=9.0, colour="#333333"),
-            plot_caption=element_text(size=6.9, colour="#333333", ha="left",
-                                      linespacing=1.35),
             axis_title_x=element_blank(),
             axis_title_y=element_blank(),
             axis_text_x=element_text(size=8.5),

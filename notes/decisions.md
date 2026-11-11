@@ -7104,3 +7104,74 @@ the two caption-prose tests read the retained uncalled caption builder. In
 `get_colors()`: with the callout text gone, figure 5's configured focus colour
 reaches the canvas through the band rules (`LineCollection`), which the old
 walk could not see.
+
+### D183 (extended) — figure 1 carries a heading, bands and bars, nothing else · 2026-11-11 09:40
+
+**The instruction (Conor, 2026-11-11 09:13, verbatim, sent against the rendered
+image).** "In this plot 'the hole, game demands 6.5x the share 30 to 60...'
+Remove the text under the title, the red text on the plot, and the text
+underneath". This is the treatment figures 18 (`06702a0`) and 5 (`670a790`)
+already received, now applied to figure 1; the figure, its contract and its
+caveats are the same artefact, so D183 is extended rather than a new decision
+opened.
+
+**What was removed.** Four text blocks and nothing else. (1) The subtitle under
+the heading (`labs(subtitle=…)`), the grey "Valid DB turns by absolute turn
+angle — Combine (N players, one session) vs game (N players, N player-games).
+Bands are left-closed." The bold heading stays, and it keeps the live ratio
+("6.5×"). (2) The whole bottom caption block (`labs(caption=…)`), all four
+caption lines — the exposure, denominator, merge and provenance sentences.
+Nothing textual remains at the foot except the Combine/Game legend. (3) All
+three red on-plot texts, all in `figures.focus_band.colour` (#C00000): the
+panel (a) callout "THE HOLE\n{c} vs {g} turns", the panel (b) callout
+"{ratio:.1f}× the share\nin games", and the per-panel "{focus['label']} band"
+tag. The band tint rectangle, its two vertical rules and the panel border stay
+exactly as drawn.
+
+**What the removal is not.** No number, caveat or claim was dropped from the
+artefact. The caption construction moved into `_caption_lines()`, which builds
+the same prose from the same render-time values and is currently uncalled; its
+docstring says so, following `_da_caption` on figure 18 and
+`_all_positions_caption()` on figure 5. `_annotations()` still returns the same
+rectangles, callout strings, counts and ratio: the strings no longer reach the
+canvas, but `ann["ratio"]` still feeds the title and `ann["combine"]`,
+`ann["game"]`, `ann["combine_share"]`, `ann["game_share"]` still feed the
+manifest. The two guards are untouched and still refuse: the first-band-is-the-
+largest-proportional-shortfall check inside `_annotations()`, and the
+`context["edges"][0]` focus-floor check inside `build_plot()`. Only the drawing
+went. The proof that this is a drawing-only change is `fig_the_hole.csv`:
+SHA-256 `a7cef5d817a2f43204a33c64a67e8906fc2234c486654134197b3df9f5f35cf4`,
+identical before and after.
+
+**Layout.** With the subtitle and caption gone the panels and legend reflowed to
+fill the canvas; no config change was needed and `config.yaml` is untouched.
+Canvas is 11.5 × 7.6 in at 150 dpi = 1725 × 1140 px (unchanged). Measured on the
+committed render: top white band 17 px (0.11 in above the heading), bottom white
+band 19 px (0.13 in below the legend), left/right 18/16 px. The heading's bottom
+sits at 48.8 px and the facet strips start at 74.4 px — a 25.6 px (0.17 in)
+heading gap. The longest blank vertical run anywhere is 58 px (0.39 in), the
+interior gap between the band tick labels (bottom 1,039.8 px) and the legend
+text (top 1,099.4 px); both canvas edges are filled.
+
+**Draw unchanged.** The paired bars and their dodging, the dark data labels on
+the bars (counts in panel (a), percentages in panel (b)), the band tick labels,
+the facet strips, the panel background and border, the band tint and its two
+red rules, and the bottom Combine/Game legend are all exactly as before. Only
+the four text blocks above stopped being drawn.
+
+**Proof nothing else moved.** `outputs/figures/fig_the_hole.png` is the only PNG
+that changes (133,214 → 57,636 bytes; SHA-256 265c9da2…b295b2d →
+5643d706…604462); all 17 other figure PNGs are byte-identical (SHA-256). Every
+figure CSV is byte-identical, `config_sha` included — `config.yaml` does not
+change. The manifest changes only in its top-level `generated_utc`; the
+`fig_the_hole` entry, caveats and claim included, is unchanged. `run_log.csv`
+gains the one line every stage-06 run appends. Two consecutive stage renders of
+figure 1 are byte-identical (5643d706…604462 both times).
+
+**Tests.** `tests/test_figures_stage.py` keeps every figure-1 test and adds two:
+`test_hole_draws_a_heading_and_nothing_else` fails if a subtitle, the caption
+block, "THE HOLE", the "× the share\nin games" callout or the "30–60° band" tag
+is ever drawn back, and fails if any drawn text uses the focus colour, while
+asserting the bar data labels, band labels, facet strips and legend are still
+drawn; `test_hole_canvas_has_no_dead_band` fails if more than 30 px of white
+sits above the heading or below the legend.

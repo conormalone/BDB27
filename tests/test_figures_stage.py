@@ -464,6 +464,111 @@ def test_csv_matches_artefact_counts_for_every_band(rendered):
     _check_counts(csv_df, turns, HOLE_EDGES)
 
 
+def _hole_cells(rendered):
+    """Figure 1's table, context and config, rebuilt from the fixture render."""
+    from bdb27 import common, figures
+
+    turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
+    cfg = common.load_config(rendered["cfg"])
+    edges = [float(x) for x in
+             cfg.get("figures.hole.plot_bands.turn_angle_deg")]
+    overflow = str(cfg.get("figures.hole.bands.overflow_label"))
+    position = str(cfg.get("figures.hole.position_group"))
+    table, context = figures.band_table(turns, edges, overflow, position)
+    return table, context, cfg
+
+
+def test_hole_draws_a_heading_and_nothing_else(rendered):
+    """D183: heading, bands and bars only — no subtitle, caption or red text."""
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    from bdb27 import figures
+
+    table, context, cfg = _hole_cells(rendered)
+    plot = figures.build_plot(table, context, cfg)
+    fig = plot.draw()
+    try:
+        visible = [t.get_text() for t in fig.texts
+                   if t.get_visible() and t.get_text().strip()]
+        headings = [text for text in visible if text.startswith("The hole:")]
+        assert len(headings) == 1, (
+            f"figure 1 must draw exactly one heading, got {visible}")
+        assert headings[0] == (
+            "The hole: games demand 6.5× the share of 30–60° DB breaks the "
+            "Combine supplies")
+        assert visible == headings, (
+            f"unexpected figure-level text: {visible}")
+
+        drawn = "\n".join(
+            [t.get_text() for t in fig.texts if t.get_visible()]
+            + [t.get_text() for ax in fig.axes for t in ax.texts
+               if t.get_visible()]
+            + [t.get_text() for ax in fig.axes for t in ax.get_xticklabels()
+               if t.get_visible()]
+            + [t.get_text() for ax in fig.axes for t in ax.get_yticklabels()
+               if t.get_visible()])
+        assert "Valid DB turns by absolute turn angle" not in drawn, (
+            "the subtitle is still drawn")
+        assert "incidental fragments, not a deliberate break test" not in drawn, (
+            "the caption block is still drawn at the foot of the figure")
+        assert "DB demand denominator" not in drawn, (
+            "the caption block is still drawn at the foot of the figure")
+        assert "THE HOLE" not in drawn, (
+            "the panel (a) red callout is still drawn")
+        assert "× the share\nin games" not in drawn, (
+            "the panel (b) red ratio callout is still drawn")
+        assert "30–60° band" not in drawn, (
+            "the red focus-band tag is still drawn")
+
+        # No text at all in the focus colour: the three callouts were the only
+        # red text, and the band tint/rules are not text.
+        from matplotlib.colors import to_hex
+        red_text = [t.get_text() for t in fig.findobj(matplotlib.text.Text)
+                    if t.get_visible() and t.get_text().strip()
+                    and to_hex(t.get_color()).lower() == "#c00000"]
+        assert red_text == [], f"red on-plot text survived: {red_text}"
+
+        # Kept by the same change: the bar data labels, band tick labels,
+        # facet strips and the colour legend.
+        all_text = [t.get_text() for t in fig.findobj(matplotlib.text.Text)
+                    if t.get_visible() and t.get_text().strip()]
+        for label in ("26", "326", "2.2%", "42.3%"):
+            assert label in all_text, f"bar data label {label} disappeared"
+        for band in ("30–60°", "60–90°", "90–120°", "120–150°",
+                     "150–180°", ">180°"):
+            assert band in all_text, f"band label {band} disappeared"
+        assert "Combine" in all_text and "Game" in all_text, (
+            "the colour legend labels must stay drawn")
+        assert "(a) Raw counts (turns)" in all_text
+        assert "(b) Share of turns within setting (%)" in all_text
+    finally:
+        plt.close(fig)
+
+
+def test_hole_canvas_has_no_dead_band(rendered):
+    """The freed subtitle/caption space goes to the plot, not to white bands."""
+    import matplotlib.pyplot as plt
+
+    from bdb27 import figures
+
+    table, context, cfg = _hole_cells(rendered)
+    fig = figures.build_plot(table, context, cfg).draw()
+    out = rendered["tmp"] / "hole_canvas.png"
+    try:
+        fig.savefig(out, dpi=150, facecolor="white",
+                    metadata={"Software": "bdb27-figures"})
+    finally:
+        plt.close(fig)
+    with Image.open(out) as im:
+        pixels = np.asarray(im.convert("RGB"))
+    rows = np.where(np.any(pixels < 250, axis=2).any(axis=1))[0]
+    top_blank = int(rows.min())
+    bottom_blank = int(pixels.shape[0] - 1 - rows.max())
+    assert top_blank <= 30, f"{top_blank} px of white above the heading"
+    assert bottom_blank <= 30, f"{bottom_blank} px of white below the legend"
+
+
 def test_provenance_stamp_in_csv_and_manifest(rendered):
     csv_df = pd.read_csv(rendered["csv"])
     assert csv_df["stamp"].eq(STAMP).all()
