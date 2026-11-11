@@ -85,3 +85,38 @@ ellipse or test. Two renders produce a byte-identical PNG.
 The DB-only narrowing moves `config_sha` in every other figure CSV (the config
 block changed); every column except `config_sha` is unchanged in all 17, and
 every pre-existing PNG is byte-identical to `fddb107` (D183).
+
+## Figure 1 — FULL DATA (D185, 2026-11-11)
+
+`src/07_full_figure1.py` redraws figure 1 from the uploaded Windows run
+(`data/interim/full_run_20261111/`, pinned by sha256 in `bdb27.full_run`). The
+game side is the full three-season turn table; the Combine side is the
+unchanged full Combine file, read via `outputs/turns/turns.parquet`. The
+sample path (`src/06_figures.py --mode sample`) is untouched.
+
+| band | Combine | Game |
+|---|---:|---:|
+| 30–60° | **26** | **7,777** |
+| 60–90° | 237 | 13,077 |
+| 90–120° | 159 | 13,016 |
+| 120–150° | 499 | 11,444 |
+| 150–180° | 128 | 8,137 |
+| >180° | 130 | 5,213 |
+| **total** | **1,179** | **58,664** |
+
+30–60° is 13.26% of game DB turns against 2.21% of Combine turns: **6.0×**
+(6.011 exact). Heading: "The hole: games demand 6.0× the share of 30–60° DB
+breaks the Combine supplies". 115 game players over 2,234 player-games; 122
+Combine players.
+
+The CSV is stamped `FULL` / `FULL DATA OUTPUT`; `fig_the_hole.provenance.json`
+records the three uploaded files with bytes and sha256, the run's
+`git_rev aeb483c` / `config_sha a4b45b6f476ddae5`, the 12-row cross-check
+against the uploaded band table, and per-season coverage (8,016 / 21,275 /
+29,373 valid DB turns). The figure stays pooled; the uneven per-season coverage
+is a stated caveat, not a resolved question. The manifest as a whole says
+`MIXED PROVENANCE — 1 FULL, 16 sample, 1 schematic`.
+
+`fig_the_hole.drawn_text.json` is the rendered-text proof: heading, two panel
+strips, `Combine`/`Game`, six band labels, y ticks and the four direct labels
+only. Two full renders are byte-identical.

@@ -7461,3 +7461,77 @@ artefacts per shape in `bdb27_run/shape_<shape>_artefacts/`; the sample fidelity
 `bdb27_run/verify_executed.ipynb` (2,262 / 326 / 33 / 299, 12 rows, 0 differences).
 `tests/test_notebook_season_inputs.py` covers the three-file resolution, the single-file
 fallback, the NULL-season conversion and the wrong-name message.
+
+### D185 — figure 1 drawn from the uploaded full-data run · 2026-11-11 22:35
+
+**The ask (Conor, 2026-11-11).** Every game-side figure still came from the
+1,048,575-row 2023 sample and was stamped `PLACEHOLDER_SAMPLE`. He ran the turn
+notebook on the full three-season tracking files on Windows and sent back the
+artefacts. Figure 1, the headline exhibit, goes first.
+
+**The upload.** `data/interim/full_run_20261111/`:
+`bdb27_full_db_turns.parquet` (9,773,407 B, sha256 `f2e7cd01…`, game-only and
+DB-only, 58,665 rows, 58,664 valid, seasons 2023-2025, 7,777 in 30-60°),
+`bdb27_full_game_bands.csv` (4,249 B, `7cd10b9d…`, the notebook's own band
+table) and `bdb27_full_game_manifest.json` (35,281 B, `dc8888a0…`, which records
+the first two checksums, `config_sha a4b45b6f476ddae5` and `git_rev aeb483c`).
+The manifest's counts and the parquet's own counts agree; the files are one run.
+
+**Decision.** A single-purpose renderer (`src/07_full_figure1.py`, module
+`src/bdb27/full_run.py`) joins the full game-DB rows with the Combine-DB rows of
+`outputs/turns/turns.parquet` and calls the existing `figures.band_table →
+build_plot → render` path unchanged. It is not `06_figures.py --mode full`,
+because full mode correctly refuses without FULL thresholds and
+`notes/prereg.md`, and neither exists in this upload; inventing them to unlock a
+figure would be dishonest. The sample path is untouched: a sample run still
+renders all 18 figures and still stamps `PLACEHOLDER_SAMPLE`.
+
+**Refusals, all exercised by `tests/test_full_figure1.py`.** Any source file's
+sha256 differs from its pin; the parquet is not game-only/DB-only or disagrees
+with the run manifest's counts; the assembled DB table does not reproduce the
+uploaded band table row for row; the Combine side is not 1,179 / 26; the config
+fingerprint or the turn-detection sources differ from `aeb483c`; or figure 1's
+own "largest proportional shortfall" guard fires.
+
+**Result on the full data.** 30-60° DB share is **13.26%** in games
+(7,777 / 58,664) against the Combine's **2.21%** (26 / 1,179): **6.0×**
+(6.011 exact), against 6.5× on the sample. The band is still the largest
+proportional shortfall (next is 90-120° at 1.65×), so the guard passes. Players:
+122 Combine vs 115 game over 2,234 player-games.
+
+**Provenance and labelling.** `fig_the_hole.csv` is `FULL` / `FULL DATA
+OUTPUT` in every row; the manifest entry is `FULL` with the three uploaded
+artefacts as sources; `fig_the_hole.provenance.json` names each file with bytes
+and sha256, the run's `git_rev`/`config_sha`/runtime, the 12-row cross-check and
+the per-season coverage. The manifest as a whole now says `MIXED PROVENANCE — 1
+FULL, 16 sample, 1 schematic`, because the other 17 figures are still sample —
+neither the whole file nor figure 1 is mislabelled.
+
+**Per-season.** The figure stays pooled (that is what it measures; a season
+facet would break D183's drawing contract). The split is carried in the
+manifest and the provenance record: valid DB turns 8,016 / 21,275 / 29,373
+(whole-file game turns 25,019 / 53,511 / 74,917). The caveat says plainly that
+the 2023 tracking file is about a third the size of 2025's for the same number
+of games, so season-level rates are not comparable and the unevenness is an
+open question with Conor — not something this work resolves.
+
+**Drawing contract (D183) held.** Heading and data only: rendered-text dump
+`outputs/figures/fig_the_hole.drawn_text.json` contains exactly the heading,
+the two panel strips, the legend labels `Combine`/`Game`, the six band tick
+labels, the y ticks and the four direct count labels (`26`, `499`, `7777`,
+`13077`). No subtitle, caption, red callout, or provenance banner. Two renders
+are byte-identical.
+
+**Explicitly not done.** Figure 5 needs full game turns for other positions
+(the upload is DB-only). Figure 6 needs the full stage-03 variance table (not
+in the upload). Figures 7-17 could be redrawn from the same turn table, but
+their contracts use stage-04/05 products, bootstrap intervals or other outputs
+the full run did not produce; mixing a FULL game side with SAMPLE stage
+products under a FULL stamp is the exact failure this task exists to prevent,
+so they stay sample-stamped until their full inputs exist. Figures 2-4 are
+Combine-only or schematic and are not blocked by the game sample.
+
+**Evidence.** `notes/spec-fig1-full.md`; `src/bdb27/full_run.py`;
+`src/07_full_figure1.py`; `tests/test_full_figure1.py`;
+`outputs/figures/fig_the_hole.{png,csv,provenance.json,drawn_text.json}`;
+`outputs/figures/figures_manifest.json`.
