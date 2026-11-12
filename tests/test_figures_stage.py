@@ -1457,7 +1457,8 @@ def test_all_positions_canvas_has_no_dead_band(rendered):
     assert top_blank <= 30, f"{top_blank} px of white above the heading"
     assert bottom_blank <= 30, f"{bottom_blank} px of white below the legend"
 
-def test_all_positions_counts_annotated_on_the_accent_panel_only(rendered):
+def test_all_positions_draws_no_count_annotations(rendered):
+    """D187 (2026-11-12): the DB count labels are removed from the canvas."""
     import matplotlib.pyplot as plt
 
     from bdb27 import figures
@@ -1466,16 +1467,11 @@ def test_all_positions_counts_annotated_on_the_accent_panel_only(rendered):
     plot = figures.plot_all_positions(table, context, cfg, turns=turns)
     fig = plot.draw()
     try:
-        numeric = {p: [t.get_text() for t in ax.texts
+        for position, ax in zip(ALL_POSITIONS, fig.axes):
+            numeric = [t.get_text() for t in ax.texts
                        if t.get_text().replace(",", "").isdigit()]
-                   for p, ax in zip(ALL_POSITIONS, fig.axes)}
-        assert len(numeric["DB"]) == 12
-        for position in ALL_POSITIONS[1:]:
-            assert numeric[position] == [], (
-                f"{position} panel must not carry count labels")
-        db = table[table["position"] == "DB"]
-        assert sorted(int(x.replace(",", "")) for x in numeric["DB"]) == sorted(
-            int(n) for n in db["count"])
+            assert numeric == [], (
+                f"{position} panel must not carry count labels, got {numeric}")
     finally:
         plt.close(fig)
 
@@ -1541,7 +1537,8 @@ def test_all_positions_manifest_entry(rendered):
     assert [b for b in fig["bands"]] == ["30–60°", "60–90°", "90–120°",
                                          "120–150°", "150–180°", ">180°"]
     assert len(fig["counts"]) == 60
-    assert fig["count_labels"] == {"panel": "DB", "shown_for_other_panels": False}
+    assert fig["count_labels"]["drawn"] is False
+    assert "2026-11-12" in fig["count_labels"]["note"]
     assert not any("rank" in k or "ratio" in k for k in fig), (
         "the manifest must not carry a ranking or ratio of positions")
 

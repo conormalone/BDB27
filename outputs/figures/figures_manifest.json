@@ -2,7 +2,7 @@
   "provenance": "MIXED",
   "label": "MIXED PROVENANCE \u2014 2 FULL, 15 sample, 1 schematic",
   "config_sha": "a4b45b6f476ddae5",
-  "generated_utc": "2026-11-12T00:13:07Z",
+  "generated_utc": "2026-11-12T08:15:45Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "MIXED PROVENANCE \u2014 2 FULL, 15 sample, 1 schematic",
@@ -1434,8 +1434,8 @@
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_all_positions",
-      "title": "The same hole across positions: the Combine takes a smaller 30\u201360\u00b0 share in every position it tests",
-      "claim": "Every panel plots the same quantity \u2014 the share of that setting's own valid turns in each display band, on one identical 0\u201370% axis, with 30\u201345\u00b0 and 45\u201360\u00b0 merged into one 30\u201360\u00b0 band on this figure only. OTHER has no Combine turns in this run, so its panel is drawn game-only. In every position the Combine tests, it takes a smaller 30\u201360\u00b0 share than games do (DL: 95 vs 2273 turns); the figure ranks no position and labels no panel \"fine\".",
+      "title": "The same hole across positions: the Combine takes a smaller 30\u201360\u00b0 share in every panel",
+      "claim": "Every panel plots the same quantity \u2014 the share of that setting's own valid turns in each display band, Combine vs game, on one identical 0\u201370% axis, with 30\u201345\u00b0 and 45\u201360\u00b0 merged into one 30\u201360\u00b0 band on this figure only. In every panel the Combine takes a smaller 30\u201360\u00b0 share than games do (DL: 95 vs 2273 turns); the figure ranks no position and labels no panel \"fine\".",
       "sources": [
         "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
         "data/interim/full_run_20261111/bdb27_full_game_bands.csv",
@@ -1447,10 +1447,9 @@
         "WR",
         "TE",
         "OL",
-        "DL",
-        "OTHER"
+        "DL"
       ],
-      "position_order_note": "Order is the configured TASK order with OTHER appended; not a ranking by gap size.",
+      "position_order_note": "Order is the configured five-group TASK order; not a ranking by gap size. No plotted position is ranked.",
       "emphasis_position": "DB",
       "muted_alpha": 0.6,
       "shared_axis": {
@@ -1477,8 +1476,8 @@
         "note": "Carried from the spec, not assigned here. Positions absent from this map carry no status on this figure and are neither promoted nor demoted."
       },
       "count_labels": {
-        "panel": "DB",
-        "shown_for_other_panels": false
+        "drawn": false,
+        "note": "No count text is drawn on any panel (Conor, 2026-11-12). Every count and denominator is in the CSV."
       },
       "per_position": {
         "DB": {
@@ -1536,16 +1535,6 @@
             "combine": 118
           },
           "spec_status": ""
-        },
-        "OTHER": {
-          "n_valid": 14971,
-          "n_by_setting": {
-            "game": 14971
-          },
-          "players_by_setting": {
-            "combine": 9
-          },
-          "spec_status": ""
         }
       },
       "caveats": [
@@ -1555,8 +1544,7 @@
         "DL is included unchanged and is not annotated as \"fine\": in 30\u201360\u00b0 its Combine share is 4.6% against games' 9.8% (95 vs 2273 turns), while TASK.md \u00a7CURRENT FOCUS records DL's gap as a speed story rather than an angle one.",
         "Bands are left-closed; the final class is >180\u00b0. This figure merges 30\u201345\u00b0 and 45\u201360\u00b0 into one 30\u201360\u00b0 band; figures 3, 8, 12, 13 and 15 report the two bands separately.",
         "Every count and share here is read from the uploaded full-run band table (bdb27_full_game_bands.csv), not from the sample turn table. The Combine side is cross-checked row for row against the Combine turn table; DB game rows against figure 1's assembled DB table.",
-        "Player exposure is not in the uploaded band table for the non-DB game positions, so the CSV leaves those n_players cells blank rather than copying sample numbers.",
-        "OTHER has no Combine turns in this run; its panel is drawn game-only and is excluded from the \"every position the Combine tests\" wording, not hidden."
+        "Player exposure is not in the uploaded band table for the non-DB game positions, so the CSV leaves those n_players cells blank rather than copying sample numbers."
       ],
       "counts": [
         {
@@ -2278,78 +2266,6 @@
           "setting_total": 23296,
           "share_within_setting": 0.10203468406593406,
           "share_pct": 10.203468406593407
-        },
-        {
-          "position": "OTHER",
-          "band_index": 1,
-          "band": "30\u201360\u00b0",
-          "band_low_deg": 30.0,
-          "band_high_deg": 60.0,
-          "setting": "game",
-          "count": 2062,
-          "setting_total": 14971,
-          "share_within_setting": 0.13773295037071673,
-          "share_pct": 13.773295037071673
-        },
-        {
-          "position": "OTHER",
-          "band_index": 2,
-          "band": "60\u201390\u00b0",
-          "band_low_deg": 60.0,
-          "band_high_deg": 90.0,
-          "setting": "game",
-          "count": 2990,
-          "setting_total": 14971,
-          "share_within_setting": 0.1997194576180616,
-          "share_pct": 19.971945761806158
-        },
-        {
-          "position": "OTHER",
-          "band_index": 3,
-          "band": "90\u2013120\u00b0",
-          "band_low_deg": 90.0,
-          "band_high_deg": 120.0,
-          "setting": "game",
-          "count": 2752,
-          "setting_total": 14971,
-          "share_within_setting": 0.18382205597488477,
-          "share_pct": 18.382205597488475
-        },
-        {
-          "position": "OTHER",
-          "band_index": 4,
-          "band": "120\u2013150\u00b0",
-          "band_low_deg": 120.0,
-          "band_high_deg": 150.0,
-          "setting": "game",
-          "count": 3036,
-          "setting_total": 14971,
-          "share_within_setting": 0.20279206465833946,
-          "share_pct": 20.279206465833948
-        },
-        {
-          "position": "OTHER",
-          "band_index": 5,
-          "band": "150\u2013180\u00b0",
-          "band_low_deg": 150.0,
-          "band_high_deg": 180.0,
-          "setting": "game",
-          "count": 2545,
-          "setting_total": 14971,
-          "share_within_setting": 0.16999532429363437,
-          "share_pct": 16.999532429363438
-        },
-        {
-          "position": "OTHER",
-          "band_index": 6,
-          "band": ">180\u00b0",
-          "band_low_deg": 180.0,
-          "band_high_deg": null,
-          "setting": "game",
-          "count": 1586,
-          "setting_total": 14971,
-          "share_within_setting": 0.1059381470843631,
-          "share_pct": 10.593814708436309
         }
       ],
       "png": "outputs/figures/fig_all_positions.png",
@@ -2395,9 +2311,6 @@
           "matches_uploaded_band_table": true
         }
       },
-      "combine_untested": [
-        "OTHER"
-      ],
       "players_known": {
         "source": "Combine player counts from outputs/turns/turns.parquet; game counts for DB from the uploaded full DB turn table. The uploaded band table carries no player exposure for the other game positions, so those CSV cells are blank.",
         "by_position_setting": {
@@ -2416,9 +2329,6 @@
           },
           "DL": {
             "combine": 118
-          },
-          "OTHER": {
-            "combine": 9
           }
         },
         "player_games": {

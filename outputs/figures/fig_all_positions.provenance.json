@@ -2,10 +2,10 @@
   "provenance": "FULL",
   "label": "FULL DATA OUTPUT",
   "config_sha": "a4b45b6f476ddae5",
-  "generated_utc": "2026-11-12T00:13:07Z",
+  "generated_utc": "2026-11-12T08:15:46Z",
   "figure": "fig_all_positions",
-  "title": "The same hole across positions: the Combine takes a smaller 30\u201360\u00b0 share in every position it tests",
-  "claim": "Every panel plots the same quantity \u2014 the share of that setting's own valid turns in each display band, on one identical 0\u201370% axis, with 30\u201345\u00b0 and 45\u201360\u00b0 merged into one 30\u201360\u00b0 band on this figure only. OTHER has no Combine turns in this run, so its panel is drawn game-only. In every position the Combine tests, it takes a smaller 30\u201360\u00b0 share than games do (DL: 95 vs 2273 turns); the figure ranks no position and labels no panel \"fine\".",
+  "title": "The same hole across positions: the Combine takes a smaller 30\u201360\u00b0 share in every panel",
+  "claim": "Every panel plots the same quantity \u2014 the share of that setting's own valid turns in each display band, Combine vs game, on one identical 0\u201370% axis, with 30\u201345\u00b0 and 45\u201360\u00b0 merged into one 30\u201360\u00b0 band on this figure only. In every panel the Combine takes a smaller 30\u201360\u00b0 share than games do (DL: 95 vs 2273 turns); the figure ranks no position and labels no panel \"fine\".",
   "source_artefacts": [
     {
       "name": "bdb27_full_db_turns.parquet",
@@ -37,7 +37,7 @@
   },
   "identity": {
     "run_git_rev": "aeb483c",
-    "render_git_rev": "06ecaeb",
+    "render_git_rev": "3aaebfd",
     "config_sha": "a4b45b6f476ddae5",
     "detection_files_unchanged_since_run": true,
     "detection_files": [
@@ -64,11 +64,7 @@
     "WR",
     "TE",
     "OL",
-    "DL",
-    "OTHER"
-  ],
-  "combine_untested": [
-    "OTHER"
+    "DL"
   ],
   "per_position": {
     "DB": {
@@ -121,20 +117,11 @@
       "players_by_setting": {
         "combine": 118
       }
-    },
-    "OTHER": {
-      "n_valid": 14971,
-      "n_by_setting": {
-        "game": 14971
-      },
-      "players_by_setting": {
-        "combine": 9
-      }
     }
   },
   "counts": {
-    "n_turns_drawn": 158965,
-    "positions": 6,
+    "n_turns_drawn": 143994,
+    "positions": 5,
     "band0_combine_count": 26,
     "band0_game_count": 7777
   },

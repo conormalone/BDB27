@@ -18,8 +18,12 @@ Everything else — counts, denominators, shares — is read from the uploaded
 band table and re-checked against the Combine turn table and, for DB, against
 the figure-1 path's assembled table.
 
-The drawing contract is D183's trimmed figure 5: heading, bars, band rows,
-counts and legend. No subtitle, caption, band callout or EXPLORATORY badge.
+The drawing contract is D183's trimmed figure 5: heading, bars, band rows and
+legend. No subtitle, caption, band callout, count annotation or EXPLORATORY
+badge. The figure draws five position groups — DB, WR, TE, OL, DL. The upload
+also carries unclassified ``OTHER`` turns; D187 (2026-11-12) removed that
+column on Conor's instruction, so those rows are not a panel and are not
+plotted.
 """
 
 from __future__ import annotations
@@ -35,12 +39,10 @@ from bdb27.figure_text_scan import BANNED_TOKENS, figure_texts
 STAGE = "08_full_figure5"
 FIGURE_KEY = figures.FIGURE_KEY_ALL_POSITIONS
 
-#: The six groups figure 5 draws, in TASK order, with OTHER appended. OTHER is
-#: unclassified and exists only on the game side; its panel is drawn game-only
-#: and is excluded from the "Combine takes a smaller share" claim by name.
-POSITIONS = ["DB", "WR", "TE", "OL", "DL", "OTHER"]
-#: Groups with no Combine turns at all in this run.
-GAME_ONLY = ["OTHER"]
+#: The five groups figure 5 draws, in TASK order. Each must have Combine turns:
+#: an unclassified group is not a position and is not drawn as a panel
+#: (D187, 2026-11-12).
+POSITIONS = ["DB", "WR", "TE", "OL", "DL"]
 
 ARTEFACT_BANDS = full_run.ARTEFACT_BANDS
 ARTEFACT_PARQUET = full_run.ARTEFACT_PARQUET
@@ -84,24 +86,24 @@ def load_band_table(source_dir: Path) -> pd.DataFrame:
 
 def positions_order(uploaded: pd.DataFrame, cfg: common.Config,
                     required: list[str] | None = None) -> list[str]:
-    """Required positions first, then any extra group the upload carries.
+    """The configured position groups, in order; every one must be present.
 
-    ``required`` defaults to the configured positions. Figure 5 passes the
-    six-group constant because OTHER cannot live in ``config.yaml``: the config
-    fingerprint is pinned by the uploaded run, so the sixth panel is a code
-    requirement, and a missing one must refuse rather than quietly vanish.
+    ``required`` defaults to the configured positions. Figure 5 passes its
+    own five-group constant. Groups the upload carries but the figure does
+    not plot — unclassified ``OTHER`` turns — are not appended as panels: the
+    figure draws exactly the required list, and a missing required group
+    refuses rather than quietly vanishing.
     """
     required = ([str(p) for p in required]
                 if required is not None
                 else [str(p) for p in cfg.get("figures.all_positions.positions")])
     present = list(dict.fromkeys(uploaded["position_group"].astype(str)))
-    order = required + [p for p in present if p not in required]
-    unknown = [p for p in order if p not in present]
-    if unknown:
+    missing = [p for p in required if p not in present]
+    if missing:
         raise common.StageRefused(
-            f"{STAGE}: the uploaded band table has no rows for {unknown}; "
+            f"{STAGE}: the uploaded band table has no rows for {missing}; "
             "figure 5 refuses to draw an empty panel")
-    return order
+    return list(required)
 
 
 def table_from_bands(uploaded: pd.DataFrame, positions: list[str],
@@ -131,10 +133,10 @@ def table_from_bands(uploaded: pd.DataFrame, positions: list[str],
             if "game" not in settings:
                 raise common.StageRefused(
                     f"{STAGE}: no game rows for {position} {band}")
-            if "combine" not in settings and position not in GAME_ONLY:
+            if "combine" not in settings:
                 raise common.StageRefused(
-                    f"{STAGE}: no Combine rows for {position} {band}; only "
-                    f"{GAME_ONLY} may be game-only")
+                    f"{STAGE}: no Combine rows for {position} {band}; figure 5 "
+                    "draws only positions the Combine tests")
             for setting in ("combine", "game"):
                 if setting not in settings:
                     continue
@@ -197,10 +199,8 @@ def check_combine_side(table: pd.DataFrame, combine_turns: pd.DataFrame,
         rows = table[(table["position"] == position)
                      & (table["setting"] == "combine")]
         if rows.empty:
-            if position not in GAME_ONLY:
-                raise common.StageRefused(
-                    f"{STAGE}: {position} has no Combine rows to cross-check")
-            continue
+            raise common.StageRefused(
+                f"{STAGE}: {position} has no Combine rows to cross-check")
         counts, total = _count_bands(combine_turns, edges, overflow,
                                      position, "combine")
         if total != int(rows["setting_total"].iloc[0]):
@@ -254,7 +254,7 @@ def player_counts(combine_turns: pd.DataFrame, game: pd.DataFrame,
 def build_context(table: pd.DataFrame, positions: list[str],
                   edges: list[float], overflow: str,
                   players: dict[str, dict[str, int]],
-                  player_games: dict[str, int]) -> dict:
+                  player_games: dict[str, int], n_excluded: int = 0) -> dict:
     per_position: dict[str, dict] = {}
     for position in positions:
         part = table[table["position"] == position]
@@ -265,16 +265,13 @@ def build_context(table: pd.DataFrame, positions: list[str],
             "n_by_setting": n_by_setting,
             "players_by_setting": dict(players.get(position, {})),
         }
-    untested = [p for p in positions
-                if int(per_position[p]["n_by_setting"].get("combine", 0)) == 0]
     return {
         "positions": list(positions),
         "bands": figures.band_labels(edges, overflow),
         "edges": [float(e) for e in edges],
         "per_position": per_position,
         "n_turns": int(table["count"].sum()),
-        "n_excluded": 0,
-        "combine_untested": untested,
+        "n_excluded": int(n_excluded),
         "player_games": player_games,
     }
 def render(cfg: common.Config, table: pd.DataFrame, context: dict, *,
@@ -322,9 +319,8 @@ def render(cfg: common.Config, table: pd.DataFrame, context: dict, *,
     }
     payload["crosschecks"] = crosschecks
     payload["position_order_note"] = (
-        "Order is the configured TASK order with OTHER appended; not a ranking "
-        "by gap size.")
-    payload["combine_untested"] = list(context["combine_untested"])
+        "Order is the configured five-group TASK order; not a ranking by gap "
+        "size. No plotted position is ranked.")
     payload["players_known"] = {
         "source": ("Combine player counts from outputs/turns/turns.parquet; "
                    "game counts for DB from the uploaded full DB turn table. "
@@ -345,11 +341,6 @@ def render(cfg: common.Config, table: pd.DataFrame, context: dict, *,
          "game positions, so the CSV leaves those n_players cells blank "
          "rather than copying sample numbers."),
     ]
-    if context["combine_untested"]:
-        payload["caveats"].append(
-            f"{', '.join(context['combine_untested'])} has no Combine turns in "
-            "this run; its panel is drawn game-only and is excluded from the "
-            "\"every position the Combine tests\" wording, not hidden.")
     payload["rendered_text"] = text_path.as_posix()
     document = full_run.merge_manifest(manifest_path, payload, cfg)
 
@@ -363,7 +354,6 @@ def render(cfg: common.Config, table: pd.DataFrame, context: dict, *,
         "identity": identity,
         "crosschecks": crosschecks,
         "positions": list(context["positions"]),
-        "combine_untested": list(context["combine_untested"]),
         "per_position": {
             p: {
                 "n_valid": int(c["n_valid"]),
@@ -440,8 +430,12 @@ def run(cfg: common.Config, *, source_dir: Path | None = None,
     }
 
     players, player_games = player_counts(combine_turns_df, game, positions)
+    assembled = full_run.assemble_turns(game, combine_turns_df)
+    valid_assembled = assembled["valid"].fillna(False).astype(bool)
+    n_excluded = int((valid_assembled
+                      & ~assembled["position_group"].isin(positions)).sum())
     context = build_context(table, positions, edges, overflow, players,
-                            player_games)
+                            player_games, n_excluded=n_excluded)
 
     result = render(cfg, table, context, source_records=records,
                     manifest_doc=manifest_doc, identity=identity,

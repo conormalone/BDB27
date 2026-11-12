@@ -2124,17 +2124,6 @@ def all_positions_plot_frame(table: pd.DataFrame, context: dict,
     return frame
 
 
-def all_positions_count_labels(frame: pd.DataFrame, cfg: common.Config) -> pd.DataFrame:
-    """Counts for the accent panel only — the others are read as shares."""
-    block = "figures.all_positions"
-    offset = float(cfg.get(f"{block}.count_offset_pct"))
-    labels = frame[frame["emphasis"].astype(str) == "accent"].copy()
-    labels["lab_x"] = labels["share_pct"] + offset
-    labels["lab_y"] = labels["y_bar"]
-    labels["label"] = [f"{int(n):,}" for n in labels["count"]]
-    return labels
-
-
 def all_positions_status(context: dict, cfg: common.Config) -> dict[str, str]:
     """Position -> spec status, for the positions the spec actually flags.
 
@@ -2188,22 +2177,22 @@ def all_positions_dl_speed_count(turns: pd.DataFrame, position: str,
 
 def _all_positions_band0_shares(table: pd.DataFrame,
                                 context: dict
-                                ) -> tuple[pd.DataFrame, str, list[str]]:
+                                ) -> tuple[pd.DataFrame, str]:
     """Per-position Combine/game shares in the first (merged) display band.
 
     The figure's title and claim say the Combine takes the smaller share in
     *every* panel. That is checked against the table actually being drawn, so a
     future band or position change refuses rather than printing a false
-    superlative. Returns the share pivot, the band's printed span, and the
-    positions the Combine never tests (no Combine turns at all). A position
-    with no Combine rows is drawn game-only and excluded from the "every"
-    claim by name — never silently treated as a zero share.
+    superlative. Returns the share pivot and the band's printed span. A
+    position with no Combine rows refuses: since 2026-11-12 the figure draws
+    only the five configured position groups, all of which the Combine tests,
+    and there is no game-only panel for the heading to hedge about.
     """
     band0 = context["bands"][0]
     shares = table[table["band"] == band0].pivot(
         index="position", columns="setting", values="share_within_setting")
     span = f"{float(context['edges'][0]):g}–{float(context['edges'][1]):g}°"
-    untested: list[str] = []
+    missing: list[str] = []
     bad: list[str] = []
     for position in context["positions"]:
         combine = (float(shares.loc[position, "combine"])
@@ -2211,16 +2200,20 @@ def _all_positions_band0_shares(table: pd.DataFrame,
                    and position in shares.index
                    and not pd.isna(shares.loc[position, "combine"]) else None)
         if combine is None:
-            untested.append(position)
+            missing.append(position)
             continue
         if not combine < float(shares.loc[position, "game"]):
             bad.append(position)
+    if missing:
+        raise ValueError(
+            f"{STAGE}: figure 5 draws only positions the Combine tests, but "
+            f"{missing} have no Combine share in {band0}")
     if bad:
         raise ValueError(
             f"{STAGE}: figure 5's title/claim say the Combine takes the smaller "
             f"{span} share in every panel, but {bad} contradict that — fix the "
             "claim")
-    return shares, span, untested
+    return shares, span
 
 
 def _all_positions_caption(table: pd.DataFrame, context: dict,
@@ -2239,7 +2232,7 @@ def _all_positions_caption(table: pd.DataFrame, context: dict,
     n_turns = context["n_turns"]
     n_positions = len(context["positions"])
     band0 = context["bands"][0]
-    _, band0_span, _untested = _all_positions_band0_shares(table, context)
+    _, band0_span = _all_positions_band0_shares(table, context)
 
     dl_line = ""
     floor = float(cfg.get(f"{block}.dl_speed_floor_yd_s", 6.0))
@@ -2269,8 +2262,8 @@ def _all_positions_caption(table: pd.DataFrame, context: dict,
          "(figures.hole.plot_bands), left-closed, final class >180°: 30–45° and "
          f"45–60° are drawn as one {band0_span} band on this figure only; "
          "figures 3, 8, 12, 13 and 15 keep the two bands separate. "
-         f"Counts are printed once, on the {emphasis} panel; every other "
-         "panel's counts are in the CSV beside this image."),
+         "No counts are printed on any panel; every count is in the CSV "
+         "beside this image."),
         (f"{EXPLORATORY_LABEL} is the spec's own status, not this figure's "
          f"judgement: {SPEC_STATUS_SOURCE}. No other panel carries a status "
          "here; none is promoted or demoted."),
@@ -2303,15 +2296,13 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
             f"{float(context['edges'][0]):g}°")
     focus_idx = focus_band_index(context["edges"], focus)
     frame = all_positions_plot_frame(table, context, cfg)
-    labels = all_positions_count_labels(frame, cfg)
     bands = list(context["bands"])
     x_max = float(cfg.get(f"{block}.x_max_pct"))
     x_breaks = [float(b) for b in cfg.get(f"{block}.x_breaks_pct")]
-    _, band0_span, untested = _all_positions_band0_shares(table, context)
+    _, band0_span = _all_positions_band0_shares(table, context)
 
     title = (f"The same hole across positions: the Combine takes a smaller "
-             f"{band0_span} share in every "
-             + ("position it tests" if untested else "panel"))
+             f"{band0_span} share in every panel")
 
     n_bands = len(bands)
     focus_y = -float(focus_idx + 1)
@@ -2327,10 +2318,6 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
         + geom_hline(yintercept=[focus_y - 0.5, focus_y + 0.5],
                      inherit_aes=False, colour=focus["colour"],
                      size=focus["rule_width"])
-        + geom_text(data=labels,
-                    mapping=aes(x="lab_x", y="lab_y", label="label"),
-                    inherit_aes=False, size=2.55,
-                    colour="#1A1A1A", ha="left", va="center", show_legend=False)
         + facet_wrap("~ position", nrow=1)
         + scale_fill_manual(values=["#0072B2", "#7F7F7F"],
                             labels=[COMBINE_LABEL, GAME_LABEL], name=None)
@@ -2401,7 +2388,7 @@ def all_positions_manifest_payload(table: pd.DataFrame, context: dict,
     emphasis = str(cfg.get(f"{block}.emphasis_position"))
     status = all_positions_status(context, cfg)
     per = context["per_position"]
-    shares, span, untested = _all_positions_band0_shares(table, context)
+    shares, span = _all_positions_band0_shares(table, context)
     band0 = table[table["band"] == context["bands"][0]]
     dl_c = int(band0.loc[(band0["position"] == "DL")
                          & (band0["setting"] == "combine"), "count"].iloc[0])
@@ -2414,27 +2401,21 @@ def all_positions_manifest_payload(table: pd.DataFrame, context: dict,
         "artefact_version": ARTEFACT_VERSION,
         "figure": FIGURE_KEY_ALL_POSITIONS,
         "title": ("The same hole across positions: the Combine takes a "
-                  f"smaller {span} share in every "
-                  + ("position it tests" if untested else "panel")),
+                  f"smaller {span} share in every panel"),
         "claim": (
             "Every panel plots the same quantity — the share of that "
-            "setting's own valid turns in each display band, "
-            + ("" if untested else "Combine vs game, ")
-            + "on one identical 0–70% axis, with 30–45° and 45–60° merged "
+            "setting's own valid turns in each display band, Combine vs game, "
+            "on one identical 0–70% axis, with 30–45° and 45–60° merged "
             f"into one {span} band on this figure only. "
-            + (f"{', '.join(untested)} has no Combine turns in this run, so "
-               "its panel is drawn game-only. " if untested else "")
-            + ("In every position the Combine tests, it takes a smaller "
-               f"{span} share than games do " if untested else
-               f"In every panel the Combine takes a smaller {span} share than "
-               "games do ")
+            f"In every panel the Combine takes a smaller {span} share than "
+            "games do "
             + f"(DL: {dl_c} vs {dl_g} turns); the figure ranks no position "
             "and labels no panel \"fine\"."),
         "sources": ["outputs/turns/turns.parquet"],
         "positions": list(context["positions"]),
         "position_order_note": ("Order as TASK.md §1 lists the positions; not a "
-                                "ranking by gap size. No position is ranked or "
-                                "dropped."),
+                                "ranking by gap size. No plotted position is "
+                                "ranked."),
         "emphasis_position": emphasis,
         "muted_alpha": float(cfg.get(f"{block}.muted_alpha")),
         "shared_axis": {"axis": "x", "metric": "share of that setting's own "
@@ -2450,8 +2431,12 @@ def all_positions_manifest_payload(table: pd.DataFrame, context: dict,
                      "absent from this map carry no status on this figure and "
                      "are neither promoted nor demoted."),
         },
-        "count_labels": {"panel": emphasis,
-                          "shown_for_other_panels": False},
+        "count_labels": {
+            "drawn": False,
+            "note": ("No count text is drawn on any panel (Conor, "
+                     "2026-11-12). Every count and denominator is in the "
+                     "CSV."),
+        },
         "per_position": {
             p: {
                 "n_valid": int(c["n_valid"]),

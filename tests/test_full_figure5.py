@@ -40,10 +40,9 @@ def test_figure5_rebuilt_from_the_uploaded_band_table(cfg, tmp_path):
     table = result["table"]
     context = result["context"]
 
-    assert context["positions"] == ["DB", "WR", "TE", "OL", "DL", "OTHER"]
-    assert context["combine_untested"] == ["OTHER"]
-    # 5 tested positions x 6 bands x 2 settings + OTHER x 6 bands x 1 setting.
-    assert len(table) == 66
+    assert context["positions"] == ["DB", "WR", "TE", "OL", "DL"]
+    # 5 positions x 6 bands x 2 settings. OTHER is not a panel (D187).
+    assert len(table) == 60
     assert int(result["context"]["n_turns"]) == int(table["count"].sum())
 
     # Every drawn number is the uploaded row, and every denominator holds.
@@ -66,11 +65,8 @@ def test_figure5_rebuilt_from_the_uploaded_band_table(cfg, tmp_path):
     assert int(db.loc[db["setting"] == "game", "count"].iloc[0]) == 7777
     assert int(db.loc[db["setting"] == "game", "setting_total"].iloc[0]) == 58664
 
-    # OTHER exists only on the game side and is drawn, not hidden.
-    other_rows = table[table["position"] == "OTHER"]
-    assert len(other_rows) == 6
-    assert set(other_rows["setting"]) == {"game"}
-    assert int(other_rows["setting_total"].iloc[0]) == 14971
+    # OTHER rows are in the upload but are not in the drawn table (D187).
+    assert "OTHER" not in set(table["position"])
 
     # Combine totals are the full Combine inventory, unchanged by this work.
     for position, total in (("DB", 1179), ("DL", 2067), ("OL", 952),
@@ -88,18 +84,20 @@ def test_figure5_full_drawing_contract(cfg, tmp_path):
     strings = dump["strings"]
 
     heading = ("The same hole across positions: the Combine takes a smaller "
-               "30–60° share in every position it tests")
+               "30–60° share in every panel")
     assert heading in strings
     assert "Share of that setting's own valid turns (%)" in strings
-    for strip in ("DB", "WR", "TE", "OL", "DL", "OTHER"):
+    for strip in ("DB", "WR", "TE", "OL", "DL"):
         assert strip in strings, f"facet strip {strip} disappeared"
+    assert not any("OTHER" in s.upper() for s in strings), (
+        "the removed OTHER column is still named on the canvas")
     for band in ("30–60°", "60–90°", "90–120°", "120–150°", "150–180°",
                  ">180°"):
         assert band in strings
     assert "Combine" in strings and "Game" in strings
-    # Counts stay on the accent (DB) panel only.
-    assert "7,777" in strings
-    assert "2,062" not in strings, "OTHER's game count must not be annotated"
+    # No count text is drawn on any panel (Conor, 2026-11-12).
+    for count in ("26", "1,179", "7,777", "58,664"):
+        assert count not in strings, f"count text {count!r} is still drawn"
 
     joined = " ".join(strings)
     for banned in ("EXPLORATORY", "(TASK.md:63)", "Excluded from these panels",
@@ -109,7 +107,7 @@ def test_figure5_full_drawing_contract(cfg, tmp_path):
 
 
 @needs_real
-def test_figure5_draws_six_panels_one_band_row_per_panel(cfg, tmp_path):
+def test_figure5_draws_five_panels_one_band_row_per_panel(cfg, tmp_path):
     import matplotlib.pyplot as plt
     from matplotlib.collections import PolyCollection
 
@@ -117,14 +115,15 @@ def test_figure5_draws_six_panels_one_band_row_per_panel(cfg, tmp_path):
     plot = figures.plot_all_positions(result["table"], result["context"], cfg)
     fig = plot.draw()
     try:
-        assert len(fig.axes) == 6, f"expected six panels, got {len(fig.axes)}"
+        assert len(fig.axes) == 5, f"expected five panels, got {len(fig.axes)}"
         bars = []
         for ax in fig.axes:
             groups = [c for c in ax.collections
                       if isinstance(c, PolyCollection)]
             bars.append(sum(len(c.get_paths()) for c in groups))
-        assert bars[:5] == [12] * 5, f"five tested panels need 12 bars: {bars}"
-        assert bars[5] == 6, f"OTHER must draw its game bars only: {bars}"
+        assert bars == [12] * 5, f"five panels need 12 bars each: {bars}"
+        assert all(len(ax.texts) == 0 for ax in fig.axes), (
+            "no count annotation may be drawn inside a panel")
         xlim = {tuple(round(v, 9) for v in ax.get_xlim()) for ax in fig.axes}
         assert xlim == {(0.0, 70.0)}, f"panels do not share the 0-70% axis: {xlim}"
     finally:
@@ -139,12 +138,13 @@ def test_figure5_full_provenance(cfg, tmp_path):
     assert set(csv["provenance"]) == {"FULL"}
     assert set(csv["label"]) == {"FULL DATA OUTPUT"}
     assert set(csv["stamp"]) == {"FULL DATA OUTPUT"}
-    assert len(csv) == 66
-    assert set(csv["position"]) == {"DB", "WR", "TE", "OL", "DL", "OTHER"}
+    assert len(csv) == 60
+    assert set(csv["position"]) == {"DB", "WR", "TE", "OL", "DL"}
+    assert "OTHER" not in set(csv["position"])
     # Player exposure is written where the upload can support it and blank
     # where it cannot; no sample player count leaks into a FULL row.
     assert csv.loc[csv["position"] == "DB", "n_players"].notna().all()
-    for position in ("WR", "TE", "OL", "DL", "OTHER"):
+    for position in ("WR", "TE", "OL", "DL"):
         game = csv[(csv["position"] == position) & (csv["setting"] == "game")]
         assert game["n_players"].isna().all(), position
 
@@ -153,9 +153,9 @@ def test_figure5_full_provenance(cfg, tmp_path):
     assert manifest["provenance"] == "FULL"
     assert entry["provenance"] == "FULL"
     assert entry["stamp"] == "FULL DATA OUTPUT"
-    assert entry["positions"] == ["DB", "WR", "TE", "OL", "DL", "OTHER"]
-    assert entry["combine_untested"] == ["OTHER"]
-    assert len(entry["counts"]) == 66
+    assert entry["positions"] == ["DB", "WR", "TE", "OL", "DL"]
+    assert len(entry["counts"]) == 60
+    assert entry["count_labels"]["drawn"] is False
 
     record = json.loads(result["provenance"].read_text(encoding="utf-8"))
     assert {a["name"]: a["sha256"] for a in record["source_artefacts"]} == PINNED_SHA
@@ -188,11 +188,38 @@ def test_figure5_refuses_a_share_that_is_not_count_over_total(cfg):
 
 def test_figure5_refuses_a_missing_position():
     uploaded = pd.read_csv(SOURCE / full_run_positions.ARTEFACT_BANDS)
-    uploaded = uploaded[uploaded["position_group"] != "OTHER"]
+    uploaded = uploaded[uploaded["position_group"] != "DL"]
     with pytest.raises(common.StageRefused, match="no rows"):
         full_run_positions.positions_order(
             uploaded, full_run_positions.common.load_config(
                 ROOT / "config.yaml"), required=full_run_positions.POSITIONS)
+
+
+@needs_real
+def test_other_cannot_come_back(cfg, tmp_path):
+    """D187: the upload still carries OTHER rows, but figure 5 never draws it."""
+    uploaded = pd.read_csv(SOURCE / full_run_positions.ARTEFACT_BANDS)
+    assert "OTHER" in set(uploaded["position_group"]), (
+        "the pinned upload no longer carries OTHER; this guard is stale")
+
+    plan = full_run_positions.positions_order(
+        uploaded, cfg, required=full_run_positions.POSITIONS)
+    assert plan == ["DB", "WR", "TE", "OL", "DL"]
+    assert "OTHER" not in plan
+
+    result = _run(cfg, tmp_path / "figures")
+    assert result["context"]["positions"] == plan
+    assert "OTHER" not in set(result["table"]["position"])
+    assert len(result["table"]) == 60
+    csv = pd.read_csv(result["csv"])
+    assert "OTHER" not in set(csv["position"])
+    manifest = json.loads(result["manifest"].read_text(encoding="utf-8"))
+    entry = manifest["figures"]["fig_all_positions"]
+    assert "OTHER" not in entry["positions"]
+    assert "OTHER" not in json.dumps(entry)
+    dump = json.loads(result["drawn_text"].read_text(encoding="utf-8"))
+    assert not any("OTHER" in s.upper()
+                   for s in dump["strings"] + dump["scan_strings"])
 
 
 def test_sample_path_is_untouched():

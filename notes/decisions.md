@@ -7587,3 +7587,51 @@ a4b45b6f476ddae5` still matches.
 `tests/test_full_figure5.py`, `tests/test_figures_stage.py`;
 `outputs/figures/fig_the_hole.*`, `outputs/figures/fig_all_positions.*`,
 `outputs/figures/figures_manifest.json`.
+
+## D187 — Figure 5 drops the OTHER column and the DB count annotation · 2026-11-12
+
+**Decision (Conor).** *"Delete the other column and remove the totals from the
+db on the plot"* — asked after the D186 figure-5 rebuild, where OTHER (no
+Combine turns, so a game-only panel) had been appended as a sixth panel and the
+DB panel still printed its counts (26 / 7,777), left over from the earlier
+design.
+
+**Figure 5 draws five groups.** `POSITIONS` is `DB, WR, TE, OL, DL` and
+`GAME_ONLY` is gone. `positions_order` no longer appends groups the upload
+carries: it returns exactly the required list and refuses if a required group
+is missing. The pinned upload still contains OTHER rows (14,971 valid game
+turns, unclassified); they are not read into the drawn table and are not a
+panel. Every drawn group must have Combine rows — `table_from_bands` and
+`check_combine_side` refuse a game-only group — so the "position it tests"
+hedge has no referent and was removed: the heading, manifest title and claim
+now say *"in every panel"*, which the existing per-panel share check still
+enforces. 60 drawn rows (5 × 6 × 2); no OTHER row in the CSV, no OTHER facet on
+the PNG.
+
+**DB counts removed from the canvas.** `all_positions_count_labels` and the
+`geom_text` layer that drew the 12 accent-panel counts are deleted from the
+drawing path, not hidden. No panel carries in-plot text; counts and
+denominators remain in the CSV and manifest. The manifest's `count_labels` key
+now records `{"drawn": false}` instead of the old "DB only" claim. The
+now-unused `figures.all_positions.count_offset_pct` key stays in `config.yaml`
+because the upload pins `config_sha a4b45b6f476ddae5`; changing config would
+invalidate the run identity.
+
+**Honest retirement, not weakening.** Six-panel/66-row assertions, the
+OTHER-drawn assertions and the DB-count-annotation test are rewritten or
+removed because the feature is gone. New guards: `test_other_cannot_come_back`
+(the upload still carries OTHER but the plan, table, CSV, manifest and canvas
+never do) and an in-panel text check (no axis carries count text; the drawn
+text dump has no `26`, `1,179`, `7,777`, `58,664`). The sample/stage figure
+shares the same drawing path and is likewise count-free.
+
+**Unchanged.** D183's trimmed contract (heading, bars, band ticks, legend; no
+subtitle, caption, callout or badge), FULL provenance for all five groups, DB
+as the emphasised panel. The other 17 figure PNGs are byte-identical; the
+retained figure-5 CSV rows (counts, totals, shares) are unchanged.
+
+**Evidence.** `src/bdb27/figures.py` (`plot_all_positions`,
+`all_positions_manifest_payload`, `_all_positions_band0_shares`);
+`src/bdb27/full_run_positions.py`; `tests/test_full_figure5.py`,
+`tests/test_figures_stage.py`; `outputs/figures/fig_all_positions.{png,csv,
+drawn_text.json,provenance.json}`; `outputs/figures/figures_manifest.json`.
