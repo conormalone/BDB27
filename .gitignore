@@ -61,3 +61,9 @@ Thumbs.db
 # Figure artefacts: the PNG is not useful without the numbers behind it.
 !outputs/figures/*.csv
 !outputs/figures/*.json
+# Speed-floor sensitivity (D190): small CSVs + manifest, committed evidence.
+# It is a real-data sensitivity, not a FULL artefact and not a sample run.
+!outputs/sensitivity/
+!outputs/sensitivity/speed_floor/
+!outputs/sensitivity/speed_floor/*.csv
+!outputs/sensitivity/speed_floor/*.json

@@ -7773,3 +7773,45 @@ this entry for the figure set only.
 `outputs/figures/figures_manifest.json` (`fig_drill_angle_scatter`);
 `outputs/figures/fig_drill_angle_scatter.csv` (stamp column: all 1,179 rows
 `PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT`).
+
+## D190 — Combine speed-floor sensitivity at 2.0 yd/s: the headline does not move · 2026-11-12
+
+**Question (Conor).** "What do the numbers look like if 2 yards per second are
+taken as the limit in the combine?" The game floor is already 2.0
+(`detector.speed_floor_game`), so this puts both settings on one floor.
+
+**Decision.** Run it as a side sensitivity, not a definition change: re-detect
+the Combine only, at a 2.0 floor, with every other parameter at its committed
+value (`savgol_g9_p3`, 30°, 0.5 s, `speed_maxima`, same bands). Do not re-run
+the game side and do not touch figures 1/5 or any FULL artefact. The Combine
+tracking is complete on this host, so the sensitivity is real data, labelled
+`SENSITIVITY — real Combine data; game side FULL reused`.
+
+**Result.** DB valid turns 1,179 → 1,463 (+284). The 30–60° band goes 26
+(2.21%) → 32 (2.19%), so the shortfall against the game's 13.26% goes **6.01×
+→ 6.06×**. The 120–150° band goes 499 (42.32%) → 684 (46.75%), i.e. 2.17× →
+2.40× the game share. The added turns are deep, not shallow: 184 of the 288
+new turns are 120–150°, and 81% of the +284 comes from the W drill (+165) and
+the Box (+65). Of the 8 new 30–60° turns, 6 are W drill.
+
+**Why this is trustworthy.** A control pass at the committed 2.5 floor
+reproduces the FULL Combine table exactly (1,179 and every band). The
+detection-relevant config blocks are identical to `aeb483c` (config_sha
+`a4b45b6f`); the current fingerprint differs only in `figures.*`.
+
+**Caveat, quantified.** The shuffled-heading null rises from 1,131 to 1,306
+while observed rises 1,179 → 1,463: 175 of the 284 extra detections (62%) are
+matched by the null's own increase. Per D138 the null is a sensitivity floor,
+not a false-positive estimate, so this does not invalidate the additions — but
+it is the quantitative form of the reason the Combine floor sits at 2.5, and
+the extra turns should not be called clean signal without geometry validation.
+
+**Not changed.** No config key, no stage option, no figure, no report text. The
+draft's "2.5 yd/s" sentence remains correct for the committed definition; if
+Conor adopts 2.0 on both sides, that sentence and the section-5 Combine counts
+would change, and that is his call.
+
+**Evidence.** `src/09_speed_floor_sensitivity.py`;
+`tests/test_speed_floor_sensitivity.py`; `notes/sensitivity-speed-floor.md`;
+`outputs/sensitivity/speed_floor/{bands,drill_delta,player_delta,null_comparison}.csv`,
+`combine_db_turns_floor2.{0,5_control}.csv`, `manifest.json`.

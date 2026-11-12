@@ -1,0 +1,11 @@
+drill_name,turns_2.5,turns_2.0,band_30_60_2.5,band_30_60_2.0,band_120_150_2.5,band_120_150_2.0,delta_turns,delta_30_60,delta_120_150,provenance,label,config_sha,git_rev
+W_DRILL,107,272,1,7,94,224,165,6,130,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+BOX_DRILL,304,369,1,2,251,301,65,1,50,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL,118,137,4,4,0,0,19,0,0,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+TERYL_AUSTIN_DRILL_2,199,218,2,2,15,15,19,0,0,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+FORTY_YARD_DASH,1,3,1,1,0,0,2,0,0,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION,133,133,1,1,37,38,0,0,1,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+GAUNTLET_DRILL,41,41,0,0,0,0,0,0,0,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+SHORT_SHUTTLE,70,70,1,1,0,0,0,0,0,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+TERYL_AUSTIN_DRILL_1,108,108,1,1,100,100,0,0,0,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+THREE_CONE_DRILL,98,112,14,13,2,6,14,-1,4,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526

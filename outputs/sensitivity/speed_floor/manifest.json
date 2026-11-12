@@ -1,0 +1,122 @@
+{
+  "provenance": "SENSITIVITY",
+  "label": "SENSITIVITY \u2014 real Combine data; game side FULL reused",
+  "stage": "09_speed_floor_sensitivity",
+  "config_sha": "a76cf3bd9012f085",
+  "git_rev": "e0ad526",
+  "primary_smoother": "savgol_g9_p3",
+  "segmentation": "speed_maxima",
+  "min_turn_angle_deg": 30.0,
+  "window_s": 0.5,
+  "combine_floor_control_yd_s": 2.5,
+  "combine_floor_test_yd_s": 2.0,
+  "game_floor_yd_s": 2.0,
+  "position_group": "DB",
+  "generated_utc": "2026-11-12T19:38:12Z",
+  "runtime_s": 238.1,
+  "sources": {
+    "combine_tracking": {
+      "path": "/home/conormalone/.openclaw/workspace/BDB27/data/raw/combine_tracking.csv",
+      "sha256": "541c69f6629f5f803b08033c5c386735582120973562134b2c1e7ec6553fb0d3"
+    },
+    "game_bands_reused": {
+      "path": "data/interim/full_run_20261111/bdb27_full_game_bands.csv",
+      "sha256": "7cd10b9db2b9ccae21099c2bab8fe5d5f1420e295aec6e9dc09ed2c6ade454a1",
+      "note": "FULL game band table reused unchanged; game not re-run"
+    }
+  },
+  "control_check": {
+    "passed": true,
+    "floor_yd_s": 2.5,
+    "total": 1179,
+    "bands": {
+      "30\u201360\u00b0": 26,
+      "60\u201390\u00b0": 237,
+      "90\u2013120\u00b0": 159,
+      "120\u2013150\u00b0": 499,
+      "150\u2013180\u00b0": 128,
+      ">180\u00b0": 130
+    }
+  },
+  "combine_attempts": 6310,
+  "db_attempts": 1432,
+  "turns": {
+    "floor_2.5": 1179,
+    "floor_2.0": 1463
+  },
+  "bands_30_60": {
+    "combine_2.5_share": 0.02205258693808312,
+    "combine_2.0_share": 0.021872863978127138,
+    "game_share": 0.1325685258420837,
+    "shortfall_ratio_2.5": 6.01147276799295,
+    "shortfall_ratio_2.0": 6.060867290842764
+  },
+  "bands_120_150": {
+    "combine_2.5_share": 0.42324003392705684,
+    "combine_2.0_share": 0.4675324675324675,
+    "game_share": 0.1950770489567707,
+    "combine_over_game_2.5": 2.1696044521405864,
+    "combine_over_game_2.0": 2.3966554242681477
+  },
+  "null": {
+    "observed_extra": 284,
+    "null_extra": 175,
+    "excess_over_null": 109
+  },
+  "turn_overlap": {
+    "matched": 1175,
+    "new_at_low_floor": 288,
+    "lost_at_low_floor": 4,
+    "lost_30_60": 2,
+    "lost_detail": [
+      {
+        "nfl_id": 57191,
+        "drill_name": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+        "abs_turn_angle": 95.66889351439329
+      },
+      {
+        "nfl_id": 58430,
+        "drill_name": "THREE_CONE_DRILL",
+        "abs_turn_angle": 49.57768971088208
+      },
+      {
+        "nfl_id": 58430,
+        "drill_name": "THREE_CONE_DRILL",
+        "abs_turn_angle": 71.38131374463381
+      },
+      {
+        "nfl_id": 55921,
+        "drill_name": "THREE_CONE_DRILL",
+        "abs_turn_angle": 49.04254696936255
+      }
+    ],
+    "tolerance_frames": 5
+  },
+  "drill_concentration": {
+    "extra_turns": 284,
+    "extra_30_60": 6,
+    "drills_with_extra_30_60": 3,
+    "top_drill": "W_DRILL",
+    "top_drill_delta_turns": 165,
+    "top_two_delta_turns_share": 0.8098591549295775,
+    "per_drill_30_60": {
+      "W_DRILL": 6,
+      "BOX_DRILL": 1,
+      "THREE_CONE_DRILL": -1
+    }
+  },
+  "detection_config_identical_to_full_run": {
+    "checked_blocks": [
+      "smoothing",
+      "detector",
+      "sampling",
+      "plant",
+      "bins",
+      "positions",
+      "sanity",
+      "geometry"
+    ],
+    "identical": true,
+    "note": "verified against config at aeb483c (config_sha a4b45b6f); the current fingerprint differs only in figures.* settings"
+  }
+}

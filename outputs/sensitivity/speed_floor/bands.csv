@@ -1,0 +1,19 @@
+setting,position_group,speed_floor_yd_s,band,band_index,band_low_deg,band_high_deg,count,setting_total,share_within_setting,provenance,label,config_sha,git_rev
+combine,DB,2.5,30–60°,1,30.0,60.0,26,1179,0.02205258693808312,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.5,60–90°,2,60.0,90.0,237,1179,0.2010178117048346,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.5,90–120°,3,90.0,120.0,159,1179,0.13486005089058525,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.5,120–150°,4,120.0,150.0,499,1179,0.42324003392705684,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.5,150–180°,5,150.0,180.0,128,1179,0.1085665818490246,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.5,>180°,6,180.0,,130,1179,0.1102629346904156,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.0,30–60°,1,30.0,60.0,32,1463,0.021872863978127138,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.0,60–90°,2,60.0,90.0,281,1463,0.19207108680792892,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.0,90–120°,3,90.0,120.0,188,1463,0.12850307587149692,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.0,120–150°,4,120.0,150.0,684,1463,0.4675324675324675,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.0,150–180°,5,150.0,180.0,140,1463,0.09569377990430622,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+combine,DB,2.0,>180°,6,180.0,,138,1463,0.09432672590567327,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+game,DB,2.0,30–60°,1,30.0,60.0,7777,58664,0.1325685258420837,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+game,DB,2.0,60–90°,2,60.0,90.0,13077,58664,0.2229135415246147,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+game,DB,2.0,90–120°,3,90.0,120.0,13016,58664,0.2218737215327969,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+game,DB,2.0,120–150°,4,120.0,150.0,11444,58664,0.1950770489567707,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+game,DB,2.0,150–180°,5,150.0,180.0,8137,58664,0.1387051684167462,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
+game,DB,2.0,>180°,6,180.0,,5213,58664,0.0888619937269876,SENSITIVITY,SENSITIVITY — real Combine data; game side FULL reused,a76cf3bd9012f085,e0ad526
