@@ -1,8 +1,8 @@
 {
   "provenance": "MIXED",
   "label": "MIXED PROVENANCE \u2014 2 FULL, 15 sample, 1 schematic",
-  "config_sha": "a4b45b6f476ddae5",
-  "generated_utc": "2026-11-12T08:15:45Z",
+  "config_sha": "a76cf3bd9012f085",
+  "generated_utc": "2026-11-12T10:35:10Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "MIXED PROVENANCE \u2014 2 FULL, 15 sample, 1 schematic",
@@ -975,13 +975,13 @@
       "artefact_version": 1,
       "figure": "fig_drill_schematic",
       "figure_kind": "diagram (geometry drawing, not a data plot)",
-      "title": "The tempo break: a 40\u00b0 cut at speed, both sides",
+      "title": "The tempo break: a 45\u00b0 cut at speed, both sides",
       "status": "SCHEMATIC",
       "status_stamp": "SCHEMATIC \u2014 illustrative geometry, not measured data",
       "stamp": "SCHEMATIC \u2014 illustrative geometry, not measured data",
       "provenance_applied": false,
       "provenance_note": "This is a schematic drawing, not a data artefact: nothing on it is measured. The SCHEMATIC status line is the correct stamp, and the diagram carries no data-provenance banner.",
-      "claim": "Schematic of a Combine tempo-break drill: walk in, accelerate over an 8-10 yd approach to 3-5 yd/s, single plant, break 40 and 55 degrees either side, re-accelerate 5 yd through an exit gate; 6 reps (3 left, 3 right, alternating) in ~90 s per player on the existing 3-cone footprint.",
+      "claim": "Schematic of a Combine tempo-break drill: walk in, accelerate over an 8-10 yd approach, single plant, break 45 degrees either side, re-accelerate 5 yd through an exit gate; 6 reps (3 left, 3 right, alternating) in ~90 s per player on the existing 3-cone footprint.",
       "spec": {
         "approach_length_yd": [
           8.0,
@@ -990,7 +990,7 @@
         "approach_drawn_yd": 9.0,
         "runup_length_yd": 2.0,
         "break_angles_deg": [
-          40.0
+          45.0
         ],
         "break_band_labels": [
           "30\u201345\u00b0"
@@ -1012,12 +1012,12 @@
         "to_scale": true,
         "units": "yards",
         "scale_bar_yd": 5.0,
-        "note": "Axes are drawn in yards with equal aspect and a 5 yd scale bar, so the drawn layout is to scale. The approach is placed at 9 yd (the midpoint of the stated 8-10 yd range); the image labels it 8-10 yd and 9 yd is never claimed as the specification."
+        "note": "Axes are drawn in yards with equal aspect and a 5 yd scale bar, so the drawn layout is to scale. The approach is placed at 9 yd (the midpoint of the stated 8-10 yd range); the image does not dimension it, so 9 yd is never claimed as the specification."
       },
       "omitted_not_specified": [
         "Gate width (the opening between gate posts) is not stated in the source note, so each exit gate is drawn as a single transverse tick marking where the player crosses \u2014 not as a measured opening.",
         "The source note lists exactly two approach cones 8-10 yd apart and puts the break cone at the end of the approach; it does not describe any further cone. Only those two cones are drawn.",
-        "Where the walk-in ends and where the 2-yd run-up sits relative to the 8-10 yd approach is not specified, so no phase boundary is drawn: the phases are labelled in one line, and only the approach itself (8-10 yd) is measured on the image.",
+        "Where the walk-in ends and where the 2-yd run-up sits relative to the 8-10 yd approach is not specified, so no phase boundary is drawn: the phases are labelled in one line, and the approach is not dimensioned on the image at all.",
         "The 3-cone footprint the new drill reuses is not dimensioned in the source note, so no footprint outline is drawn \u2014 the claim is stated in words only.",
         "Lane width, station size and cone spacing beyond the two approach cones are not specified and are not drawn."
       ],
@@ -1096,11 +1096,11 @@
           "angle_deg": null,
           "radius_yd": null,
           "source_constant": "figures.drill_schematic.plants_per_rep",
-          "source_quote": "Single plant, break 40 deg, re-accelerate 5 yd through the gate."
+          "source_quote": "Single plant, break 45 deg, re-accelerate 5 yd through the gate."
         },
         {
           "row_kind": "geometry",
-          "element": "exit_left_40",
+          "element": "exit_left_45",
           "kind": "segment",
           "text": null,
           "value": null,
@@ -1109,17 +1109,17 @@
           "unit": null,
           "x": 0.0,
           "y": 0.0,
-          "x_end": 3.83022221559489,
-          "y_end": 3.2139380484326963,
+          "x_end": 3.5355339059327378,
+          "y_end": 3.5355339059327373,
           "length_yd": 5.0,
-          "angle_deg": 40.0,
+          "angle_deg": 45.0,
           "radius_yd": null,
           "source_constant": "figures.drill_schematic.break_angles_deg",
           "source_quote": "Two exit gates 5 yd from the break cone, at the break angle either side of the approach line."
         },
         {
           "row_kind": "geometry",
-          "element": "exit_right_40",
+          "element": "exit_right_45",
           "kind": "segment",
           "text": null,
           "value": null,
@@ -1128,25 +1128,25 @@
           "unit": null,
           "x": 0.0,
           "y": 0.0,
-          "x_end": 3.83022221559489,
-          "y_end": -3.2139380484326963,
+          "x_end": 3.5355339059327378,
+          "y_end": -3.5355339059327373,
           "length_yd": 5.0,
-          "angle_deg": -40.0,
+          "angle_deg": -45.0,
           "radius_yd": null,
           "source_constant": "figures.drill_schematic.break_angles_deg",
           "source_quote": "Two exit gates 5 yd from the break cone, at the break angle either side of the approach line."
         },
         {
           "row_kind": "geometry",
-          "element": "gate_left_40",
+          "element": "gate_left_45",
           "kind": "point",
           "text": null,
           "value": null,
           "value_low": null,
           "value_high": null,
           "unit": null,
-          "x": 3.83022221559489,
-          "y": 3.2139380484326963,
+          "x": 3.5355339059327378,
+          "y": 3.5355339059327373,
           "x_end": null,
           "y_end": null,
           "length_yd": 5.0,
@@ -1157,15 +1157,15 @@
         },
         {
           "row_kind": "geometry",
-          "element": "gate_right_40",
+          "element": "gate_right_45",
           "kind": "point",
           "text": null,
           "value": null,
           "value_low": null,
           "value_high": null,
           "unit": null,
-          "x": 3.83022221559489,
-          "y": -3.2139380484326963,
+          "x": 3.5355339059327378,
+          "y": -3.5355339059327373,
           "x_end": null,
           "y_end": null,
           "length_yd": 5.0,
@@ -1176,10 +1176,10 @@
         },
         {
           "row_kind": "annotation",
-          "element": "angle_left_40",
+          "element": "angle_left_45",
           "kind": "text",
-          "text": "40\u00b0",
-          "value": 40.0,
+          "text": "45\u00b0",
+          "value": 45.0,
           "value_low": null,
           "value_high": null,
           "unit": "deg",
@@ -1191,26 +1191,7 @@
           "angle_deg": null,
           "radius_yd": null,
           "source_constant": "figures.drill_schematic.break_angles_deg",
-          "source_quote": "Break 40 deg, either side of the approach line."
-        },
-        {
-          "row_kind": "annotation",
-          "element": "approach_range",
-          "kind": "text",
-          "text": "acceleration phase \u00b7 8\u201310 yd",
-          "value": null,
-          "value_low": 8.0,
-          "value_high": 10.0,
-          "unit": "yd",
-          "x": null,
-          "y": null,
-          "x_end": null,
-          "y_end": null,
-          "length_yd": null,
-          "angle_deg": null,
-          "radius_yd": null,
-          "source_constant": "figures.drill_schematic.approach_length_yd",
-          "source_quote": "two cones, 8-10 yd apart; accelerate over 8-10 yd."
+          "source_quote": "Break 45 deg, either side of the approach line."
         },
         {
           "row_kind": "annotation",
@@ -1268,25 +1249,6 @@
           "radius_yd": null,
           "source_constant": "figures.drill_schematic.reaccel_length_yd",
           "source_quote": "Re-accelerate 5 yd through the gate."
-        },
-        {
-          "row_kind": "annotation",
-          "element": "entry_speed",
-          "kind": "text",
-          "text": "3\u20135 yd/s at the plant",
-          "value": null,
-          "value_low": 3.0,
-          "value_high": 5.0,
-          "unit": "yd/s",
-          "x": null,
-          "y": null,
-          "x_end": null,
-          "y_end": null,
-          "length_yd": null,
-          "angle_deg": null,
-          "radius_yd": null,
-          "source_constant": "figures.drill_schematic.entry_speed_yd_s",
-          "source_quote": "Reach 3-5 yd/s at the break cone."
         },
         {
           "row_kind": "annotation",

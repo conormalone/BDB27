@@ -440,8 +440,8 @@ turn_coverage:
       width_in: 12.6
       height_in: 7.0
 
-    # Stage 06 figure 4 ("The tempo break: 40° and 55° cuts at speed, both
-    # sides"): a GEOMETRY drawing, not a data plot. Every dimension below is
+    # Stage 06 figure 4 ("The tempo break: a 45° cut at speed, both sides"):
+    # a GEOMETRY drawing, not a data plot. Every dimension below is
     # copied verbatim from the drill source note, section 2. Nothing here is
     # measured, and no dimension may be added that the note does not state. The
     # figure carries its own SCHEMATIC status line; it is deliberately NOT
@@ -458,9 +458,12 @@ turn_coverage:
       approach_drawn_yd: 9.0
       # "Walk-in, 2-yd run-up" — the run-up length is stated; its start is not.
       runup_length_yd: 2
-      # "Break 40 deg" / "Two exit gates 5 yd from the break cone, at 40 deg
+      # "Break 45 deg" / "Two exit gates 5 yd from the break cone, at 45 deg
       # either side of the approach line." One break angle, both sides.
-      break_angles_deg: [40]
+      # 45° sits exactly on the 30–45 / 45–60 boundary (Conor, 2026-11-12).
+      # The geometry guard accepts it as the TOP of the stated 30–45° band;
+      # the band edges themselves are not moved (see D188).
+      break_angles_deg: [45]
       # The reporting band each break angle belongs to, aligned by index; each
       # angle is labelled with the band it belongs to. The geometry function
       # refuses an angle that falls outside its stated band.

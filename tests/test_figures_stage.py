@@ -1082,10 +1082,11 @@ def test_drill_schematic_geometry_matches_config(rendered):
     csv_df = pd.read_csv(rendered["ds_csv"])
     _check_schematic(csv_df, _ds_block(rendered["cfg"]))
     rows = _ds_rows(csv_df)
-    assert np.isclose(float(rows["exit_left_40"]["angle_deg"]), 40.0)
-    assert np.isclose(float(rows["exit_right_40"]["angle_deg"]), -40.0)
-    assert np.isclose(float(rows["gate_left_40"]["length_yd"]), 5.0)
-    assert np.isclose(float(rows["gate_right_40"]["length_yd"]), 5.0)
+    assert np.isclose(float(rows["exit_left_45"]["angle_deg"]), 45.0)
+    assert np.isclose(float(rows["exit_right_45"]["angle_deg"]), -45.0)
+    assert np.isclose(float(rows["gate_left_45"]["length_yd"]), 5.0)
+    assert np.isclose(float(rows["gate_right_45"]["length_yd"]), 5.0)
+    assert not any("_40" in str(e) for e in csv_df["element"])
     assert not any("_55" in str(e) for e in csv_df["element"])
     assert 8.0 <= float(rows["approach_line"]["length_yd"]) <= 10.0
 
@@ -1106,7 +1107,7 @@ def test_drill_schematic_is_not_stamped_as_sample_data(rendered):
     note = fig["provenance_note"].lower()
     assert "schematic drawing, not a data artefact" in note
     assert "no data-provenance banner" in note
-    assert fig["spec"]["break_angles_deg"] == [40]
+    assert fig["spec"]["break_angles_deg"] == [45]
     assert fig["spec"]["break_band_labels"] == ["30–45°"]
     assert fig["spec"]["gate_distance_yd"] == 5
     assert fig["spec"]["approach_length_yd"] == [8, 10]
@@ -1138,18 +1139,19 @@ def test_drill_schematic_has_no_proposal_framing(rendered):
         # one bold title line only, no secondary line and no footer
         assert len(fig.texts) == 1, "figure 4 must carry only its title"
         assert "The tempo break:" in fig.texts[0].get_text()
-        assert "40°" in fig.texts[0].get_text()
+        assert "45°" in fig.texts[0].get_text()
+        assert "40°" not in fig.texts[0].get_text()
         assert "55°" not in fig.texts[0].get_text()
-        assert "a 40° cut at speed" in fig.texts[0].get_text()
+        assert "a 45° cut at speed" in fig.texts[0].get_text()
         # equal aspect keeps the scale bar truthful
         assert fig.axes[0].get_aspect() == 1.0
         # one angle and two exits are in the geometry
         elements = set(table["element"])
-        for angle in (40,):
+        for angle in (45,):
             for side in ("left", "right"):
                 assert f"exit_{side}_{angle}" in elements
                 assert f"gate_{side}_{angle}" in elements
-        assert context["break_angles"] == [40.0]
+        assert context["break_angles"] == [45.0]
     finally:
         plt.close(fig)
 
@@ -1157,6 +1159,65 @@ def test_drill_schematic_has_no_proposal_framing(rendered):
     blob = csv_df.drop(columns=["source_note"]).to_csv(index=False).lower()
     for word in DS_BANNED:
         assert word not in blob, f"{word!r} is still in the CSV"
+
+
+def test_drill_schematic_removed_under_plot_annotations_stay_removed(rendered):
+    """Conor (2026-11-12): no entry-speed callout and no acceleration-phase
+    callout, and none of their leader/measurement arrows, on the canvas or in
+    the CSV annotation rows."""
+    from bdb27 import common, figures
+    import matplotlib.pyplot as plt
+
+    removed = ("acceleration phase", "3–5 yd/s", "at the plant")
+    cfg = common.load_config(rendered["cfg"])
+    table, context = figures.drill_schematic_geometry(cfg)
+    fig = figures.plot_drill_schematic(table, context, cfg)
+    try:
+        drawn = [t.get_text() for t in fig.texts] + [
+            t.get_text() for t in fig.axes[0].texts]
+        joined = "\n".join(drawn).lower()
+        for phrase in removed:
+            assert phrase.lower() not in joined, (
+                f"removed annotation {phrase!r} is still drawn on figure 4")
+        # only the movement arrows remain: two exits per angle + the approach.
+        # Any extra empty annotation text would be a leftover leader arrow.
+        empty_texts = [t for t in fig.axes[0].texts if not t.get_text()]
+        assert len(empty_texts) == len(context["break_angles"]) * 2 + 1, (
+            "an extra (leader/measurement) arrow is still on the drawing")
+    finally:
+        plt.close(fig)
+
+    csv_df = pd.read_csv(rendered["ds_csv"])
+    ann = csv_df[csv_df["row_kind"] == "annotation"]
+    assert "approach_range" not in set(ann["element"])
+    assert "entry_speed" not in set(ann["element"])
+    csv_text = " ".join(str(t) for t in ann["text"]).lower()
+    for phrase in removed:
+        assert phrase.lower() not in csv_text, (
+            f"removed annotation {phrase!r} is still in the CSV")
+
+
+def test_drill_schematic_scale_bar_is_inside_the_axes(rendered):
+    """The 5 yd bar must be a visible bar, not a label with no bar."""
+    from bdb27 import common, figures
+    import matplotlib.pyplot as plt
+
+    cfg = common.load_config(rendered["cfg"])
+    table, context = figures.drill_schematic_geometry(cfg)
+    fig = figures.plot_drill_schematic(table, context, cfg)
+    try:
+        ax = fig.axes[0]
+        half_ticks = [ln for ln in ax.lines
+                      if len(ln.get_ydata()) == 2
+                      and np.isclose(float(ln.get_ydata()[0]),
+                                     float(ln.get_ydata()[1]))
+                      and abs(float(ln.get_ydata()[0])) > 4.5]
+        assert half_ticks, "the scale bar is not drawn"
+        y = float(half_ticks[0].get_ydata()[0])
+        assert ax.get_ylim()[0] <= y <= ax.get_ylim()[1], (
+            "the scale bar falls outside the axes and is clipped away")
+    finally:
+        plt.close(fig)
 
 
 def test_drill_schematic_two_runs_are_byte_identical(rendered):
@@ -1190,7 +1251,7 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
     assert len(pd.read_csv(rendered["csv"])) == 12  # 6 bands x 2 settings
     assert len(pd.read_csv(rendered["drill_csv"])) == 11
     assert len(pd.read_csv(rendered["ba_csv"])) == 44
-    assert len(pd.read_csv(rendered["ds_csv"])) == 21
+    assert len(pd.read_csv(rendered["ds_csv"])) == 19
     man = json.loads(rendered["manifest"].read_text())
     assert set(man["figures"]) == {"fig_the_hole", "fig_drill_coverage",
                                    "fig_before_after", "fig_drill_schematic",
@@ -1211,26 +1272,26 @@ def test_drill_schematic_checks_can_fail(rendered):
     _check_schematic(csv_df, block)  # sanity: passes on the real drawing
 
     wrong_gate = csv_df.copy()
-    idx = wrong_gate.index[wrong_gate["element"] == "exit_left_40"][0]
+    idx = wrong_gate.index[wrong_gate["element"] == "exit_left_45"][0]
     wrong_gate.loc[idx, "length_yd"] = 4.0
     with pytest.raises(AssertionError):
         _check_schematic(wrong_gate, block)
 
     wrong_angle = csv_df.copy()
-    idx = wrong_angle.index[wrong_angle["element"] == "exit_right_40"][0]
+    idx = wrong_angle.index[wrong_angle["element"] == "exit_right_45"][0]
     wrong_angle.loc[idx, "angle_deg"] = -35.0
     with pytest.raises(AssertionError):
         _check_schematic(wrong_angle, block)
 
     asymmetric = csv_df.copy()
-    idx = asymmetric.index[asymmetric["element"] == "gate_right_40"][0]
+    idx = asymmetric.index[asymmetric["element"] == "gate_right_45"][0]
     asymmetric.loc[idx, "y"] = float(asymmetric.loc[idx, "y"]) * 0.9
     with pytest.raises(AssertionError):
         _check_schematic(asymmetric, block)
 
     wrong_band = csv_df.copy()
-    idx = wrong_band.index[wrong_band["element"] == "angle_left_40"][0]
-    wrong_band.loc[idx, "text"] = "40° (30–45°)"
+    idx = wrong_band.index[wrong_band["element"] == "angle_left_45"][0]
+    wrong_band.loc[idx, "text"] = "45° (30–45°)"
     with pytest.raises(AssertionError):
         _check_schematic(wrong_band, block)
 

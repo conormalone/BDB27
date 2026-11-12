@@ -28,6 +28,7 @@ import subprocess
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 from bdb27 import common, figures
 from bdb27.figure_text_scan import BANNED_TOKENS, figure_texts
@@ -150,21 +151,77 @@ def load_run_manifest(source_dir: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _fingerprint(block: dict) -> str:
+    """``common.config_fingerprint`` for a block that is not a loaded config."""
+    payload = json.dumps(block, sort_keys=True, default=str).encode()
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def _config_block_from_rev(rev: str, root: Path) -> dict:
+    """The ``turn_coverage`` block as it stood at the run's own ``git_rev``."""
+    result = subprocess.run(
+        ["git", "show", f"{rev}:config.yaml"],
+        cwd=str(root), capture_output=True, text=True)
+    if result.returncode != 0:
+        raise common.StageRefused(
+            f"{STAGE}: cannot read config.yaml at the run's git_rev {rev} "
+            f"({result.stderr.strip()})")
+    return yaml.safe_load(result.stdout)[common.BLOCK]
+
+
+def _drift_paths(old: dict, new: dict, path: str = "") -> list[str]:
+    """Dotted paths at which two config blocks differ."""
+    out: list[str] = []
+    if isinstance(old, dict) and isinstance(new, dict):
+        for key in sorted(set(old) | set(new)):
+            sub = f"{path}.{key}" if path else str(key)
+            if key not in old or key not in new:
+                out.append(sub)
+            else:
+                out.extend(_drift_paths(old[key], new[key], sub))
+    elif isinstance(old, list) and isinstance(new, list):
+        if old != new:
+            out.append(path)
+    elif old != new:
+        out.append(path)
+    return out
+
+
 def verify_run_identity(manifest: dict, cfg: common.Config,
                         root: Path) -> dict:
-    """Config fingerprint and detection code must match the run's own record."""
+    """The run's analysis config and detection code must be unchanged.
+
+    The recorded ``config_sha`` covers the whole ``turn_coverage`` block, which
+    includes the figure-drawing settings. A drawing-only change (D188 moved the
+    schematic's break angle) cannot alter a single measured number, so the
+    check compares the run's own config — read from ``config.yaml`` at its
+    ``git_rev`` — with the current one and refuses on any difference OUTSIDE
+    ``figures.drill_schematic``. The drift that is allowed is reported, not
+    hidden. The uploaded manifest's recorded sha must still match the config at
+    the recorded rev, so the upload cannot be silently re-labelled.
+    """
     expected = str(manifest.get("config_sha", ""))
     actual = common.config_fingerprint(cfg)
-    if expected != actual:
-        raise common.StageRefused(
-            f"{STAGE}: config_sha is {actual} but the run manifest says "
-            f"{expected!r} — the thresholds or config have changed since the run")
 
     rev = str(manifest.get("git_rev", ""))
     if not rev:
         raise common.StageRefused(
             f"{STAGE}: the run manifest carries no git_rev; cannot prove the "
             "detection code is unchanged")
+    run_block = _config_block_from_rev(rev, root)
+    run_sha = _fingerprint(run_block)
+    if run_sha != expected:
+        raise common.StageRefused(
+            f"{STAGE}: the run manifest says config_sha {expected!r} but "
+            f"config.yaml at its git_rev {rev} hashes to {run_sha!r} — the "
+            "upload and its record disagree")
+    drift = _drift_paths(run_block, cfg.block)
+    outside = [path for path in drift
+               if not path.startswith("figures.drill_schematic")]
+    if outside:
+        raise common.StageRefused(
+            f"{STAGE}: config keys changed since the run at {rev}: "
+            f"{outside} — the thresholds or config have changed since the run")
     try:
         diff = subprocess.run(
             ["git", "diff", "--quiet", rev, "--", *DETECTION_FILES],
@@ -183,6 +240,10 @@ def verify_run_identity(manifest: dict, cfg: common.Config,
         "run_git_rev": rev,
         "render_git_rev": common.git_rev(root),
         "config_sha": actual,
+        "run_config_sha": expected,
+        "drawing_only_config_drift": [
+            path for path in drift
+            if path.startswith("figures.drill_schematic")],
         "detection_files_unchanged_since_run": True,
         "detection_files": list(DETECTION_FILES),
     }

@@ -7645,3 +7645,96 @@ sharpened instead: `test_figure5_draws_no_count_text_anywhere` proves the drawn
 text contains no count-like string anywhere (only x-axis ticks 0–70 are
 numeric; no thousands separators, no `n =` text), and every panel's `ax.texts`
 is empty. The CSV/manifest keep every count and denominator.
+
+## D188 — Figure 4 is a 45° break, and the under-plot callouts are gone · 2026-11-12
+
+**Decision (Conor, 09:51).** *"Please redo this to 45 degrees, also remove the
+proposed text, and the text under the title, and the text and and superfluous
+arrows under the main plot that say 3 -5 yards, and acceleration phase"* — sent
+against an older render of `fig_drill_schematic` (the one that still carried the
+PROPOSED badge and the subtitle).
+
+**Two of the four asks were already satisfied.** Before touching anything I
+dumped every string the current figure draws. It carried exactly one
+`fig.text` — the bold title — and these axis texts: the arc label, two `5 yd`
+gate labels, `re-accelerate 5 yd / through the gate`, `break cone / single
+plant`, `3–5 yd/s at the plant`, `cone`, `acceleration phase · 8–10 yd`, the
+`walk-in → 2-yd run-up → accelerate over the approach` line, the reps box and
+the scale-bar label. There was no "PROPOSED" badge, no subtitle under the
+title, and no footer anywhere on the canvas: D177 (2026-11-09) removed them,
+and the revert in `55f4a57` kept them absent. Asks 2 and 3 therefore needed no
+work and no change is claimed for them.
+
+**What was still live, and what changed.** (1) The break angle was 40°; it is
+now 45° everywhere it appears — `figures.drill_schematic.break_angles_deg`,
+the title ("The tempo break: a 45° cut at speed, both sides"), the arc label,
+and the exit geometry. With a 5 yd gate the two gate points are at
+`(5 cos45°, ±5 sin45°) = (3.535534, ±3.535534)` yd; the exits are 5.0000 yd
+and mirror in x and y. (2) The two under-plot callouts — `acceleration phase ·
+8–10 yd` and `3–5 yd/s at the plant` — and the double-headed measuring arrow
+that went with the first are removed from the canvas *and* from the CSV
+annotation rows (`approach_range`, `entry_speed`). No text was invented to
+replace them. The CSV drops 21 rows to 19; the 8 geometry rows are unchanged
+apart from the angle.
+
+**45° sits on the band boundary.** 45 is the top edge of `30–45°` and the
+bottom edge of `45–60°`. The geometry guard accepts an angle at the top of its
+stated band, so `break_angles_deg: [45]` with `break_band_labels: ["30–45°"]`
+passes without moving any band edge. The figure prints only the angle (`45°`),
+never a band name, so no drawn text claims a band the drawing does not sit in;
+the manifest keeps `break_band_labels: ["30–45°"]` as the configured band and
+the decision note records the boundary. A detected 45.0° turn elsewhere in the
+pipeline is read into the half-open `45–60°` bin, so the drill should be read as
+testing the 30–45 / 45–60 edge, not a clean 30–45° sample.
+
+**Source note updated.** `notes/drill-proposal.md` §2 is what the CSV's
+`source_quote` column cites; leaving it at "break 40 deg" would have made every
+45° row quote a contradicting source. The three §2 mentions are now 45 deg, and
+the "why these parameters" bullet records the boundary fact instead of the old
+"40° avoids leaking into 45–60°" rationale. This is the one edit outside the
+figure itself that Conor did not spell out; it is recorded here rather than
+made silently. `TASK.md` and the note's PROPOSAL status are untouched.
+
+**Manifest claim corrected.** The manifest's `claim` still said "break 40 and
+55 degrees" — stale from the superseded two-angle version — and its `scale`
+note still said the image labels the approach "8-10 yd". Both now describe the
+single 45° drawing and note that the approach is no longer dimensioned on the
+image.
+
+**Scale bar was invisible; it is now drawn.** The bar sat at y = −4.95 while
+the axes floor was −(5 sin θ + 1.1) (≈ −4.31 at 40°), so the bar and its end
+ticks were outside the axes and clipped: the canvas showed a floating "5 yd"
+with no bar. The axes window now reaches to `min(−(5 sin θ + 1.1), −5.25)`, so
+the bar is inside the axes and to scale (equal aspect, yards on both axes). The
+same fix removes the axes' horizontal overflow past the canvas edge. This was
+not in Conor's instruction; it was required by "the 5 yd scale bar stays a real
+scale bar".
+
+**Unchanged.** The 17 other figure PNGs are byte-identical to `abfeead`. The 15
+sample CSVs differ only in `config_sha` (proved column-wise after dropping that
+column). Figures 1 and 5 are the pinned FULL artefacts (`config_sha
+a4b45b6f476ddae5`, D186/D187) and were not rewritten by the sample run: their
+PNG, CSV and manifest entries are byte-for-byte as committed. SCHEMATIC status
+stays in the CSV (`status`, `status_stamp`) and the manifest; the canvas has
+carried no status stamp since D177, and none was added.
+
+**Tests.** The four drill-schematic geometry tests were updated for 45° and 19
+CSV rows; `test_drill_schematic_removed_under_plot_annotations_stay_removed`
+is new (the three removed phrases cannot be drawn or appear in the annotation
+rows, and the drawing carries exactly 2×angles+1 arrows); the
+`has_no_proposal_framing` test now also pins the title at 45° and 40° absent;
+`test_drill_schematic_scale_bar_is_inside_the_axes` is new. Every geometry
+check (mirror, 5 yd length, gate distance, gate/reaccel equality) is kept.
+
+**Evidence.** `config.yaml` (`figures.drill_schematic`); `src/bdb27/figures.py`
+(`drill_schematic_geometry`, `plot_drill_schematic`,
+`drill_schematic_manifest_payload`); `notes/drill-proposal.md` §2;
+`tests/test_figures_stage.py`; `outputs/figures/fig_drill_schematic.{png,csv}`;
+`outputs/figures/figures_manifest.json`.
+
+**Open for Conor (not changed, as instructed).** Two other artefacts still call
+the drill 40°: `figures.drill_coverage.proposed` ("Proposed 40° tempo drill",
+angle 40.0, drawn in figure 2's scatter) and `figures.before_after.projected.
+angle_deg` (figure 3's supply projection). Both follow the drill's angle, so
+they now disagree with figure 4. Say the word and they move to 45° in a
+separate change.

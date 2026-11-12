@@ -89,16 +89,16 @@ The drill therefore targets the **coverage** gap (1a), not the feasibility gap (
 
 ## 2. The drill
 
-**Tempo break — 40° at speed, both sides**
+**Tempo break — 45° at speed, both sides**
 
 ```
 Setup      Approach line marked by two cones, 8-10 yd apart.
            Break cone at the end of the approach.
-           Two exit gates 5 yd from the break cone, at 40 deg either side of
+           Two exit gates 5 yd from the break cone, at 45 deg either side of
            the approach line.
 Movement   Walk-in, 2-yd run-up, accelerate over 8-10 yd.
            Reach 3-5 yd/s at the break cone.
-           Single plant, break 40 deg, re-accelerate 5 yd through the gate.
+           Single plant, break 45 deg, re-accelerate 5 yd through the gate.
 Reps       6 total: 3 left, 3 right, alternating.
 Timing     No electronic gate required. The value is the 10 Hz tracking.
 Duration   ~90 s per player.
@@ -107,8 +107,9 @@ Space      Same cones and footprint as the 3-cone; no new station.
 
 **Why these parameters**
 
-- 40° sits inside the chosen 30–45° band, the widest proportional gap (24×) — a 45° break
-  would sit on the band's upper edge and leak into 45–60° under smoothing noise.
+- 45° is the angle Conor set (2026-11-12). It sits on the upper edge of the chosen 30–45°
+  band, the widest proportional gap (24×). The bands are half-open at 45, so a 45° break is
+  read against the 30–45 / 45–60 boundary — it is not a clean 30–45° sample.
 - 3–5 yd/s entry is the demanded band (178 + 115 game turns at 2–4 and 4–6 yd/s in the
   30–60° band).
 - An 8–10 yd build-up reaches that entry speed: the 3-cone already records a 3.9 yd/s median

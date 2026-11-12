@@ -272,4 +272,8 @@ def test_sample_path_is_untouched():
     cfg = common.load_config(ROOT / "config.yaml")
     assert [str(p) for p in cfg.get("figures.all_positions.positions")] == [
         "DB", "WR", "TE", "OL", "DL"]
-    assert common.config_fingerprint(cfg) == "a4b45b6f476ddae5"
+    # D188 moved ONLY figures.drill_schematic.break_angles_deg (40 -> 45).
+    # ``full_run.verify_run_identity`` proves that is the only drift from the
+    # uploaded run's config; this pin keeps every other key frozen, so an
+    # accidental edit still fails the sample path.
+    assert common.config_fingerprint(cfg) == "a76cf3bd9012f085"

@@ -1508,7 +1508,7 @@ def drill_schematic_geometry(cfg: common.Config) -> tuple[pd.DataFrame, dict]:
             row_kind="geometry", element="plant", kind="point",
             x=0.0, y=0.0, value=float(plants), unit="count",
             source_constant=f"{block}.plants_per_rep",
-            source_quote="Single plant, break 40 deg, re-accelerate 5 yd "
+            source_quote="Single plant, break 45 deg, re-accelerate 5 yd "
                          "through the gate."),
     ]
 
@@ -1547,17 +1547,11 @@ def drill_schematic_geometry(cfg: common.Config) -> tuple[pd.DataFrame, dict]:
                 row_kind="annotation", element=f"angle_left_{tag}", kind="text",
                 text=f"{angle:g}°", value=angle, unit="deg",
                 source_constant=f"{block}.break_angles_deg",
-                source_quote="Break 40 deg, either side of the approach line."),
+                source_quote="Break 45 deg, either side of the approach line."),
         ])
 
     rows.extend([
         # ---- annotations: every number printed on the image is here
-        _schematic_row(
-            row_kind="annotation", element="approach_range", kind="text",
-            text=f"acceleration phase · {lo:g}–{hi:g} yd",
-            value_low=lo, value_high=hi, unit="yd",
-            source_constant=f"{block}.approach_length_yd",
-            source_quote="two cones, 8-10 yd apart; accelerate over 8-10 yd."),
         _schematic_row(
             row_kind="annotation", element="runup", kind="text",
             text=f"{runup:g}-yd run-up", value=runup, unit="yd",
@@ -1574,12 +1568,6 @@ def drill_schematic_geometry(cfg: common.Config) -> tuple[pd.DataFrame, dict]:
             value=reaccel, unit="yd",
             source_constant=f"{block}.reaccel_length_yd",
             source_quote="Re-accelerate 5 yd through the gate."),
-        _schematic_row(
-            row_kind="annotation", element="entry_speed", kind="text",
-            text=f"{speed[0]:g}–{speed[1]:g} yd/s at the plant",
-            value_low=speed[0], value_high=speed[1], unit="yd/s",
-            source_constant=f"{block}.entry_speed_yd_s",
-            source_quote="Reach 3-5 yd/s at the break cone."),
         _schematic_row(
             row_kind="annotation", element="reps_total", kind="text",
             text=f"{reps_total} reps total",
@@ -1652,8 +1640,8 @@ def drill_schematic_geometry(cfg: common.Config) -> tuple[pd.DataFrame, dict]:
          "any further cone. Only those two cones are drawn."),
         ("Where the walk-in ends and where the 2-yd run-up sits relative to the "
          "8-10 yd approach is not specified, so no phase boundary is drawn: the "
-         "phases are labelled in one line, and only the approach itself (8-10 "
-         "yd) is measured on the image."),
+         "phases are labelled in one line, and the approach is not dimensioned "
+         "on the image at all."),
         ("The 3-cone footprint the new drill reuses is not dimensioned in the "
          "source note, so no footprint outline is drawn — the claim is stated "
          "in words only."),
@@ -1721,10 +1709,12 @@ def plot_drill_schematic(table: pd.DataFrame, context: dict,
 
     # The axes box is sized to the data window so that equal aspect needs no
     # adjustment (and emits no warning). Whitespace lives in the figure margin.
-    # The window covers the widest exit and leaves room for labels inside the
-    # axes: nothing is drawn below the axes once they end.
+    # The window covers the widest exit, leaves room for labels inside the
+    # axes, and reaches down to the scale bar so the bar is really drawn.
+    scale_y = -4.95
     x_lo, x_hi = -approach - 1.5, gate * max_cos + 2.0
-    y_lo, y_hi = -(gate * max_sin + 1.1), gate * max_sin + 0.55
+    y_lo = min(-(gate * max_sin + 1.1), scale_y - 0.30)
+    y_hi = gate * max_sin + 0.55
     ratio = (x_hi - x_lo) / (y_hi - y_lo)
     fig_w = float(cfg.get(f"{block}.width_in"))
     fig_h = float(cfg.get(f"{block}.height_in"))
@@ -1837,18 +1827,13 @@ def plot_drill_schematic(table: pd.DataFrame, context: dict,
     ax.text(-0.55, 0.55, "break cone\nsingle plant", fontsize=10.5,
             color="#1A1A1A", fontweight="bold", ha="right", va="bottom",
             linespacing=1.25)
-    ax.text(-0.55, -0.55, _schematic_text(table, "entry_speed"), fontsize=10.5,
-            color="#1A1A1A", ha="right", va="top")
     ax.text(-approach, 0.62, "cone", fontsize=9.5, color="#5A4600",
             ha="center", va="bottom")
 
-    # ---- the approach, its measured length, and the acceleration phase
-    ax.annotate("", xy=(-approach, -0.62), xytext=(0.0, -0.62),
-                arrowprops=dict(arrowstyle="<->", lw=0.9,
-                                color="#5A5A5A", shrinkA=0, shrinkB=0))
-    ax.text(-approach / 2.0, -1.02, _schematic_text(table, "approach_range"),
-            fontsize=10.0, color="#333333", ha="center", va="top",
-            fontweight="bold")
+    # ---- the approach and the walk-in/run-up phase line. The measured-length
+    # arrow and the acceleration-phase label that used to sit under the plot
+    # were removed on Conor's instruction (2026-11-12, D188); no replacement
+    # text was added.
     ax.text(-approach / 2.0, 0.30,
             "walk-in  →  " + _schematic_text(table, "runup")
             + "  →  accelerate over the approach",
@@ -1866,7 +1851,7 @@ def plot_drill_schematic(table: pd.DataFrame, context: dict,
 
     # ---- honest scale bar (equal aspect, yards on both axes)
     sb = float(context["scale_bar_yd"])
-    y0 = -4.95
+    y0 = scale_y
     ax.plot([-approach - 0.6, -approach - 0.6 + sb], [y0, y0],
             color="#1A1A1A", lw=2.6, solid_capstyle="butt")
     for edge in (-approach - 0.6, -approach - 0.6 + sb):
@@ -1943,10 +1928,9 @@ def drill_schematic_manifest_payload(table: pd.DataFrame,
             "the diagram carries no data-provenance banner."),
         "claim": (
             "Schematic of a Combine tempo-break drill: walk in, accelerate over "
-            "an 8-10 yd approach to 3-5 yd/s, single plant, break 40 and 55 "
-            "degrees either side, re-accelerate 5 yd through an exit gate; 6 "
-            "reps (3 left, 3 right, alternating) in ~90 s per player on the "
-            "existing 3-cone footprint."),
+            "an 8-10 yd approach, single plant, break 45 degrees either side, "
+            "re-accelerate 5 yd through an exit gate; 6 reps (3 left, 3 right, "
+            "alternating) in ~90 s per player on the existing 3-cone footprint."),
         "spec": {
             "approach_length_yd": list(context["approach_range"]),
             "approach_drawn_yd": context["approach_drawn"],
@@ -1970,7 +1954,7 @@ def drill_schematic_manifest_payload(table: pd.DataFrame,
             "note": ("Axes are drawn in yards with equal aspect and a 5 yd "
                      "scale bar, so the drawn layout is to scale. The approach "
                      "is placed at 9 yd (the midpoint of the stated 8-10 yd "
-                     "range); the image labels it 8-10 yd and 9 yd is never "
+                     "range); the image does not dimension it, so 9 yd is never "
                      "claimed as the specification."),
         },
         "omitted_not_specified": list(context["omissions"]),
