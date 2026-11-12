@@ -1,0 +1,148 @@
+{
+  "provenance": "FULL",
+  "label": "FULL DATA OUTPUT",
+  "config_sha": "a4b45b6f476ddae5",
+  "generated_utc": "2026-11-12T00:13:07Z",
+  "figure": "fig_all_positions",
+  "title": "The same hole across positions: the Combine takes a smaller 30\u201360\u00b0 share in every position it tests",
+  "claim": "Every panel plots the same quantity \u2014 the share of that setting's own valid turns in each display band, on one identical 0\u201370% axis, with 30\u201345\u00b0 and 45\u201360\u00b0 merged into one 30\u201360\u00b0 band on this figure only. OTHER has no Combine turns in this run, so its panel is drawn game-only. In every position the Combine tests, it takes a smaller 30\u201360\u00b0 share than games do (DL: 95 vs 2273 turns); the figure ranks no position and labels no panel \"fine\".",
+  "source_artefacts": [
+    {
+      "name": "bdb27_full_db_turns.parquet",
+      "path": "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
+      "bytes": 9773407,
+      "sha256": "f2e7cd01db214b7d88ab3f029876fe0fe7ced1530d2f014b9ad55b1b2dfb8e04",
+      "role": "game-only, DB-only turn table (2023-2025)"
+    },
+    {
+      "name": "bdb27_full_game_bands.csv",
+      "path": "data/interim/full_run_20261111/bdb27_full_game_bands.csv",
+      "bytes": 4249,
+      "sha256": "7cd10b9db2b9ccae21099c2bab8fe5d5f1420e295aec6e9dc09ed2c6ade454a1",
+      "role": "the notebook's own band table, all positions, both settings"
+    },
+    {
+      "name": "bdb27_full_game_manifest.json",
+      "path": "data/interim/full_run_20261111/bdb27_full_game_manifest.json",
+      "bytes": 35281,
+      "sha256": "dc8888a0e98d0d67a165106c29638fbe75f6b29d8dbce9a77e87c3dcc3c9de73",
+      "role": "run manifest: inputs, counts, chunks, artefact checksums"
+    }
+  ],
+  "source_run": {
+    "manifest": "bdb27_full_game_manifest.json",
+    "git_rev": "aeb483c",
+    "config_sha": "a4b45b6f476ddae5",
+    "runtime_seconds": 6660.2
+  },
+  "identity": {
+    "run_git_rev": "aeb483c",
+    "render_git_rev": "06ecaeb",
+    "config_sha": "a4b45b6f476ddae5",
+    "detection_files_unchanged_since_run": true,
+    "detection_files": [
+      "src/bdb27/common.py",
+      "src/bdb27/turns.py",
+      "src/bdb27/kinematics.py",
+      "src/bdb27/geometry.py",
+      "src/bdb27/envelope.py",
+      "src/02_turns.py"
+    ]
+  },
+  "crosschecks": {
+    "combine": {
+      "rows_checked": 30,
+      "matches_combine_turn_table": true
+    },
+    "db_game": {
+      "rows_checked": 12,
+      "matches_uploaded_band_table": true
+    }
+  },
+  "positions": [
+    "DB",
+    "WR",
+    "TE",
+    "OL",
+    "DL",
+    "OTHER"
+  ],
+  "combine_untested": [
+    "OTHER"
+  ],
+  "per_position": {
+    "DB": {
+      "n_valid": 59843,
+      "n_by_setting": {
+        "combine": 1179,
+        "game": 58664
+      },
+      "players_by_setting": {
+        "combine": 122,
+        "game": 115
+      }
+    },
+    "WR": {
+      "n_valid": 25467,
+      "n_by_setting": {
+        "combine": 1044,
+        "game": 24423
+      },
+      "players_by_setting": {
+        "combine": 107
+      }
+    },
+    "TE": {
+      "n_valid": 7242,
+      "n_by_setting": {
+        "combine": 294,
+        "game": 6948
+      },
+      "players_by_setting": {
+        "combine": 43
+      }
+    },
+    "OL": {
+      "n_valid": 26079,
+      "n_by_setting": {
+        "combine": 952,
+        "game": 25127
+      },
+      "players_by_setting": {
+        "combine": 120
+      }
+    },
+    "DL": {
+      "n_valid": 25363,
+      "n_by_setting": {
+        "combine": 2067,
+        "game": 23296
+      },
+      "players_by_setting": {
+        "combine": 118
+      }
+    },
+    "OTHER": {
+      "n_valid": 14971,
+      "n_by_setting": {
+        "game": 14971
+      },
+      "players_by_setting": {
+        "combine": 9
+      }
+    }
+  },
+  "counts": {
+    "n_turns_drawn": 158965,
+    "positions": 6,
+    "band0_combine_count": 26,
+    "band0_game_count": 7777
+  },
+  "manifest_provenance": "MIXED",
+  "outputs": {
+    "png": "/home/conormalone/.openclaw/workspace/BDB27/outputs/figures/fig_all_positions.png",
+    "csv": "/home/conormalone/.openclaw/workspace/BDB27/outputs/figures/fig_all_positions.csv",
+    "manifest": "/home/conormalone/.openclaw/workspace/BDB27/outputs/figures/figures_manifest.json",
+    "drawn_text": "/home/conormalone/.openclaw/workspace/BDB27/outputs/figures/fig_all_positions.drawn_text.json"
+  }
+}

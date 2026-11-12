@@ -63,8 +63,14 @@ PINNED = {
 #: Files that define turn detection. If any differs from the run manifest's
 #: ``git_rev``, the uploaded turns were produced by different code and may not
 #: be drawn as this config's output.
+#:
+#: ``src/bdb27/figures.py`` is deliberately NOT in this list. It draws and
+#: aggregates; it does not detect a turn. Its band assignment is proved instead
+#: by the row-for-row cross-check against the upload's own band table
+#: (:func:`check_band_csv`), which a drawing change could not pass if it moved
+#: a count or a band edge. Keeping the renderer here would make any figure
+#: change look like detection drift — the check exists to catch the latter.
 DETECTION_FILES = [
-    "src/bdb27/figures.py",
     "src/bdb27/common.py",
     "src/bdb27/turns.py",
     "src/bdb27/kinematics.py",

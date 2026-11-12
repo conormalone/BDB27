@@ -93,6 +93,7 @@ def test_figure1_redrawn_from_full_artefact(cfg, tmp_path):
 
 @needs_real
 def test_drawn_text_is_heading_and_data_only(cfg, tmp_path):
+    """One proportions panel: no counts panel, no facet strip, no callouts."""
     result = _run(cfg, tmp_path / "figures")
     dump = json.loads(result["drawn_text"].read_text(encoding="utf-8"))
     strings = dump["strings"]
@@ -100,11 +101,15 @@ def test_drawn_text_is_heading_and_data_only(cfg, tmp_path):
     title = ("The hole: games demand 6.0× the share of 30–60° DB breaks the "
              "Combine supplies")
     bands = {"30–60°", "60–90°", "90–120°", "120–150°", "150–180°", ">180°"}
-    known = {title, "(a) Raw counts (turns)",
-             "(b) Share of turns within setting (%)", "Combine", "Game"} | bands
-    counts = {"26", "499", "7777", "13077"}
-    axes = {"0", "5000", "10000", "15000", "10", "20", "30", "40", "50"}
-    assert set(strings) == known | counts | axes
+    known = {title, "Share of turns within setting (%)",
+             "Combine", "Game"} | bands
+    axes = {"0", "10", "20", "30", "40", "50"}
+    assert set(strings) == known | axes
+    # The counts panel and its labels are gone from the canvas entirely.
+    for gone in ("(a) Raw counts (turns)",
+                 "(b) Share of turns within setting (%)",
+                 "26", "499", "7777", "13077"):
+        assert gone not in strings
     assert dump["banned_hits"] == []
 
     lowered = " ".join(strings).lower()

@@ -74,6 +74,11 @@ from bdb27 import common, stats
 STAGE = "06_figures"
 ARTEFACT_VERSION = 1
 FIGURE_KEY = "fig_the_hole"
+#: Figure 1 draws one proportions panel (2026-11-11). This is the ceiling of
+#: its y axis, in percent of that setting's own valid turns; a share above it
+#: refuses rather than being clipped. Not a config key: the config fingerprint
+#: is pinned by the uploaded full run, so figure layout lives in code.
+FIGURE1_Y_MAX_PCT = 50.0
 FIGURE_KEY_DRILLS = "fig_drill_coverage"
 FIGURE_KEY_BEFORE_AFTER = "fig_before_after"
 FIGURE_KEY_ALL_POSITIONS = "fig_all_positions"
@@ -367,17 +372,15 @@ def band_table(turns: pd.DataFrame, edges: list[float], overflow_label: str,
 
 # --------------------------------------------------------------------- plot
 def plot_frame(table: pd.DataFrame) -> pd.DataFrame:
-    """Long frame with one row per bar; panel (a) counts, panel (b) share %."""
-    panels = ["(a) Raw counts (turns)", "(b) Share of turns within setting (%)"]
-    frames = []
-    for panel in panels:
-        part = table.copy()
-        part["panel"] = panel
-        part["value"] = (part["count"] if panel.startswith("(a)")
-                         else part["share_within_setting"] * 100.0)
-        frames.append(part)
-    out = pd.concat(frames, ignore_index=True)
-    out["panel"] = pd.Categorical(out["panel"], categories=panels, ordered=True)
+    """Long frame with one row per drawn bar: each setting's own share (%).
+
+    Figure 1 draws proportions only (Conor, 2026-11-11): the raw-count panel is
+    gone from the figure and from this frame. Counts remain in the CSV and the
+    manifest as the data record, but no panel or label on the canvas uses them.
+    """
+    out = table.copy()
+    out["share_pct"] = out["share_within_setting"] * 100.0
+    out["value"] = out["share_pct"]
     out["setting"] = pd.Categorical(out["setting"],
                                     categories=["combine", "game"], ordered=True)
     out["band"] = pd.Categorical(out["band"], categories=list(table["band"].unique()),
@@ -385,40 +388,17 @@ def plot_frame(table: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _labels(table: pd.DataFrame, bands: list[str]) -> pd.DataFrame:
-    """Direct labels: the focus band in both panels, plus each setting's peak."""
-    frame = plot_frame(table)
-    rows = []
-    for panel, part in frame.groupby("panel", observed=True):
-        top = float(part["value"].max())
-        offset = top * 0.04
-        chosen = part[part["band"] == bands[0]]
-        for setting, sub in part.groupby("setting", observed=True):
-            peak = sub.loc[sub["value"].idxmax()]
-            chosen = pd.concat([chosen, peak.to_frame().T], ignore_index=True)
-        for _, r in chosen.iterrows():
-            value = float(r["value"])
-            text = (f"{int(round(value))}" if panel.startswith("(a)")
-                    else f"{value:.1f}%")
-            rows.append({"panel": panel, "band": r["band"], "setting": r["setting"],
-                         "lab_y": value + offset, "label": text})
-    return pd.DataFrame(rows)
-
-
 def _annotations(table: pd.DataFrame, context: dict) -> tuple[pd.DataFrame, dict]:
-    """Highlight rectangles (one per panel) and the two callout texts.
+    """The focus-band rectangle, and the ratio/counts the metadata carries.
 
-    The rectangles are still drawn. The callout texts are not (D183,
-    2026-11-11): Conor removed the red on-plot copy, so ``ann["text"]`` is
-    retained for the contract tests and the ratio/counts it carries still
-    feed the title, the manifest and the CSV — only the drawing went.
+    Figure 1 draws a single proportions panel (2026-11-11), so there is one
+    rectangle, over the first display band, and no per-panel callout frame.
+    The ratio guard still runs against the table actually being drawn; its
+    numbers feed the heading, the manifest and the CSV.
     """
     frame = plot_frame(table)
-    rects = []
-    for panel, part in frame.groupby("panel", observed=True):
-        rects.append({"panel": panel, "xmin": 0.5, "xmax": 1.5,
-                      "ymin": 0.0, "ymax": float(part["value"].max()) * 1.22})
-    rect = pd.DataFrame(rects)
+    rect = pd.DataFrame([{"xmin": 0.5, "xmax": 1.5, "ymin": 0.0,
+                          "ymax": float(frame["value"].max()) * 1.10}])
 
     band0 = table[table["band"] == context["bands"][0]]
     c = int(band0.loc[band0["setting"] == "combine", "count"].iloc[0])
@@ -444,18 +424,7 @@ def _annotations(table: pd.DataFrame, context: dict) -> tuple[pd.DataFrame, dict
             f"{STAGE}: figure 1 claims the first band is the largest "
             f"proportional shortfall, but {ratios.idxmax()} is "
             f"({float(ratios.max()):.2f}x vs {ratio:.2f}x) — fix the claim")
-
-    top_a = float(frame.loc[frame["panel"] == frame["panel"].cat.categories[0],
-                            "value"].max())
-    top_b = float(frame.loc[frame["panel"] == frame["panel"].cat.categories[1],
-                            "value"].max())
-    texts = pd.DataFrame([
-        {"panel": frame["panel"].cat.categories[0], "x": 1.0, "y": top_a * 0.30,
-         "label": f"THE HOLE\n{c} vs {g} turns"},
-        {"panel": frame["panel"].cat.categories[1], "x": 1.0, "y": top_b * 0.20,
-         "label": f"{ratio:.1f}× the share\nin games"},
-    ])
-    return rect, {"rect": rect, "text": texts, "combine": c, "game": g,
+    return rect, {"rect": rect, "combine": c, "game": g,
                   "ratio": ratio, "combine_share": cs, "game_share": gs}
 
 
@@ -493,12 +462,6 @@ def _caption_lines(context: dict, ann: dict) -> list[str]:
 
 def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot:
     frame = plot_frame(table)
-    # Panel (a)'s counts stay; panel (b)'s small percentage labels are not
-    # drawn (D183, 2026-11-11: "remove the tiny percentage markings on the
-    # body of the plot"). `_labels` still builds both layers, so the numbers
-    # it computes remain the data record.
-    labels = _labels(table, context["bands"])
-    labels = labels[~labels["panel"].astype(str).str.startswith("(b)")].copy()
     rect, ann = _annotations(table, context)
     # Style always from figures.focus_band; geometry from this figure's own
     # display bands (figure 1 merges 30-45 and 45-60 into one 30-60 band).
@@ -514,11 +477,23 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
              "DB breaks the Combine supplies")
 
     dodge = position_dodge(width=0.8)
-    # Heading, bands and bars only (D183, 2026-11-11): no subtitle under the
-    # heading, no caption at the foot, and none of the three red callouts
-    # ("THE HOLE …", "…× the share", "… band"). The band tint and its two
-    # rules stay; every caveat the caption carried is in the CSV and the
-    # manifest entry, which are the provenance record.
+    # One proportions panel (Conor, 2026-11-11): the raw-count panel is gone
+    # because the full-data counts (58,664 vs 1,179) make the Combine bars
+    # unreadable. Heading, bands and bars only (D183): no subtitle, no caption,
+    # no red callouts and no in-plot band tag. The y axis now carries the old
+    # panel (b) meaning ("Share of turns within setting (%)") so the single
+    # panel is not an unlabelled axis. No bar labels are drawn: D183 removed
+    # the tiny percentage marks, and the counts belonged to the removed panel.
+    # The configured reporting bands put the largest share at 42.3%, so 50% is
+    # the axis. A non-default band set may produce a larger share: widen to the
+    # next 10-point ceiling rather than clip a bar or refuse a legal figure.
+    top = float(frame["value"].max())
+    y_max = (FIGURE1_Y_MAX_PCT if top <= FIGURE1_Y_MAX_PCT
+             else float((int(top) // 10 + 1) * 10))
+    if y_max > 100.0:
+        raise common.StageRefused(
+            f"{STAGE}: a drawn share is {top:.1f}%, which is not a percentage "
+            "— the share table is inconsistent")
     plot = (
         ggplot(frame, aes(x="band", y="value", fill="setting"))
         + geom_rect(data=rect, mapping=aes(xmin="xmin", xmax="xmax",
@@ -528,16 +503,15 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
         + geom_vline(xintercept=[0.5, 1.5], inherit_aes=False,
                      colour=focus["colour"], size=focus["rule_width"])
         + geom_col(position=dodge, width=0.72, colour="white", size=0.25)
-        + geom_text(data=labels, mapping=aes(x="band", y="lab_y", label="label",
-                                             group="setting"),
-                    position=dodge, size=2.9, colour="#1A1A1A", va="bottom",
-                    show_legend=False)
-        + facet_wrap("~ panel", nrow=1, scales="free_y")
         + scale_fill_manual(values=[PALETTE["combine"], PALETTE["game"]],
                             labels=[COMBINE_LABEL, GAME_LABEL], name=None)
         + scale_x_discrete(limits=list(context["bands"]))
-        + labs(title=title, x=None, y=None)
-        + theme_bw(base_size=9)
+        + scale_y_continuous(limits=(0.0, y_max),
+                             breaks=[float(x) for x in range(0, int(y_max) + 1, 10)],
+                             expand=(0, 0))
+        + labs(title=title, x=None,
+               y="Share of turns within setting (%)")
+        + theme_bw(base_size=10)
         + theme(
             figure_size=(float(cfg.get("figures.hole.width_in")),
                          float(cfg.get("figures.hole.height_in"))),
@@ -545,11 +519,9 @@ def build_plot(table: pd.DataFrame, context: dict, cfg: common.Config) -> ggplot
             panel_grid_major=element_line(colour="white", linewidth=0.6),
             panel_grid_minor=element_blank(),
             panel_border=element_rect(colour="#B3B3B3", linewidth=0.4),
-            strip_background=element_rect(fill="#D9D9D9", colour="#B3B3B3"),
-            strip_text=element_text(weight="bold", size=10),
             plot_title=element_text(size=15, weight="bold"),
             axis_title_x=element_blank(),
-            axis_title_y=element_blank(),
+            axis_title_y=element_text(size=8.8),
             axis_text_x=element_text(size=8.5),
             axis_text_y=element_text(size=8.0),
             legend_position="bottom",
@@ -2215,27 +2187,40 @@ def all_positions_dl_speed_count(turns: pd.DataFrame, position: str,
 
 
 def _all_positions_band0_shares(table: pd.DataFrame,
-                                context: dict) -> tuple[pd.DataFrame, str]:
+                                context: dict
+                                ) -> tuple[pd.DataFrame, str, list[str]]:
     """Per-position Combine/game shares in the first (merged) display band.
 
     The figure's title and claim say the Combine takes the smaller share in
     *every* panel. That is checked against the table actually being drawn, so a
     future band or position change refuses rather than printing a false
-    superlative. Returns the share pivot and the band's printed span.
+    superlative. Returns the share pivot, the band's printed span, and the
+    positions the Combine never tests (no Combine turns at all). A position
+    with no Combine rows is drawn game-only and excluded from the "every"
+    claim by name — never silently treated as a zero share.
     """
     band0 = context["bands"][0]
     shares = table[table["band"] == band0].pivot(
         index="position", columns="setting", values="share_within_setting")
     span = f"{float(context['edges'][0]):g}–{float(context['edges'][1]):g}°"
-    bad = [p for p in context["positions"]
-           if not float(shares.loc[p, "combine"])
-           < float(shares.loc[p, "game"])]
+    untested: list[str] = []
+    bad: list[str] = []
+    for position in context["positions"]:
+        combine = (float(shares.loc[position, "combine"])
+                   if "combine" in shares.columns
+                   and position in shares.index
+                   and not pd.isna(shares.loc[position, "combine"]) else None)
+        if combine is None:
+            untested.append(position)
+            continue
+        if not combine < float(shares.loc[position, "game"]):
+            bad.append(position)
     if bad:
         raise ValueError(
             f"{STAGE}: figure 5's title/claim say the Combine takes the smaller "
             f"{span} share in every panel, but {bad} contradict that — fix the "
             "claim")
-    return shares, span
+    return shares, span, untested
 
 
 def _all_positions_caption(table: pd.DataFrame, context: dict,
@@ -2254,7 +2239,7 @@ def _all_positions_caption(table: pd.DataFrame, context: dict,
     n_turns = context["n_turns"]
     n_positions = len(context["positions"])
     band0 = context["bands"][0]
-    _, band0_span = _all_positions_band0_shares(table, context)
+    _, band0_span, _untested = _all_positions_band0_shares(table, context)
 
     dl_line = ""
     floor = float(cfg.get(f"{block}.dl_speed_floor_yd_s", 6.0))
@@ -2322,10 +2307,11 @@ def plot_all_positions(table: pd.DataFrame, context: dict, cfg: common.Config,
     bands = list(context["bands"])
     x_max = float(cfg.get(f"{block}.x_max_pct"))
     x_breaks = [float(b) for b in cfg.get(f"{block}.x_breaks_pct")]
-    _, band0_span = _all_positions_band0_shares(table, context)
+    _, band0_span, untested = _all_positions_band0_shares(table, context)
 
     title = (f"The same hole across positions: the Combine takes a smaller "
-             f"{band0_span} share in every panel")
+             f"{band0_span} share in every "
+             + ("position it tests" if untested else "panel"))
 
     n_bands = len(bands)
     focus_y = -float(focus_idx + 1)
@@ -2395,8 +2381,12 @@ def all_positions_csv_frame(table: pd.DataFrame, context: dict,
     out["emphasis"] = np.where(out["position"] == str(
         cfg.get("figures.all_positions.emphasis_position")), "accent", "muted")
     out["position_setting_total"] = out["setting_total"].astype(int)
+    # The uploaded full-run band table carries counts and shares, not player
+    # exposure, for every position. Where the renderer can prove the player
+    # count (Combine for every tested position, game for DB) it is written;
+    # elsewhere the cell is left blank rather than filled with a sample number.
     out["n_players"] = [
-        int(context["per_position"][p]["players_by_setting"][s])
+        context["per_position"][p].get("players_by_setting", {}).get(s)
         for p, s in zip(out["position"], out["setting"])]
     return out[["position_index", "position", "spec_status",
                 "spec_status_source", "emphasis", "band_index", "band",
@@ -2411,7 +2401,7 @@ def all_positions_manifest_payload(table: pd.DataFrame, context: dict,
     emphasis = str(cfg.get(f"{block}.emphasis_position"))
     status = all_positions_status(context, cfg)
     per = context["per_position"]
-    shares, span = _all_positions_band0_shares(table, context)
+    shares, span, untested = _all_positions_band0_shares(table, context)
     band0 = table[table["band"] == context["bands"][0]]
     dl_c = int(band0.loc[(band0["position"] == "DL")
                          & (band0["setting"] == "combine"), "count"].iloc[0])
@@ -2424,14 +2414,22 @@ def all_positions_manifest_payload(table: pd.DataFrame, context: dict,
         "artefact_version": ARTEFACT_VERSION,
         "figure": FIGURE_KEY_ALL_POSITIONS,
         "title": ("The same hole across positions: the Combine takes a "
-                  f"smaller {span} share in every panel"),
-        "claim": ("Every panel plots the same quantity — the share of that "
-                  "setting's own valid turns in each display band, Combine vs "
-                  "game, on one identical 0–70% axis, with 30–45° and 45–60° "
-                  f"merged into one {span} band on this figure only. In every "
-                  f"panel the Combine takes a smaller {span} share than games "
-                  f"do (DL: {dl_c} vs {dl_g} turns); the figure ranks no "
-                  "position and labels no panel \"fine\"."),
+                  f"smaller {span} share in every "
+                  + ("position it tests" if untested else "panel")),
+        "claim": (
+            "Every panel plots the same quantity — the share of that "
+            "setting's own valid turns in each display band, "
+            + ("" if untested else "Combine vs game, ")
+            + "on one identical 0–70% axis, with 30–45° and 45–60° merged "
+            f"into one {span} band on this figure only. "
+            + (f"{', '.join(untested)} has no Combine turns in this run, so "
+               "its panel is drawn game-only. " if untested else "")
+            + ("In every position the Combine tests, it takes a smaller "
+               f"{span} share than games do " if untested else
+               f"In every panel the Combine takes a smaller {span} share than "
+               "games do ")
+            + f"(DL: {dl_c} vs {dl_g} turns); the figure ranks no position "
+            "and labels no panel \"fine\"."),
         "sources": ["outputs/turns/turns.parquet"],
         "positions": list(context["positions"]),
         "position_order_note": ("Order as TASK.md §1 lists the positions; not a "
@@ -2458,9 +2456,9 @@ def all_positions_manifest_payload(table: pd.DataFrame, context: dict,
             p: {
                 "n_valid": int(c["n_valid"]),
                 "n_by_setting": {k: int(v) for k, v in
-                                 c["n_by_setting"].items()},
+                                 c.get("n_by_setting", {}).items()},
                 "players_by_setting": {k: int(v) for k, v in
-                                       c["players_by_setting"].items()},
+                                       c.get("players_by_setting", {}).items()},
                 "spec_status": status.get(p, ""),
             } for p, c in per.items()
         },

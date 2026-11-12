@@ -479,7 +479,7 @@ def _hole_cells(rendered):
 
 
 def test_hole_draws_a_heading_and_nothing_else(rendered):
-    """D183: heading, bands and bars only — no subtitle, caption or red text."""
+    """D183 + 2026-11-11: one proportions panel — heading, bands and bars only."""
     import matplotlib
     import matplotlib.pyplot as plt
 
@@ -497,8 +497,10 @@ def test_hole_draws_a_heading_and_nothing_else(rendered):
         assert headings[0] == (
             "The hole: games demand 6.5× the share of 30–60° DB breaks the "
             "Combine supplies")
-        assert visible == headings, (
+        assert visible == headings + ["Share of turns within setting (%)"], (
             f"unexpected figure-level text: {visible}")
+        assert len(fig.axes) == 1, (
+            f"figure 1 must draw one proportions panel, got {len(fig.axes)}")
 
         drawn = "\n".join(
             [t.get_text() for t in fig.texts if t.get_visible()]
@@ -520,6 +522,10 @@ def test_hole_draws_a_heading_and_nothing_else(rendered):
             "the panel (b) red ratio callout is still drawn")
         assert "30–60° band" not in drawn, (
             "the red focus-band tag is still drawn")
+        assert "(a) Raw counts (turns)" not in drawn, (
+            "the removed counts panel is still drawn")
+        assert "(b) Share of turns within setting (%)" not in drawn, (
+            "the old facet strip is still drawn")
 
         # No text at all in the focus colour: the three callouts were the only
         # red text, and the band tint/rules are not text.
@@ -529,15 +535,15 @@ def test_hole_draws_a_heading_and_nothing_else(rendered):
                     and to_hex(t.get_color()).lower() == "#c00000"]
         assert red_text == [], f"red on-plot text survived: {red_text}"
 
-        # Kept by the same change: panel (a)'s count labels, band tick
-        # labels, facet strips and the colour legend.
+        # Kept: band tick labels and the colour legend. The counts panel is
+        # gone (2026-11-11), so its count labels and facet strips are gone too;
+        # the proportions panel draws no tiny percentage labels (D183).
         all_text = [t.get_text() for t in fig.findobj(matplotlib.text.Text)
                     if t.get_visible() and t.get_text().strip()]
-        for label in ("26", "499", "326", "508"):
-            assert label in all_text, f"bar data label {label} disappeared"
-        # D183 (2026-11-11): the tiny percentage markings on panel (b)'s bars
-        # are gone. Counts in panel (a) stay. No bare percentage may be drawn
-        # anywhere (the facet strip "(b) Share … (%)" ends in "%)").
+        for label in ("26", "499", "326", "508", "7,777", "13,077"):
+            assert label not in all_text, (
+                f"a count label ({label}) survived the removal of the counts "
+                "panel")
         import re
         percentages = [text for text in all_text
                        if re.fullmatch(r"\d+(?:\.\d+)?%", text)]
@@ -548,8 +554,8 @@ def test_hole_draws_a_heading_and_nothing_else(rendered):
             assert band in all_text, f"band label {band} disappeared"
         assert "Combine" in all_text and "Game" in all_text, (
             "the colour legend labels must stay drawn")
-        assert "(a) Raw counts (turns)" in all_text
-        assert "(b) Share of turns within setting (%)" in all_text
+        assert "0" in all_text and "50" in all_text, (
+            "the 0-50% y axis must stay drawn")
     finally:
         plt.close(fig)
 

@@ -2,7 +2,7 @@
   "provenance": "FULL",
   "label": "FULL DATA OUTPUT",
   "config_sha": "a4b45b6f476ddae5",
-  "generated_utc": "2026-11-11T22:53:48Z",
+  "generated_utc": "2026-11-12T00:13:03Z",
   "figure": "fig_the_hole",
   "title": "The hole: games demand 6.0\u00d7 the share of 30\u201360\u00b0 DB breaks the Combine supplies",
   "claim": "Games spend 6.0\u00d7 the share of DB turns in 30\u201360\u00b0 that the Combine supplies (13.3% vs 2.2%; 7,777 game turns vs 26 Combine detections). The Combine detections are incidental fragments, not a test, and 30\u201360\u00b0 is the largest proportional shortfall of any band in this figure.",
@@ -37,11 +37,10 @@
   },
   "identity": {
     "run_git_rev": "aeb483c",
-    "render_git_rev": "2306dd6",
+    "render_git_rev": "06ecaeb",
     "config_sha": "a4b45b6f476ddae5",
     "detection_files_unchanged_since_run": true,
     "detection_files": [
-      "src/bdb27/figures.py",
       "src/bdb27/common.py",
       "src/bdb27/turns.py",
       "src/bdb27/kinematics.py",

@@ -7535,3 +7535,55 @@ Combine-only or schematic and are not blocked by the game sample.
 `src/07_full_figure1.py`; `tests/test_full_figure1.py`;
 `outputs/figures/fig_the_hole.{png,csv,provenance.json,drawn_text.json}`;
 `outputs/figures/figures_manifest.json`.
+
+## D186 — figure 1 proportions-only; figure 5 rebuilt from the uploaded band table · 2026-11-11
+
+**Decision (Conor).** Figure 1 is redrawn with the share panel only: *"the
+numbers are too skewered for the counts, so do it again with just the
+proportions, the right hand side."* Figure 5 is redrawn from the full run
+(*"Redo figure 5 as well"*); `fig_all_positions.csv` had still been
+`PLACEHOLDER_SAMPLE`.
+
+**Figure 1.** One proportions panel, full configured width: x = the six display
+bands, y = each setting's own share of valid turns (0–50%, ticks every 10). The
+raw-count panel is removed from the canvas **and from the code path** — no
+facet, no `(a)`/`(b)` strip, no count labels. Counts and denominators stay in
+the CSV/manifest. The y axis carries the old panel (b) meaning as its title.
+Heading unchanged: 6.0× on the full data (7,777/58,664 vs 26/1,179), 6.5× on
+the sample. D183's heading-and-data contract still holds.
+
+**Figure 5.** The earlier note that it was blocked on turn-level data was wrong
+for this figure: `bdb27_full_game_bands.csv` already carries every position
+group × six bands × both settings as counts and shares. New renderer
+`src/08_full_figure5.py` / `src/bdb27/full_run_positions.py` rebuilds the table
+from that upload. Six panels: DB, WR, TE, OL, DL, OTHER. OTHER has no Combine
+turns, so its panel is drawn game-only (six game bars) and the heading says
+*"in every position it tests"*; the sample figure keeps five panels and
+*"in every panel"*. Combine rows are cross-checked band-for-band against the
+Combine turn table; DB game rows against figure 1's assembled DB table (12
+rows). 66 drawn rows (5 × 12 + 6).
+
+**What genuinely needed per-turn data.** Player exposure only. The upload
+carries no player counts for the non-DB game positions, so those `n_players`
+cells are blank rather than filled with sample numbers; DB game players (115),
+DB player-games (2,234) and every Combine position's player count come from
+tables that do carry them. Snap-type composition is not drawn by figure 5.
+
+**Identity check narrowed correctly.** `src/bdb27/figures.py` is removed from
+`DETECTION_FILES`: it draws and aggregates, it does not detect turns, and the
+band-table cross-check proves its banding row for row. Leaving it there made a
+legitimate drawing change look like detection drift.
+
+**Provenance.** `figures_manifest.json` now says `MIXED PROVENANCE — 2 FULL,
+15 sample, 1 schematic`; both figure entries are FULL with the three pinned
+artefacts and checksums, dedicated `*.provenance.json` records and drawn-text
+dumps. No `config.yaml` key changed, so the upload's `config_sha
+a4b45b6f476ddae5` still matches.
+
+**Evidence.** `notes/spec-fig1-fig5-full.md`; `src/bdb27/figures.py`
+(`plot_frame`, `build_plot`, `_all_positions_band0_shares`);
+`src/bdb27/full_run.py` (`DETECTION_FILES`); `src/bdb27/full_run_positions.py`;
+`src/08_full_figure5.py`; `tests/test_full_figure1.py`,
+`tests/test_full_figure5.py`, `tests/test_figures_stage.py`;
+`outputs/figures/fig_the_hole.*`, `outputs/figures/fig_all_positions.*`,
+`outputs/figures/figures_manifest.json`.
