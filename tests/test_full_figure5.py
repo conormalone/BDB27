@@ -131,6 +131,49 @@ def test_figure5_draws_five_panels_one_band_row_per_panel(cfg, tmp_path):
 
 
 @needs_real
+def test_figure5_draws_no_count_text_anywhere(cfg, tmp_path):
+    """Conor, 2026-11-12 07:51: *all* counts come off, not just DB's.
+
+    Sharpened from the DB-only brief: the drawn text must carry no count
+    annotation on any of the five panels. Axis tick labels are the only
+    numbers allowed, and the only texts allowed inside a panel are none at
+    all.
+    """
+    import re
+
+    import matplotlib.pyplot as plt
+
+    result = _run(cfg, tmp_path / "figures")
+    dump = json.loads(result["drawn_text"].read_text(encoding="utf-8"))
+    strings = [s for s in dump["strings"] + dump["scan_strings"] if s.strip()]
+
+    # Every purely numeric string on the canvas must be an x-axis tick.
+    ticks = {"0", "10", "20", "30", "40", "50", "60", "70"}
+    numeric = {s.strip() for s in strings if re.fullmatch(r"[\d,]+", s.strip())}
+    assert numeric <= ticks, (
+        f"count-like text survived on the canvas: {sorted(numeric - ticks)}")
+    assert not any("," in s for s in strings), (
+        "a thousands-separated count is still drawn")
+    assert not any(re.match(r"^\s*[nN]\s*=", s) for s in strings), (
+        "an n= annotation is still drawn")
+
+    plot = figures.plot_all_positions(result["table"], result["context"], cfg)
+    fig = plot.draw()
+    try:
+        for position, ax in zip(result["context"]["positions"], fig.axes):
+            assert list(ax.texts) == [], (
+                f"{position} panel carries an in-plot annotation")
+        figure_text = [t.get_text() for t in fig.texts
+                       if t.get_visible() and t.get_text().strip()]
+        allowed = [result["title"],
+                   "Share of that setting's own valid turns (%)"]
+        assert figure_text == allowed, (
+            f"unexpected figure-level text: {figure_text}")
+    finally:
+        plt.close(fig)
+
+
+@needs_real
 def test_figure5_full_provenance(cfg, tmp_path):
     result = _run(cfg, tmp_path / "figures")
 

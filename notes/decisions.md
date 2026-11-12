@@ -7635,3 +7635,13 @@ retained figure-5 CSV rows (counts, totals, shares) are unchanged.
 `src/bdb27/full_run_positions.py`; `tests/test_full_figure5.py`,
 `tests/test_figures_stage.py`; `outputs/figures/fig_all_positions.{png,csv,
 drawn_text.json,provenance.json}`; `outputs/figures/figures_manifest.json`.
+
+**Correction (Conor, 2026-11-12 07:51).** *"Get rid of All the counts, not
+just the db"* — the instruction covers every panel, not only the accent one.
+DB was the only panel that ever carried count text (`all_positions_count_labels`
+filtered to `emphasis`), so the first commit had already removed every count
+from the canvas; no drawing code changed in the follow-up. The regression was
+sharpened instead: `test_figure5_draws_no_count_text_anywhere` proves the drawn
+text contains no count-like string anywhere (only x-axis ticks 0–70 are
+numeric; no thousands separators, no `n =` text), and every panel's `ax.texts`
+is empty. The CSV/manifest keep every count and denominator.
