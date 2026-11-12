@@ -7738,3 +7738,38 @@ angle 40.0, drawn in figure 2's scatter) and `figures.before_after.projected.
 angle_deg` (figure 3's supply projection). Both follow the drill's angle, so
 they now disagree with figure 4. Say the word and they move to 45° in a
 separate change.
+
+## D189 — The report draft is reduced to Conor's four figures · 2026-11-12
+
+**Fixed set.** Conor's figure set for the submission is four plots:
+`fig_the_hole`, `fig_all_positions`, `fig_drill_schematic` (45°) and
+`fig_drill_angle_scatter`. Nothing else may be named in the draft. The draft
+written by the previous (dead) report cycle named two figures outside that set.
+
+**Removed.** The `fig_drill_coverage` line and its introduction, and the
+`fig_measurement_limits` line and its introduction, are deleted from
+`notes/report-draft.md`. Neither figure is in Conor's set; both were
+`PLACEHOLDER_SAMPLE` and were named for completeness only, with nothing read
+from them, so no claim depended on them.
+
+**Added.** The missing fourth plot, `fig_drill_angle_scatter`, is now named in
+section 8, after the paragraph arguing that the battery samples the shallow
+band only by accident. Its provenance is labelled from its own manifest entry
+and CSV: `PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT`, not FULL. The figure
+lines now read 1–4 in order of appearance (the drill schematic moves from 3 to
+4).
+
+**Length.** The draft stays over the ~2,000-word working assumption (2,190
+words by `wc -w`) because the pending sections still occupy space; the
+"What is still missing" block now says so rather than cutting substantive
+content to hit a number.
+
+**Unchanged.** No prose rewritten, no number changed, no honesty framing
+touched (the section-5 table was verified against the FULL band table by Conor).
+`notes/report-draft-spec.md` §5 still lists five figures and is superseded by
+this entry for the figure set only.
+
+**Evidence.** `notes/report-draft.md`;
+`outputs/figures/figures_manifest.json` (`fig_drill_angle_scatter`);
+`outputs/figures/fig_drill_angle_scatter.csv` (stamp column: all 1,179 rows
+`PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT`).
