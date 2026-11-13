@@ -1,18 +1,18 @@
 {
   "provenance": "MIXED",
-  "label": "MIXED PROVENANCE — 2 FULL, 16 sample, 1 schematic",
+  "label": "MIXED PROVENANCE \u2014 2 FULL, 16 sample, 1 schematic",
   "config_sha": "a76cf3bd9012f085",
   "generated_utc": "2026-11-13T14:19:27Z",
   "stage": "06_figures",
   "artefact_version": 1,
-  "stamp": "MIXED PROVENANCE — 2 FULL, 16 sample, 1 schematic",
+  "stamp": "MIXED PROVENANCE \u2014 2 FULL, 16 sample, 1 schematic",
   "figures": {
     "fig_the_hole": {
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_the_hole",
-      "title": "The hole: games demand 6.0× the share of 30–60° DB breaks the Combine supplies",
-      "claim": "Games spend 6.0× the share of DB turns in 30–60° that the Combine supplies (13.3% vs 2.2%; 7,777 game turns vs 26 Combine detections). The Combine detections are incidental fragments, not a test, and 30–60° is the largest proportional shortfall of any band in this figure.",
+      "title": "The hole: games demand 6.0\u00d7 the share of 30\u201360\u00b0 DB breaks the Combine supplies",
+      "claim": "Games spend 6.0\u00d7 the share of DB turns in 30\u201360\u00b0 that the Combine supplies (13.3% vs 2.2%; 7,777 game turns vs 26 Combine detections). The Combine detections are incidental fragments, not a test, and 30\u201360\u00b0 is the largest proportional shortfall of any band in this figure.",
       "sources": [
         "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
         "data/interim/full_run_20261111/bdb27_full_game_bands.csv",
@@ -20,25 +20,25 @@
         "outputs/turns/turns.parquet#setting=combine&position_group=DB"
       ],
       "caveats": [
-        "Exposure: 122 Combine players × one session vs 115 game players × 2234 player-games; the share panel exists because the two settings are not sampled alike.",
+        "Exposure: 122 Combine players \u00d7 one session vs 115 game players \u00d7 2234 player-games; the share panel exists because the two settings are not sampled alike.",
         "DB demand denominator is all 58,664 valid DB game turns; the snap-classified COVERAGE subset is 32,759, and 25,439 turns (43.4%) are snapped as \"other\".",
-        "Bands are left-closed; the final class is >180°. This figure merges 30–45° and 45–60° into one 30–60° band; every other figure reports the two bands separately.",
+        "Bands are left-closed; the final class is >180\u00b0. This figure merges 30\u201345\u00b0 and 45\u201360\u00b0 into one 30\u201360\u00b0 band; every other figure reports the two bands separately.",
         "Figure 1 pools 2023-2025. Valid DB game turns are 8,016 / 21,275 / 29,373 and whole-file game turns 25,019 / 53,511 / 74,917. The 2023 tracking file is about a third the size of the 2025 file for the same number of games (333 vs 334), so season-level rates are not comparable. The pooled figure is reported; the unevenness is an open question, not resolved here.",
         "Game side: uploaded full run (2023-2025), game-only and DB-only. Combine side: the complete Combine file, unchanged by this work; sample mode overrides only game_tracking."
       ],
       "position_group": "DB",
       "bands": [
-        "30–60°",
-        "60–90°",
-        "90–120°",
-        "120–150°",
-        "150–180°",
-        ">180°"
+        "30\u201360\u00b0",
+        "60\u201390\u00b0",
+        "90\u2013120\u00b0",
+        "120\u2013150\u00b0",
+        "150\u2013180\u00b0",
+        ">180\u00b0"
       ],
       "counts": [
         {
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "combine",
@@ -48,7 +48,7 @@
         },
         {
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "game",
@@ -58,7 +58,7 @@
         },
         {
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "combine",
@@ -68,7 +68,7 @@
         },
         {
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "game",
@@ -78,7 +78,7 @@
         },
         {
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "combine",
@@ -88,7 +88,7 @@
         },
         {
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "game",
@@ -98,7 +98,7 @@
         },
         {
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "combine",
@@ -108,7 +108,7 @@
         },
         {
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "game",
@@ -118,7 +118,7 @@
         },
         {
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "combine",
@@ -128,7 +128,7 @@
         },
         {
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "game",
@@ -138,7 +138,7 @@
         },
         {
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "combine",
@@ -148,7 +148,7 @@
         },
         {
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "game",
@@ -220,15 +220,15 @@
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_drill_coverage",
-      "title": "Every DB drill asks for a big turn at low speed — the 30–45° cell is effectively empty",
-      "claim": "Of 1,179 valid Combine DB turns across 10 drills, 4 (0.3%) fall in the 30–45° × 2–6 yd/s cell the games demand; the repertoire is big-angle at low entry speed.",
+      "title": "Every DB drill asks for a big turn at low speed \u2014 the 30\u201345\u00b0 cell is effectively empty",
+      "claim": "Of 1,179 valid Combine DB turns across 10 drills, 4 (0.3%) fall in the 30\u201345\u00b0 \u00d7 2\u20136 yd/s cell the games demand; the repertoire is big-angle at low entry speed.",
       "sources": [
         "outputs/turns/turns.parquet"
       ],
       "caveats": [
-        "Combine supply is 122 players × one session; the figure describes the test inventory, not player populations.",
-        "Median reps per player is 1–2 in every drill; even the best-covered band (60–90°) gives a median of 2.",
-        "The target cell holds 4 incidental Combine turns from 3 players; game demand in the 30–45° band is 97 turns from 25 players."
+        "Combine supply is 122 players \u00d7 one session; the figure describes the test inventory, not player populations.",
+        "Median reps per player is 1\u20132 in every drill; even the best-covered band (60\u201390\u00b0) gives a median of 2.",
+        "The target cell holds 4 incidental Combine turns from 3 players; game demand in the 30\u201345\u00b0 band is 97 turns from 25 players."
       ],
       "position_group": "DB",
       "target_angle_deg": [
@@ -240,7 +240,7 @@
         6.0
       ],
       "proposed": {
-        "label": "Proposed 40° tempo drill",
+        "label": "Proposed 40\u00b0 tempo drill",
         "angle": 40.0,
         "speed": 4.0,
         "reps": 6
@@ -281,7 +281,7 @@
         {
           "kind": "measured",
           "drill": "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION",
-          "drill_label": "Back pedal + 45° reaction",
+          "drill_label": "Back pedal + 45\u00b0 reaction",
           "n_turns": 133,
           "n_players": 71,
           "median_angle_deg": 113.1486587524414,
@@ -297,7 +297,7 @@
         {
           "kind": "measured",
           "drill": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
-          "drill_label": "Back pedal + 90° break",
+          "drill_label": "Back pedal + 90\u00b0 break",
           "n_turns": 118,
           "n_players": 102,
           "median_angle_deg": 89.06024169921875,
@@ -409,7 +409,7 @@
         {
           "kind": "proposed",
           "drill": "PROPOSED_40_TEMPO_BREAK",
-          "drill_label": "Proposed 40° tempo drill",
+          "drill_label": "Proposed 40\u00b0 tempo drill",
           "n_turns": 0,
           "n_players": 0,
           "median_angle_deg": 40.0,
@@ -425,14 +425,14 @@
       ],
       "png": "outputs/figures/fig_drill_coverage.png",
       "csv": "outputs/figures/fig_drill_coverage.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_before_after": {
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_before_after",
-      "title": "Before and after: a 30–45° hole, and the drill that would fill it",
-      "claim": "Measured DB Combine supply is 1,179 turns across 7 × 6 angle × entry-speed cells, with only 4 turn(s) in the 30–45° band; the proposed drill would add 732 projected turns to that band.",
+      "title": "Before and after: a 30\u201345\u00b0 hole, and the drill that would fill it",
+      "claim": "Measured DB Combine supply is 1,179 turns across 7 \u00d7 6 angle \u00d7 entry-speed cells, with only 4 turn(s) in the 30\u201345\u00b0 band; the proposed drill would add 732 projected turns to that band.",
       "sources": [
         "outputs/turns/turns.parquet"
       ],
@@ -451,13 +451,13 @@
           180.0
         ],
         "angle_bands": [
-          "30–45°",
-          "45–60°",
-          "60–90°",
-          "90–120°",
-          "120–150°",
-          "150–180°",
-          ">180°"
+          "30\u201345\u00b0",
+          "45\u201360\u00b0",
+          "60\u201390\u00b0",
+          "90\u2013120\u00b0",
+          "120\u2013150\u00b0",
+          "150\u2013180\u00b0",
+          ">180\u00b0"
         ],
         "speed_edges_yd_s": [
           0.0,
@@ -469,12 +469,12 @@
           12.0
         ],
         "speed_bands": [
-          "0–2",
-          "2–4",
-          "4–6",
-          "6–8",
-          "8–10",
-          "10–12"
+          "0\u20132",
+          "2\u20134",
+          "4\u20136",
+          "6\u20138",
+          "8\u201310",
+          "10\u201312"
         ],
         "shape": [
           7,
@@ -483,7 +483,7 @@
         "empty_cells": 20
       },
       "projection": {
-        "arithmetic": "6 reps × 122 DBs = 732",
+        "arithmetic": "6 reps \u00d7 122 DBs = 732",
         "total_turns": 732,
         "n_players": 122,
         "reps_per_player": 6,
@@ -496,9 +496,9 @@
         "per_cell_split": null
       },
       "caveats": [
-        "The right panel is arithmetic, not measurement: it repeats the measured supply and adds a hatched projection of 6 reps × 122 DBs.",
-        "The 2–6 yd/s window is split by the grid's 4 yd/s edge and the drill spec has no per-cell split, so the total is carried once on the region and never divided between cells.",
-        "Exposure: Combine supply is 122 players × one session; the projection is 6 reps per player. Turn counts are not comparable samples of behaviour.",
+        "The right panel is arithmetic, not measurement: it repeats the measured supply and adds a hatched projection of 6 reps \u00d7 122 DBs.",
+        "The 2\u20136 yd/s window is split by the grid's 4 yd/s edge and the drill spec has no per-cell split, so the total is carried once on the region and never divided between cells.",
+        "Exposure: Combine supply is 122 players \u00d7 one session; the projection is 6 reps per player. Turn counts are not comparable samples of behaviour.",
         "Blank cells are real zeros; the CSV records every grid cell, including empty ones."
       ],
       "position_group": "DB",
@@ -506,10 +506,10 @@
         {
           "angle_idx": 1,
           "speed_idx": 1,
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 45.0,
-          "speed_band": "0–2",
+          "speed_band": "0\u20132",
           "speed_low_yd_s": 0.0,
           "speed_high_yd_s": 2.0,
           "count": 0
@@ -517,10 +517,10 @@
         {
           "angle_idx": 1,
           "speed_idx": 2,
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 45.0,
-          "speed_band": "2–4",
+          "speed_band": "2\u20134",
           "speed_low_yd_s": 2.0,
           "speed_high_yd_s": 4.0,
           "count": 4
@@ -528,10 +528,10 @@
         {
           "angle_idx": 1,
           "speed_idx": 3,
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 45.0,
-          "speed_band": "4–6",
+          "speed_band": "4\u20136",
           "speed_low_yd_s": 4.0,
           "speed_high_yd_s": 6.0,
           "count": 0
@@ -539,10 +539,10 @@
         {
           "angle_idx": 1,
           "speed_idx": 4,
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 45.0,
-          "speed_band": "6–8",
+          "speed_band": "6\u20138",
           "speed_low_yd_s": 6.0,
           "speed_high_yd_s": 8.0,
           "count": 0
@@ -550,10 +550,10 @@
         {
           "angle_idx": 1,
           "speed_idx": 5,
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 45.0,
-          "speed_band": "8–10",
+          "speed_band": "8\u201310",
           "speed_low_yd_s": 8.0,
           "speed_high_yd_s": 10.0,
           "count": 0
@@ -561,10 +561,10 @@
         {
           "angle_idx": 1,
           "speed_idx": 6,
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 45.0,
-          "speed_band": "10–12",
+          "speed_band": "10\u201312",
           "speed_low_yd_s": 10.0,
           "speed_high_yd_s": 12.0,
           "count": 0
@@ -572,10 +572,10 @@
         {
           "angle_idx": 2,
           "speed_idx": 1,
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "band_low_deg": 45.0,
           "band_high_deg": 60.0,
-          "speed_band": "0–2",
+          "speed_band": "0\u20132",
           "speed_low_yd_s": 0.0,
           "speed_high_yd_s": 2.0,
           "count": 0
@@ -583,10 +583,10 @@
         {
           "angle_idx": 2,
           "speed_idx": 2,
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "band_low_deg": 45.0,
           "band_high_deg": 60.0,
-          "speed_band": "2–4",
+          "speed_band": "2\u20134",
           "speed_low_yd_s": 2.0,
           "speed_high_yd_s": 4.0,
           "count": 12
@@ -594,10 +594,10 @@
         {
           "angle_idx": 2,
           "speed_idx": 3,
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "band_low_deg": 45.0,
           "band_high_deg": 60.0,
-          "speed_band": "4–6",
+          "speed_band": "4\u20136",
           "speed_low_yd_s": 4.0,
           "speed_high_yd_s": 6.0,
           "count": 8
@@ -605,10 +605,10 @@
         {
           "angle_idx": 2,
           "speed_idx": 4,
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "band_low_deg": 45.0,
           "band_high_deg": 60.0,
-          "speed_band": "6–8",
+          "speed_band": "6\u20138",
           "speed_low_yd_s": 6.0,
           "speed_high_yd_s": 8.0,
           "count": 2
@@ -616,10 +616,10 @@
         {
           "angle_idx": 2,
           "speed_idx": 5,
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "band_low_deg": 45.0,
           "band_high_deg": 60.0,
-          "speed_band": "8–10",
+          "speed_band": "8\u201310",
           "speed_low_yd_s": 8.0,
           "speed_high_yd_s": 10.0,
           "count": 0
@@ -627,10 +627,10 @@
         {
           "angle_idx": 2,
           "speed_idx": 6,
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "band_low_deg": 45.0,
           "band_high_deg": 60.0,
-          "speed_band": "10–12",
+          "speed_band": "10\u201312",
           "speed_low_yd_s": 10.0,
           "speed_high_yd_s": 12.0,
           "count": 0
@@ -638,10 +638,10 @@
         {
           "angle_idx": 3,
           "speed_idx": 1,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
-          "speed_band": "0–2",
+          "speed_band": "0\u20132",
           "speed_low_yd_s": 0.0,
           "speed_high_yd_s": 2.0,
           "count": 0
@@ -649,10 +649,10 @@
         {
           "angle_idx": 3,
           "speed_idx": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
-          "speed_band": "2–4",
+          "speed_band": "2\u20134",
           "speed_low_yd_s": 2.0,
           "speed_high_yd_s": 4.0,
           "count": 159
@@ -660,10 +660,10 @@
         {
           "angle_idx": 3,
           "speed_idx": 3,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
-          "speed_band": "4–6",
+          "speed_band": "4\u20136",
           "speed_low_yd_s": 4.0,
           "speed_high_yd_s": 6.0,
           "count": 24
@@ -671,10 +671,10 @@
         {
           "angle_idx": 3,
           "speed_idx": 4,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
-          "speed_band": "6–8",
+          "speed_band": "6\u20138",
           "speed_low_yd_s": 6.0,
           "speed_high_yd_s": 8.0,
           "count": 41
@@ -682,10 +682,10 @@
         {
           "angle_idx": 3,
           "speed_idx": 5,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
-          "speed_band": "8–10",
+          "speed_band": "8\u201310",
           "speed_low_yd_s": 8.0,
           "speed_high_yd_s": 10.0,
           "count": 13
@@ -693,10 +693,10 @@
         {
           "angle_idx": 3,
           "speed_idx": 6,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
-          "speed_band": "10–12",
+          "speed_band": "10\u201312",
           "speed_low_yd_s": 10.0,
           "speed_high_yd_s": 12.0,
           "count": 0
@@ -704,10 +704,10 @@
         {
           "angle_idx": 4,
           "speed_idx": 1,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
-          "speed_band": "0–2",
+          "speed_band": "0\u20132",
           "speed_low_yd_s": 0.0,
           "speed_high_yd_s": 2.0,
           "count": 0
@@ -715,10 +715,10 @@
         {
           "angle_idx": 4,
           "speed_idx": 2,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
-          "speed_band": "2–4",
+          "speed_band": "2\u20134",
           "speed_low_yd_s": 2.0,
           "speed_high_yd_s": 4.0,
           "count": 66
@@ -726,10 +726,10 @@
         {
           "angle_idx": 4,
           "speed_idx": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
-          "speed_band": "4–6",
+          "speed_band": "4\u20136",
           "speed_low_yd_s": 4.0,
           "speed_high_yd_s": 6.0,
           "count": 32
@@ -737,10 +737,10 @@
         {
           "angle_idx": 4,
           "speed_idx": 4,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
-          "speed_band": "6–8",
+          "speed_band": "6\u20138",
           "speed_low_yd_s": 6.0,
           "speed_high_yd_s": 8.0,
           "count": 57
@@ -748,10 +748,10 @@
         {
           "angle_idx": 4,
           "speed_idx": 5,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
-          "speed_band": "8–10",
+          "speed_band": "8\u201310",
           "speed_low_yd_s": 8.0,
           "speed_high_yd_s": 10.0,
           "count": 4
@@ -759,10 +759,10 @@
         {
           "angle_idx": 4,
           "speed_idx": 6,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
-          "speed_band": "10–12",
+          "speed_band": "10\u201312",
           "speed_low_yd_s": 10.0,
           "speed_high_yd_s": 12.0,
           "count": 0
@@ -770,10 +770,10 @@
         {
           "angle_idx": 5,
           "speed_idx": 1,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
-          "speed_band": "0–2",
+          "speed_band": "0\u20132",
           "speed_low_yd_s": 0.0,
           "speed_high_yd_s": 2.0,
           "count": 0
@@ -781,10 +781,10 @@
         {
           "angle_idx": 5,
           "speed_idx": 2,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
-          "speed_band": "2–4",
+          "speed_band": "2\u20134",
           "speed_low_yd_s": 2.0,
           "speed_high_yd_s": 4.0,
           "count": 279
@@ -792,10 +792,10 @@
         {
           "angle_idx": 5,
           "speed_idx": 3,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
-          "speed_band": "4–6",
+          "speed_band": "4\u20136",
           "speed_low_yd_s": 4.0,
           "speed_high_yd_s": 6.0,
           "count": 195
@@ -803,10 +803,10 @@
         {
           "angle_idx": 5,
           "speed_idx": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
-          "speed_band": "6–8",
+          "speed_band": "6\u20138",
           "speed_low_yd_s": 6.0,
           "speed_high_yd_s": 8.0,
           "count": 24
@@ -814,10 +814,10 @@
         {
           "angle_idx": 5,
           "speed_idx": 5,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
-          "speed_band": "8–10",
+          "speed_band": "8\u201310",
           "speed_low_yd_s": 8.0,
           "speed_high_yd_s": 10.0,
           "count": 1
@@ -825,10 +825,10 @@
         {
           "angle_idx": 5,
           "speed_idx": 6,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
-          "speed_band": "10–12",
+          "speed_band": "10\u201312",
           "speed_low_yd_s": 10.0,
           "speed_high_yd_s": 12.0,
           "count": 0
@@ -836,10 +836,10 @@
         {
           "angle_idx": 6,
           "speed_idx": 1,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
-          "speed_band": "0–2",
+          "speed_band": "0\u20132",
           "speed_low_yd_s": 0.0,
           "speed_high_yd_s": 2.0,
           "count": 0
@@ -847,10 +847,10 @@
         {
           "angle_idx": 6,
           "speed_idx": 2,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
-          "speed_band": "2–4",
+          "speed_band": "2\u20134",
           "speed_low_yd_s": 2.0,
           "speed_high_yd_s": 4.0,
           "count": 62
@@ -858,10 +858,10 @@
         {
           "angle_idx": 6,
           "speed_idx": 3,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
-          "speed_band": "4–6",
+          "speed_band": "4\u20136",
           "speed_low_yd_s": 4.0,
           "speed_high_yd_s": 6.0,
           "count": 63
@@ -869,10 +869,10 @@
         {
           "angle_idx": 6,
           "speed_idx": 4,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
-          "speed_band": "6–8",
+          "speed_band": "6\u20138",
           "speed_low_yd_s": 6.0,
           "speed_high_yd_s": 8.0,
           "count": 3
@@ -880,10 +880,10 @@
         {
           "angle_idx": 6,
           "speed_idx": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
-          "speed_band": "8–10",
+          "speed_band": "8\u201310",
           "speed_low_yd_s": 8.0,
           "speed_high_yd_s": 10.0,
           "count": 0
@@ -891,10 +891,10 @@
         {
           "angle_idx": 6,
           "speed_idx": 6,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
-          "speed_band": "10–12",
+          "speed_band": "10\u201312",
           "speed_low_yd_s": 10.0,
           "speed_high_yd_s": 12.0,
           "count": 0
@@ -902,10 +902,10 @@
         {
           "angle_idx": 7,
           "speed_idx": 1,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
-          "speed_band": "0–2",
+          "speed_band": "0\u20132",
           "speed_low_yd_s": 0.0,
           "speed_high_yd_s": 2.0,
           "count": 0
@@ -913,10 +913,10 @@
         {
           "angle_idx": 7,
           "speed_idx": 2,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
-          "speed_band": "2–4",
+          "speed_band": "2\u20134",
           "speed_low_yd_s": 2.0,
           "speed_high_yd_s": 4.0,
           "count": 53
@@ -924,10 +924,10 @@
         {
           "angle_idx": 7,
           "speed_idx": 3,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
-          "speed_band": "4–6",
+          "speed_band": "4\u20136",
           "speed_low_yd_s": 4.0,
           "speed_high_yd_s": 6.0,
           "count": 76
@@ -935,10 +935,10 @@
         {
           "angle_idx": 7,
           "speed_idx": 4,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
-          "speed_band": "6–8",
+          "speed_band": "6\u20138",
           "speed_low_yd_s": 6.0,
           "speed_high_yd_s": 8.0,
           "count": 1
@@ -946,10 +946,10 @@
         {
           "angle_idx": 7,
           "speed_idx": 5,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
-          "speed_band": "8–10",
+          "speed_band": "8\u201310",
           "speed_low_yd_s": 8.0,
           "speed_high_yd_s": 10.0,
           "count": 0
@@ -957,10 +957,10 @@
         {
           "angle_idx": 7,
           "speed_idx": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
-          "speed_band": "10–12",
+          "speed_band": "10\u201312",
           "speed_low_yd_s": 10.0,
           "speed_high_yd_s": 12.0,
           "count": 0
@@ -968,17 +968,17 @@
       ],
       "png": "outputs/figures/fig_before_after.png",
       "csv": "outputs/figures/fig_before_after.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_drill_schematic": {
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_drill_schematic",
       "figure_kind": "diagram (geometry drawing, not a data plot)",
-      "title": "The tempo break: a 45° cut at speed, both sides",
+      "title": "The tempo break: a 45\u00b0 cut at speed, both sides",
       "status": "SCHEMATIC",
-      "status_stamp": "SCHEMATIC — illustrative geometry, not measured data",
-      "stamp": "SCHEMATIC — illustrative geometry, not measured data",
+      "status_stamp": "SCHEMATIC \u2014 illustrative geometry, not measured data",
+      "stamp": "SCHEMATIC \u2014 illustrative geometry, not measured data",
       "provenance_applied": false,
       "provenance_note": "This is a schematic drawing, not a data artefact: nothing on it is measured. The SCHEMATIC status line is the correct stamp, and the diagram carries no data-provenance banner.",
       "claim": "Schematic of a Combine tempo-break drill: walk in, accelerate over an 8-10 yd approach, single plant, break 45 degrees either side, re-accelerate 5 yd through an exit gate; 6 reps (3 left, 3 right, alternating) in ~90 s per player on the existing 3-cone footprint.",
@@ -993,7 +993,7 @@
           45.0
         ],
         "break_band_labels": [
-          "30–45°"
+          "30\u201345\u00b0"
         ],
         "gate_distance_yd": 5.0,
         "reaccel_length_yd": 5.0,
@@ -1015,10 +1015,10 @@
         "note": "Axes are drawn in yards with equal aspect and a 5 yd scale bar, so the drawn layout is to scale. The approach is placed at 9 yd (the midpoint of the stated 8-10 yd range); the image does not dimension it, so 9 yd is never claimed as the specification."
       },
       "omitted_not_specified": [
-        "Gate width (the opening between gate posts) is not stated in the source note, so each exit gate is drawn as a single transverse tick marking where the player crosses — not as a measured opening.",
+        "Gate width (the opening between gate posts) is not stated in the source note, so each exit gate is drawn as a single transverse tick marking where the player crosses \u2014 not as a measured opening.",
         "The source note lists exactly two approach cones 8-10 yd apart and puts the break cone at the end of the approach; it does not describe any further cone. Only those two cones are drawn.",
         "Where the walk-in ends and where the 2-yd run-up sits relative to the 8-10 yd approach is not specified, so no phase boundary is drawn: the phases are labelled in one line, and the approach is not dimensioned on the image at all.",
-        "The 3-cone footprint the new drill reuses is not dimensioned in the source note, so no footprint outline is drawn — the claim is stated in words only.",
+        "The 3-cone footprint the new drill reuses is not dimensioned in the source note, so no footprint outline is drawn \u2014 the claim is stated in words only.",
         "Lane width, station size and cone spacing beyond the two approach cones are not specified and are not drawn."
       ],
       "drawn_elements": [
@@ -1178,7 +1178,7 @@
           "row_kind": "annotation",
           "element": "angle_left_45",
           "kind": "text",
-          "text": "45°",
+          "text": "45\u00b0",
           "value": 45.0,
           "value_low": null,
           "value_high": null,
@@ -1330,7 +1330,7 @@
           "row_kind": "annotation",
           "element": "status",
           "kind": "text",
-          "text": "SCHEMATIC — illustrative geometry, not measured data",
+          "text": "SCHEMATIC \u2014 illustrative geometry, not measured data",
           "value": null,
           "value_low": null,
           "value_high": null,
@@ -1396,8 +1396,8 @@
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_all_positions",
-      "title": "The same hole across positions: the Combine takes a smaller 30–60° share in every panel",
-      "claim": "Every panel plots the same quantity — the share of that setting's own valid turns in each display band, Combine vs game, on one identical 0–70% axis, with 30–45° and 45–60° merged into one 30–60° band on this figure only. In every panel the Combine takes a smaller 30–60° share than games do (DL: 95 vs 2273 turns); the figure ranks no position and labels no panel \"fine\".",
+      "title": "The same hole across positions: the Combine takes a smaller 30\u201360\u00b0 share in every panel",
+      "claim": "Every panel plots the same quantity \u2014 the share of that setting's own valid turns in each display band, Combine vs game, on one identical 0\u201370% axis, with 30\u201345\u00b0 and 45\u201360\u00b0 merged into one 30\u201360\u00b0 band on this figure only. In every panel the Combine takes a smaller 30\u201360\u00b0 share than games do (DL: 95 vs 2273 turns); the figure ranks no position and labels no panel \"fine\".",
       "sources": [
         "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
         "data/interim/full_run_20261111/bdb27_full_game_bands.csv",
@@ -1422,19 +1422,19 @@
         "identical_in_all_panels": true
       },
       "bands": [
-        "30–60°",
-        "60–90°",
-        "90–120°",
-        "120–150°",
-        "150–180°",
-        ">180°"
+        "30\u201360\u00b0",
+        "60\u201390\u00b0",
+        "90\u2013120\u00b0",
+        "120\u2013150\u00b0",
+        "150\u2013180\u00b0",
+        ">180\u00b0"
       ],
       "spec_status": {
         "statuses": {
           "DB": "exploratory",
           "OL": "exploratory"
         },
-        "source": "TASK.md:63 and TASK.md:153 — OL and DB are exploratory (contamination risk); TASK.md:136 the same for the demand map",
+        "source": "TASK.md:63 and TASK.md:153 \u2014 OL and DB are exploratory (contamination risk); TASK.md:136 the same for the demand map",
         "note": "Carried from the spec, not assigned here. Positions absent from this map carry no status on this figure and are neither promoted nor demoted."
       },
       "count_labels": {
@@ -1503,8 +1503,8 @@
         "Descriptive shares of a census of turns: no confidence bands, no per-position significance test, no ranking of positions by gap size.",
         "Exposure differs by setting and by position (one Combine session vs several player-games per player), which is why each bar is that setting's own share rather than a count.",
         "DB is both the case's focus and marked exploratory in the spec (TASK.md:63, TASK.md:153). Both signals are drawn as specified; the tension is left open for Conor.",
-        "DL is included unchanged and is not annotated as \"fine\": in 30–60° its Combine share is 4.6% against games' 9.8% (95 vs 2273 turns), while TASK.md §CURRENT FOCUS records DL's gap as a speed story rather than an angle one.",
-        "Bands are left-closed; the final class is >180°. This figure merges 30–45° and 45–60° into one 30–60° band; figures 3, 8, 12, 13 and 15 report the two bands separately.",
+        "DL is included unchanged and is not annotated as \"fine\": in 30\u201360\u00b0 its Combine share is 4.6% against games' 9.8% (95 vs 2273 turns), while TASK.md \u00a7CURRENT FOCUS records DL's gap as a speed story rather than an angle one.",
+        "Bands are left-closed; the final class is >180\u00b0. This figure merges 30\u201345\u00b0 and 45\u201360\u00b0 into one 30\u201360\u00b0 band; figures 3, 8, 12, 13 and 15 report the two bands separately.",
         "Every count and share here is read from the uploaded full-run band table (bdb27_full_game_bands.csv), not from the sample turn table. The Combine side is cross-checked row for row against the Combine turn table; DB game rows against figure 1's assembled DB table.",
         "Player exposure is not in the uploaded band table for the non-DB game positions, so the CSV leaves those n_players cells blank rather than copying sample numbers."
       ],
@@ -1512,7 +1512,7 @@
         {
           "position": "DB",
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "combine",
@@ -1524,7 +1524,7 @@
         {
           "position": "DB",
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "game",
@@ -1536,7 +1536,7 @@
         {
           "position": "DB",
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "combine",
@@ -1548,7 +1548,7 @@
         {
           "position": "DB",
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "game",
@@ -1560,7 +1560,7 @@
         {
           "position": "DB",
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "combine",
@@ -1572,7 +1572,7 @@
         {
           "position": "DB",
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "game",
@@ -1584,7 +1584,7 @@
         {
           "position": "DB",
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "combine",
@@ -1596,7 +1596,7 @@
         {
           "position": "DB",
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "game",
@@ -1608,7 +1608,7 @@
         {
           "position": "DB",
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "combine",
@@ -1620,7 +1620,7 @@
         {
           "position": "DB",
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "game",
@@ -1632,7 +1632,7 @@
         {
           "position": "DB",
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "combine",
@@ -1644,7 +1644,7 @@
         {
           "position": "DB",
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "game",
@@ -1656,7 +1656,7 @@
         {
           "position": "WR",
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "combine",
@@ -1668,7 +1668,7 @@
         {
           "position": "WR",
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "game",
@@ -1680,7 +1680,7 @@
         {
           "position": "WR",
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "combine",
@@ -1692,7 +1692,7 @@
         {
           "position": "WR",
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "game",
@@ -1704,7 +1704,7 @@
         {
           "position": "WR",
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "combine",
@@ -1716,7 +1716,7 @@
         {
           "position": "WR",
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "game",
@@ -1728,7 +1728,7 @@
         {
           "position": "WR",
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "combine",
@@ -1740,7 +1740,7 @@
         {
           "position": "WR",
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "game",
@@ -1752,7 +1752,7 @@
         {
           "position": "WR",
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "combine",
@@ -1764,7 +1764,7 @@
         {
           "position": "WR",
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "game",
@@ -1776,7 +1776,7 @@
         {
           "position": "WR",
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "combine",
@@ -1788,7 +1788,7 @@
         {
           "position": "WR",
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "game",
@@ -1800,7 +1800,7 @@
         {
           "position": "TE",
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "combine",
@@ -1812,7 +1812,7 @@
         {
           "position": "TE",
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "game",
@@ -1824,7 +1824,7 @@
         {
           "position": "TE",
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "combine",
@@ -1836,7 +1836,7 @@
         {
           "position": "TE",
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "game",
@@ -1848,7 +1848,7 @@
         {
           "position": "TE",
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "combine",
@@ -1860,7 +1860,7 @@
         {
           "position": "TE",
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "game",
@@ -1872,7 +1872,7 @@
         {
           "position": "TE",
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "combine",
@@ -1884,7 +1884,7 @@
         {
           "position": "TE",
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "game",
@@ -1896,7 +1896,7 @@
         {
           "position": "TE",
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "combine",
@@ -1908,7 +1908,7 @@
         {
           "position": "TE",
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "game",
@@ -1920,7 +1920,7 @@
         {
           "position": "TE",
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "combine",
@@ -1932,7 +1932,7 @@
         {
           "position": "TE",
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "game",
@@ -1944,7 +1944,7 @@
         {
           "position": "OL",
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "combine",
@@ -1956,7 +1956,7 @@
         {
           "position": "OL",
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "game",
@@ -1968,7 +1968,7 @@
         {
           "position": "OL",
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "combine",
@@ -1980,7 +1980,7 @@
         {
           "position": "OL",
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "game",
@@ -1992,7 +1992,7 @@
         {
           "position": "OL",
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "combine",
@@ -2004,7 +2004,7 @@
         {
           "position": "OL",
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "game",
@@ -2016,7 +2016,7 @@
         {
           "position": "OL",
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "combine",
@@ -2028,7 +2028,7 @@
         {
           "position": "OL",
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "game",
@@ -2040,7 +2040,7 @@
         {
           "position": "OL",
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "combine",
@@ -2052,7 +2052,7 @@
         {
           "position": "OL",
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "game",
@@ -2064,7 +2064,7 @@
         {
           "position": "OL",
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "combine",
@@ -2076,7 +2076,7 @@
         {
           "position": "OL",
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "game",
@@ -2088,7 +2088,7 @@
         {
           "position": "DL",
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "combine",
@@ -2100,7 +2100,7 @@
         {
           "position": "DL",
           "band_index": 1,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "setting": "game",
@@ -2112,7 +2112,7 @@
         {
           "position": "DL",
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "combine",
@@ -2124,7 +2124,7 @@
         {
           "position": "DL",
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "game",
@@ -2136,7 +2136,7 @@
         {
           "position": "DL",
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "combine",
@@ -2148,7 +2148,7 @@
         {
           "position": "DL",
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "game",
@@ -2160,7 +2160,7 @@
         {
           "position": "DL",
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "combine",
@@ -2172,7 +2172,7 @@
         {
           "position": "DL",
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "game",
@@ -2184,7 +2184,7 @@
         {
           "position": "DL",
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "combine",
@@ -2196,7 +2196,7 @@
         {
           "position": "DL",
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "game",
@@ -2208,7 +2208,7 @@
         {
           "position": "DL",
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "combine",
@@ -2220,7 +2220,7 @@
         {
           "position": "DL",
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "game",
@@ -2304,7 +2304,7 @@
       "artefact_version": 1,
       "figure": "fig_measurement_limits",
       "title": "The measurement limits: why this data cannot rank players",
-      "claim": "43 of 51 between-player variance components sit at the boundary of the envelope's grid, so a per-player ranking is not supported by this data; and reversal-class turns carry non-physical lateral accelerations, so they are measured as plants rather than as v·ω. The boundary is a finding about the data, not an error, and the detector still recovers planted turns at 3.1° MAE / precision 0.915 / recall 0.931.",
+      "claim": "43 of 51 between-player variance components sit at the boundary of the envelope's grid, so a per-player ranking is not supported by this data; and reversal-class turns carry non-physical lateral accelerations, so they are measured as plants rather than as v\u00b7\u03c9. The boundary is a finding about the data, not an error, and the detector still recovers planted turns at 3.1\u00b0 MAE / precision 0.915 / recall 0.931.",
       "sources": [
         "outputs/envelope/variance_components.csv",
         "outputs/turns/turns.parquet"
@@ -2318,12 +2318,12 @@
           "INTERIOR": 8
         },
         "encoding": "zero-width empty bar outlined on the baseline with a hollow point; never shortened to a positive bar and never omitted",
-        "meaning": "between-player variance at the floor of the grid to the precision this data supports — a limit of the data, not a bug"
+        "meaning": "between-player variance at the floor of the grid to the precision this data supports \u2014 a limit of the data, not a bug"
       },
       "reversal_zone": {
         "threshold_deg": 150.0,
         "config_key": "figures.measurement_limits.reversal_zone_deg",
-        "reason": "reversal-class turns are measured as plants (apex, exit, regain), never as v·ω; their lateral accelerations are not physical capacity",
+        "reason": "reversal-class turns are measured as plants (apex, exit, regain), never as v\u00b7\u03c9; their lateral accelerations are not physical capacity",
         "greyed_and_struck_through": true
       },
       "lateral_accel": {
@@ -2865,7 +2865,7 @@
       "lateral_bands": [
         {
           "band_index": 1,
-          "angle_band": "30–45°",
+          "angle_band": "30\u201345\u00b0",
           "angle_low_deg": 30.0,
           "angle_high_deg": 45.0,
           "n_turns": 323,
@@ -2877,7 +2877,7 @@
         },
         {
           "band_index": 2,
-          "angle_band": "45–60°",
+          "angle_band": "45\u201360\u00b0",
           "angle_low_deg": 45.0,
           "angle_high_deg": 60.0,
           "n_turns": 891,
@@ -2889,7 +2889,7 @@
         },
         {
           "band_index": 3,
-          "angle_band": "60–90°",
+          "angle_band": "60\u201390\u00b0",
           "angle_low_deg": 60.0,
           "angle_high_deg": 90.0,
           "n_turns": 3154,
@@ -2901,7 +2901,7 @@
         },
         {
           "band_index": 4,
-          "angle_band": "90–120°",
+          "angle_band": "90\u2013120\u00b0",
           "angle_low_deg": 90.0,
           "angle_high_deg": 120.0,
           "n_turns": 2508,
@@ -2913,7 +2913,7 @@
         },
         {
           "band_index": 5,
-          "angle_band": "120–150°",
+          "angle_band": "120\u2013150\u00b0",
           "angle_low_deg": 120.0,
           "angle_high_deg": 150.0,
           "n_turns": 2613,
@@ -2925,7 +2925,7 @@
         },
         {
           "band_index": 6,
-          "angle_band": "150–180°",
+          "angle_band": "150\u2013180\u00b0",
           "angle_low_deg": 150.0,
           "angle_high_deg": 180.0,
           "n_turns": 1772,
@@ -2937,7 +2937,7 @@
         },
         {
           "band_index": 7,
-          "angle_band": ">180°",
+          "angle_band": ">180\u00b0",
           "angle_low_deg": 180.0,
           "angle_high_deg": null,
           "n_turns": 1412,
@@ -2956,14 +2956,14 @@
       ],
       "png": "outputs/figures/fig_measurement_limits.png",
       "csv": "outputs/figures/fig_measurement_limits.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_gap_honest": {
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_gap_honest",
       "title": "How big is the gap, really? Raw counts, own-turn share and turns per player-appearance",
-      "claim": "The 4-vs-97 raw count is a 24.25× ratio inflated by exposure (122 Combine players measured once vs 33 game players over 299 player-games); on each setting's own turns the gap is 4.29% vs 0.34% = 12.6×, and per player-appearance 0.324 vs 0.033 = 9.9× — still damning.",
+      "claim": "The 4-vs-97 raw count is a 24.25\u00d7 ratio inflated by exposure (122 Combine players measured once vs 33 game players over 299 player-games); on each setting's own turns the gap is 4.29% vs 0.34% = 12.6\u00d7, and per player-appearance 0.324 vs 0.033 = 9.9\u00d7 \u2014 still damning.",
       "sources": [
         "outputs/turns/turns.parquet"
       ],
@@ -2973,7 +2973,7 @@
         45.0
       ],
       "headline_universe": "all_valid",
-      "headline_reason": "The headline keeps figure 1's population — all valid DB turns, angles >=180 kept as their own class — so the correction describes the same turns as the 4-vs-97 claim it answers.",
+      "headline_reason": "The headline keeps figure 1's population \u2014 all valid DB turns, angles >=180 kept as their own class \u2014 so the correction describes the same turns as the 4-vs-97 claim it answers.",
       "panels": [
         {
           "panel": "a_raw_counts",
@@ -2981,7 +2981,7 @@
           "metric": "count",
           "value_printed": "97",
           "ratio": 24.25,
-          "ratio_expression": "97 ÷ 4 = 24.25×"
+          "ratio_expression": "97 \u00f7 4 = 24.25\u00d7"
         },
         {
           "panel": "b_share",
@@ -2989,7 +2989,7 @@
           "metric": "share_pct",
           "value_printed": "4.29%",
           "ratio": 12.639588859416447,
-          "ratio_expression": "4.29% ÷ 0.34% = 12.6×"
+          "ratio_expression": "4.29% \u00f7 0.34% = 12.6\u00d7"
         },
         {
           "panel": "c_per_appearance",
@@ -2997,7 +2997,7 @@
           "metric": "per_appearance",
           "value_printed": "0.324",
           "ratio": 9.894648829431437,
-          "ratio_expression": "0.324 ÷ 0.033 = 9.9×"
+          "ratio_expression": "0.324 \u00f7 0.033 = 9.9\u00d7"
         }
       ],
       "universes": {
@@ -3078,19 +3078,19 @@
       },
       "caveats": [
         "The raw count is exposure-confounded: one Combine session per player versus many player-games per game player. Panels b and c divide by each setting's own exposure and are the honest comparison.",
-        "The sensitivity universe applies the stage-04 scope to both settings — game COVERAGE snaps only and angles >=180 excluded as wrap artefacts — and is shown as a labelled note, never mixed with the headline inside a panel.",
+        "The sensitivity universe applies the stage-04 scope to both settings \u2014 game COVERAGE snaps only and angles >=180 excluded as wrap artefacts \u2014 and is shown as a labelled note, never mixed with the headline inside a panel.",
         "Counts, denominators and ratios are recomputed at render time from outputs/turns/turns.parquet; no number is hard-coded."
       ],
       "png": "outputs/figures/fig_gap_honest.png",
       "csv": "outputs/figures/fig_gap_honest.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_turn_cost": {
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_turn_cost",
       "title": "What a turn costs, and who pays for it: apex retention by reporting band, and each setting's own turn mix",
-      "claim": "The curve is not monotone in angle: Combine rises from 45–60° to 60–90°; Game rises from 30–45° to 45–60° and 45–60° to 60–90°; shallowest to deepest reported band, Combine 1.00 → 0.14; Game 0.82 → 0.28.",
+      "claim": "The curve is not monotone in angle: Combine rises from 45\u201360\u00b0 to 60\u201390\u00b0; Game rises from 30\u201345\u00b0 to 45\u201360\u00b0 and 45\u201360\u00b0 to 60\u201390\u00b0; shallowest to deepest reported band, Combine 1.00 \u2192 0.14; Game 0.82 \u2192 0.28.",
       "sources": [
         "outputs/turns/turns.parquet"
       ],
@@ -3107,118 +3107,118 @@
       "panel_a": {
         "encoding": "median apex retention with Q1-Q3 whisker, one series per setting, no smoothing and no fitted curve",
         "bands": [
-          "30–45°",
-          "45–60°",
-          "60–90°",
-          "90–120°",
-          "120–150°",
-          "150–180°"
+          "30\u201345\u00b0",
+          "45\u201360\u00b0",
+          "60\u201390\u00b0",
+          "90\u2013120\u00b0",
+          "120\u2013150\u00b0",
+          "150\u2013180\u00b0"
         ],
         "medians": {
           "combine": {
-            "45–60°": 1.0,
-            "60–90°": 1.0140187740325928,
-            "90–120°": 0.7497962117195129,
-            "120–150°": 0.46048468351364136,
-            "150–180°": 0.13859587907791138
+            "45\u201360\u00b0": 1.0,
+            "60\u201390\u00b0": 1.0140187740325928,
+            "90\u2013120\u00b0": 0.7497962117195129,
+            "120\u2013150\u00b0": 0.46048468351364136,
+            "150\u2013180\u00b0": 0.13859587907791138
           },
           "game": {
-            "30–45°": 0.8188444972038269,
-            "45–60°": 0.8760244250297546,
-            "60–90°": 0.8948770761489868,
-            "90–120°": 0.7220584154129028,
-            "120–150°": 0.4806806445121765,
-            "150–180°": 0.28234174847602844
+            "30\u201345\u00b0": 0.8188444972038269,
+            "45\u201360\u00b0": 0.8760244250297546,
+            "60\u201390\u00b0": 0.8948770761489868,
+            "90\u2013120\u00b0": 0.7220584154129028,
+            "120\u2013150\u00b0": 0.4806806445121765,
+            "150\u2013180\u00b0": 0.28234174847602844
           }
         },
         "q1": {
           "combine": {
-            "45–60°": 1.0,
-            "60–90°": 0.8784509897232056,
-            "90–120°": 0.5983749032020569,
-            "120–150°": 0.34499725699424744,
-            "150–180°": 0.0728038065135479
+            "45\u201360\u00b0": 1.0,
+            "60\u201390\u00b0": 0.8784509897232056,
+            "90\u2013120\u00b0": 0.5983749032020569,
+            "120\u2013150\u00b0": 0.34499725699424744,
+            "150\u2013180\u00b0": 0.0728038065135479
           },
           "game": {
-            "30–45°": 0.5875120162963867,
-            "45–60°": 0.5508260726928711,
-            "60–90°": 0.6463519185781479,
-            "90–120°": 0.51430544257164,
-            "120–150°": 0.30462755262851715,
-            "150–180°": 0.14731557667255402
+            "30\u201345\u00b0": 0.5875120162963867,
+            "45\u201360\u00b0": 0.5508260726928711,
+            "60\u201390\u00b0": 0.6463519185781479,
+            "90\u2013120\u00b0": 0.51430544257164,
+            "120\u2013150\u00b0": 0.30462755262851715,
+            "150\u2013180\u00b0": 0.14731557667255402
           }
         },
         "q3": {
           "combine": {
-            "45–60°": 1.0431885123252869,
-            "60–90°": 1.1211572885513306,
-            "90–120°": 0.9891471564769745,
-            "120–150°": 0.584843784570694,
-            "150–180°": 0.3913828954100609
+            "45\u201360\u00b0": 1.0431885123252869,
+            "60\u201390\u00b0": 1.1211572885513306,
+            "90\u2013120\u00b0": 0.9891471564769745,
+            "120\u2013150\u00b0": 0.584843784570694,
+            "150\u2013180\u00b0": 0.3913828954100609
           },
           "game": {
-            "30–45°": 1.0,
-            "45–60°": 1.0,
-            "60–90°": 1.0305030047893524,
-            "90–120°": 0.9235316067934036,
-            "120–150°": 0.6906479597091675,
-            "150–180°": 0.44789814949035645
+            "30\u201345\u00b0": 1.0,
+            "45\u201360\u00b0": 1.0,
+            "60\u201390\u00b0": 1.0305030047893524,
+            "90\u2013120\u00b0": 0.9235316067934036,
+            "120\u2013150\u00b0": 0.6906479597091675,
+            "150\u2013180\u00b0": 0.44789814949035645
           }
         },
         "n_drawn": 11,
         "min_n_for_median": 20,
         "insufficient": [
           {
-            "band": "30–45°",
+            "band": "30\u201345\u00b0",
             "setting": "combine",
             "n_apex_retention": 4,
             "reason": "insufficient: n=4 < min_n=20 (too few turns to carry a median)"
           }
         ],
         "claim_tested": "A 30-45 degree break keeps most of the speed while a 150-180 degree plant gives up a large share of it.",
-        "verdict": "Combine medians, shallow to deep: 30–45° no median (insufficient n), 45–60° 1.00, 60–90° 1.01, 90–120° 0.75, 120–150° 0.46, 150–180° 0.14; Game medians, shallow to deep: 30–45° 0.82, 45–60° 0.88, 60–90° 0.89, 90–120° 0.72, 120–150° 0.48, 150–180° 0.28.",
-        "shape": "The curve is not monotone in angle: Combine rises from 45–60° to 60–90°; Game rises from 30–45° to 45–60° and 45–60° to 60–90°; shallowest to deepest reported band, Combine 1.00 → 0.14; Game 0.82 → 0.28."
+        "verdict": "Combine medians, shallow to deep: 30\u201345\u00b0 no median (insufficient n), 45\u201360\u00b0 1.00, 60\u201390\u00b0 1.01, 90\u2013120\u00b0 0.75, 120\u2013150\u00b0 0.46, 150\u2013180\u00b0 0.14; Game medians, shallow to deep: 30\u201345\u00b0 0.82, 45\u201360\u00b0 0.88, 60\u201390\u00b0 0.89, 90\u2013120\u00b0 0.72, 120\u2013150\u00b0 0.48, 150\u2013180\u00b0 0.28.",
+        "shape": "The curve is not monotone in angle: Combine rises from 45\u201360\u00b0 to 60\u201390\u00b0; Game rises from 30\u201345\u00b0 to 45\u201360\u00b0 and 45\u201360\u00b0 to 60\u201390\u00b0; shallowest to deepest reported band, Combine 1.00 \u2192 0.14; Game 0.82 \u2192 0.28."
       },
       "panel_b": {
         "encoding": "share of each setting's own valid turns per band; counts printed on the bars; reversal class hatched",
         "shares": {
           "combine": {
-            "30–45°": 0.0033927056827820186,
-            "45–60°": 0.018659881255301103,
-            "60–90°": 0.2010178117048346,
-            "90–120°": 0.13486005089058525,
-            "120–150°": 0.42324003392705684,
-            "150–180°": 0.1085665818490246,
-            ">180°": 0.1102629346904156
+            "30\u201345\u00b0": 0.0033927056827820186,
+            "45\u201360\u00b0": 0.018659881255301103,
+            "60\u201390\u00b0": 0.2010178117048346,
+            "90\u2013120\u00b0": 0.13486005089058525,
+            "120\u2013150\u00b0": 0.42324003392705684,
+            "150\u2013180\u00b0": 0.1085665818490246,
+            ">180\u00b0": 0.1102629346904156
           },
           "game": {
-            "30–45°": 0.04288240495137047,
-            "45–60°": 0.10123784261715296,
-            "60–90°": 0.21043324491600354,
-            "90–120°": 0.22458001768346597,
-            "120–150°": 0.20335985853227231,
-            "150–180°": 0.13572060123784263,
-            ">180°": 0.08178603006189213
+            "30\u201345\u00b0": 0.04288240495137047,
+            "45\u201360\u00b0": 0.10123784261715296,
+            "60\u201390\u00b0": 0.21043324491600354,
+            "90\u2013120\u00b0": 0.22458001768346597,
+            "120\u2013150\u00b0": 0.20335985853227231,
+            "150\u2013180\u00b0": 0.13572060123784263,
+            ">180\u00b0": 0.08178603006189213
           }
         },
         "counts": {
           "combine": {
-            "30–45°": 4,
-            "45–60°": 22,
-            "60–90°": 237,
-            "90–120°": 159,
-            "120–150°": 499,
-            "150–180°": 128,
-            ">180°": 130
+            "30\u201345\u00b0": 4,
+            "45\u201360\u00b0": 22,
+            "60\u201390\u00b0": 237,
+            "90\u2013120\u00b0": 159,
+            "120\u2013150\u00b0": 499,
+            "150\u2013180\u00b0": 128,
+            ">180\u00b0": 130
           },
           "game": {
-            "30–45°": 97,
-            "45–60°": 229,
-            "60–90°": 476,
-            "90–120°": 508,
-            "120–150°": 460,
-            "150–180°": 307,
-            ">180°": 185
+            "30\u201345\u00b0": 97,
+            "45\u201360\u00b0": 229,
+            "60\u201390\u00b0": 476,
+            "90\u2013120\u00b0": 508,
+            "120\u2013150\u00b0": 460,
+            "150\u2013180\u00b0": 307,
+            ">180\u00b0": 185
           }
         }
       },
@@ -3263,9 +3263,9 @@
       "csv": "outputs/figures/fig_turn_cost.csv",
       "revision": {
         "version": 2,
-        "reason": "Figure 8 originally plotted speed_retention (exit ÷ entry), which is above 1 in every band by construction and shows gains, not costs. Panel (a) now plots apex_retention (apex ÷ entry), the speed actually given up at the plant."
+        "reason": "Figure 8 originally plotted speed_retention (exit \u00f7 entry), which is above 1 in every band by construction and shows gains, not costs. Panel (a) now plots apex_retention (apex \u00f7 entry), the speed actually given up at the plant."
       },
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_stopwatch": {
       "stage": "06_figures",
@@ -3342,7 +3342,7 @@
       "not_claimed": [
         "That three-cone time fails to predict turn angle or entry speed.",
         "That any difference between players is a difference in ability.",
-        "Any correlation, R², regression, p-value or fitted curve."
+        "Any correlation, R\u00b2, regression, p-value or fitted curve."
       ],
       "caveats": [
         "Exposure: one Combine session and the game tracking in this dataset; this is not a projection to the 2027 class.",
@@ -3352,7 +3352,7 @@
       ],
       "png": "outputs/figures/fig_stopwatch.png",
       "csv": "outputs/figures/fig_stopwatch.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_both_hips": {
       "stage": "06_figures",
@@ -3598,7 +3598,7 @@
       ],
       "png": "outputs/figures/fig_both_hips.png",
       "csv": "outputs/figures/fig_both_hips.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_shallow_sources": {
       "stage": "06_figures",
@@ -3699,7 +3699,7 @@
         "label_min_turns": 2,
         "player_names_used": false
       },
-      "claim": "All 26 Combine DB turns of 30-60° come from 16 players, 11 of them with exactly one: the shallow turns are incidental fragments of drills built for other purposes, not a test of that turn, while games produce 326 such turns from 30 players (median 9 each).",
+      "claim": "All 26 Combine DB turns of 30-60\u00b0 come from 16 players, 11 of them with exactly one: the shallow turns are incidental fragments of drills built for other purposes, not a test of that turn, while games produce 326 such turns from 30 players (median 9 each).",
       "not_claimed": [
         "That any player can or cannot break at 30-60 degrees.",
         "Any mean, box plot, inference test, coverage score or per-player ranking.",
@@ -3713,7 +3713,7 @@
       ],
       "png": "outputs/figures/fig_shallow_sources.png",
       "csv": "outputs/figures/fig_shallow_sources.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_ledger": {
       "stage": "06_figures",
@@ -3770,7 +3770,7 @@
         "reps": 6,
         "combine_dbs": 122,
         "projected_turns": 732,
-        "expression": "122 × 6 = 732",
+        "expression": "122 \u00d7 6 = 732",
         "verified": true,
         "is_measurement": false
       },
@@ -3809,7 +3809,7 @@
         }
       },
       "comparison_rule": "Any comparison between the projected row and a measured row is projection-to-measurement and is stated as such; the rows are never subtracted and no turn difference is read as a player difference.",
-      "claim": "Games produced 97 valid DB turns of 30-45° from 25 players across 80 player-games; the Combine produced 4 from 3 of the 122 DBs measured once. Six reps per DB is 732 turns by arithmetic — more than the games' count, but aimed at reliability per player, not at matching game volume.",
+      "claim": "Games produced 97 valid DB turns of 30-45\u00b0 from 25 players across 80 player-games; the Combine produced 4 from 3 of the 122 DBs measured once. Six reps per DB is 732 turns by arithmetic \u2014 more than the games' count, but aimed at reliability per player, not at matching game volume.",
       "not_claimed": [
         "That the projected turns are comparable to the measured turns; the projection is arithmetic, not observation.",
         "That the difference between the two measured bars is a difference in how many players can turn.",
@@ -3824,13 +3824,13 @@
       ],
       "png": "outputs/figures/fig_ledger.png",
       "csv": "outputs/figures/fig_ledger.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_bars_of_doubt": {
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_bars_of_doubt",
-      "title": "Bars of doubt: how precisely is a 30–45° turn known?",
+      "title": "Bars of doubt: how precisely is a 30\u201345\u00b0 turn known?",
       "sources": [
         "outputs/turns/turns.parquet"
       ],
@@ -3893,7 +3893,7 @@
         "stated_separately": true,
         "note": "TWO SEPARATE FACTS: the planted-corner MAE is a synthetic recovery test; the precision/recall are the real-schema three-cone gate. They are not combined into one score or one claim."
       },
-      "claim": "The 101 valid DB turns in the 30–45° band have a median smoother spread of 3.33°; 50 of 101 (49.5%) have a smoother range that leaves the band, so their band membership is smoother-dependent. The detector is nevertheless accurate: planted corners at 3.1° MAE over 48 turns (synthetic recovery), and precision 0.915 / recall 0.931 on the real-schema three-cone gate (a separate check).",
+      "claim": "The 101 valid DB turns in the 30\u201345\u00b0 band have a median smoother spread of 3.33\u00b0; 50 of 101 (49.5%) have a smoother range that leaves the band, so their band membership is smoother-dependent. The detector is nevertheless accurate: planted corners at 3.1\u00b0 MAE over 48 turns (synthetic recovery), and precision 0.915 / recall 0.931 on the real-schema three-cone gate (a separate check).",
       "not_claimed": [
         "That the smoother spread is a confidence interval or a standard error; it is a processing range across smoothers.",
         "That turns whose range crosses an edge belong to the neighbouring band; the figure says the neighbouring band is plausible.",
@@ -3901,7 +3901,7 @@
         "Anything about the 2027 class; this covers one Combine session and the games in this dataset."
       ],
       "caveats": [
-        "Whiskers are capped at 20° total width for drawing; 31 of 101 rows are cut and marked with a caret. The CSV retains the uncapped values. The uncapped p90 spread is 98.7°.",
+        "Whiskers are capped at 20\u00b0 total width for drawing; 31 of 101 rows are cut and marked with a caret. The CSV retains the uncapped values. The uncapped p90 spread is 98.7\u00b0.",
         "3 of 101 rows matched only one smoother; for those no spread is available and the whisker is zero-length.",
         "Rows are turns, not players; no player names appear.",
         "No histogram, no p-value, no error bar on counts, and no smoothing of the smoothing.",
@@ -3909,7 +3909,7 @@
       ],
       "png": "outputs/figures/fig_bars_of_doubt.png",
       "csv": "outputs/figures/fig_bars_of_doubt.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_supply_composition": {
       "stage": "06_figures",
@@ -3956,43 +3956,43 @@
           "share_of_all_turns": 0.2578456318914334,
           "bands": [
             {
-              "band": "30–45°",
+              "band": "30\u201345\u00b0",
               "turns": 1,
               "share_of_drill": 0.003289473684210526,
               "players": 1
             },
             {
-              "band": "45–60°",
+              "band": "45\u201360\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "60–90°",
+              "band": "60\u201390\u00b0",
               "turns": 1,
               "share_of_drill": 0.003289473684210526,
               "players": 1
             },
             {
-              "band": "90–120°",
+              "band": "90\u2013120\u00b0",
               "turns": 5,
               "share_of_drill": 0.01644736842105263,
               "players": 5
             },
             {
-              "band": "120–150°",
+              "band": "120\u2013150\u00b0",
               "turns": 251,
               "share_of_drill": 0.8256578947368421,
               "players": 114
             },
             {
-              "band": "150–180°",
+              "band": "150\u2013180\u00b0",
               "turns": 40,
               "share_of_drill": 0.13157894736842105,
               "players": 40
             },
             {
-              "band": ">180°",
+              "band": ">180\u00b0",
               "turns": 6,
               "share_of_drill": 0.019736842105263157,
               "players": 6
@@ -4007,43 +4007,43 @@
           "share_of_all_turns": 0.16878710771840544,
           "bands": [
             {
-              "band": "30–45°",
+              "band": "30\u201345\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "45–60°",
+              "band": "45\u201360\u00b0",
               "turns": 2,
               "share_of_drill": 0.010050251256281407,
               "players": 2
             },
             {
-              "band": "60–90°",
+              "band": "60\u201390\u00b0",
               "turns": 74,
               "share_of_drill": 0.37185929648241206,
               "players": 72
             },
             {
-              "band": "90–120°",
+              "band": "90\u2013120\u00b0",
               "turns": 11,
               "share_of_drill": 0.05527638190954774,
               "players": 11
             },
             {
-              "band": "120–150°",
+              "band": "120\u2013150\u00b0",
               "turns": 15,
               "share_of_drill": 0.07537688442211055,
               "players": 15
             },
             {
-              "band": "150–180°",
+              "band": "150\u2013180\u00b0",
               "turns": 37,
               "share_of_drill": 0.18592964824120603,
               "players": 37
             },
             {
-              "band": ">180°",
+              "band": ">180\u00b0",
               "turns": 60,
               "share_of_drill": 0.3015075376884422,
               "players": 59
@@ -4052,49 +4052,49 @@
         },
         {
           "drill": "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION",
-          "label": "Back pedal and transition 45° reaction",
+          "label": "Back pedal and transition 45\u00b0 reaction",
           "turns": 133,
           "players": 71,
           "share_of_all_turns": 0.11280746395250212,
           "bands": [
             {
-              "band": "30–45°",
+              "band": "30\u201345\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "45–60°",
+              "band": "45\u201360\u00b0",
               "turns": 1,
               "share_of_drill": 0.007518796992481203,
               "players": 1
             },
             {
-              "band": "60–90°",
+              "band": "60\u201390\u00b0",
               "turns": 8,
               "share_of_drill": 0.06015037593984962,
               "players": 8
             },
             {
-              "band": "90–120°",
+              "band": "90\u2013120\u00b0",
               "turns": 87,
               "share_of_drill": 0.6541353383458647,
               "players": 59
             },
             {
-              "band": "120–150°",
+              "band": "120\u2013150\u00b0",
               "turns": 37,
               "share_of_drill": 0.2781954887218045,
               "players": 32
             },
             {
-              "band": "150–180°",
+              "band": "150\u2013180\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": ">180°",
+              "band": ">180\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
@@ -4103,49 +4103,49 @@
         },
         {
           "drill": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
-          "label": "Back pedal and 90° break to ball",
+          "label": "Back pedal and 90\u00b0 break to ball",
           "turns": 118,
           "players": 102,
           "share_of_all_turns": 0.10008481764206956,
           "bands": [
             {
-              "band": "30–45°",
+              "band": "30\u201345\u00b0",
               "turns": 1,
               "share_of_drill": 0.00847457627118644,
               "players": 1
             },
             {
-              "band": "45–60°",
+              "band": "45\u201360\u00b0",
               "turns": 3,
               "share_of_drill": 0.025423728813559324,
               "players": 3
             },
             {
-              "band": "60–90°",
+              "band": "60\u201390\u00b0",
               "turns": 65,
               "share_of_drill": 0.5508474576271186,
               "players": 56
             },
             {
-              "band": "90–120°",
+              "band": "90\u2013120\u00b0",
               "turns": 49,
               "share_of_drill": 0.4152542372881356,
               "players": 48
             },
             {
-              "band": "120–150°",
+              "band": "120\u2013150\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "150–180°",
+              "band": "150\u2013180\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": ">180°",
+              "band": ">180\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
@@ -4160,43 +4160,43 @@
           "share_of_all_turns": 0.0916030534351145,
           "bands": [
             {
-              "band": "30–45°",
+              "band": "30\u201345\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "45–60°",
+              "band": "45\u201360\u00b0",
               "turns": 1,
               "share_of_drill": 0.009259259259259259,
               "players": 1
             },
             {
-              "band": "60–90°",
+              "band": "60\u201390\u00b0",
               "turns": 4,
               "share_of_drill": 0.037037037037037035,
               "players": 4
             },
             {
-              "band": "90–120°",
+              "band": "90\u2013120\u00b0",
               "turns": 1,
               "share_of_drill": 0.009259259259259259,
               "players": 1
             },
             {
-              "band": "120–150°",
+              "band": "120\u2013150\u00b0",
               "turns": 100,
               "share_of_drill": 0.9259259259259259,
               "players": 98
             },
             {
-              "band": "150–180°",
+              "band": "150\u2013180\u00b0",
               "turns": 2,
               "share_of_drill": 0.018518518518518517,
               "players": 2
             },
             {
-              "band": ">180°",
+              "band": ">180\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
@@ -4211,43 +4211,43 @@
           "share_of_all_turns": 0.090754877014419,
           "bands": [
             {
-              "band": "30–45°",
+              "band": "30\u201345\u00b0",
               "turns": 1,
               "share_of_drill": 0.009345794392523364,
               "players": 1
             },
             {
-              "band": "45–60°",
+              "band": "45\u201360\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "60–90°",
+              "band": "60\u201390\u00b0",
               "turns": 1,
               "share_of_drill": 0.009345794392523364,
               "players": 1
             },
             {
-              "band": "90–120°",
+              "band": "90\u2013120\u00b0",
               "turns": 1,
               "share_of_drill": 0.009345794392523364,
               "players": 1
             },
             {
-              "band": "120–150°",
+              "band": "120\u2013150\u00b0",
               "turns": 94,
               "share_of_drill": 0.8785046728971962,
               "players": 54
             },
             {
-              "band": "150–180°",
+              "band": "150\u2013180\u00b0",
               "turns": 10,
               "share_of_drill": 0.09345794392523364,
               "players": 8
             },
             {
-              "band": ">180°",
+              "band": ">180\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
@@ -4262,43 +4262,43 @@
           "share_of_all_turns": 0.08312128922815945,
           "bands": [
             {
-              "band": "30–45°",
+              "band": "30\u201345\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "45–60°",
+              "band": "45\u201360\u00b0",
               "turns": 14,
               "share_of_drill": 0.14285714285714285,
               "players": 11
             },
             {
-              "band": "60–90°",
+              "band": "60\u201390\u00b0",
               "turns": 47,
               "share_of_drill": 0.47959183673469385,
               "players": 24
             },
             {
-              "band": "90–120°",
+              "band": "90\u2013120\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "120–150°",
+              "band": "120\u2013150\u00b0",
               "turns": 2,
               "share_of_drill": 0.02040816326530612,
               "players": 2
             },
             {
-              "band": "150–180°",
+              "band": "150\u2013180\u00b0",
               "turns": 4,
               "share_of_drill": 0.04081632653061224,
               "players": 2
             },
             {
-              "band": ">180°",
+              "band": ">180\u00b0",
               "turns": 31,
               "share_of_drill": 0.3163265306122449,
               "players": 23
@@ -4313,43 +4313,43 @@
           "share_of_all_turns": 0.05937234944868533,
           "bands": [
             {
-              "band": "30–45°",
+              "band": "30\u201345\u00b0",
               "turns": 1,
               "share_of_drill": 0.014285714285714285,
               "players": 1
             },
             {
-              "band": "45–60°",
+              "band": "45\u201360\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "60–90°",
+              "band": "60\u201390\u00b0",
               "turns": 1,
               "share_of_drill": 0.014285714285714285,
               "players": 1
             },
             {
-              "band": "90–120°",
+              "band": "90\u2013120\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "120–150°",
+              "band": "120\u2013150\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "150–180°",
+              "band": "150\u2013180\u00b0",
               "turns": 35,
               "share_of_drill": 0.5,
               "players": 21
             },
             {
-              "band": ">180°",
+              "band": ">180\u00b0",
               "turns": 33,
               "share_of_drill": 0.4714285714285714,
               "players": 21
@@ -4364,43 +4364,43 @@
           "share_of_all_turns": 0.03477523324851569,
           "bands": [
             {
-              "band": "30–45°",
+              "band": "30\u201345\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "45–60°",
+              "band": "45\u201360\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "60–90°",
+              "band": "60\u201390\u00b0",
               "turns": 36,
               "share_of_drill": 0.8780487804878049,
               "players": 36
             },
             {
-              "band": "90–120°",
+              "band": "90\u2013120\u00b0",
               "turns": 5,
               "share_of_drill": 0.12195121951219512,
               "players": 5
             },
             {
-              "band": "120–150°",
+              "band": "120\u2013150\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "150–180°",
+              "band": "150\u2013180\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": ">180°",
+              "band": ">180\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
@@ -4415,43 +4415,43 @@
           "share_of_all_turns": 0.0008481764206955047,
           "bands": [
             {
-              "band": "30–45°",
+              "band": "30\u201345\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "45–60°",
+              "band": "45\u201360\u00b0",
               "turns": 1,
               "share_of_drill": 1.0,
               "players": 1
             },
             {
-              "band": "60–90°",
+              "band": "60\u201390\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "90–120°",
+              "band": "90\u2013120\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "120–150°",
+              "band": "120\u2013150\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": "150–180°",
+              "band": "150\u2013180\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
             },
             {
-              "band": ">180°",
+              "band": ">180\u00b0",
               "turns": 0,
               "share_of_drill": 0.0,
               "players": 0
@@ -4480,7 +4480,7 @@
         "meaning": "the two largest drills by valid turn count; an inventory fact, not a ranking of drill quality"
       },
       "shallow_band": {
-        "band": "30–45°",
+        "band": "30\u201345\u00b0",
         "turns": 4,
         "drills": 4,
         "players": 3,
@@ -4493,7 +4493,7 @@
           },
           {
             "drill": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
-            "label": "Back pedal and 90° break to ball",
+            "label": "Back pedal and 90\u00b0 break to ball",
             "turns": 1,
             "players": 1
           },
@@ -4515,42 +4515,42 @@
       },
       "pooled_band_totals": [
         {
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "turns": 4,
           "players": 3
         },
         {
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "turns": 22,
           "players": 15
         },
         {
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "turns": 237,
           "players": 110
         },
         {
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "turns": 159,
           "players": 92
         },
         {
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "turns": 499,
           "players": 121
         },
         {
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "turns": 128,
           "players": 75
         },
         {
-          "band": ">180°",
+          "band": ">180\u00b0",
           "turns": 130,
           "players": 77
         }
       ],
-      "claim": "The 1,179 valid DB Combine turns come from 10 drills and 122 players; the top two drills supply 503 of them (42.7%). The 30–45° band holds 4 turns spread across 4 drills and 3 players, at most 1.4% of any one drill's own turns.",
+      "claim": "The 1,179 valid DB Combine turns come from 10 drills and 122 players; the top two drills supply 503 of them (42.7%). The 30\u201345\u00b0 band holds 4 turns spread across 4 drills and 3 players, at most 1.4% of any one drill's own turns.",
       "not_claimed": [
         "That any drill is good or bad, easier or harder; this is an inventory of turns, not a ranking of drill quality.",
         "That the band shares are pooled across drills; every printed share is a share of its own drill's turns.",
@@ -4559,19 +4559,19 @@
       ],
       "caveats": [
         "Shares are within a drill; each row sums to 100%. The pooled band totals are the labelled footer row, a count and never a share segment.",
-        "The 30–45° band is its own column in the matrix (4 turns); its counts and within-drill shares are printed in the cells and listed in the CSV.",
+        "The 30\u201345\u00b0 band is its own column in the matrix (4 turns); its counts and within-drill shares are printed in the cells and listed in the CSV.",
         "No player names and no per-player values appear.",
         "Exposure: one Combine session and the game tracking in this dataset; this is not a projection to the 2027 class."
       ],
       "png": "outputs/figures/fig_supply_composition.png",
       "csv": "outputs/figures/fig_supply_composition.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_band_only": {
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_band_only",
-      "title": "The band on its own: 30–45° in the Combine and in games",
+      "title": "The band on its own: 30\u201345\u00b0 in the Combine and in games",
       "sources": [
         "outputs/turns/turns.parquet"
       ],
@@ -4638,7 +4638,7 @@
           {
             "number": 4,
             "drill": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
-            "drill_label": "back-pedal 90°",
+            "drill_label": "back-pedal 90\u00b0",
             "entry_speed": 2.9193029403686523,
             "abs_turn_angle": 43.04576873779297
           }
@@ -4689,7 +4689,7 @@
           ]
         }
       },
-      "claim": "In the 30–45° DB band the 4 Combine turns sit at 2.66–3.40 yd/s while the 97 game turns run 2.00–7.80 yd/s; all 4 Combine turns and 89 of 97 game turns are inside the 2–6 yd/s window, so within this one band the Combine samples only the slow end of the speed range games use.",
+      "claim": "In the 30\u201345\u00b0 DB band the 4 Combine turns sit at 2.66\u20133.40 yd/s while the 97 game turns run 2.00\u20137.80 yd/s; all 4 Combine turns and 89 of 97 game turns are inside the 2\u20136 yd/s window, so within this one band the Combine samples only the slow end of the speed range games use.",
       "not_claimed": [
         "That the Combine turns are a distribution, a mean, or a typical value; four points are a list.",
         "That any Combine turn exists at game speeds in this band; the data has none.",
@@ -4706,7 +4706,7 @@
       ],
       "png": "outputs/figures/fig_band_only.png",
       "csv": "outputs/figures/fig_band_only.csv",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_entry_exit_speed": {
       "stage": "06_figures",
@@ -4746,13 +4746,13 @@
         ],
         "overflow_label": ">180",
         "labels": [
-          "30–45°",
-          "45–60°",
-          "60–90°",
-          "90–120°",
-          "120–150°",
-          "150–180°",
-          ">180°"
+          "30\u201345\u00b0",
+          "45\u201360\u00b0",
+          "60\u201390\u00b0",
+          "90\u2013120\u00b0",
+          "120\u2013150\u00b0",
+          "150\u2013180\u00b0",
+          ">180\u00b0"
         ],
         "focus_band": true,
         "focus_edges_deg": [
@@ -4779,7 +4779,7 @@
       "rows": [
         {
           "band_index": 0,
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 45.0,
           "setting": "combine",
@@ -4801,7 +4801,7 @@
         },
         {
           "band_index": 0,
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 45.0,
           "setting": "combine",
@@ -4823,7 +4823,7 @@
         },
         {
           "band_index": 0,
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 45.0,
           "setting": "game",
@@ -4845,7 +4845,7 @@
         },
         {
           "band_index": 0,
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 45.0,
           "setting": "game",
@@ -4867,7 +4867,7 @@
         },
         {
           "band_index": 1,
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "band_low_deg": 45.0,
           "band_high_deg": 60.0,
           "setting": "combine",
@@ -4889,7 +4889,7 @@
         },
         {
           "band_index": 1,
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "band_low_deg": 45.0,
           "band_high_deg": 60.0,
           "setting": "combine",
@@ -4911,7 +4911,7 @@
         },
         {
           "band_index": 1,
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "band_low_deg": 45.0,
           "band_high_deg": 60.0,
           "setting": "game",
@@ -4933,7 +4933,7 @@
         },
         {
           "band_index": 1,
-          "band": "45–60°",
+          "band": "45\u201360\u00b0",
           "band_low_deg": 45.0,
           "band_high_deg": 60.0,
           "setting": "game",
@@ -4955,7 +4955,7 @@
         },
         {
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "combine",
@@ -4977,7 +4977,7 @@
         },
         {
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "combine",
@@ -4999,7 +4999,7 @@
         },
         {
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "game",
@@ -5021,7 +5021,7 @@
         },
         {
           "band_index": 2,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "setting": "game",
@@ -5043,7 +5043,7 @@
         },
         {
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "combine",
@@ -5065,7 +5065,7 @@
         },
         {
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "combine",
@@ -5087,7 +5087,7 @@
         },
         {
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "game",
@@ -5109,7 +5109,7 @@
         },
         {
           "band_index": 3,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "setting": "game",
@@ -5131,7 +5131,7 @@
         },
         {
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "combine",
@@ -5153,7 +5153,7 @@
         },
         {
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "combine",
@@ -5175,7 +5175,7 @@
         },
         {
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "game",
@@ -5197,7 +5197,7 @@
         },
         {
           "band_index": 4,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "setting": "game",
@@ -5219,7 +5219,7 @@
         },
         {
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "combine",
@@ -5241,7 +5241,7 @@
         },
         {
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "combine",
@@ -5263,7 +5263,7 @@
         },
         {
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "game",
@@ -5285,7 +5285,7 @@
         },
         {
           "band_index": 5,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "setting": "game",
@@ -5307,7 +5307,7 @@
         },
         {
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "combine",
@@ -5329,7 +5329,7 @@
         },
         {
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "combine",
@@ -5351,7 +5351,7 @@
         },
         {
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "game",
@@ -5373,7 +5373,7 @@
         },
         {
           "band_index": 6,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "setting": "game",
@@ -5396,12 +5396,12 @@
       ],
       "combine_below_floor": [
         {
-          "band": "30–45°",
+          "band": "30\u201345\u00b0",
           "n_turns": 4,
           "n_players": 3
         }
       ],
-      "claim": "Across the seven angle bands the game median entry speed runs 3.45-4.09 yd/s and the game median exit speed 3.81-4.35 yd/s. Combine medians, where a band clears the 10-turn floor, are: 45–60° entry 3.76, exit 5.73; 60–90° entry 3.24, exit 5.34; 90–120° entry 5.45, exit 6.27; 120–150° entry 3.65, exit 5.41; 150–180° entry 4.02, exit 5.66; >180° entry 4.21, exit 5.71. The 30–45° Combine band holds 4 turns and is not estimated. Of the seven bands, the exit median exceeds the entry median in 7 of 7 bands.",
+      "claim": "Across the seven angle bands the game median entry speed runs 3.45-4.09 yd/s and the game median exit speed 3.81-4.35 yd/s. Combine medians, where a band clears the 10-turn floor, are: 45\u201360\u00b0 entry 3.76, exit 5.73; 60\u201390\u00b0 entry 3.24, exit 5.34; 90\u2013120\u00b0 entry 5.45, exit 6.27; 120\u2013150\u00b0 entry 3.65, exit 5.41; 150\u2013180\u00b0 entry 4.02, exit 5.66; >180\u00b0 entry 4.21, exit 5.71. The 30\u201345\u00b0 Combine band holds 4 turns and is not estimated. Of the seven bands, the exit median exceeds the entry median in 7 of 7 bands.",
       "not_claimed": [
         "That the interval is a posterior; it is a percentile bootstrap.",
         "That any band ranks above another; no test and no ranking is run.",
@@ -5411,11 +5411,11 @@
       ],
       "caveats": [
         "exit speed is measured at the end of the detector window, not at a fixed distance, so exit > entry mostly means the athlete was accelerating when the window closed.",
-        "the shallow 30–45° bucket holds short turns (median 1.0 s vs 2.0 s), so a fixed-length window flatters sharp cuts and the shallow bucket differently.",
-        "Combine confidence intervals are drawn only where a band holds at least 10 turns: 30–45° holds 4 turns from 3 players.",
+        "the shallow 30\u201345\u00b0 bucket holds short turns (median 1.0 s vs 2.0 s), so a fixed-length window flatters sharp cuts and the shallow bucket differently.",
+        "Combine confidence intervals are drawn only where a band holds at least 10 turns: 30\u201345\u00b0 holds 4 turns from 3 players.",
         "This describes the measured turns only; it is not a projection to the 2027 class."
       ],
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_movement_family": {
       "stage": "06_figures",
@@ -5447,12 +5447,12 @@
         ],
         "overflow_label": ">180",
         "labels": [
-          "30–60°",
-          "60–90°",
-          "90–120°",
-          "120–150°",
-          "150–180°",
-          ">180°"
+          "30\u201360\u00b0",
+          "60\u201390\u00b0",
+          "90\u2013120\u00b0",
+          "120\u2013150\u00b0",
+          "150\u2013180\u00b0",
+          ">180\u00b0"
         ],
         "focus_band": true,
         "focus_edges_deg": [
@@ -5483,7 +5483,7 @@
             "panel": "peak_lateral_accel",
             "metric": "peak_lateral_accel_yd_s2",
             "statistic": "median",
-            "units": "yd/s²",
+            "units": "yd/s\u00b2",
             "log_y": false
           },
           {
@@ -5507,7 +5507,7 @@
           "panel": "apex_share",
           "panel_index": 0,
           "band_index": 0,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "n_turns": 326,
@@ -5528,7 +5528,7 @@
           "panel": "apex_share",
           "panel_index": 0,
           "band_index": 1,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "n_turns": 476,
@@ -5549,7 +5549,7 @@
           "panel": "apex_share",
           "panel_index": 0,
           "band_index": 2,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "n_turns": 508,
@@ -5570,7 +5570,7 @@
           "panel": "apex_share",
           "panel_index": 0,
           "band_index": 3,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "n_turns": 460,
@@ -5591,7 +5591,7 @@
           "panel": "apex_share",
           "panel_index": 0,
           "band_index": 4,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "n_turns": 307,
@@ -5612,7 +5612,7 @@
           "panel": "apex_share",
           "panel_index": 0,
           "band_index": 5,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "n_turns": 185,
@@ -5633,7 +5633,7 @@
           "panel": "peak_lateral_accel",
           "panel_index": 1,
           "band_index": 0,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "n_turns": 326,
@@ -5654,7 +5654,7 @@
           "panel": "peak_lateral_accel",
           "panel_index": 1,
           "band_index": 1,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "n_turns": 476,
@@ -5675,7 +5675,7 @@
           "panel": "peak_lateral_accel",
           "panel_index": 1,
           "band_index": 2,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "n_turns": 508,
@@ -5696,7 +5696,7 @@
           "panel": "peak_lateral_accel",
           "panel_index": 1,
           "band_index": 3,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "n_turns": 460,
@@ -5717,7 +5717,7 @@
           "panel": "peak_lateral_accel",
           "panel_index": 1,
           "band_index": 4,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "n_turns": 307,
@@ -5738,7 +5738,7 @@
           "panel": "peak_lateral_accel",
           "panel_index": 1,
           "band_index": 5,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "n_turns": 185,
@@ -5759,7 +5759,7 @@
           "panel": "circle_fit_share",
           "panel_index": 2,
           "band_index": 0,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "n_turns": 326,
@@ -5780,7 +5780,7 @@
           "panel": "circle_fit_share",
           "panel_index": 2,
           "band_index": 1,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "n_turns": 476,
@@ -5801,7 +5801,7 @@
           "panel": "circle_fit_share",
           "panel_index": 2,
           "band_index": 2,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "n_turns": 508,
@@ -5822,7 +5822,7 @@
           "panel": "circle_fit_share",
           "panel_index": 2,
           "band_index": 3,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "n_turns": 460,
@@ -5843,7 +5843,7 @@
           "panel": "circle_fit_share",
           "panel_index": 2,
           "band_index": 4,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "n_turns": 307,
@@ -5864,7 +5864,7 @@
           "panel": "circle_fit_share",
           "panel_index": 2,
           "band_index": 5,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "n_turns": 185,
@@ -5885,7 +5885,7 @@
           "panel": "peak_omega",
           "panel_index": 3,
           "band_index": 0,
-          "band": "30–60°",
+          "band": "30\u201360\u00b0",
           "band_low_deg": 30.0,
           "band_high_deg": 60.0,
           "n_turns": 326,
@@ -5906,7 +5906,7 @@
           "panel": "peak_omega",
           "panel_index": 3,
           "band_index": 1,
-          "band": "60–90°",
+          "band": "60\u201390\u00b0",
           "band_low_deg": 60.0,
           "band_high_deg": 90.0,
           "n_turns": 476,
@@ -5927,7 +5927,7 @@
           "panel": "peak_omega",
           "panel_index": 3,
           "band_index": 2,
-          "band": "90–120°",
+          "band": "90\u2013120\u00b0",
           "band_low_deg": 90.0,
           "band_high_deg": 120.0,
           "n_turns": 508,
@@ -5948,7 +5948,7 @@
           "panel": "peak_omega",
           "panel_index": 3,
           "band_index": 3,
-          "band": "120–150°",
+          "band": "120\u2013150\u00b0",
           "band_low_deg": 120.0,
           "band_high_deg": 150.0,
           "n_turns": 460,
@@ -5969,7 +5969,7 @@
           "panel": "peak_omega",
           "panel_index": 3,
           "band_index": 4,
-          "band": "150–180°",
+          "band": "150\u2013180\u00b0",
           "band_low_deg": 150.0,
           "band_high_deg": 180.0,
           "n_turns": 307,
@@ -5990,7 +5990,7 @@
           "panel": "peak_omega",
           "panel_index": 3,
           "band_index": 5,
-          "band": ">180°",
+          "band": ">180\u00b0",
           "band_low_deg": 180.0,
           "band_high_deg": null,
           "n_turns": 185,
@@ -6008,14 +6008,14 @@
           "bootstrap_seed": 115127792
         }
       ],
-      "claim": "The six game-only DB angle buckets are two families, not a gradient: 30–60° and 60–90° are statistically indistinguishable on all four panels; every player-clustered interval overlaps between these two buckets (apex share 0.86/0.89, peak lateral acceleration 5.6/5.6 yd/s², peak angular rate 83/84 deg/s, circle-fit usable share 1.000/0.998). The break comes at 90–120°, and from there the decline is monotone: the apex share falls 0.72 to 0.14 while peak lateral acceleration rises 7.5 to 32.6 yd/s², peak angular rate rises 108 to 493 deg/s and the circle-fit usable share falls 0.97 to 0.46. The plant family starts above 120°. The merged 30–60° bucket is an ordinary member of the arc family, not its extreme: its four intervals all overlap 60–90°'s. Its median is taken over the union of the 30–45° and 45–60° turns, never as an average of the two old medians. These are descriptive medians and shares with player-clustered bootstrap intervals, not a test or a ranking of bands.",
+      "claim": "The six game-only DB angle buckets are two families, not a gradient: 30\u201360\u00b0 and 60\u201390\u00b0 are statistically indistinguishable on all four panels; every player-clustered interval overlaps between these two buckets (apex share 0.86/0.89, peak lateral acceleration 5.6/5.6 yd/s\u00b2, peak angular rate 83/84 deg/s, circle-fit usable share 1.000/0.998). The break comes at 90\u2013120\u00b0, and from there the decline is monotone: the apex share falls 0.72 to 0.14 while peak lateral acceleration rises 7.5 to 32.6 yd/s\u00b2, peak angular rate rises 108 to 493 deg/s and the circle-fit usable share falls 0.97 to 0.46. The plant family starts above 120\u00b0. The merged 30\u201360\u00b0 bucket is an ordinary member of the arc family, not its extreme: its four intervals all overlap 60\u201390\u00b0's. Its median is taken over the union of the 30\u201345\u00b0 and 45\u201360\u00b0 turns, never as an average of the two old medians. These are descriptive medians and shares with player-clustered bootstrap intervals, not a test or a ranking of bands.",
       "caveats": [
         "circle_fit_usable describes whether the constant-radius arc model fits the turn the detector found; it is evidence about the geometry of the detected path, not ground truth about the athlete.",
-        "the 30° detector floor sits immediately below the shallow bucket, so some turns there may be fragments of larger movements.",
-        "the 30–60° bucket is the union of the 30–45° and 45–60° rows figures 3, 8, 12 and 15 report separately; its median is taken over the union of both buckets' turns and its interval is bootstrapped on that union — never an average of the two old medians or intervals.",
-        "these are game turns only; the Combine is not drawn here (figure 16 covers it), and its 30–60° bucket holds 26 turns."
+        "the 30\u00b0 detector floor sits immediately below the shallow bucket, so some turns there may be fragments of larger movements.",
+        "the 30\u201360\u00b0 bucket is the union of the 30\u201345\u00b0 and 45\u201360\u00b0 rows figures 3, 8, 12 and 15 report separately; its median is taken over the union of both buckets' turns and its interval is bootstrapped on that union \u2014 never an average of the two old medians or intervals.",
+        "these are game turns only; the Combine is not drawn here (figure 16 covers it), and its 30\u201360\u00b0 bucket holds 26 turns."
       ],
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_drill_angle_scatter": {
       "stage": "06_figures",
@@ -6039,7 +6039,7 @@
         "detector_floor_deg": 30.0
       },
       "band": {
-        "label": "30–60°",
+        "label": "30\u201360\u00b0",
         "edges_deg": [
           30.0,
           60.0
@@ -6089,7 +6089,7 @@
         {
           "row_index": 3,
           "drill_name": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
-          "drill_label": "Back pedal and 90° break to ball",
+          "drill_label": "Back pedal and 90\u00b0 break to ball",
           "turns": 118,
           "players": 102,
           "median_deg": 89.06024169921875,
@@ -6101,7 +6101,7 @@
         {
           "row_index": 4,
           "drill_name": "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION",
-          "drill_label": "Back pedal and transition 45° reaction",
+          "drill_label": "Back pedal and transition 45\u00b0 reaction",
           "turns": 133,
           "players": 71,
           "median_deg": 113.1486587524414,
@@ -6191,22 +6191,22 @@
         "fit": false,
         "test": false
       },
-      "claim": "Across the 1,179 valid DB Combine turns and the 10 drills DBs ran, 26 turns fall inside the 30–60° band — 2.2% of the DB Combine turns; the remaining 1,153 sit at or above 60°. Nothing outside the DB group is drawn and no position or drill is compared or ranked.",
+      "claim": "Across the 1,179 valid DB Combine turns and the 10 drills DBs ran, 26 turns fall inside the 30\u201360\u00b0 band \u2014 2.2% of the DB Combine turns; the remaining 1,153 sit at or above 60\u00b0. Nothing outside the DB group is drawn and no position or drill is compared or ranked.",
       "not_claimed": [
         "That the drills are sampled alike, or that DB's ten drills cover the Combine's drill catalogue; this counts detected turns in one Combine session.",
-        "That any turn below 30° exists; the detector's floor censors the shallow end of every row.",
+        "That any turn below 30\u00b0 exists; the detector's floor censors the shallow end of every row.",
         "That a dot is a player, or that a player's own angle distribution looks like the DB group's.",
         "That the band share is a shortfall of ability, or that the Combine turns transfer to game demands.",
         "Anything about the 2027 class; this covers one Combine session."
       ],
       "caveats": [
         "Only DB turns are drawn: no other position appears as data, background or comparison.",
-        "One dot per turn at its measured x. Only the y coordinate is jittered (±0.28 of a row, seed 20270106); every offset is written per row.",
+        "One dot per turn at its measured x. Only the y coordinate is jittered (\u00b10.28 of a row, seed 20270106); every offset is written per row.",
         "1 of 10 drills holds fewer than 10 turns: those rows are a list of detected moments, not a distribution.",
-        "The detector's 30° floor means the shallow end of every row is censored, not empty.",
+        "The detector's 30\u00b0 floor means the shallow end of every row is censored, not empty.",
         "No player names or ids appear in the figure, the CSV or this entry."
       ],
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT"
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
     },
     "fig_turn_locations_sample": {
       "stage": "06_figures",
@@ -6214,7 +6214,7 @@
       "figure": "fig_turn_locations_sample",
       "exploratory": true,
       "in_report": false,
-      "title": "Where in-game DB turns happen (30–90 yd in 5-yd buckets)",
+      "title": "Where in-game DB turns happen (30\u201390 yd in 5-yd buckets)",
       "claim": "Descriptive locations of valid DB game turns in the direction-normalised field frame. Not a report figure.",
       "png": "outputs/figures/fig_turn_locations_sample.png",
       "caveats": [
@@ -6223,7 +6223,7 @@
         "Exploratory: not one of the four report figures (D189); the writeup does not cite it."
       ],
       "provenance": "PLACEHOLDER_SAMPLE",
-      "stamp": "PLACEHOLDER_SAMPLE — UNVALIDATED SAMPLE OUTPUT",
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
       "filter": "turns.parquet: setting == 'game' & position_group == 'DB' & valid == True",
       "n": 2262,
       "n_by_direction": {
@@ -6262,18 +6262,18 @@
           90.0
         ],
         "counts": {
-          "30–35": 89,
-          "35–40": 120,
-          "40–45": 162,
-          "45–50": 171,
-          "50–55": 200,
-          "55–60": 163,
-          "60–65": 154,
-          "65–70": 136,
-          "70–75": 145,
-          "75–80": 152,
-          "80–85": 141,
-          "85–90": 112
+          "30\u201335": 89,
+          "35\u201340": 120,
+          "40\u201345": 162,
+          "45\u201350": 171,
+          "50\u201355": 200,
+          "55\u201360": 163,
+          "60\u201365": 154,
+          "65\u201370": 136,
+          "70\u201375": 145,
+          "75\u201380": 152,
+          "80\u201385": 141,
+          "85\u201390": 112
         },
         "n_in_window": 1745,
         "n_below_30": 75,
@@ -6303,9 +6303,9 @@
         "csv_sha256": "fc7969744a9f0f1da790ca5f56fd5715ec731ab486d60ad2134c5aaef262a5a1"
       },
       "git_rev": "ec12cd2a633798ba6dc45aad3da41e796431e937",
+      "artefact_commit": "3f2ab8f9320877cb4c19426c096cee069de3ce24",
       "config_sha": "a76cf3bd9012f085",
-      "full_data_caveat": "PLACEHOLDER_SAMPLE. The FULL turn table has no x_centre/y_centre and the full game tracking CSVs are not on this machine. A FULL version needs those tracking files plus play_direction, and a re-render through this same script.",
-      "artefact_commit": "3f2ab8f9320877cb4c19426c096cee069de3ce24"
+      "full_data_caveat": "PLACEHOLDER_SAMPLE. The FULL turn table has no x_centre/y_centre and the full game tracking CSVs are not on this machine. A FULL version needs those tracking files plus play_direction, and a re-render through this same script."
     }
   }
 }
