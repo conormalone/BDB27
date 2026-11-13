@@ -7815,3 +7815,81 @@ would change, and that is his call.
 `tests/test_speed_floor_sensitivity.py`; `notes/sensitivity-speed-floor.md`;
 `outputs/sensitivity/speed_floor/{bands,drill_delta,player_delta,null_comparison}.csv`,
 `combine_db_turns_floor2.{0,5_control}.csv`, `manifest.json`.
+
+## D191 — The project is reduced to one claim: the Combine does not test the shallow break · 2026-11-13
+
+**Conor's instruction (Telegram, 2026-11-13 09:50, verbatim).** "Could you
+update the task please, this is just about adding a 30 to 60 turn to the
+combine, nothing else. I think the old task confused the last writer subagent.
+Once that is gone have the writer have another go at drafting a report. I'm
+using the 4 plots from before and a video of an in game run, but I'm open to
+suggestions."
+
+**Decision.** `TASK.md` is rewritten as a single-claim spec: the Combine's DB
+drill battery barely tests the 30–60° break (26 of 1,179 Combine DB turns,
+2.21%, against 7,777 of 58,664 game DB turns, 13.26% — a 6.01× shortfall in
+share, `FULL`), therefore the Combine should add a 30–60° turn drill. Evidence
+is the supply-vs-demand band comparison plus `notes/drill-proposal.md`; nothing
+else is in scope. The superseded spec is archived verbatim at
+`notes/archive-tasks/TASK-turn-coverage-cut-card-2026-11-13.md` with a
+provenance header naming the commit it came from (`a775d38`).
+
+**Why replace rather than amend.** The old spec led with per-prospect Turn
+Coverage and the Cut Card and reached the drill case only in a "CURRENT FOCUS"
+section bolted on top. Two contradictory framings in one document is what the
+last Writer followed into material the task no longer covers. The reduced spec
+states the claim once and lists the dropped machinery (Turn Coverage, Cut Card,
+confirmatory transfer/feasibility, DL outcome tests, outcome-weighted demand,
+envelope/coverage arithmetic as a deliverable, phased 0–7 framing, prereg gate)
+as **out of scope**, so it cannot be reintroduced by reading the old body.
+
+**No new analysis, threshold or claim was invented.** Every number in the new
+spec was already in a committed artefact. The band counts are
+`data/interim/full_run_20261111/bdb27_full_game_bands.csv`; drill-level Combine
+medians come from the real-Combine control pass
+`outputs/sensitivity/speed_floor/combine_db_turns_floor2.5_control.csv`, which
+D190 showed reproduces the FULL band table exactly, so those medians are tagged
+`[FULL]` under the existing two-class provenance scheme. No third provenance
+class was created.
+
+**Wording correction carried into the spec.** The brief called 30–60° "the turn
+games ask for most often". The band table does not support that: the modal game
+bands are 60–90° (22.29%) and 90–120° (22.19%), and 30–60° is 13.26%. The spec
+therefore states the claim as the **largest proportional shortfall**, which is
+what 6.01× measures, and bans "most common turn" / "most often asked".
+
+**One test had to move, and it is not a loosening.**
+`test_all_positions_marks_only_the_positions_the_spec_flags` asserted that
+`TASK.md` **line 63** contained "OL and DB are exploratory" — a per-position
+status scheme the reduced spec does not carry. The statuses were pinned to that
+sentence when the figure was designed, so the assertion now reads the same
+sentence out of the archived spec and searches for it instead of indexing line
+63. The figure, its CSV and its manifest are unchanged; the contract that the
+DB and OL marks trace to a spec sentence is unchanged.
+
+**Deliberate omission.** The 3-cone angle-vs-geometry error is **47.0°** in
+`outputs/turns/geometry_recovery.csv`, which is `PLACEHOLDER_SAMPLE`. The
+honesty limit is real and stays in the spec as a limit — the 3-cone has the
+least reliable measured angle in the set, so its contribution to the shallow
+band is a lower bound — but the number is tagged `[PENDING]` rather than
+quoted, because a sample number is not a result. If Conor wants the 47° in the
+writeup, the geometry recovery has to be run on full data first.
+
+**Also updated for consistency.** `notes/rules.md` (binding-spec pointer; L2
+figure cap 5 → 4, from the new `TASK.md`) and the `notes/drill-proposal.md`
+status line, which said the drill was "not part of TASK.md" — it is now the
+spec's recommendation, still `[PROPOSAL]` and still needing Conor's sign-off on
+its parameters. `writer-role.md` (workspace root, outside this repo) is left
+untouched and explicitly **overridden** by `notes/report-draft-spec.md`, which
+states so in its first paragraph; overriding is safer than editing a shared file
+that other projects read.
+
+**Open, and Conor's to decide.** (1) The drill's parameters — 45° break,
+3–5 yd/s at the break, six reps — are unsigned, and 45° sits on the 30–45/45–60
+boundary, so it is a boundary sample. (2) Whether the in-game clip is embedded
+in the writeup, and its caption. (3) Whether the 47° geometry error gets a full
+run so it can be quoted.
+
+**Evidence.** `TASK.md`; `notes/archive-tasks/TASK-turn-coverage-cut-card-2026-11-13.md`;
+`notes/report-draft-spec.md`; `notes/rules.md`; `notes/drill-proposal.md`;
+`tests/test_figures_stage.py::test_all_positions_marks_only_the_positions_the_spec_flags`.

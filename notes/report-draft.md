@@ -1,50 +1,54 @@
-# The shallow break the Combine does not test
+# The break the Combine does not test
 
 ## 1. The football question
 
-**The Combine does not test the turn that decides most defensive-back reps.** Across three seasons of tracking, 30–60° breaks are 13.26% of valid DB game turns; across the 2023–2025 Combine classes they are 2.21% of valid DB turns. That is a 6.01× shortfall in share [FULL]. The deficit reverses at the top: 120–150° plants are 42.32% of Combine DB turns against 19.51% of game turns, so the Combine supplies 0.46× of that band's game share [FULL].
+A defensive back's living is the shallow break. He is running at three, four, five yards per
+second, a receiver stems him one way and cuts the other, and the defender has to open, change
+direction by thirty or forty degrees and keep his speed through the turn. The deep plant — the
+hard stop and reversal — matters too. But the shape that a route tree is built to create, and
+that defensive technique is built to survive, is the moderate-angle break taken at speed.
 
-The drill battery is built for the deep plant: the 3-cone and the shuttle ask a player to decelerate hard, sink and reverse. Games mostly ask for a single plant at 3–5 yd/s, a 30–60° change of direction and immediate re-acceleration.
+The Combine does not test it. Across every defensive-back drill in the 2023–2025 Combine
+tracking, turns of 30–60° are **2.21%** of valid DB turns. In the same players' NFL games they
+are **13.26%** of valid DB turns `[FULL]`. By share, games ask for that turn **6.01×** more
+often than the battery supplies it `[FULL]`.
 
-The question is narrow. Does the Combine test the turn the job asks for? On the full 2023–2025 data, at the resolution of turn angle, no.
+That is the claim of this writeup and the whole of it: one comparison of supply against demand
+by turn angle, and one recommendation that follows from it — add a 30–60° turn drill to the
+defensive-back battery. It is not a claim that the Combine is a bad test. It is a good test of
+the turn it was designed for. It is not a test of the turn where the shortfall in share is
+largest.
 
-**Figure 1.** `outputs/figures/fig_the_hole.png` [FULL] — valid DB turns by band, Combine share against game share; the 30–60° band is the hole.
+## 2. What the data is
 
-## 2. Data audit
+Two tracking sources, both at roughly 10 Hz, both 2023–2025, both reduced by the same turn
+detector. From the Combine file, 1,179 valid DB turns from 122 players. From the game files,
+58,664 valid DB turns from 115 players over 2,234 player-games `[FULL]`. That is 26.3 valid
+turns per player-game in the games against 9.7 per Combine player `[FULL, arithmetic]` — the
+game is not a sparser record, it is a much denser one.
 
-**Two tracking files, one clock, and one missing field decide what can be claimed.** Both settings are about 10 Hz. The Combine file is 463,189 rows over 510 attendees from the 2023–2025 classes, carrying 424,784 player frame steps, every one of them exactly 0.1 s [FULL]. The game file is 22,654,290 rows covering 1,000 games, 72,615 plays, 496 tracked players and 10,080 player-games across 2023–2025 [FULL].
+One detector for both settings is what makes the comparison legitimate. A turn is a sustained
+heading change over a short window, measured after the same smoothing, against the same 30°
+floor and the same band edges. Nothing about the pipeline knows which file a turn came from.
 
-Three schema facts shape the method. `dir` is verified as degrees 0–360 with 0 at +y and clockwise rotation, so every kinematic quantity is derived from smoothed x/y and never from `dir`. Orientation (`o`) exists in the game file and is absent from the Combine; it is used only to report contamination, never inside the turn definition. `dis` has no documented unit and cannot serve as a distance check, so distance comes from x/y alone (TB1).
+Two asymmetries are worth stating up front. Orientation (`o`) exists in the game file and not
+in the Combine file, so in the Combine a change of direction cannot be separated from a
+backpedal or a shuffle. And Combine entry speeds sit below game speeds, which is why the claim
+is made on band shares rather than on cell-by-cell counts.
 
-The 2,000-word ceiling is a working assumption, not a verified 2027 rule (`notes/rules.md` L1); the five-figure cap is binding from the task. The study population is Combine attendees who recorded NFL tracking: 510 attendees, 496 tracked, not NFL defensive backs [FULL]. That selection is stated, not estimated.
+Provenance is tagged throughout. `[FULL]` means a full-data artefact. `[PROPOSAL]` means the
+drill design, which is not signed off and is not a finding. `[SCHEMATIC]` means a drawing.
+`[PENDING]` marks a check not yet run at full scale. One figure in this writeup carries a
+sample stamp; it is named, and nothing is read from it.
 
-## 3. Kinematics and turn detection
+## 3. Supply against demand
 
-**One detector runs on both settings, because the comparison is meaningless if the measurement changes between them.** Positions are smoothed with a Savitzky–Golay filter (9-frame window, third order) as primary, with five alternatives on every attempt so each turn carries a smoother-to-smoother range. Velocity, speed, heading, angular rate and both accelerations are differentiated once from smoothed x/y; provided `dir`, `s` and `a` are cross-checks only.
+Count every valid DB turn in both settings by the angle it turned through, in six bands, each
+setting's shares taken over its own total `[FULL]`:
 
-A turn is a heading change of at least 30° across 0.5 s, with speed above 2.5 yd/s at entry and at exit, segmented from the approach speed maximum to the exit speed maximum. Segmenting on speed maxima matters: at 10 Hz heading is undefined as speed passes through zero, and a fixed window records a hairpin as a shallow turn. Each turn yields entry, apex and exit speed, turn angle, duration, path radius, peak lateral acceleration, speed retention and regain time. Plants and arcs are separated by apex retention.
-
-Reversal-class turns are measured as plants — apex, exit and regain — and never as v·ω, because a circle fitted to a hairpin reports a radius that makes the acceleration non-physical. Frame gaps are flagged and interpolated only outside the turn core.
-
-The detector is validated against drill geometry rather than against itself. Cone positions are estimated from the density of detected turns on half the attempts and the detector is scored on the other half, with a point model for the 3-cone and a line model for the shuttle. That design is implemented; its numbers are `[PENDING]` a FULL-provenance run. The Combine file is complete, but the comparison runs inside a stage whose thresholds must carry FULL provenance, and no sample-stamped number may be quoted.
-
-## 4. The envelope
-
-**Turning capacity is estimated as an upper envelope, because an observed turn is not a maximal one.** A player's average cut is a choice; his ceiling is the quantity that could transfer between settings. The model is a random-effects quantile regression of peak lateral acceleration on apex speed at the 0.75 quantile, with one speed slope per position group and a random intercept per player, so a player with few usable turns is shrunk toward his group rather than reported as a noisy number.
-
-Uncertainty is a player-weighted bootstrap — a bootstrap share, not a posterior probability. The friction-circle form, combining tangential and lateral acceleration under one limit, is fitted as a sensitivity at the same quantile and is never primary. Plant capacity is fitted separately as two surfaces over entry speed and turn angle — speed retention as an upper envelope, time to regain entry speed as a lower one.
-
-The feasible region is a grid over entry speed and turn angle; a cell is inside when predicted speed retention clears 0.90. Cells whose full entry-speed interval lies inside the Combine's observed range are marked observed, the rest extrapolated, and the two are never pooled into one share.
-
-The between-player variance component decides whether any player-level statement is possible. On full data that fit has not been run `[PENDING]`.
-
-## 5. The demand map
-
-**Demand is counted, not assumed.** Every valid DB turn in the three-season file is a demand observation: 58,664 turns from 115 DB players over 2,234 player-games [FULL]. At band resolution that distribution is the demand map, and it is a result.
-
-| Band | Combine | Share | Game | Share | Ratio |
+| Band | Combine turns | Combine share | Game turns | Game share | Game ÷ Combine |
 |---|---:|---:|---:|---:|---:|
-| 30–60° | 26 | 2.21% | 7,777 | 13.26% | 6.01× |
+| 30–60° | 26 | 2.21% | 7,777 | 13.26% | **6.01×** |
 | 60–90° | 237 | 20.10% | 13,077 | 22.29% | 1.11× |
 | 90–120° | 159 | 13.49% | 13,016 | 22.19% | 1.65× |
 | 120–150° | 499 | 42.32% | 11,444 | 19.51% | 0.46× |
@@ -52,62 +56,152 @@ The between-player variance component decides whether any player-level statement
 | >180° | 130 | 11.03% | 5,213 | 8.89% | 0.81× |
 | Total | 1,179 | | 58,664 | | |
 
-Shares are of each setting's own valid turns [FULL]. The Combine is not short of big-angle volume; it is short of the shallow band at any speed and over-produces the deepest plant.
+The 30–60° row is the one that matters. Every other band is close to parity or leans the other
+way: the Combine over-supplies the 120–150° plant at 42.32% of its turns against 19.51% of the
+game's, 2.17× the game's share `[FULL]`. The battery is not short of turns. It is short of one
+shape and long on another.
 
-The shortfall holds in every group at 30–60° (Combine share against game share): DL 4.60% vs 9.76% (2.12×), WR 8.62% vs 14.45% (1.68×), TE 10.54% vs 14.23% (1.35×), OL 6.51% vs 9.34% (1.43×) [FULL].
+**Figure 1** — `outputs/figures/fig_the_hole.png` `[FULL]`. Combine and game shares by band;
+the headline counts and shares in the table above are its values.
 
-**Figure 2.** `outputs/figures/fig_all_positions.png` [FULL] — the 30–60° share in each of the five groups, Combine against game.
+The shortfall is not an artefact of pooling defensive backs. It holds in every position group:
+DL 4.60% against 9.76% (2.12×), WR 8.62% against 14.45% (1.68×), TE 10.54% against 14.23%
+(1.35×), OL 6.51% against 9.34% (1.43×) `[FULL]`. The Combine's whole testing population is
+under-supplied on this turn, not one slice of it.
 
-The denominator is all valid DB game turns, not the snap-classified subset. Per-season valid DB turns are 8,016 (2023), 21,275 (2024) and 29,373 (2025) [FULL], but the 2023 file is about a third the size of 2025's for the same game count, so season rates are not comparable — read the pooled figure. That is 26.3 valid DB turns per player-game against 9.7 per Combine player [FULL, arithmetic]. The cell-level map is `[PENDING]`, and tracked players are the drafted group — a limit on demand as much as supply.
+**Figure 2** — `outputs/figures/fig_all_positions.png` `[FULL]`. The 30–60° shortfall across
+all five position groups.
 
-## 6. Coverage
+The sharpest fact in the paper is what the 26 shallow Combine turns actually are. They come
+from 16 players across 9 drills, a median of one turn per player and a maximum of four, and 14
+of the 26 are fragments of the 3-cone `[FULL]`. No player is tested on that turn more than
+once. A test is a thing you do deliberately, repeatedly, to everyone. This is the opposite: a
+band reached by accident, at the edges of drills built to measure something else. The battery
+does not sample the shallow break so much as leak it.
 
-**Turn Coverage answers a team's question, but not yet a scout's.** Coverage is the demand-weighted share of a player's feasible region: how much of what his position is asked to do in games falls inside what the Combine says he can do. Observed and extrapolated cells are reported separately and never merged into one headline number.
+[Video — in-game DB break. Caption: one line, what the clip shows and the timestamp. No number
+is read from it.]
 
-The Cut Card is the one-page version: a speed-by-angle heatmap, the player's region with uncertainty, the demand overlaid, and the largest gaps. It is an appendix artefact. It is not the headline because a per-player score needs identified between-player capacity, and that question is unanswered until the variance fit runs on full data `[PENDING]`. Until then coverage is a group-level statement, and a number attributed to an individual would be his group's value wearing his name.
+The clip is here to make the demand concrete; it adds no evidence.
 
-## 7. Validation
+## 4. What the battery actually tests
 
-**Three tests decide whether the story holds, and none has been run on full data.**
+The battery is not failing to test turning. It is testing one turn extremely well, and the
+drill-level numbers say which one.
 
-Transfer: the correlation between Combine capacity and game capacity, per position, as a fraction of the noise ceiling each setting's own reliability allows. A raw correlation is uninterpretable without that ceiling. It is repeated under every smoother.
+Take the 3-cone. Its median measured turn is 70.6°, with median entry speed 3.98 yd/s, exit
+4.96 and apex 3.16 `[FULL]`. Exit faster than entry is the signature: the player rounds the
+corner and drives out of it. This is a **rounded accelerating cut**, and 37.8% of its turns
+read as plants rather than arcs `[FULL]`. It is a good drill. It is not a drill about stopping.
 
-Feasibility: the share of game turns outside the Combine-derived region, by position and speed range, observed and extrapolated separately. That game turns rarely exceed the Combine region is a test, not a premise. If a large share fall outside it at speeds the Combine actually observed, the region is too tight to be a scouting boundary.
+Take the short shuttle. Median angle 179.6°, entry 3.55, exit 5.84, apex 0.34 yd/s `[FULL]`.
+Speed collapses to a near standstill and the player re-accelerates the other way. This is the
+**hard sink-and-reverse**, and 97.1% of its turns read as plants `[FULL]`.
 
-Outcome value: for DL, whether coverage adds to a stopwatch-and-size baseline — 3-cone, shuttle, 40, height, weight — under player-grouped cross-validation. This stays an appendix check, not a confirmatory claim, because DL demand sits in a narrow band of entry speed.
+The same gradient shows up in the game data by band. Of game turns at 30–60°, 15.3% are plants
+and the rest are arcs; past 180°, 97.7% are plants `[FULL]`. Plant-ness is a function of angle,
+and the battery has built its drills at the angle where plant-ness is total.
 
-Around those: definition sensitivity across smoother, window, minimum angle, bin width and retention tolerance; a permutation that shuffles player envelopes within position, where any signal should vanish; a placebo where height and weight alone should not reproduce the result. The smallest detectable effect is read off the power grid once the full-data player count is known.
+So the mechanism is simple and it is not a shortage of turns. The battery buys the deep plant:
+stop, sink, reverse, re-accelerate. It is well equipped for that and it repeats it 499 times in
+the 120–150° band alone `[FULL]`. What it leaves out is the shallow break taken at speed — the
+arc-like change of direction that 84.7% of game 30–60° turns actually are `[FULL]`. The 26
+turns it does record in that band are the accidental by-product of rounding a 3-cone or
+clipping the entry of a backpedal drill.
 
-A null is informative only if its interval excludes the smallest effect worth finding. The story is falsified if transfer sits at zero relative to the ceiling, or if game turns routinely fall outside the region at observed speeds.
+**Figure 3** — `outputs/figures/fig_drill_angle_scatter.png` `PLACEHOLDER_SAMPLE`. Every
+Combine turn at its measured angle, by drill. Stamped unvalidated sample output; nothing in
+this writeup is read from it.
 
-## 8. Uses for scouts and coaches
+## 5. The drill that would close it
 
-**The result a team can use today is a statement about the test battery, not about a player.** A club can compare its drill set against the demand distribution and see which bands are tested repeatedly and which by accident: the shallow break is, at best, one incidental detection per player. That is an argument for changing a station, and it needs no envelope.
+The proposal is a **tempo break**: a 45° break at speed to both sides `[PROPOSAL]`. Six reps,
+three to each side, alternating. An 8–10 yd approach that reaches 3–5 yd/s at the break. A 5 yd
+re-acceleration through a gate on the exit. About 90 s per player, on the existing 3-cone
+footprint with no new station `[PROPOSAL]`.
 
-**Figure 3.** `outputs/figures/fig_drill_angle_scatter.png` [PLACEHOLDER_SAMPLE] — one dot per valid DB Combine turn at its measured angle, drills in median order, the 30–60° band marked; the detector's 30° floor censors each row's shallow end.
+Each parameter is doing a job. The angle is 45° because that is the shallow end of the demand
+curve; it sits on the 30–45 / 45–60 boundary, so it is a boundary sample and not a clean
+mid-band one — a limit of the design, not a feature of it. The 3–5 yd/s entry is where the
+game's shallow turns actually happen. The 8–10 yd build-up makes that speed reachable, and the
+3-cone already records a 3.98 yd/s median entry over segments of about 5 yd `[FULL]`.
+Six reps is the part that changes the character of the measurement: every player gets several
+attempts at the same turn, which the current battery cannot do, since no player is measured on
+a 30–60° turn more than once `[FULL]`. Six reps across 122 DBs is about 730 turns of that
+shape, against 26 today `[PROPOSAL]`. The value is in the 10 Hz tracking, not a stopwatch; no
+electronic gate is required.
 
-The tempo break is the concrete proposal `[PROPOSAL]`: a 45° break at speed to both sides, six reps, three each way, an 8–10 yd approach into a 3–5 yd/s break, a 5 yd re-acceleration through a gate, about 90 s, on the existing 3-cone footprint. It buys two things the battery lacks — repeated measurement of the same turn within a player, which is what per-player reliability requires, and coverage of a band the battery only samples by accident. It does not rank prospects, and a 45° break read against a 30–45° / 45–60° edge is a boundary sample, not a clean mid-band one.
+What it buys is deliberate, repeated measurement of a shape the battery currently reaches only
+by fragment, inside a band where games ask for six times the share the Combine supplies
+`[FULL]`. What it does not buy is an ordering of players, a prediction, or a clean mid-band
+sample. And it is an addition, not a replacement. Games still demand the deep plant in volume —
+19.51% of game DB turns sit in 120–150° `[FULL]` — and the drills that supply it are
+standardised, comparable year to year and worth keeping.
 
-**Figure 4.** `outputs/figures/fig_drill_schematic.png` [SCHEMATIC] — the tempo-break geometry and the cells it would fill; a drawing, carrying no measurement, and a design proposal awaiting sign-off.
+**Figure 4** — `outputs/figures/fig_drill_schematic.png` `[SCHEMATIC]`. The proposed geometry:
+approach line, break cone, two exit gates at 45°. A drawing of the proposal, carrying no
+measurement.
 
-A scout's interim use is restraint: silence on that turn is not evidence against it.
+## 6. What this does not say
 
-## 9. Limitations
+It does not score a player. There is no player-level number in this writeup, and there could
+not be: with one shallow turn per player at most, between-player differences in that band are
+not identified. A score built on this data would be the group's average wearing a player's
+name.
 
-**The chips see the turn and not the reason for it.** Contact is invisible: a defensive back who breaks slowly may be reacting to a body in his path, and nothing separates that from capacity.
+It makes no claim about what happens on Sunday. Nothing here says that a defender who breaks
+well in a drill produces more pressure, defends more passes or plays longer. Those questions
+need outcome data this analysis does not touch.
 
-Heading at 10 Hz is noisy, and the smoother is the most consequential choice in the pipeline; every conclusion is reported under each candidate.
+It makes no claim that drill performance carries into games. That link is assumed by every
+Combine drill and is not measured here.
 
-With no orientation field in the Combine, plants cannot be separated from backpedals and shuffles there, though the game side can flag contamination. Combine entry speeds sit below game speeds, so part of the demand map is extrapolated by construction and is always reported separately.
+It makes no claim about whether players can actually hold 3–5 yd/s through a 45° break, or
+whether six extra reps fit a Combine schedule without changing the session's load. Those are
+questions for the drill's own validation.
 
-The tracked players are the drafted group, so the demand map describes who reached the league. Pressure labels are vendor-modelled, `player_play` is a role-event table, `dis` remains unusable for distance, and per-season tracking coverage is uneven: the 2023 file is about a third the size of 2025's for the same game count.
+It assigns no cause. The tracking sees the turn, not the contact, the scheme, the technique or
+the opponent that produced it.
 
-## What is still missing before submission
+## 7. Measurement limits
 
-- **Envelope (section 4).** `src/03_envelope.py --mode full`, once `notes/prereg.md` is frozen. If between-player variance estimates to zero, no player-level claim survives.
-- **Cell-level demand map (section 5).** `src/04_demand_coverage.py --mode full`. If most demand mass is extrapolated, the map reads outside the Combine range and must say so.
-- **Coverage and Cut Card (section 6).** The same stage's coverage artefacts. If variance stays at the boundary, the card is the group region and no individual score may be quoted.
-- **Transfer, feasibility, outcome value (section 7).** `src/05_validate.py --mode full`. A transfer correlation near zero against the ceiling, or a large outside-region share at observed speeds, removes the claim that Combine capacity describes game capacity.
-- **Detector geometry (section 3).** The FULL-provenance comparison run. Below the gate, the turn table is untrustworthy and every count above weakens.
-- **Tempo break (section 8).** Conor's sign-off on `notes/drill-proposal.md`. Without it the drill stays a proposal.
-- **Word cap.** The 2027 rules page, signed in (`notes/rules.md` L1). Below 2,000, sections 2 and 3 absorb the cut. As it stands the draft overruns the working assumption, and stays over it until the pending sections are cut or filled.
+Heading is derived from smoothed x/y positions at 10 Hz, and the smoother is the most
+consequential choice in the pipeline: across the alternatives the measured angle moves by about
+6° at the median. Every conclusion here is reported under those alternatives. The scale is the
+point — a 6° uncertainty cannot move a turn out of the middle of a 30°-wide band; it can move
+turns that sit near a boundary, which is why the bands are read as shares and not as crisp
+membership.
+
+The detector has a 30° floor, so it cannot see a turn below 30°. The 30–60° band is censored at
+its own lower edge and the Combine count of 26 is a **lower bound**, not a census — a bias
+against the claim, not for it.
+
+The 3-cone's measured angle is the least reliable in the set: it is the drill where measured
+angle disagrees most with drill geometry, so its contribution to the shallow band is also a
+lower bound. The full-data quantification is `[PENDING]`; the sample-mode figure exists and is
+not quoted here.
+
+There is no orientation in the Combine, so a plant there cannot be separated from a backpedal
+or a shuffle, and facing-decoupled movement is invisible.
+
+Combine entry speeds sit below game speeds, so cell-by-cell comparison is partly extrapolated
+by construction. That is why the claim is a statement about band shares.
+
+Reversal-class turns are measured as plants — apex, exit, regain — never as v·ω, because a
+circle fitted to a hairpin reports a radius that makes the acceleration non-physical.
+
+The tracked players are the drafted group: 122 Combine players and 115 game players, not all
+NFL defensive backs. The demand map describes who reached the league.
+
+Season sampling is uneven: the 2023 tracking file is about a third the size of 2025's for the
+same number of games, so only the pooled figure is used.
+
+## What is not claimed
+
+- **A player score.** Between-player differences at this turn are not identified.
+- **Game value.** Nothing here predicts production, pressure or any result.
+- **Drill-to-game carry-over.** Assumed by every Combine drill; not measured here.
+- **Whether the drill is runnable.** Load, fatigue and schedule fit need their own validation.
+- **Cause.** The tracking sees the turn, not the reason for it.
+- **Not the modal turn.** 60–90° and 90–120° are the modal bands; 30–60° is where the
+  proportional shortfall is largest.

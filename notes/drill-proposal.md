@@ -1,7 +1,8 @@
 # Proposed Combine drill: the tempo break
 
-**Status: PROPOSAL — not part of TASK.md, not a finding. Needs Conor's sign-off before it
-appears in any writeup.** Written 2026-11-07 from the sample-mode artefacts
+**Status: PROPOSAL — the recommendation carried by `TASK.md` (D191), not a finding. Needs
+Conor's sign-off on its parameters before it appears in any writeup.** Written 2026-11-07 from
+the sample-mode artefacts
 (`outputs/turns/turns.parquet`, `outputs/envelope/`, `outputs/demand_coverage/`), which are
 stamped `PLACEHOLDER_SAMPLE`. Every count below is a sample count and will change on the
 full run; the *ratios* are the argument, not the absolute numbers.

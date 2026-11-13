@@ -1,176 +1,167 @@
 # Drafting spec — BDB27 submission draft (for the Writer)
 
 **Owner:** PM. **Consumer:** the Writer role. **Output:** `notes/report-draft.md`.
-**Binding task:** `TASK.md` — *Turn Coverage and the Cut Card*. Where this spec and
-`writer-role.md` disagree, **this spec and `TASK.md` win**; `writer-role.md` is stale (it
-still describes the superseded combine-fatigue task and an LMM structure) and must not be
-used for structure, section list or method.
+**Binding task:** `TASK.md` @ (this commit) — *the Combine does not test the shallow break*.
+
+**`writer-role.md` is overridden, not amended.** It still describes the superseded
+combine-fatigue project (LMM, in-game decay, executive summary, "2–3 ways to use the model").
+None of that applies. This spec and `TASK.md` are the only structure; where any other document
+disagrees with them, they win. The anti-tic list in `writer-role.md` still applies as style.
 
 ---
 
 ## 1. What the draft is
 
-A ~2,000-word markdown draft of the Kaggle writeup for the **current** task, in
-`TASK.md`'s section order, at most **5 figures**, every quantitative claim tagged with
-its provenance, and an explicit block at the end naming what is still missing.
+A **~2,000-word** markdown draft of the Kaggle writeup for one claim: the Combine barely tests
+the 30–60° break that games ask for six times more often by share, so it should add a 30–60°
+turn drill. Seven sections, **exactly four figures**, every number tagged with provenance, and
+a short closing list of what is not claimed.
 
-It is a **draft for Conor's review**, not the submission. It is allowed — required — to
-have holes. It is not allowed to fill a hole with a number.
+It is a draft for Conor's review. It is not allowed to fill a hole with a number, and it is
+not allowed to widen the claim to fill space.
 
-## 2. The honesty rule (the reason this spec exists)
+## 2. The honesty rule
 
-Every stage output in `outputs/` (turns, envelope, demand_coverage, audit) is stamped
-`PLACEHOLDER_SAMPLE`. Under `TASK.md` and the project rules those outputs may **never**
-be interpreted, reported or tuned against. The only full-data artefacts that exist are:
+Every number in the draft comes from a named artefact in §4. If a sentence needs a number that
+is not there, the sentence is wrong — rewrite it as a statement about the battery, or cut it.
 
-| artefact | provenance |
-|---|---|
-| `data/interim/full_run_20261111/bdb27_full_game_bands.csv` | **FULL** |
-| `data/interim/full_run_20261111/bdb27_full_db_turns.parquet` | **FULL** |
-| `data/interim/full_run_20261111/bdb27_full_game_manifest.json` | **FULL** (run record) |
-| `outputs/figures/fig_the_hole.{png,csv}` | **FULL** |
-| `outputs/figures/fig_all_positions.{png,csv}` | **FULL** |
-| `outputs/figures/fig_drill_schematic.{png,csv}` | **SCHEMATIC** (a drawing, no data) |
+`PLACEHOLDER_SAMPLE` output is **never** evidence. It may be named (figure 3 only), with its
+stamp, and nothing read from it.
 
-Everything else is `PLACEHOLDER_SAMPLE`. Therefore the confirmatory analyses — transfer vs
-noise ceiling, feasibility, DL outcome value, per-player coverage, the envelope parameters
-— **do not exist on full data yet**. The draft states that plainly and describes what each
-will test. It does not describe results that have not been produced.
+## 3. Provenance tags
 
-## 3. Provenance tags used in the draft
+- `[FULL]` — band table, game turn table, figures 1–2, and the real-Combine control pass.
+- `[PROPOSAL]` — the drill design, unsigned.
+- `[SCHEMATIC]` — figure 4: a drawing, no measurement.
+- `[PENDING]` — an analysis not run on full data (only used for the 3-cone geometry check).
 
-Tag every number and every figure at the point of use, in square brackets:
+`[SAMPLE]` numbers may not appear anywhere, in text, table or caption.
 
-- `[FULL]` — from the FULL artefacts above.
-- `[PROPOSAL]` — a design choice from `notes/drill-proposal.md`, signed off by nobody yet.
-- `[SCHEMATIC]` — a drawing, carries no measurement.
-- `[PENDING]` — the section's analysis has not been run on full data.
+## 4. Where each number comes from
 
-`[SAMPLE]` numbers may **not** appear. If a sentence needs a sample number to work, the
-sentence is wrong: rewrite it as what the analysis will test.
+| # | Source | Provenance | What may be quoted |
+|---|---|---|---|
+| A | `data/interim/full_run_20261111/bdb27_full_game_bands.csv` | **FULL** | every band count and share, both settings, all five groups (1,179 / 58,664; 26 / 7,777; 2.21% / 13.26%; 6.01×; 499 / 11,444; 42.32% / 19.51%) |
+| B | `data/interim/full_run_20261111/bdb27_full_db_turns.parquet` | **FULL** | 58,664 valid DB game turns; 115 players; 2,234 player-games; plant share by band (15.3% at 30–60°, 97.7% past 180°) |
+| C | `outputs/sensitivity/speed_floor/combine_db_turns_floor2.5_control.csv` | **FULL** (real Combine detection at committed parameters; reproduces A exactly — D190) | 1,179 Combine turns, 122 players; 26 in band from 16 players across 9 drills, median 1, max 4, 14 from the 3-cone; per-drill medians: 3-cone 70.6° / entry 3.98 / exit 4.96 / apex 3.16; shuttle 179.6° / 3.55 / 5.84 / 0.34; plant share by drill (3-cone 37.8%, shuttle 97.1%) |
+| D | `outputs/figures/fig_the_hole.{png,csv}` | **FULL** | as A |
+| E | `outputs/figures/fig_all_positions.{png,csv}` | **FULL** | per-position 30–60° shares: DL 4.60 vs 9.76, WR 8.62 vs 14.45, TE 10.54 vs 14.23, OL 6.51 vs 9.34 |
+| F | `outputs/figures/fig_drill_angle_scatter.{png,csv}` | `PLACEHOLDER_SAMPLE` | **name only, quote nothing** |
+| G | `outputs/figures/fig_drill_schematic.{png,csv}` | **SCHEMATIC** | describe the drawing, no number from it |
+| H | `notes/drill-proposal.md` §2 | `[PROPOSAL]` | 45°, six reps (three each way), 8–10 yd approach, 3–5 yd/s at the break, 5 yd re-acceleration gate, ~90 s, existing 3-cone footprint |
+| I | `notes/schema.md`, `notes/rules.md` | schema facts | 10 Hz; Combine has no `o`; `dir` = degrees, 0 at +y, clockwise; `dis` has no documented unit; 2,000-word cap is a working assumption |
 
-## 4. Section-by-section: what may be said, from where
+Arithmetic on A and B is allowed and is tagged `[FULL, arithmetic]` — for example 26.3 valid
+DB game turns per player-game against 9.7 per Combine player.
 
-Word budget in brackets; total ≈ 2,000 ±10%.
+## 5. Sections and word budget (total ≈ 2,000 ± 10%)
 
-### 1. The football question (230)
-Source: `TASK.md` (question, focus), `notes/phase1-audit.md` (drill battery *names* only).
-Content: a DB has to break at moderate speed — the shallow cut — and the Combine's
-change-of-direction tests are built around the deep plant. Ask the question directly: does
-the Combine test the turn the job asks for?
-Allowed: the FULL band numbers as the set-up; the five position groups.
-Not allowed: any game-side number that is not in the band table.
+### 1. The football question (250)
+Hook with the job: a defensive back's living is the break at moderate speed, not the
+decelerating reversal. State the claim in the first paragraph with its headline numbers
+(13.26% vs 2.21%, 6.01×, both `[FULL]`), and say plainly what the answer is: the Combine does
+not test that turn.
 
-### 2. Data audit (200)
-Source: `notes/schema.md` (schema facts — allowed, they are read from the files, not stage
-outputs), `notes/blockers.md` TB1–TB6, `notes/rules.md` (limits, marked unverified).
-Content: what the two tracking files are; 10 Hz; Combine has no `o`; `o` exists in game and
-is used only for contamination reporting; the game run covers 1,000 games / three seasons;
-510 Combine attendees, 496 tracked in games; the draft's stated limits (2,000-word cap is a
-working assumption, unverified against the 2027 rules page).
-Allowed schema facts: row counts in `schema.md` §1, 10 Hz, `dir` convention, `dis` has no
-documented unit (TB1), `player_play` is not a participation table (TB4).
-Not allowed: audit statistics (heading MAE, speed error, overlap, ICC).
+### 2. What the data is (250)
+Two tracking files at ~10 Hz across 2023–2025. Populations: 122 Combine players with 1,179
+valid DB turns; 115 game players with 58,664 valid DB turns over 2,234 player-games `[FULL]`.
+One detector for both settings, so the comparison is like-for-like. Orientation exists in the
+game file and not in the Combine. Provenance tags explained in one sentence.
 
-### 3. Kinematics and turn detection (320)
-Source: `TASK.md` Phase 2, `notes/phase2-turns.md`, `notes/phase1-audit.md` (method only).
-Content: one code path for both settings; Savitzky–Golay `g9p3` primary with alternative
-smoothers carried as a spread; derivatives from smoothed x/y only, never `dir`; turn =
-heading change ≥ 30° across 0.5 s with a 2.5 yd/s floor at entry and exit, segmented from
-approach speed maximum to exit speed maximum; plant vs arc by apex retention; reversal-class
-turns measured as plants, never as v·ω; gaps flagged, interpolated only outside the core.
-State the detector's validation design (drill geometry, estimated cone positions on half the
-turns and evaluated on the other half) and that **its numbers are `[PENDING]` a
-FULL-provenance run** even though the Combine file is complete.
-Not allowed: precision/recall values, angle-error values, 3.1° synthetic recovery.
+### 3. Supply against demand (380)
+The band table (all six bands), then the 6.01× in prose. **Figure 1.** Then the per-position
+check **Figure 2** — the shortfall holds in all five groups, so it is not a DB artefact. Then
+the sharpest fact in the paper: the 26 shallow Combine turns are 16 players across 9 drills,
+median one turn each, 14 of them 3-cone fragments `[FULL]`. That is accident, not design, and
+it is the difference between "the battery samples it" and "the battery tests it".
+Optionally anchor this section with Conor's in-game clip (see §8).
 
-### 4. The envelope (220)
-Source: `TASK.md` Phase 3, `notes/phase3-envelope.md` (estimator design only).
-Content: why an upper envelope and not a mean (observed turns are not maximal); the quantile
-random-effects form; shrinkage; the friction-circle form as a sensitivity; the feasible
-region on (entry speed × turn angle) with observed and extrapolated cells always separated;
-bootstrap SEs, explicitly not a posterior. Then the honest sentence: the between-player
-variance component decides whether any player-level statement is possible, and on full data
-**that fit has not been run** `[PENDING]`.
-Not allowed: any τ² value, the boundary count, any per-player capacity, "43 of 51".
+### 4. What the battery actually tests (350)
+The honest mechanism, and the section the last draft got wrong. The 3-cone is a **rounded
+accelerating cut** — median 70.6°, entry 3.98, exit 4.96, apex 3.16 yd/s, exit faster than
+entry, 37.8% of its turns read as plants `[FULL]`. The short shuttle is the **hard
+sink-and-reverse** — 179.6°, entry 3.55, exit 5.84, apex 0.34, 97.1% plants `[FULL]`.
+Plant-ness rises with angle: 15.3% of game 30–60° turns are plants against 97.7% past 180°
+`[FULL]`. Conclusion: the battery tests the deep plant well and the shallow break not at all,
+and it is not a battery that is short of turns — it is 1,179 turns aimed at a different shape.
+**Figure 3** here, named with its stamp and nothing read from it.
 
-### 5. The demand map (220)
-Source: `TASK.md` Phase 4, FULL band table, `notes/phase4-demand-coverage.md` (design only).
-Content: demand is measured, not assumed — every tracked DB turn in three seasons, binned by
-angle band; **the FULL band distribution is the demand map at band resolution** and is a
-result; the cell-level (speed × angle) map is `[PENDING]`; the denominator is all valid DB
-game turns (58,664), not the snap-classified subset; tracked players are the drafted group,
-which is a stated limitation of demand as well as supply.
-Allowed: 58,664; 7,777; 13.26%; 115 players; 2,234 player-games; per-season split with its
-caveat; 26.3 valid DB turns per player-game (arithmetic on the FULL table).
-Not allowed: 2,262, 1,111, 49.6% `OTHER`, 4 vs 97, any cell-level count.
+### 5. The drill that would close it (330)
+The tempo break `[PROPOSAL]`, with parameters and the reason each parameter was chosen (45° at
+speed, 3–5 yd/s entry, six reps). What it buys: deliberate, repeated measurement of the same
+turn within a player, and coverage of a band the current battery reaches only by fragment. What
+it does not buy: a ranking, or a clean mid-band sample — 45° sits on the 30–45/45–60 boundary.
+Add rather than replace: games still demand the big plant in volume. **Figure 4** — the
+geometry, a schematic, explicitly not a finding.
 
-### 6. Coverage (200)
-Source: `TASK.md` Phase 5, `notes/phase4-demand-coverage.md` (formula only).
-Content: Turn Coverage as the demand-weighted share of a player's feasible region, split
-observed/extrapolated; the Cut Card as an appendix artefact only; why it is not the
-headline (no identified per-player capacity until the variance question is answered on full
-data).
-`[PENDING]` throughout. Not allowed: 0.961, any coverage score, any cut gap, any card.
+### 6. What this does not say (220)
+No per-player score, no Cut Card, no ranking: between-player capacity is not identified and a
+score would be the group's value wearing a player's name. No outcome claim, no transfer claim,
+no feasibility claim — none of that is run and none of it is needed for the recommendation. No
+cause: the chips see the turn, not the contact or the scheme.
 
-### 7. Validation (260)
-Source: `TASK.md` Phase 6, `notes/pending_full_run.md`.
-Content: the three tests, each stated as a test — transfer against the noise ceiling;
-feasibility (share of game turns outside the Combine region, by speed range); outcome value
-for DL against a stopwatch-and-size baseline with player-grouped CV; smoother and definition
-sensitivity; permutation and placebo; smallest detectable effect read off the power grid once
-the full-data n is known. Say what a null would mean and what would falsify the story.
-`[PENDING]`. **No sentence may imply any of these have been run.** Do not say "we find",
-"the correlation is", "coverage predicts".
+### 7. Measurement limits (220)
+10 Hz heading noise and the ~6° median smoother spread on measured angle; the 30° detector
+floor censoring the shallow band's own lower edge, making the 26 a lower bound; the 3-cone as
+the least reliable measured angle in the set, `[PENDING]` on full provenance; no orientation in
+the Combine, so plants cannot be separated from backpedals and shuffles; Combine entry speeds
+below game speeds, so band shares rather than cells carry the claim; reversal-class turns
+measured as plants, never v·ω; tracked players are the drafted group; uneven per-season
+tracking coverage.
 
-### 8. Uses for scouts and coaches (200)
-Source: argument, grounded only in the FULL descriptive finding.
-Content: what a team can do *now* with the band-level result (audit the drill battery, not
-the player); what the proposed tempo break would add and what it would not (it buys
-reliability per player and a band the battery does not test; it does not rank prospects);
-why a per-prospect score is deliberately not offered.
-Allowed: the drill design parameters `[PROPOSAL]` (45° cut, 6 reps, 3 each side, 8–10 yd
-approach, 5 yd re-acceleration gate, ~90 s, existing 3-cone footprint) and the fact that the
-45° break sits on the 30–45/45–60 edge (D188).
-Not allowed: any claim about contact, scheme, coverage technique or opponent quality.
+### Closing block — "What is not claimed" (80, a list, not prose)
+Five or six lines: per-player scores; outcome value; transfer; feasibility; cause; "most
+common turn". One line each on why.
 
-### 9. Limitations (200)
-Source: `TASK.md` Phase 7 limitations list, `notes/blockers.md` TB1–TB6.
-Content: contact invisible; 10 Hz heading noise; no Combine `o`; plants not separable from
-backpedals and shuffles in the Combine; Combine entry speeds below game speeds so some cells
-are extrapolated; tracked = drafted selection; vendor pressure labels; uneven per-season
-tracking coverage (2023 file ≈ one third the size of 2025's for the same game count, so
-season rates are not comparable); `dis` unusable; `player_play` not a participation table.
+## 6. Figures — exactly four, in this order
 
-### Closing block — "What is still missing before submission" (150, not prose)
-A list: each pending section, the artefact that will fill it, and one line on what would
-change the argument if it comes back unfavourable.
+| # | File | Provenance | Use |
+|---|---|---|---|
+| 1 | `outputs/figures/fig_the_hole.png` | **FULL** | the headline; quote its counts and shares |
+| 2 | `outputs/figures/fig_all_positions.png` | **FULL** | the shortfall is not a DB artefact |
+| 3 | `outputs/figures/fig_drill_angle_scatter.png` | `PLACEHOLDER_SAMPLE` | name it, state the stamp, quote nothing |
+| 4 | `outputs/figures/fig_drill_schematic.png` | **SCHEMATIC** | the proposed geometry; a drawing, no measurement |
 
-## 5. Figures — exactly five, in `TASK.md`'s order
+No other figure may be named — not in text, not in a caption, not in a comparison. Do not
+embed images; reference by path. One caption line per figure carrying the filename and the
+provenance tag.
 
-| # | slot (`TASK.md` CURRENT FOCUS) | file | provenance | how the draft uses it |
-|---|---|---|---|---|
-| 1 | (a) turn-band supply vs demand, DB | `outputs/figures/fig_the_hole.png` | **FULL** | the headline; quote its counts and shares |
-| 2 | (b) the same across positions | `outputs/figures/fig_all_positions.png` | **FULL** | quote per-position shares and ratios |
-| 3 | (c) the drill spec and the cells it would fill | `outputs/figures/fig_drill_schematic.png` | **SCHEMATIC** | describe the drawing; no measurement |
-| 4 | (d) what the existing DB drills cover | `outputs/figures/fig_drill_coverage.png` | PLACEHOLDER_SAMPLE | name it, state its stamp, quote **nothing** from it |
-| 5 | (e) measurement limits | `outputs/figures/fig_measurement_limits.png` | PLACEHOLDER_SAMPLE | name it, state its stamp, quote **nothing** from it |
+## 7. Words that must not appear
 
-Each figure: one caption line carrying the filename and the provenance tag. No other figure
-may be referenced. Do not embed images; reference by path.
+`Turn Coverage`, `Cut Card`, `coverage score`, `feasible region`, `cut gap`, `transfer`,
+`noise ceiling`, `outcome test`, `quick pressure`, `held-out`, `prereg`, `Phase 1`…`Phase 7`,
+`envelope`, `per-prospect`, `rank`, `most common turn`, `single plant`.
 
-## 6. Voice
+"The envelope" as a physics word is also banned — the argument does not use one. "Capacity" is
+allowed only in the general sense of a player's turning limit, never as an estimated quantity.
 
-Active, concrete, no throat-clearing. No "this report will show". No bullet-point soup —
-prose with tables where a table is shorter. No banned word list beyond common sense; the
-`writer-role.md` anti-tic list still applies as style, not as structure.
+## 8. The video
 
-## 7. What the Writer must not do
+Conor is using a clip of an in-game run alongside the four plots. The draft does **not**
+describe footage it has not seen. Place a single bracketed slot at the end of section 3 —
+where the demand side of the argument is established — reading like:
 
-- Invent a number, a threshold, a citation, a player name, or a result.
-- Present any `[SAMPLE]` figure as evidence, in text, caption or table.
-- Describe the outcome test, the transfer correlation or the coverage score as if run.
-- Add sections beyond the nine, or reorder them.
-- Exceed five figures.
-- Write past ~2,200 words.
-- Rewrite `writer-role.md`, `TASK.md`, or any pipeline file.
+> `[Video — in-game DB break. Caption: one line, what the clip shows and the timestamp. No number is read from it.]`
+
+and add one sentence of surrounding prose that the slot earns: the clip is there to make the
+demand concrete, not to add evidence. Do not propose a fifth figure. Do not invent a timestamp,
+a player, a down, a distance or a result. If section 3 runs long, the slot moves to the start
+of section 1 and the prose stays the same.
+
+## 9. Voice
+
+Kaggle writeup register: first person plural is fine, active voice, concrete, no
+throat-clearing, no "this report will show". Tables where a table is shorter than prose. State
+the finding in the first sentence of each section and then prove it. No bullet soup outside the
+two lists this spec asks for.
+
+## 10. What the Writer must not do
+
+- Invent a number, a threshold, a citation, a player name, a down, or a result.
+- Present any `PLACEHOLDER_SAMPLE` figure as evidence, in text, caption or table.
+- Describe any analysis as run when it is not.
+- Name a figure outside the four.
+- Write past ~2,200 words, or add sections beyond the seven plus the closing list.
+- Restore the sentence "games mostly ask for a single plant at 30–60°" — it is false and it is
+  what made the last draft wrong.
+- Edit `TASK.md`, this spec, or any pipeline file.

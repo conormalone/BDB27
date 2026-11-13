@@ -1,6 +1,8 @@
 # Competition rules & limits — NFL Big Data Bowl 2027
 
-**Binding internal spec:** `TASK.md` @ `52015cd` (Turn Coverage and the Cut Card).
+**Binding internal spec:** `TASK.md` (the Combine does not test the shallow break), reduced
+2026-11-13 (D191). The superseded spec is archived at
+`notes/archive-tasks/TASK-turn-coverage-cut-card-2026-11-13.md`.
 **Re-verified:** 2026-11-06 on the Raspberry Pi. The 2026-11-05 version of this file
 described the superseded burst-vs-jump task; the limit register carried over because
 the competition did not change.
@@ -37,7 +39,7 @@ That is consistent with this project's question, and it says nothing about caps.
 | # | Limit | Value used here | Provenance |
 |---|---|---|---|
 | L1 | Writeup word cap | **2,000 words** as the working ceiling | **UNVERIFIED for 2027** — widely reported for earlier editions; not readable on the 2027 page. Check `/rules` signed in. |
-| L2 | Figure cap | **5 figures** | **Binding from `TASK.md`** ("max 5 figures"). Not from Kaggle. |
+| L2 | Figure cap | **4 figures** | **Binding from `TASK.md`** ("exactly four, and no others", D191). The earlier 5-figure cap came from the superseded spec; the Kaggle cap is unverified and higher. |
 | L3 | Notebook requirements | Public Kaggle notebook, runs end to end, no internet assumed, outputs committed | **UNVERIFIED as to runtime/CPU/GPU/internet policy**; `TASK.md` requires a public notebook. |
 | L4 | External data | **Prohibited** | **Binding from `TASK.md`** ("No external data") and consistent with the standard Kaggle rule. |
 | L5 | Deadline | **2027-01-06 23:59 UTC** | From `TASK.md` (supplied by Conor); **not re-verified on Kaggle**. |

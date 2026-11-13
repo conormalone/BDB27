@@ -1399,16 +1399,22 @@ def test_all_positions_panels_share_one_scale(rendered):
 
 
 def test_all_positions_marks_only_the_positions_the_spec_flags(rendered):
-    """Statuses come from TASK.md; D183 removed the drawn mark, not the data."""
+    """Statuses come from the spec that was current when the mark was designed.
+
+    D183 removed the drawn mark, not the data. D191 replaced ``TASK.md`` with a
+    single-claim spec that no longer carries a per-position status scheme, so the
+    statuses now cite the superseded spec, which is archived verbatim. The check
+    follows the sentence into the archive rather than pinning a line number.
+    """
     import matplotlib.pyplot as plt
 
     from bdb27 import figures
-    spec = (ROOT / "TASK.md").read_text()
-    line = spec.splitlines()[62]
-    assert "OL and DB are exploratory" in line, (
-        "TASK.md line 63 no longer says OL and DB are exploratory — the "
-        "figure's marks are pinned to that sentence")
+    spec = (ROOT / "notes" / "archive-tasks"
+            / "TASK-turn-coverage-cut-card-2026-11-13.md").read_text()
     assert "OL and DB (exploratory)" in spec
+    assert any("OL and DB are exploratory" in line for line in spec.splitlines()), (
+        "the archived spec no longer says OL and DB are exploratory — the "
+        "figure's marks are pinned to that sentence")
 
     turns = pd.read_parquet(rendered["tmp"] / "outputs" / "turns" / "turns.parquet")
     (table, context), cfg = _ap_cells(turns, rendered["cfg"])
