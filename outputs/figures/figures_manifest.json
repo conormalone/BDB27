@@ -6283,6 +6283,7 @@
         "csv_sha256": "d1b6ba73794268fd912de8ea074986b61843bab2d14e1c3fd55506508c18c8da"
       },
       "git_rev": "21ef63f60cc8c06ccb4822053c1c163a9a28c084",
+      "artefact_commit": "df402a24467be8046bd32cf86cf16641cc9e27ed",
       "config_sha": "a76cf3bd9012f085"
     }
   }
