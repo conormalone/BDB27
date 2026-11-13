@@ -86,32 +86,17 @@ The clip is here to make the demand concrete; it adds no evidence.
 
 ## 4. What the battery actually tests
 
-The battery is not failing to test turning. It is testing one turn extremely well, and the
-drill-level numbers say which one.
+The battery does not test one turn badly or well. It is aimed at two shapes, and the game's demand divides into two families with a step between them, not a smooth gradient.
 
-Take the 3-cone. Its median measured turn is 70.6°, with median entry speed 3.98 yd/s, exit
-4.96 and apex 3.16 `[FULL]`. Exit faster than entry is the signature: the player rounds the
-corner and drives out of it. This is a **rounded accelerating cut**, and 37.8% of its turns
-read as plants rather than arcs `[FULL]`. It is a good drill. It is not a drill about stopping.
+Take the 3-cone. Its median measured turn is 70.6°, with median entry speed 3.98 yd/s, exit 4.96 and apex 3.16 `[FULL]`. Exit faster than entry is the signature: the player rounds the corner and drives out of it. This is a **rounded accelerating cut**, and 37.8% of its turns read as plants rather than arcs `[FULL]`. It is a good drill. It is not a drill about stopping. At 70.6° it sits in the 60–90° band, the steep half of the arc family, and 47 of its own 98 turns land inside that band at a median 67.1° `[FULL]`.
 
-Take the short shuttle. Median angle 179.6°, entry 3.55, exit 5.84, apex 0.34 yd/s `[FULL]`.
-Speed collapses to a near standstill and the player re-accelerates the other way. This is the
-**hard sink-and-reverse**, and 97.1% of its turns read as plants `[FULL]`.
+Take the short shuttle. Median angle 179.6°, entry 3.55, exit 5.84, apex 0.34 yd/s `[FULL]`. Speed collapses to a near standstill and the player re-accelerates the other way. This is the **hard sink-and-reverse**, and 97.1% of its turns read as plants `[FULL]`.
 
-The same gradient shows up in the game data by band. Of game turns at 30–60°, 15.3% are plants
-and the rest are arcs; past 180°, 97.7% are plants `[FULL]`. Plant-ness is a function of angle,
-and the battery has built its drills at the angle where plant-ness is total.
+The game data show the same two families, with a step between them. The 30–60° and 60–90° bands behave as one: median entry 3.68 against 3.63 yd/s, apex retention 0.857 against 0.934, plant share 15.3% against 24.3% `[FULL]`. Then the step. The 90–120° band belongs to neither family — 51.5% plants, retention 0.717 `[FULL]`. Above 120° the plant family owns the angle: median apex falls 1.90 → 1.04 → 0.58 yd/s and plant share runs 79%, 93%, 98% `[FULL]`.
 
-So the mechanism is simple and it is not a shortage of turns. The battery buys the deep plant:
-stop, sink, reverse, re-accelerate. It is well equipped for that and it repeats it 499 times in
-the 120–150° band alone `[FULL]`. What it leaves out is the shallow break taken at speed — the
-arc-like change of direction that 84.7% of game 30–60° turns actually are `[FULL]`. The 26
-turns it does record in that band are the accidental by-product of rounding a 3-cone or
-clipping the entry of a backpedal drill.
+So the battery's arc testing sits at 60–90° and its plant testing sits at 120–150° and above, where 499 of its turns lie in the 120–150° band alone `[FULL]`. The 60–90° band holds 237 Combine turns from 110 players: the 3-cone, 74 of Teryl Austin 2's 199 turns at a median 74.1°, and 65 of the back-pedal-and-90 break's 118 at a median 84.3° `[FULL]`. What goes unsampled is the shallow half of the arc family, not turning at speed in general. The 26 turns in 30–60° remain the accidental by-product of rounding a 3-cone or clipping the entry of a backpedal drill `[FULL]`.
 
-**Figure 3** — `outputs/figures/fig_drill_angle_scatter.png` `PLACEHOLDER_SAMPLE`. Every
-Combine turn at its measured angle, by drill. Stamped unvalidated sample output; nothing in
-this writeup is read from it.
+**Figure 3** — `outputs/figures/fig_drill_angle_scatter.png` `PLACEHOLDER_SAMPLE`. Every Combine turn at its measured angle, by drill. Stamped unvalidated sample output; nothing in this writeup is read from it.
 
 ## 5. The drill that would close it
 
@@ -165,43 +150,29 @@ the opponent that produced it.
 
 ## 7. Measurement limits
 
-Heading is derived from smoothed x/y positions at 10 Hz, and the smoother is the most
-consequential choice in the pipeline: across the alternatives the measured angle moves by about
-6° at the median. Every conclusion here is reported under those alternatives. The scale is the
-point — a 6° uncertainty cannot move a turn out of the middle of a 30°-wide band; it can move
-turns that sit near a boundary, which is why the bands are read as shares and not as crisp
-membership.
+Heading comes from smoothed x/y positions at 10 Hz, the pipeline's most consequential choice:
+across smoother alternatives the median measured angle moves about 6°. Every conclusion holds
+across those alternatives. A 6° uncertainty cannot move a turn out of the middle of a
+30°-wide band, but it can move boundary turns — which is why bands are read as shares, not
+crisp membership.
 
-The detector has a 30° floor, so it cannot see a turn below 30°. The 30–60° band is censored at
-its own lower edge and the Combine count of 26 is a **lower bound**, not a census — a bias
-against the claim, not for it.
+The 30° detector floor hides turns below 30°. The 30–60° band is censored at its own lower
+edge and the Combine count of 26 is a **lower bound**, not a census — a bias against the claim,
+not for it. That band carries the argument: 60–90° and 90–120° are the modal bands, and
+30–60° is where the proportional shortfall is largest.
 
-The 3-cone's measured angle is the least reliable in the set: it is the drill where measured
-angle disagrees most with drill geometry, so its contribution to the shallow band is also a
-lower bound. The full-data quantification is `[PENDING]`; the sample-mode figure exists and is
-not quoted here.
+The 3-cone's measured angle is the least reliable in the set — where measured angle disagrees
+most with drill geometry — so its contribution to the shallow band is also a lower bound. The
+full-data quantification is `[PENDING]`; the sample-mode figure exists and is not quoted here.
 
-There is no orientation in the Combine, so a plant there cannot be separated from a backpedal
-or a shuffle, and facing-decoupled movement is invisible.
+No Combine orientation exists, so a plant cannot be separated from a backpedal or shuffle,
+and facing-decoupled movement is invisible. Combine entry speeds sit below game speeds, so
+cell-by-cell comparison is partly extrapolated by construction — hence band shares.
 
-Combine entry speeds sit below game speeds, so cell-by-cell comparison is partly extrapolated
-by construction. That is why the claim is a statement about band shares.
-
-Reversal-class turns are measured as plants — apex, exit, regain — never as v·ω, because a
-circle fitted to a hairpin reports a radius that makes the acceleration non-physical.
+Reversal-class turns are measured as plants — apex, exit, regain — never as v·ω: a circle
+fitted to a hairpin reports a non-physical acceleration.
 
 The tracked players are the drafted group: 122 Combine players and 115 game players, not all
-NFL defensive backs. The demand map describes who reached the league.
-
-Season sampling is uneven: the 2023 tracking file is about a third the size of 2025's for the
-same number of games, so only the pooled figure is used.
-
-## What is not claimed
-
-- **A player score.** Between-player differences at this turn are not identified.
-- **Game value.** Nothing here predicts production, pressure or any result.
-- **Drill-to-game carry-over.** Assumed by every Combine drill; not measured here.
-- **Whether the drill is runnable.** Load, fatigue and schedule fit need their own validation.
-- **Cause.** The tracking sees the turn, not the reason for it.
-- **Not the modal turn.** 60–90° and 90–120° are the modal bands; 30–60° is where the
-  proportional shortfall is largest.
+NFL defensive backs; the demand map describes who reached the league. Season sampling is
+uneven — the 2023 tracking file is about a third the size of 2025's for the same number of
+games — so only the pooled figure is used.

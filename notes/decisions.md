@@ -7953,3 +7953,71 @@ the earlier claim should not be repeated.
 `outputs/figures/fig_turn_angle_hist_30_90.png`, `.csv`,
 `.provenance.json`; `outputs/figures/figures_manifest.json`;
 `scripts/plot_turn_angle_hist.py`.
+
+## D194 — §4 corrected: the band table is two families with a step, not a gradient · 2026-11-13
+
+**Defect (Conor, 2026-11-13).** "I thought we established that 30 to 60 has a similar speed
+profile to 60 to 90." He had. §4 of `notes/report-draft.md` said: "Of game turns at 30–60°,
+15.3% are plants and the rest are arcs; past 180°, 97.7% are plants `[FULL]`. Plant-ness is a
+function of angle, and the battery has built its drills at the angle where plant-ness is
+total." That quotes the two endpoints of a step and calls it a gradient. The claim it supports
+— the battery tests the deep plant and not the shallow break — survives; the mechanism used to
+support it was false.
+
+**D181 already had the right answer.** Figure 17 draws figure 1's merged 30–60° band and the
+six display buckets precisely because the arc family is 30–60° **and** 60–90°, the step is at
+90–120°, and the plant family starts above 120°. Nothing in this entry is a new reading of the
+data; it is the reading the project adopted on 2026-11-10 and the draft had not caught up with.
+
+**Verified table.** Frozen before any prose was written, from
+`data/interim/full_run_20261111/bdb27_full_db_turns.parquet`, `setting == 'game'`,
+`position_group == 'DB'`, `valid == True`, n = 58,664, bands left-closed 30/60/90/120/150/180:
+
+| band | n | share | entry | apex | exit | apex retention | plant share |
+|---|---|---|---|---|---|---|---|
+| 30–60° | 7,777 | 13.26% | 3.68 | 2.78 | 3.94 | 0.857 | 15.3% |
+| 60–90° | 13,077 | 22.29% | 3.63 | 3.08 | 4.45 | 0.934 | 24.3% |
+| 90–120° | 13,016 | 22.19% | 4.01 | 2.77 | 4.38 | 0.717 | 51.5% |
+| 120–150° | 11,444 | 19.51% | 3.95 | 1.90 | 4.25 | 0.493 | 79.0% |
+| 150–180° | 8,137 | 13.87% | 3.81 | 1.04 | 4.13 | 0.279 | 93.4% |
+| >180° | 5,213 | 8.89% | 3.68 | 0.58 | 3.93 | 0.156 | 97.7% |
+
+Speeds in yd/s. The first two rows are one family: entry speed 3.68 against 3.63, retention
+0.857 against 0.934, plant share 15.3% against 24.3%. The step is 90–120°, which belongs to
+neither family. Above 120° the plant family owns the angle and apex collapses 1.90 → 1.04 →
+0.58.
+
+**Combine side, same correction.** The control pass
+(`outputs/sensitivity/speed_floor/combine_db_turns_floor2.5_control.csv`, 1,179 turns, 110
+players in band) puts the battery's arc testing at 60–90°, not in general: 237 turns, of which
+Teryl Austin 2 contributes 74 at a median 74.1° and the back-pedal-and-90 break 65 at 84.3°,
+alongside the 3-cone's 47 at 67.1°. So the unsampled piece is the **shallow half of the arc
+family**, not "turning at speed". The 3-cone (70.6°, entry 3.98, exit 4.96, apex 3.16, 37.8%
+plants) and the shuttle (179.6°, 3.55, 5.84, 0.34, 97.1% plants) are unchanged drill
+descriptions, now placed on the right side of the step.
+
+**Provenance discipline.** §4 quotes only FULL numbers, every one tagged, and nothing is read
+from figure 3 (`PLACEHOLDER_SAMPLE`), which is named with its stamp only. No new statistic was
+computed for the section beyond the table above and the control pass.
+
+**Spec.** `notes/report-draft-spec.md` §4 rows B and C now carry the per-band speed/retention
+medians and the correct family framing, and the 60–90° band composition; §5 item 4 was rewritten
+to require the two-family presentation; §10 now forbids writing "plant-ness rises with angle" or
+quoting the 30–60° and >180° shares as the ends of a gradient.
+
+**Structure and length.** The closing `## What is not claimed` list is folded into §6 and §7
+(every one of its limits is already stated in full in §6; its one unique fact — 60–90° and
+90–120° are the modal bands and 30–60° carries the largest proportional shortfall — moved into
+§7's censoring paragraph). That plus a §7 tightening takes the draft from 2,128 to **2,099**
+words, so the corrected §4 costs nothing against the ceiling. Reversible in one revert if Conor
+wants the list back.
+
+**Not touched.** `TASK.md`, `config.yaml`, any figure, any pipeline file, any full artefact. No
+number outside the corrected §4 changed.
+
+**Tests.** `./.venv/bin/python -m pytest -q` — 361 collected, 361 passed, exit 0, run on the tree that is being committed.
+
+**Evidence.** `notes/report-draft.md`; `notes/report-draft-spec.md`;
+`data/interim/full_run_20261111/bdb27_full_db_turns.parquet`;
+`outputs/sensitivity/speed_floor/combine_db_turns_floor2.5_control.csv`;
+`bdb27_run/combine_turns.parquet` (plant share by drill: 3-cone 0.378, shuttle 0.971).

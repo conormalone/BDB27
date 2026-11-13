@@ -14,8 +14,9 @@ disagrees with them, they win. The anti-tic list in `writer-role.md` still appli
 
 A **~2,000-word** markdown draft of the Kaggle writeup for one claim: the Combine barely tests
 the 30–60° break that games ask for six times more often by share, so it should add a 30–60°
-turn drill. Seven sections, **exactly four figures**, every number tagged with provenance, and
-a short closing list of what is not claimed.
+turn drill. Seven sections, **exactly four figures**, every number tagged with provenance. The
+limits live in §6 and §7; the former closing list of what is not claimed is folded into them
+(D194).
 
 It is a draft for Conor's review. It is not allowed to fill a hole with a number, and it is
 not allowed to widen the claim to fill space.
@@ -42,8 +43,8 @@ stamp, and nothing read from it.
 | # | Source | Provenance | What may be quoted |
 |---|---|---|---|
 | A | `data/interim/full_run_20261111/bdb27_full_game_bands.csv` | **FULL** | every band count and share, both settings, all five groups (1,179 / 58,664; 26 / 7,777; 2.21% / 13.26%; 6.01×; 499 / 11,444; 42.32% / 19.51%) |
-| B | `data/interim/full_run_20261111/bdb27_full_db_turns.parquet` | **FULL** | 58,664 valid DB game turns; 115 players; 2,234 player-games; plant share by band (15.3% at 30–60°, 97.7% past 180°) |
-| C | `outputs/sensitivity/speed_floor/combine_db_turns_floor2.5_control.csv` | **FULL** (real Combine detection at committed parameters; reproduces A exactly — D190) | 1,179 Combine turns, 122 players; 26 in band from 16 players across 9 drills, median 1, max 4, 14 from the 3-cone; per-drill medians: 3-cone 70.6° / entry 3.98 / exit 4.96 / apex 3.16; shuttle 179.6° / 3.55 / 5.84 / 0.34; plant share by drill (3-cone 37.8%, shuttle 97.1%) |
+| B | `data/interim/full_run_20261111/bdb27_full_db_turns.parquet` | **FULL** | 58,664 valid DB game turns; 115 players; 2,234 player-games; per-band medians of entry, apex and exit speed and apex retention; plant share by band — 15.3% at 30–60°, 24.3% at 60–90°, 51.5% at 90–120°, 79.0% / 93.4% / 97.7% at 120–150° and above. Band values are read as **two families with a step at 90–120°**, never as one gradient between the 30–60° and >180° endpoints (D181, D194) |
+| C | `outputs/sensitivity/speed_floor/combine_db_turns_floor2.5_control.csv` | **FULL** (real Combine detection at committed parameters; reproduces A exactly — D190) | 1,179 Combine turns, 122 players; 26 in band from 16 players across 9 drills, median 1, max 4, 14 from the 3-cone; per-drill medians: 3-cone 70.6° / entry 3.98 / exit 4.96 / apex 3.16; shuttle 179.6° / 3.55 / 5.84 / 0.34; plant share by drill (3-cone 37.8%, shuttle 97.1%); composition of the 60–90° band — 237 turns from 110 players, of which Teryl Austin 2 contributes 74 (median 74.1°), the back-pedal-and-90 break 65 (84.3°), the 3-cone 47 (67.1°) and the gauntlet 36 (84.2°) |
 | D | `outputs/figures/fig_the_hole.{png,csv}` | **FULL** | as A |
 | E | `outputs/figures/fig_all_positions.{png,csv}` | **FULL** | per-position 30–60° shares: DL 4.60 vs 9.76, WR 8.62 vs 14.45, TE 10.54 vs 14.23, OL 6.51 vs 9.34 |
 | F | `outputs/figures/fig_drill_angle_scatter.{png,csv}` | `PLACEHOLDER_SAMPLE` | **name only, quote nothing** |
@@ -79,12 +80,21 @@ Optionally anchor this section with Conor's in-game clip (see §8).
 ### 4. What the battery actually tests (350)
 The honest mechanism, and the section the last draft got wrong. The 3-cone is a **rounded
 accelerating cut** — median 70.6°, entry 3.98, exit 4.96, apex 3.16 yd/s, exit faster than
-entry, 37.8% of its turns read as plants `[FULL]`. The short shuttle is the **hard
-sink-and-reverse** — 179.6°, entry 3.55, exit 5.84, apex 0.34, 97.1% plants `[FULL]`.
-Plant-ness rises with angle: 15.3% of game 30–60° turns are plants against 97.7% past 180°
-`[FULL]`. Conclusion: the battery tests the deep plant well and the shallow break not at all,
-and it is not a battery that is short of turns — it is 1,179 turns aimed at a different shape.
-**Figure 3** here, named with its stamp and nothing read from it.
+entry, 37.8% of its turns read as plants `[FULL]`; at 70.6° it sits in the 60–90° band. The
+short shuttle is the **hard sink-and-reverse** — 179.6°, entry 3.55, exit 5.84, apex 0.34,
+97.1% plants `[FULL]`.
+
+Then the game data as **two families with a step**, never as one gradient: 30–60° and 60–90°
+are one arc family (entry 3.68 vs 3.63 yd/s, apex retention 0.857 vs 0.934, plant share 15.3%
+vs 24.3%); 90–120° is neither (51.5% plants, 0.717 retention); above 120° is the plant family
+(79.0% / 93.4% / 97.7% plants, apex 1.90 → 1.04 → 0.58 yd/s) `[FULL]`.
+
+Conclusion: the battery's arc testing sits at 60–90° — the 3-cone, with Teryl Austin 2 and the
+back-pedal-and-90 break also landing in that band — and its plant testing at 120–150° and
+above (499 turns in that band) `[FULL]`. What goes unsampled is the **shallow half of the arc
+family**, not turning at speed in general. The battery is not short of turns; it is 1,179
+turns aimed at a different shape. **Figure 3** here, named with its stamp and nothing read
+from it.
 
 ### 5. The drill that would close it (330)
 The tempo break `[PROPOSAL]`, with parameters and the reason each parameter was chosen (45° at
@@ -109,9 +119,12 @@ below game speeds, so band shares rather than cells carry the claim; reversal-cl
 measured as plants, never v·ω; tracked players are the drafted group; uneven per-season
 tracking coverage.
 
-### Closing block — "What is not claimed" (80, a list, not prose)
-Five or six lines: per-player scores; outcome value; transfer; feasibility; cause; "most
-common turn". One line each on why.
+### Closing block — folded into §6 and §7 (0) — D194
+There is no separate "What is not claimed" list any more. Its five shorthand limits are already
+stated in full in §6, and the sixth point — 60–90° and 90–120° are the modal bands and 30–60°
+carries the largest proportional shortfall — sits in §7 as the reason that band carries the
+argument. Do not reinstate the list: repetition cost 80 words against a ceiling that was
+already breached.
 
 ## 6. Figures — exactly four, in this order
 
@@ -164,4 +177,6 @@ two lists this spec asks for.
 - Write past ~2,200 words, or add sections beyond the seven plus the closing list.
 - Restore the sentence "games mostly ask for a single plant at 30–60°" — it is false and it is
   what made the last draft wrong.
+- Write "plant-ness rises with angle", or quote the 30–60° and >180° plant shares as the two
+  ends of a gradient. The band table is two families with a step at 90–120° (D181, D194).
 - Edit `TASK.md`, this spec, or any pipeline file.
