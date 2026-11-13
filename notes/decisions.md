@@ -8021,3 +8021,64 @@ number outside the corrected §4 changed.
 `data/interim/full_run_20261111/bdb27_full_db_turns.parquet`;
 `outputs/sensitivity/speed_floor/combine_db_turns_floor2.5_control.csv`;
 `bdb27_run/combine_turns.parquet` (plant share by drill: 3-cone 0.378, shuttle 0.971).
+
+## D195 — Turn-angle histogram face stripped to the title and the axis labels · 2026-11-13
+
+**Asked.** Conor, 20:36, replying to the rendered figure: "Do this again but remove all the
+unnecessary text, have the title and the axis labels". Three blocks of prose came off the face of
+`outputs/figures/fig_turn_angle_hist_30_90.png` (`scripts/plot_turn_angle_hist.py`, `draw()`):
+
+- the twelve per-bar count labels;
+- the in-axes note "FULL — 58,664 valid DB game turns (2023–2025) · 20,854 fall in 30–90° ·
+  37,810 are >90° and not drawn";
+- the figure-foot stamp "FULL DATA OUTPUT — 58,664 valid DB game turns, 858 games, seasons
+  2023, 2024, 2025; bins are left-closed (30–35 contains exactly 30.0°)".
+
+**What remains.** The title "In-game DB turns by absolute turn angle, 30–90° in 5° bins"; x label
+"absolute turn angle (degrees)"; y label "DB game turns (count)"; the twelve bin tick labels; the
+twelve bars; the white y grid; the spine styling. Verified on the rendered figure, not by reading
+the source: `ax.texts == []` and `fig.texts == []`, title/x/y labels present, 12 bars, y ticks
+0/500/1,000/1,500/2,000/2,500, no legend, no tick label overlapping the title.
+
+**Title unchanged.** It was written as a standalone heading, not as a lead-in to the removed
+blocks, so it reads correctly alone and was not tightened.
+
+**Layout.** The old margins existed to hold the text. `ylim` is now `max(2500, top*1.06)` — 2,500
+with the current tallest bar at 2,301 — which keeps the 2,500 tick inside the view (a flat
+`top*1.06` dropped it at 2,439) and still leaves headroom if a bar grows; `subplots_adjust` is
+left 0.08, right 0.985, top 0.90, bottom 0.10. Bars, colours, bin edges, title, labels, ticks,
+grid and spines are otherwise byte-for-byte the D193 styling.
+
+**The face loses the stamp; the record does not.** Every removed number is still in the artefacts:
+
+- `fig_turn_angle_hist_30_90.csv` is **unchanged byte-for-byte** (`sha256 d1b6ba73…`), still
+  carrying the twelve bin lows/highs, the counts 385 · 709 · 1,131 · 1,586 · 1,960 · 2,006 ·
+  1,933 · 2,129 · 2,301 · 2,273 · 2,238 · 2,203, `share_of_window`, `share_of_all`, and the
+  per-row `stamp` / `n_db_game_turns` 58,664 / `n_in_window` 20,854 / `n_below_30` 0 /
+  `n_above_90` 37,810.
+- `.provenance.json` and the merged manifest entry still carry n = 58,664, n_in_window = 20,854,
+  n_below_30 = 0, n_above_90 = 37,810, games = 858, seasons [2023, 2024, 2025], all twelve edges
+  and counts, `stamp: FULL DATA OUTPUT`, `band_crosscheck.matches: true`, and the caveat naming
+  the 37,810 turns >90° that are not drawn. Manifest `bins_deg` equals the provenance's, and
+  manifest `png_sha256` equals the new PNG.
+
+**Recoverability.** The annotated render stays in git history — drawn at `df402a2`, unchanged
+through `2bb4b84` and `1d4ead4`; this commit rewrites the same path so the clean figure sits where
+Conor expects it.
+
+**One field not regenerated.** `2bb4b84` hand-added `artefact_commit` to this figure's
+`.provenance.json` and manifest entry. `common.write_json` does not emit that key and no other
+figure carries it, so re-rendering drops it rather than restoring a field the generator does not
+own; the artefact's commit is recoverable from `git log -- outputs/figures/fig_turn_angle_hist_30_90.png`.
+No other provenance field changed.
+
+**Not touched.** `notes/report-draft.md`, `TASK.md`, the four-figure set, `config.yaml`, any
+pipeline stage, the CSV, and the figure's `exploratory: true` / `in_report: false` status.
+
+**Tests.** `./.venv/bin/python -m pytest -q` — 361 collected, 361 passed, exit 0, run on the tree
+that is being committed. No test asserted the count labels or the foot note, so no assertion had to
+change; the CSV and manifest checks still run against the untouched artefacts.
+
+**Evidence.** `scripts/plot_turn_angle_hist.py`;
+`outputs/figures/fig_turn_angle_hist_30_90.png` (sha256 `4500ece0…`, 49,816 bytes),
+`.csv` (`d1b6ba73…`), `.provenance.json`; `outputs/figures/figures_manifest.json`.

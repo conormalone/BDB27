@@ -2,7 +2,7 @@
   "provenance": "MIXED",
   "label": "MIXED PROVENANCE \u2014 3 FULL, 15 sample, 1 schematic",
   "config_sha": "a76cf3bd9012f085",
-  "generated_utc": "2026-11-13T14:41:19Z",
+  "generated_utc": "2026-11-13T20:54:48Z",
   "stage": "06_figures",
   "artefact_version": 1,
   "stamp": "MIXED PROVENANCE \u2014 3 FULL, 15 sample, 1 schematic",
@@ -6278,12 +6278,11 @@
       ],
       "outputs": {
         "png": "outputs/figures/fig_turn_angle_hist_30_90.png",
-        "png_sha256": "59c9e9c40f9e7adf190cbe79bfbfad46fb08c879ec552d729b012f54f3d14010",
+        "png_sha256": "4500ece0b21ce7657af0bbdb8b30880782fbafa2e5b9d6b67bdec2eabd7688fb",
         "csv": "outputs/figures/fig_turn_angle_hist_30_90.csv",
         "csv_sha256": "d1b6ba73794268fd912de8ea074986b61843bab2d14e1c3fd55506508c18c8da"
       },
-      "git_rev": "21ef63f60cc8c06ccb4822053c1c163a9a28c084",
-      "artefact_commit": "df402a24467be8046bd32cf86cf16641cc9e27ed",
+      "git_rev": "1d4ead4d39623f04f06a8772b2fa498395d6a5e8",
       "config_sha": "a76cf3bd9012f085"
     }
   }

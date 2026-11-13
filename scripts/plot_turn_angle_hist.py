@@ -54,7 +54,6 @@ BIN_LO, BIN_HI, BIN_W = 30.0, 90.0, 5.0
 GAME = "#D55E00"
 PANEL = "#EBEBEB"
 BORDER = "#B3B3B3"
-ALERT = "#B00020"
 
 
 def parse_args(argv=None):
@@ -142,13 +141,10 @@ def draw(table: pd.DataFrame, summary: dict, context: dict, out_png: Path) -> No
     ax.bar(x, table["count"], width=0.74, color=GAME, edgecolor="white",
            linewidth=0.7, zorder=2)
     top = int(table["count"].max())
-    for xi, count in zip(x, table["count"]):
-        ax.text(xi, count + top * 0.015, f"{int(count):,}", ha="center",
-                va="bottom", fontsize=9, color="#333333")
 
     ax.set_xticks(x)
     ax.set_xticklabels(table["bin"], fontsize=9)
-    ax.set_ylim(0, top * 1.20)
+    ax.set_ylim(0, max(2500, top * 1.06))
     ax.yaxis.grid(True, color="white", linewidth=0.8, zorder=0)
     ax.set_axisbelow(True)
     ax.set_xlabel("absolute turn angle (degrees)", fontsize=10)
@@ -160,20 +156,7 @@ def draw(table: pd.DataFrame, summary: dict, context: dict, out_png: Path) -> No
     ax.set_title("In-game DB turns by absolute turn angle, 30–90° in 5° bins",
                  fontsize=14, fontweight="bold", loc="left")
     ax.set_yticks(list(range(0, 2501, 500)))
-    ax.text(0.012, 0.96,
-            f"FULL — {summary['n']:,} valid DB game turns (2023–2025) · "
-            f"{summary['n_in_window']:,} fall in 30–90° · "
-            f"{summary['n_above_90']:,} are >90° and not drawn",
-            transform=ax.transAxes, ha="left", va="top", fontsize=9,
-            color="#444444")
-
-    fig.text(0.012, 0.02,
-             f"FULL DATA OUTPUT — {summary['n']:,} valid DB game turns, "
-             f"{context['games']:,} games, seasons "
-             f"{', '.join(str(s) for s in context['seasons'])}; bins are "
-             "left-closed (30–35 contains exactly 30.0°)",
-             fontsize=8, color=ALERT, fontweight="bold", ha="left")
-    fig.subplots_adjust(left=0.075, right=0.985, top=0.855, bottom=0.135)
+    fig.subplots_adjust(left=0.08, right=0.985, top=0.90, bottom=0.10)
 
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_png, dpi=150, facecolor="white",
