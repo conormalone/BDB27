@@ -1,11 +1,11 @@
 {
   "provenance": "MIXED",
-  "label": "MIXED PROVENANCE \u2014 2 FULL, 15 sample, 1 schematic",
+  "label": "MIXED PROVENANCE \u2014 3 FULL, 15 sample, 1 schematic",
   "config_sha": "a76cf3bd9012f085",
-  "generated_utc": "2026-11-12T10:35:10Z",
+  "generated_utc": "2026-11-13T14:41:19Z",
   "stage": "06_figures",
   "artefact_version": 1,
-  "stamp": "MIXED PROVENANCE \u2014 2 FULL, 15 sample, 1 schematic",
+  "stamp": "MIXED PROVENANCE \u2014 3 FULL, 15 sample, 1 schematic",
   "figures": {
     "fig_the_hole": {
       "stage": "06_figures",
@@ -6207,6 +6207,83 @@
         "No player names or ids appear in the figure, the CSV or this entry."
       ],
       "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT"
+    },
+    "fig_turn_angle_hist_30_90": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_turn_angle_hist_30_90",
+      "exploratory": true,
+      "in_report": false,
+      "title": "In-game DB turns by absolute turn angle, 30\u201390\u00b0 in 5\u00b0 bins (FULL)",
+      "claim": "Distribution of the absolute turn angle of valid DB game turns in the 30\u201390\u00b0 window, five-degree bins, FULL run.",
+      "png": "outputs/figures/fig_turn_angle_hist_30_90.png",
+      "caveats": [
+        "Only the 30\u201390\u00b0 window is drawn: 37,810 of the 58,664 valid DB game turns are >90\u00b0 and are not shown (none are <30\u00b0).",
+        "No Combine series is drawn: the Combine turns on this machine are PLACEHOLDER_SAMPLE, and a sample series inside a FULL-stamped figure would make the stamp false.",
+        "Exploratory: not one of the four report figures (D189); the writeup does not cite it."
+      ],
+      "provenance": "FULL",
+      "stamp": "FULL DATA OUTPUT",
+      "filter": "bdb27_full_db_turns.parquet: setting == 'game' & position_group == 'DB' & valid == True",
+      "n": 58664,
+      "n_in_window": 20854,
+      "n_below_30": 0,
+      "n_above_90": 37810,
+      "games": 858,
+      "seasons": [
+        2023,
+        2024,
+        2025
+      ],
+      "bin_width_deg": 5.0,
+      "bins_deg": {
+        "30\u201335": 385,
+        "35\u201340": 709,
+        "40\u201345": 1131,
+        "45\u201350": 1586,
+        "50\u201355": 1960,
+        "55\u201360": 2006,
+        "60\u201365": 1933,
+        "65\u201370": 2129,
+        "70\u201375": 2301,
+        "75\u201380": 2273,
+        "80\u201385": 2238,
+        "85\u201390": 2203
+      },
+      "band_crosscheck": {
+        "source": "data/interim/full_run_20261111/bdb27_full_game_bands.csv",
+        "30-60": {
+          "bins_sum": 7777,
+          "band_table": 7777
+        },
+        "60-90": {
+          "bins_sum": 13077,
+          "band_table": 13077
+        },
+        "30-45": {
+          "bins_sum": 2225
+        },
+        "matches": true
+      },
+      "sources": [
+        "data/interim/full_run_20261111/bdb27_full_db_turns.parquet"
+      ],
+      "source_artefacts": [
+        {
+          "path": "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
+          "sha256": "f2e7cd01db214b7d88ab3f029876fe0fe7ced1530d2f014b9ad55b1b2dfb8e04",
+          "provenance": "FULL",
+          "role": "uploaded full-run turn table (2023\u20132025), DB only"
+        }
+      ],
+      "outputs": {
+        "png": "outputs/figures/fig_turn_angle_hist_30_90.png",
+        "png_sha256": "59c9e9c40f9e7adf190cbe79bfbfad46fb08c879ec552d729b012f54f3d14010",
+        "csv": "outputs/figures/fig_turn_angle_hist_30_90.csv",
+        "csv_sha256": "d1b6ba73794268fd912de8ea074986b61843bab2d14e1c3fd55506508c18c8da"
+      },
+      "git_rev": "21ef63f60cc8c06ccb4822053c1c163a9a28c084",
+      "config_sha": "a76cf3bd9012f085"
     }
   }
 }

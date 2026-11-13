@@ -7893,3 +7893,63 @@ run so it can be quoted.
 **Evidence.** `TASK.md`; `notes/archive-tasks/TASK-turn-coverage-cut-card-2026-11-13.md`;
 `notes/report-draft-spec.md`; `notes/rules.md`; `notes/drill-proposal.md`;
 `tests/test_figures_stage.py::test_all_positions_marks_only_the_positions_the_spec_flags`.
+
+## D193 — Turn-angle histogram, 30–90° in 5° bins (FULL) · 2026-11-13
+
+**What was asked, corrected.** Conor 13:08 asked for a 30–90 plot "bucketed in
+fives", then at 13:10 said "location of the turns" and at 13:14 corrected
+again: "Not where they happen, just the angle of the turn." The corrected
+request — five-degree bins of the absolute turn angle over 30–90° — is what this
+entry builds. The interim location figure (D192) is **withdrawn and reverted**
+in the preceding commit; no location artefact ships.
+
+**What was built.** `scripts/plot_turn_angle_hist.py` renders
+`outputs/figures/fig_turn_angle_hist_30_90.png`: one panel, 12 bars, every
+count labelled, x axis "absolute turn angle (degrees)", y axis "DB game turns
+(count)". Beside it a FULL-stamped CSV of the bin counts, a `.provenance.json`,
+and one merged entry in `outputs/figures/figures_manifest.json`.
+
+**Provenance is FULL, and the series is the full run.**
+`data/interim/full_run_20261111/bdb27_full_db_turns.parquet` holds 58,665 rows,
+of which 58,664 are valid DB game turns (matching the uploaded band table); the
+sample `outputs/turns/turns.parquet` is not used for the drawn series. Filter:
+`setting == 'game' & position_group == 'DB' & valid == True`. Bins are
+left-closed, 5° wide, 30–35 through 85–90.
+
+**Counts.** n = 58,664 valid DB game turns, 858 games, seasons 2023–2025. The
+twelve bins, 30–35 to 85–90: **385, 709, 1,131, 1,586, 1,960, 2,006, 1,933,
+2,129, 2,301, 2,273, 2,238, 2,203** — 20,854 turns in the window. No turn is
+below 30° (the detector's floor); 37,810 (64.5%) are above 90° and are outside
+the requested window, stated on the figure and in the manifest.
+
+**Cross-check.** The bins reproduce the uploaded band table exactly: 30–60°
+bins sum to **7,777** (band table 7,777) and 60–90° to **13,077** (band table
+13,077). The manifest entry carries this check and `matches: true`.
+
+**No Combine series.** The brief allowed a grey Combine contrast panel. It was
+not drawn: the only Combine turns on this machine are PLACEHOLDER_SAMPLE, and a
+sample series inside a FULL-stamped figure would make the stamp false. If Conor
+wants it, it needs a full-run Combine pass first (the detector already runs on
+`combine_tracking.csv`, which is present) or a figure stamped MIXED.
+
+**Stamping.** The figure carries "FULL DATA OUTPUT" on its face, in the CSV and
+in the manifest. Because it is a one-off exploratory figure rather than part of
+the four-figure production set, drawing the banner is deliberate; the D180
+switch governs the stage-06 figures, not this script.
+
+**Not in the writeup.** D189 fixes the report to four figures. `TASK.md`,
+`notes/report-draft.md` and the four-figure set are untouched; the manifest
+entry says `in_report: false`. The notebook gallery is manifest-driven, so it
+now lists nineteen entries (18 report + this one);
+`test_gallery_lists_every_manifest_entry` moved from 18 to 19 and its result
+line is derived from the manifest length rather than hard-coded.
+
+**Correction to the withdrawn entry's premise.** D192 stated the FULL turn
+table had no `x_centre`/`y_centre`. That was wrong: the uploaded full parquet
+does carry both columns. It does not affect this figure (x/y are not used), but
+the earlier claim should not be repeated.
+
+**Evidence.** `data/interim/full_run_20261111/bdb27_full_db_turns.parquet`;
+`outputs/figures/fig_turn_angle_hist_30_90.png`, `.csv`,
+`.provenance.json`; `outputs/figures/figures_manifest.json`;
+`scripts/plot_turn_angle_hist.py`.

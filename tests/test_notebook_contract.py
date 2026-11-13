@@ -376,7 +376,10 @@ def test_gallery_lists_every_manifest_entry(notebook):
     """(a) Every figure the manifest carries appears in the rendered text."""
     manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
     entries = manifest["figures"]
-    assert len(entries) == 18, f"stage 06 should list eighteen figures, found {len(entries)}"
+    # Eighteen report figures plus the D193 exploratory turn-angle histogram,
+    # which is manifest-listed (and therefore displayed) but marked
+    # ``exploratory: true`` / ``in_report: false``.
+    assert len(entries) == 19, f"stage 06 should list nineteen figures, found {len(entries)}"
 
     text, returned, shown = run_gallery(notebook, REAL_MANIFEST, REAL_FIGURES)
 
@@ -391,7 +394,8 @@ def test_gallery_lists_every_manifest_entry(notebook):
             assert caveat in text, f"{name} caveat was not rendered"
     assert returned["displayed"] == len(entries) == len(shown)
     assert returned["missing"] == []
-    assert "GALLERY RESULT — 18 of 18 figure(s) displayed" in text
+    assert (f"GALLERY RESULT — {len(entries)} of {len(entries)} "
+            "figure(s) displayed") in text
 
 
 def test_gallery_cell_reads_the_manifest_not_a_literal_figure_list(notebook):
