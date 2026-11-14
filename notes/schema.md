@@ -65,8 +65,11 @@ s DOUBLE, a DOUBLE, dis DOUBLE, o DOUBLE, dir DOUBLE, event VARCHAR`
   is on offence.
 * 10 Hz: **1,033,963 frame steps, 1 off-grid (float rounding), 0 duplicates,
   0 gaps > 0.2 s**.
-* **How the sample was drawn:** 1,048,575 rows = 333 games, 4,228 plays, 14,612
-  distinct `(game, play, player)` pairs, 154 players. That is ~1/40th of a season's
+* **How the sample was drawn:** 1,048,575 rows = 333 games, **12,638 distinct plays**
+  of 31,720 in those games, 14,612 distinct `(game, play, player)` pairs, 154 players.
+  *(Corrected 2026-11-14, D199: this line previously said 4,228 plays. 4,228 is the count
+  of distinct `play_id` values alone, and `play_id` repeats across games — the distinct
+  `(game_id, play_id)` count is 12,638.)* That is ~1/40th of a season's
   tracking rows: the median play has **2 players** tracked (p05 1, p95 6), and a
   play-player pair has a median of 69 frames. It is a **row/player sample within
   play**, not a set of complete games.

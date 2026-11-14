@@ -8299,3 +8299,78 @@ separations, and fail if the three-column turn key is used.
 (correction block, §3.2, §6.1); `outputs/outcome_link/feasibility_preflight.csv`,
 `feasibility_candidates.csv`, `feasibility_ambiguity_candidates.csv`,
 `feasibility_summary.json`; `src/bdb27/outcome_link.py`; `notebooks/bdb27_outcome_link_preflight.ipynb`.
+
+## D199 — Outcome test run on elimination-matched turns: no detectable link between break retention and separation · 2026-11-14
+
+**Question.** Conor, twice: *"Without a link to separation, coverage success, tackling or injury,
+the recommendation is an assertion… DBs who retain more speed through 30–60° breaks allow less
+separation, after controlling for speed and position"* (14:59), and *"It's the only way, go for
+it"* (15:37) for proximity matching. At 17:13 and again at 19:58 he asked for the number, not more
+design.
+
+**The constraint that decided the design.** Every tracking file on this machine is the
+1,048,575-row truncation (2²⁰ − 1): 333 games, 12,638 of 31,720 plays, 154 of 497 players, at most
+four players per play. The frozen 3-yd rule (D197) needs `(x, y)` for both players at the break
+frame, so its own gate — 500 attributed turns needs 16.6% of 3,009 candidates unique at 3 yd — is
+**unevaluable here, not undecided**. Waiting for it means the estimate never runs. So the cycle
+estimates on the population where attribution needs no coordinates: turns whose play carries
+**exactly one** visible opposing route-runner, where elimination leaves one possible receiver.
+
+**Specification, committed before the fit** (`notes/outcome-test-spec.md`, commit 2b76348):
+outcome `separation_at_pass_forward`; exposure `apex_retention`; controls entry speed (linear +
+square), position, season, coverage family; OLS with SEs clustered by player (CR1, G = 102);
+player-FE as the second specification; nine pre-declared sensitivities; a pre-declared finding
+criterion of negative sign, CI excluding zero in the primary *and* the FE form, sign stability in
+MAN-only and one-per-play, and |β| ≥ 2.0 yd per unit retention (0.20 yd per 0.10 retention).
+
+**Result.** 1,731 turns, 102 players, 1,598 plays `[FULL]`. **β = +0.05 yd per unit
+`apex_retention`, 95% CI −0.36 to +0.46, p = 0.80** (player-clustered); wild cluster bootstrap
+(Rademacher, 999 reps, seed 20261114) p = 0.80. Per 0.10 retention: **+0.005 yd, CI −0.04 to
++0.05**. Raw correlation 0.005. Player FE +0.06 [−0.36, +0.48]; MAN-only −0.46 [−1.34, +0.41]
+(n = 337); one-per-play +0.11 [−0.30, +0.51]; `speed_retention` −0.03 [−0.24, +0.18]; route-FE
++0.06 [−0.31, +0.43]; log outcome +0.02 [−0.12, +0.16]; play-clustered +0.05 [−0.42, +0.52].
+**Verdict: `ESTIMATE ONLY — OPPOSITE TO THE STATED EXPECTATION`.** Criterion (a) fails on sign,
+(b)–(e) fail; no claim is upgraded. The interval excludes effects beyond 0.046 yd per 0.10
+retention — a quarter of the pre-declared floor — so the null is precise rather than merely
+underpowered.
+
+**Why the null is not "retention does not matter".** The attribution is an inference: the single
+visible opponent need not be the man covered, which is classical measurement error and attenuates
+the coefficient toward zero. The MAN-only slice, where one-to-one is the strongest prior, is nine
+times larger in magnitude and still spans zero. Only prospect-versus-prospect pairs are visible
+(497-player cohort), turns with a second visible receiver are dropped, and zone turns (63%) are
+the design's weakest element. 102 players is the unit of independence. What would make it a
+finding: verified attribution from the full tracking file, and an outcome measured nearer the
+break. Neither is available here.
+
+**Diagnostics (the outcome is not dead).** Separation by coverage family: MAN 2.12, ZONE 3.44,
+missing 3.05 yd. By route: SCREEN 6.19, FLAT 4.31, CROSS 3.34, HITCH 3.06, GO 2.59 yd. Control
+block R² 0.065; adding retention leaves R² at 0.065. The estimator responds to coverage and route;
+the retention slope is zero against that backdrop.
+
+**Unchanged.** `TASK.md` (including its "no outcome test" line, which this cycle supersedes only by
+Conor's instruction and which this cycle does not edit), the band table, the four figures,
+`notes/report-draft.md`. No new figure. A report section is *proposed* in
+`notes/outcome-test-result.md`, not inserted.
+
+**Reconciliation, unresolved.** Main's brief quoted 1,621 attributed turns; re-derived from raw
+`player_play.csv` under the spec's rule, the count is 1,731 (102 players, median 12 turns, max 72 —
+the player counts and distribution agree). The 110-turn difference is not explained; the rule used
+is written down and recomputed by the tests, and every estimate here is 1,731-based. Nine
+specifications are null, so the conclusion does not turn on it.
+
+**Small fix.** `notebooks/bdb27_full_game_turns.ipynb` §6 said the tracking sample covers "4,228
+plays"; 4,228 is the distinct-`play_id` count, and `play_id` repeats across games — distinct
+`(game_id, play_id)` pairs number **12,638** of 31,720. Notebook corrected, dated corrections added
+to `notes/schema.md` and `notes/phase1-audit.md`, and a test recomputes both counts so the wrong
+figure cannot return.
+
+**Tests.** `./.venv/bin/python -m pytest -q` — green on the tree being committed, including 15 new
+tests that rebuild the attributed set from raw files, assert the elimination rule (no turn with two
+visible receivers, unique turn key), assert determinism of the fit and the seeded bootstrap, assert
+the four verdict labels and that a wide interval is never upgraded, and pin the 12,638/4,228
+distinction.
+
+**Evidence.** `notes/outcome-test-spec.md`, `notes/outcome-test-result.md`;
+`outputs/outcome_test/{summary.json,estimates.csv,attributed_turns.csv}`;
+`src/bdb27/outcome_test.py`; `scripts/outcome_test.py`; `tests/test_outcome_test.py`.

@@ -8,7 +8,9 @@
 
 No stop condition fired on the data available here. **Combine tracking is the
 complete file** (463,189 rows, 510 players, 2023–2025); the **game tracking is a
-row sample** (333 games, 4,228 plays, 14,614 play-player pairs, 154 players), so
+row sample** (333 games, **12,638 plays** of 31,720 in those games, 14,614 play-player pairs,
+154 players — corrected 2026-11-14, D199: the earlier "4,228 plays" was the distinct
+`play_id` count, which repeats across games), so
 every game-side number below is a sample diagnostic and carries
 `PENDING FULL RUN`.
 
