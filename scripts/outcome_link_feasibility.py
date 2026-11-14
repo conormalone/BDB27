@@ -56,7 +56,17 @@ STAMP_FULL = "FULL"
 
 BAND_LO, BAND_HI = 30.0, 60.0
 DB_ALIGN = ("CB", "SLOT_CB", "HIGH_SAFETY", "BOX_SAFETY")
-RADII = (2.0, 3.0, 5.0, 8.0)
+# The radius sweep: the match is reported at every radius so the choice is
+# visible. PRIMARY_RADIUS is the declared design choice, not a result.
+RADII = (1, 2, 3, 4, 5, 6, 8)
+PRIMARY_RADIUS = 3
+SECONDARY_RADII = (2, 5)
+#: The rule, recorded verbatim in the artefact and the note.
+MATCH_RULE = (
+    f"at the break frame, a turn is attributed to the single opposing route-runner within "
+    f"{PRIMARY_RADIUS} yd; turns with two or more candidates are ambiguous and dropped; turns "
+    f"with none are unmatched and dropped; no tie is broken by radius, distance order or row "
+    f"order. INFERENCE: the dataset records no opponent identifier.")
 
 # Explicit column selection: the raw file is 147 MB and never loaded whole into
 # pandas. DuckDB reads it and we keep only the columns used below.
@@ -219,6 +229,12 @@ def build_turn_table(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     FROM pp WHERE separation_at_pass_forward IS NOT NULL
     GROUP BY 1, 2
     """)
+    route_counts = ",\n".join(
+        "COUNT(k.cand_id) FILTER (WHERE k.rel = 'opp' AND k.cand_route IS NOT NULL"
+        f" AND k.dist <= {r}) AS n_route_{r}" for r in RADII)
+    opp_counts = ",\n".join(
+        "COUNT(k.cand_id) FILTER (WHERE k.rel = 'opp'"
+        f" AND k.dist <= {r}) AS n_opp_{r}" for r in RADII)
     con.execute("""
     CREATE OR REPLACE TABLE turn_rows AS
     SELECT c.game_id, c.play_id, c.nfl_id, c.frame_start,
@@ -229,15 +245,8 @@ def build_turn_table(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
            c.tackle_for_loss, c.break_time, c.align_dist,
            s.n_sep_rows IS NOT NULL AS sep_available,
            COUNT(k.cand_id) FILTER (WHERE k.rel = 'opp') AS n_opp_any,
-           COUNT(k.cand_id) FILTER (WHERE k.rel = 'opp' AND k.dist <= 2) AS n_opp_2,
-           COUNT(k.cand_id) FILTER (WHERE k.rel = 'opp' AND k.dist <= 3) AS n_opp_3,
-           COUNT(k.cand_id) FILTER (WHERE k.rel = 'opp' AND k.dist <= 5) AS n_opp_5,
-           COUNT(k.cand_id) FILTER (WHERE k.rel = 'opp' AND k.dist <= 8) AS n_opp_8,
-           COUNT(k.cand_id) FILTER (
-             WHERE k.rel = 'opp' AND k.dist <= 5 AND k.cand_route IS NOT NULL) AS n_route_5,
-           COUNT(k.cand_id) FILTER (
-             WHERE k.rel = 'opp' AND k.dist <= 5 AND k.cand_route IS NOT NULL
-               AND k.cand_sep IS NOT NULL) AS n_route_5_with_sep,
+           {opp_counts},
+           {route_counts},
            MIN(k.dist) FILTER (WHERE k.rel = 'opp') AS nearest_opp_dist,
            MIN(k.dist) FILTER (WHERE k.rel = 'opp' AND k.cand_route IS NOT NULL)
              AS nearest_route_dist
@@ -248,8 +257,99 @@ def build_turn_table(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     LEFT JOIN playsep s
       ON c.game_id = s.game_id AND c.play_id = s.play_id
     GROUP BY ALL
+    """.replace("{opp_counts}", opp_counts).replace("{route_counts}", route_counts))
+    # The single matched receiver at the primary radius, recorded only where the
+    # match is unique. Ties are dropped, not resolved.
+    con.execute(f"""
+    CREATE OR REPLACE TABLE match_primary AS
+    SELECT game_id, play_id, nfl_id, frame_start, COUNT(*) n,
+           MIN(cand_id) AS matched_receiver_nfl_id,
+           MIN(dist) AS match_distance_yd,
+           MIN(cand_sep) AS matched_receiver_separation
+    FROM cand
+    WHERE rel = 'opp' AND cand_route IS NOT NULL AND dist <= {PRIMARY_RADIUS}
+    GROUP BY 1, 2, 3, 4
     """)
     return con.execute("SELECT * FROM turn_rows ORDER BY game_id, play_id, nfl_id, frame_start").df()
+
+
+def match_facts(con: duckdb.DuckDBPyConnection, turns: pd.DataFrame):
+    """Classify every turn at every radius; attach the unique primary match.
+
+    Status, per turn:
+      unique        exactly one opposing route-runner inside r  -> attributed
+      multiple      two or more                                  -> dropped as ambiguous
+      none_observed opponents are tracked in the frame, none is a route-runner inside r
+      unobservable  no opposing player is tracked in the frame at all
+
+    ``unobservable`` is not evidence that no receiver was near; the sample tracks
+    1.16 players per play. The distinction matters and is never collapsed.
+    """
+    turns = turns.copy()
+    turns["match_status"] = "unobservable"
+    for r in RADII:
+        n = turns[f"n_route_{r}"].fillna(0).astype(int)
+        status = pd.Series("none_observed", index=turns.index)
+        status[n >= 2] = "multiple"
+        status[n == 1] = "unique"
+        status[turns.n_opp_any.fillna(0).astype(int) == 0] = "unobservable"
+        turns[f"match_status_r{r}"] = status
+
+    turns["match_status"] = turns[f"match_status_r{PRIMARY_RADIUS}"]
+    matched = con.execute("SELECT * FROM match_primary").df()
+    turns = turns.merge(
+        matched[["game_id", "play_id", "nfl_id", "frame_start", "n",
+                 "matched_receiver_nfl_id", "match_distance_yd",
+                 "matched_receiver_separation"]],
+        on=["game_id", "play_id", "nfl_id", "frame_start"], how="left")
+    # A tie is never resolved: the id is kept only on a unique match.
+    tied = turns["n"].fillna(0) > 1
+    turns.loc[tied, ["matched_receiver_nfl_id", "match_distance_yd",
+                     "matched_receiver_separation"]] = pd.NA
+    turns = turns.drop(columns=["n"])
+    turns["match_inference"] = True
+    turns["match_rule"] = MATCH_RULE
+    turns["match_radius_yd"] = PRIMARY_RADIUS
+
+    rows = []
+    total = len(turns)
+    for r in RADII:
+        for definition, counts in (
+                ("route_runner", f"n_route_{r}"),
+                ("any_opponent", f"n_opp_{r}")):
+            k = turns[counts].fillna(0).astype(int)
+            observable = turns.n_opp_any.fillna(0).astype(int) > 0
+            status = pd.Series("unobservable", index=turns.index)
+            status[observable & (k == 0)] = "none_observed"
+            status[k == 1] = "unique"
+            status[k >= 2] = "multiple"
+            for name in ("unique", "multiple", "none_observed", "unobservable"):
+                n = int((status == name).sum())
+                rows.append({"radius_yd": r, "candidate_def": definition,
+                             "status": name, "n_turns": n,
+                             "share_of_turns": round(n / total, 6),
+                             "total_turns": total})
+    ambiguity = pd.DataFrame(rows)
+
+    primary = turns[turns.match_status == "unique"]
+    facts = {
+        "radius_primary_yd": PRIMARY_RADIUS,
+        "radius_secondary_yd": list(SECONDARY_RADII),
+        "radii_reported": list(RADII),
+        "rule": MATCH_RULE,
+        "turns_total": total,
+        "unique": int(len(primary)),
+        "multiple": int((turns.match_status == "multiple").sum()),
+        "none_observed": int((turns.match_status == "none_observed").sum()),
+        "unobservable": int((turns.match_status == "unobservable").sum()),
+        "attributed_fraction": round(len(primary) / total, 6),
+        "unique_with_separation": int(primary.matched_receiver_separation.notna().sum()),
+        "attributed_and_outcome_observed_fraction": round(
+            primary.matched_receiver_separation.notna().sum() / total, 6),
+        "median_match_distance_yd": (round(float(primary.match_distance_yd.median()), 3)
+                                     if len(primary) else None),
+    }
+    return turns, ambiguity, facts
 
 
 def injury_facts(con: duckdb.DuckDBPyConnection) -> dict:
@@ -397,22 +497,26 @@ def route_table(turns: pd.DataFrame, full: dict, inj: dict) -> pd.DataFrame:
     def cnt(mask):
         return int(mask.sum())
 
-    usable_r1 = turns[turns.n_route_5_with_sep > 0]
-    man_usable = man[man.n_route_5_with_sep > 0]
+    usable_r1 = turns[turns.match_status == "unique"]
+    matched_with_sep = turns[(turns.match_status == "unique")
+                             & turns.matched_receiver_separation.notna()]
+    man_usable = man[man.match_status == "unique"]
 
     rows = [
         {
             "route_id": "R1",
             "route": "geometric proximity match to receiver separation",
             "outcome": "separation_at_pass_forward (receiver row)",
-            "attribution": "nearest opponent at break frame - INFERENCE",
+            "attribution": ("unique opposing route-runner within 3 yd at the break frame "
+                            "- INFERENCE (no opponent IDs in the data)"),
             "sample_turns_available": n,
-            "sample_turns_usable": cnt(turns.n_route_5_with_sep > 0),
-            "sample_turns_usable_with_sep": int(len(usable_r1)),
+            "sample_turns_usable": int(len(usable_r1)),
+            "sample_turns_usable_with_sep": int(len(matched_with_sep)),
+            "sample_attributed_fraction": round(len(usable_r1) / n, 6),
             "full_turns_available": full["full_band_turns"],
             "full_plays_available": full["full_band_plays"],
-            "ambiguous_sample_n": cnt(turns.n_route_5 >= 2),
-            "ambiguous_sample_of": cnt(turns.n_route_5 > 0),
+            "ambiguous_sample_n": cnt(turns.match_status == "multiple"),
+            "ambiguous_sample_of": n,
             "measurable_on_local_sample": False,
             "needs_full_tracking": True,
             "controls": "entry_speed, position, alignment, coverage_assignment, cushion",
@@ -421,14 +525,16 @@ def route_table(turns: pd.DataFrame, full: dict, inj: dict) -> pd.DataFrame:
             "route_id": "R2",
             "route": "man-restricted proximity match (subset of R1)",
             "outcome": "separation_at_pass_forward (receiver row)",
-            "attribution": "nearest opponent at break frame, MAN prior - INFERENCE",
+            "attribution": ("unique opposing route-runner within 3 yd at the break frame, "
+                            "MAN prior - INFERENCE (no opponent IDs in the data)"),
             "sample_turns_available": int(len(man)),
-            "sample_turns_usable": int((man.n_route_5_with_sep > 0).sum()),
+            "sample_turns_usable": int((man.match_status == "unique").sum()),
             "sample_turns_usable_with_sep": int(len(man_usable)),
+            "sample_attributed_fraction": round(len(man_usable) / max(len(man), 1), 6),
             "full_turns_available": None,
             "full_plays_available": None,
-            "ambiguous_sample_n": int((man.n_route_5 >= 2).sum()),
-            "ambiguous_sample_of": int((man.n_route_5 > 0).sum()),
+            "ambiguous_sample_n": int((man.match_status == "multiple").sum()),
+            "ambiguous_sample_of": int(len(man)),
             "measurable_on_local_sample": False,
             "needs_full_tracking": True,
             "controls": "entry_speed, position, alignment, cushion",
@@ -496,6 +602,7 @@ def main(argv=None) -> int:
     build_turns(con)
     build_candidates(con)
     turns = build_turn_table(con)
+    turns, ambiguity, match = match_facts(con, turns)
 
     full = full_denominators(con)
     sample = sample_facts(con)
@@ -526,6 +633,7 @@ def main(argv=None) -> int:
         },
         "sample": sample,
         "full": full,
+        "match": match,
         "turns": {
             "sample_db_turns_all": int(con.execute("SELECT COUNT(*) FROM turns").fetchone()[0]),
             "sample_band_turns": int(len(turns)),
@@ -559,14 +667,8 @@ def main(argv=None) -> int:
                     SELECT game_id, play_id, COUNT(DISTINCT nfl_id) n FROM tk GROUP BY 1,2)""")
                 .fetchone()[0]),
             "turns_with_any_opponent_tracked": int((turns.n_opp_any > 0).sum()),
-            "turns_with_opponent_within_2yd": int((turns.n_opp_2 > 0).sum()),
             "turns_with_opponent_within_3yd": int((turns.n_opp_3 > 0).sum()),
-            "turns_with_opponent_within_5yd": int((turns.n_opp_5 > 0).sum()),
-            "turns_with_opponent_within_8yd": int((turns.n_opp_8 > 0).sum()),
-            "turns_with_route_runner_within_5yd": int((turns.n_route_5 > 0).sum()),
-            "turns_with_route_runner_within_5yd_and_sep": int(
-                (turns.n_route_5_with_sep > 0).sum()),
-            "turns_with_two_plus_route_runners_within_5yd": int((turns.n_route_5 >= 2).sum()),
+            "turns_with_route_runner_within_3yd": int((turns.n_route_3 > 0).sum()),
         },
         "injury": inj,
     }
@@ -577,14 +679,18 @@ def main(argv=None) -> int:
         "abs_turn_angle", "apex_retention", "speed_retention", "entry_speed",
         "coverage_assignment", "cushion", "pass_result", "tackle", "assist",
         "sep_available",
-        "n_opp_any", "n_opp_2", "n_opp_3", "n_opp_5", "n_route_5",
-        "n_route_5_with_sep",
+        "n_opp_any",
+        *[f"n_opp_{r}" for r in RADII],
+        *[f"n_route_{r}" for r in RADII],
         "nearest_opp_dist", "nearest_route_dist", "align_dist",
+        "match_status", "match_radius_yd", "match_inference", "match_rule",
+        "matched_receiver_nfl_id", "match_distance_yd", "matched_receiver_separation",
     ]
     turns_out = turns[[c for c in turns_cols if c in turns.columns]].copy()
     turns_out.insert(0, "stamp", STAMP_SAMPLE)
 
     turns_out.to_csv(OUT / "feasibility_turns.csv", index=False, float_format="%.6g")
+    ambiguity.to_csv(OUT / "feasibility_ambiguity.csv", index=False)
     routes.to_csv(OUT / "feasibility_routes.csv", index=False)
     (OUT / "feasibility_summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True, default=str) + "\n")
@@ -593,8 +699,9 @@ def main(argv=None) -> int:
         "sample_band_turns": summary["turns"]["sample_band_turns"],
         "sample_band_plays": summary["turns"]["sample_band_plays"],
         "tackles": summary["turns"]["tackles"],
-        "turns_with_route_runner_within_5yd": summary["geometry"]
-        ["turns_with_route_runner_within_5yd"],
+        "match": {k: match[k] for k in
+                  ("radius_primary_yd", "unique", "multiple", "none_observed",
+                   "unobservable", "attributed_fraction", "unique_with_separation")},
         "full_band_turns": full["full_band_turns"],
         "injury_mentions": inj["injury_mentions"],
     }, indent=2))

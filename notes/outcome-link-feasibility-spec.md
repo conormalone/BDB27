@@ -4,6 +4,31 @@
 **Deliverable:** `notes/outcome-link-feasibility.md` + its evidence artefacts.
 **This spec is the PM's own; it is not a change to `TASK.md`.**
 
+## 0. Revision — Conor's authorisation, 2026-11-14 15:37
+
+> "It's the only way, go for it."
+
+Geometric proximity-matching of a DB to an opposing receiver at the break frame is **authorised**
+as the attribution route. It moves from "one candidate among several" to **the route**, and the
+cycle is re-scoped as follows. Everything else in this spec stands.
+
+1. **Ambiguity is load-bearing.** For DB 30–60° game turns, report how many have exactly one
+   opposing receiver inside the match radius, how many have two or more, and how many have none —
+   at **more than one radius**, so the radius choice is visible rather than asserted.
+2. **Ambiguous and unmatched turns are dropped.** No tie is broken by radius choice or by row
+   ordering. The attributed fraction is carried next to every number that depends on the match.
+3. **The match is flagged as an inference in the artefact and the note:** a per-turn status, the
+   radius, the rule, and the fact that the dataset records no opponent IDs.
+4. **The note extends to the outcome-test design:** `separation_at_pass_forward` from the matched
+   receiver; controls for entry speed, position, coverage assignment and cushion; an honest
+   statement of what a result would and would not support.
+5. **No model is fitted on the sample.** Feasibility numbers plus the test spec are the
+   deliverable; the FULL-run notebook is the vehicle. Where the sample cannot carry an estimate,
+   the note says so with the numbers and specifies exactly what the notebook must compute.
+
+The inference remains outside `TASK.md`, the claim, the band table, the figures and the report
+draft. No outcome claim is added to the project by this cycle.
+
 ## 1. Question
 
 Conor, 2026-11-14 14:59 (verbatim):

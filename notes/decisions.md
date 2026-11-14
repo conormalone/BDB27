@@ -8152,3 +8152,69 @@ committed.
 `outputs/outcome_link/feasibility_routes.csv`, `feasibility_turns.csv`,
 `feasibility_summary.json`; `scripts/outcome_link_feasibility.py`;
 `tests/test_outcome_link_feasibility.py`.
+
+## D197 — Proximity match authorised: rule frozen, ambiguity measured at seven radii (supersedes D196's decision line) · 2026-11-14
+
+**Asked.** Conor, 15:37, on D196: "It's the only way, go for it." Geometric proximity-matching of a
+DB to an opposing receiver at the break frame is authorised as the attribution route, and the
+cycle is re-scoped: ambiguity becomes load-bearing, ambiguous and unmatched turns are dropped, the
+match is flagged as an inference per turn, and the note extends to the outcome-test design.
+
+**What changed.** `scripts/outcome_link_feasibility.py` now freezes a match rule and emits
+`outputs/outcome_link/feasibility_ambiguity.csv` alongside a per-turn `match_status`,
+`match_radius_yd`, `match_inference`, `match_rule`, `matched_receiver_nfl_id`,
+`match_distance_yd` and `matched_receiver_separation`. Spec §0 records the authorisation; the note
+gains the rule, the sweep, the test design and the FULL-notebook cell list.
+
+**The frozen rule.** At the break frame, attribute the turn to the single opposing route-runner
+within **3 yd** (design choice, declared before any outcome is seen). Two or more candidates →
+`multiple`, dropped. None → `none_observed` or `unobservable`, dropped. No tie is broken by
+radius, distance order or row order. Every match is an **INFERENCE**: the dataset records no
+opponent identifier in any of its 64 columns.
+
+**Ambiguity, `[SAMPLE]` 326 band turns (route-runner candidates):**
+
+| radius | unique | multiple | none_observed | unobservable |
+|---:|---:|---:|---:|---:|
+| 1 yd | 1 | 0 | 62 | 263 |
+| 2 yd | 1 | 0 | 62 | 263 |
+| **3 yd (primary)** | **4** | **0** | **59** | **263** |
+| 4 yd | 5 | 0 | 58 | 263 |
+| 5 yd | 5 | 0 | 58 | 263 |
+| 6 yd | 5 | 0 | 58 | 263 |
+| 8 yd | 6 | 0 | 57 | 263 |
+
+Any-opponent fallback: 1, 3, 7, 9, 10, 13, 17 unique at the same radii. **Attributed fraction at
+3 yd: 4 of 326 (1.2%)**, all four with the matched receiver's separation recorded; median match
+distance 2.19 yd. R2 (MAN) attributes 1 of 35 (2.9%).
+
+**The zero-tie row is not reassurance.** `multiple` is 0 at every radius because the sample tracks
+1.16 players per play, so it cannot put two receivers in one frame. The tie rate — the number this
+route depends on — is unmeasured on this machine and must come from the full tracking file.
+
+**Outcome-test design (no estimate computed).** Unit: unique-at-3-yd turns. Outcome: matched
+receiver's `separation_at_pass_forward`, subject to a persistence check (the matched DB must still
+be the nearest defender at pass forward) and outcome presence (the receiver must be one of the 497
+rows). Exposure: `apex_retention`. Controls: entry speed, position, coverage assignment, cushion,
+down and distance. Estimator: within-player linear model with player fixed effects, SEs clustered
+by player. Pre-declared sensitivity at 2 and 5 yd, any-opponent definition, MAN-only, persistence-
+restricted. This cycle fits nothing: n = 4 cannot carry an estimate, and the note says so.
+
+**FULL notebook, specified not shipped.** Cell 1 is a pre-flight check on rows per play in
+`player_play` (the local copy averages 2.7; if the full file is similar, opponents cannot be typed
+by team and the route stops). Then break-frame recovery, the 22-player candidate set, the
+ambiguity table as the first output, the persistence rank, and only then the estimator. Gate
+proposal (PM's, needs Conor's accept/change): ≥30% unique at 3 yd and ≥500 attributed turns after
+persistence, else descriptive only.
+
+**Unchanged.** `TASK.md`, `notes/report-draft.md`, the band table, the four figures. The inference
+does not enter the claim. No model was fitted and no coefficient is reported anywhere.
+
+**Tests.** `./.venv/bin/python -m pytest -q` — 374 collected, 374 passed, exit 0, on the tree being
+committed. The new assertions check that ambiguity partitions the turn set at every radius, that
+no id survives on a non-unique turn, and that the note carries the attributed fraction.
+
+**Evidence.** `notes/outcome-link-feasibility-spec.md` §0; `notes/outcome-link-feasibility.md` §3–§6;
+`outputs/outcome_link/feasibility_ambiguity.csv`, `feasibility_turns.csv`, `feasibility_routes.csv`,
+`feasibility_summary.json`; `scripts/outcome_link_feasibility.py`;
+`tests/test_outcome_link_feasibility.py`.

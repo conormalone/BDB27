@@ -56,6 +56,16 @@ def routes():
     return pd.read_csv(OUT / "feasibility_routes.csv")
 
 
+@pytest.fixture(scope="module")
+def ambiguity():
+    return pd.read_csv(OUT / "feasibility_ambiguity.csv")
+
+
+@pytest.fixture(scope="module")
+def per_turn():
+    return pd.read_csv(OUT / "feasibility_turns.csv")
+
+
 def _one(con, sql):
     return con.execute(sql).fetchone()
 
@@ -118,10 +128,48 @@ def test_route_table_covers_every_route(routes, summary):
     assert idx.loc[["R1", "R2"], "attribution"].str.contains("INFERENCE").all()
     r1 = routes.set_index("route_id").loc["R1"]
     assert r1.sample_turns_available == summary["turns"]["sample_band_turns"]
-    assert r1.sample_turns_usable == summary["geometry"][
-        "turns_with_route_runner_within_5yd_and_sep"]
+    assert r1.sample_turns_usable == summary["match"]["unique"]
+    assert r1.sample_attributed_fraction == summary["match"]["attributed_fraction"]
     r5 = routes.set_index("route_id").loc["R5"]
     assert r5.sample_turns_usable == summary["injury"]["turns_where_turning_db_named"]
+
+
+def test_ambiguity_is_measured_at_several_radii(ambiguity, summary):
+    turns = summary["turns"]["sample_band_turns"]
+    assert set(ambiguity.radius_yd) == {1, 2, 3, 4, 5, 6, 8}
+    assert set(ambiguity.candidate_def) == {"route_runner", "any_opponent"}
+    assert set(ambiguity.status) == {"unique", "multiple", "none_observed", "unobservable"}
+    # Every radius x definition partitions the turn set: nothing is lost or double counted.
+    per = ambiguity.groupby(["radius_yd", "candidate_def"]).n_turns.sum()
+    assert (per == turns).all()
+
+    primary = ambiguity[(ambiguity.radius_yd == 3)
+                        & (ambiguity.candidate_def == "route_runner")].set_index("status")
+    assert primary.loc["unique", "n_turns"] == summary["match"]["unique"]
+    assert primary.loc["multiple", "n_turns"] == summary["match"]["multiple"]
+    assert primary.loc["none_observed", "n_turns"] == summary["match"]["none_observed"]
+    assert primary.loc["unobservable", "n_turns"] == summary["match"]["unobservable"]
+
+
+def test_match_is_flagged_as_inference_per_turn(per_turn, summary):
+    assert len(per_turn) == summary["turns"]["sample_band_turns"]
+    assert per_turn.match_inference.all()
+    assert set(per_turn.match_radius_yd) == {3}
+    assert per_turn.match_rule.str.contains("INFERENCE").all()
+    assert set(per_turn.match_status) <= {
+        "unique", "multiple", "none_observed", "unobservable"}
+    # A tie is never resolved: no id survives on a non-unique turn.
+    assert per_turn.loc[per_turn.match_status != "unique",
+                        "matched_receiver_nfl_id"].isna().all()
+    unique = per_turn[per_turn.match_status == "unique"]
+    assert unique.matched_receiver_nfl_id.notna().all()
+    assert (unique.match_distance_yd <= 3).all()
+
+
+def test_attributed_fraction_is_carried_with_the_match(summary):
+    m = summary["match"]
+    assert m["attributed_fraction"] == round(m["unique"] / m["turns_total"], 6)
+    assert m["attributed_and_outcome_observed_fraction"] <= m["attributed_fraction"]
 
 
 def test_injury_signal_exists_and_is_counted(con, summary):
@@ -141,6 +189,8 @@ def test_note_quotes_the_artefacts(summary):
     assert "326" in text and "7,777" in text and "7,198" in text
     assert "0 of 75,428" in text
     assert "**INFERENCE**" in text
+    assert "4 of 326" in text and "1.2%" in text
+    assert "unobservable" in text
     # Provenance stamps are carried, not merged.
     assert "[SAMPLE]" in text and "[FULL]" in text
     assert "no result" in text.lower()

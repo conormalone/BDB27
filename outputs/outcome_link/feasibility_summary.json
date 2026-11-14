@@ -14,17 +14,12 @@
     "full_plays_any_db_turn": 38438,
     "full_valid_db_turns": 58664
   },
-  "generated_utc": "2026-11-14T16:30:25Z",
+  "generated_utc": "2026-11-14T16:49:17Z",
   "geometry": {
     "tracked_players_per_play_median": 1.0,
     "turns_with_any_opponent_tracked": 63,
-    "turns_with_opponent_within_2yd": 3,
     "turns_with_opponent_within_3yd": 7,
-    "turns_with_opponent_within_5yd": 10,
-    "turns_with_opponent_within_8yd": 17,
-    "turns_with_route_runner_within_5yd": 5,
-    "turns_with_route_runner_within_5yd_and_sep": 5,
-    "turns_with_two_plus_route_runners_within_5yd": 0
+    "turns_with_route_runner_within_3yd": 4
   },
   "injury": {
     "db_position_mentions": 137,
@@ -74,6 +69,32 @@
     }
   },
   "label": "UNVALIDATED SAMPLE OUTPUT - feasibility counts only",
+  "match": {
+    "attributed_and_outcome_observed_fraction": 0.01227,
+    "attributed_fraction": 0.01227,
+    "median_match_distance_yd": 2.189,
+    "multiple": 0,
+    "none_observed": 59,
+    "radii_reported": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      8
+    ],
+    "radius_primary_yd": 3,
+    "radius_secondary_yd": [
+      2,
+      5
+    ],
+    "rule": "at the break frame, a turn is attributed to the single opposing route-runner within 3 yd; turns with two or more candidates are ambiguous and dropped; turns with none are unmatched and dropped; no tie is broken by radius, distance order or row order. INFERENCE: the dataset records no opponent identifier.",
+    "turns_total": 326,
+    "unique": 4,
+    "unique_with_separation": 4,
+    "unobservable": 263
+  },
   "provenance": "SAMPLE",
   "sample": {
     "db_alignment_breakdown": {
