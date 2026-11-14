@@ -72,3 +72,10 @@ Thumbs.db
 !outputs/outcome_link/
 !outputs/outcome_link/*.csv
 !outputs/outcome_link/*.json
+# Geometric attribution (D200): the SAMPLE run proves the code path end to end;
+# the FULL run happens on Conor's laptop and is never committed from here. Small
+# tables only - the per-file parquet shards stay ignored.
+!outputs/geometric_attribution_sample/
+!outputs/geometric_attribution_sample/*.csv
+!outputs/geometric_attribution_sample/*.json
+!outputs/geometric_attribution_sample/*.txt

@@ -1,0 +1,4 @@
+radius_yd,band_turns,unique,multiple,none,unobservable,untracked,break_frame_unrecovered,untagged,attributed_fraction,fallback_any_opponent_unique_3yd,primary
+2.0,7777,1,0,62,263,7451,0,0,0.0001,7,False
+3.0,7777,4,0,59,263,7451,0,0,0.0005,7,True
+5.0,7777,5,0,58,263,7451,0,0,0.0006,7,False

@@ -84,3 +84,14 @@ different analysis and must not be reused.
   `player_play.csv` alone (P1–P5), with the verdict printed for each population. It reads no
   tracking file, writes nothing, and stops only on a real condition. The geometric match and the
   tie rate are described in its §6 and remain unmeasured.
+
+## The geometric-attribution run
+
+* `bdb27_geometric_attribution.ipynb` — **the run Conor does on the laptop**, because the full game
+  tracking lives there and not on this host. Run All. It measures the **misattribution rate** of
+  the D199 elimination rule, the **coverage of the band** by the frozen 3-yd rule at 2/3/5 yd, and
+  re-runs the D199 estimator unchanged on the geometric unique-match set, side by side with the
+  elimination coefficient. It stops, with counts, if the tracking file is the 1,048,575-row
+  truncation or does not observe opponents on most plays. Spec: `notes/geometric-attribution-spec.md`.
+  The committed notebook carries no outputs; it was executed here only on the sample
+  (`ALLOW_SAMPLE_TRACKING`), and the artefacts are `outputs/geometric_attribution_sample/`.

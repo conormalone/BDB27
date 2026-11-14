@@ -8374,3 +8374,63 @@ distinction.
 **Evidence.** `notes/outcome-test-spec.md`, `notes/outcome-test-result.md`;
 `outputs/outcome_test/{summary.json,estimates.csv,attributed_turns.csv}`;
 `src/bdb27/outcome_test.py`; `scripts/outcome_test.py`; `tests/test_outcome_test.py`.
+
+## D200 — Geometric attribution notebook shipped: the misattribution rate and the D199 estimator, runnable on the laptop · 2026-11-14
+
+**Asked.** Conor, 2026-11-14 15:37 — *"It's the only way, go for it"* (geometric proximity
+matching), and 21:45 — *"what is the tracking notebook aiming to identify?"* Full game tracking is
+on his laptop; every tracking file here is the 1,048,575-row truncation. The deliverable is
+therefore a notebook he runs there: Run All, no CLI, self-contained.
+
+**What was decided.** The frozen 3-yd rule (D197) is applied unchanged, and the D199 estimator is
+reused **unchanged** — `outcome_test.run_all`/`verdict` are called, not re-implemented — so any
+difference between the two coefficients is attribution, not method. Four outputs, in priority
+order: (1) the **misattribution rate** of the elimination rule, `disagree / (agree + disagree)` on
+turns where geometry names a unique receiver, with ambiguous and none reported separately and no
+rate below 50 judgeable turns; (2) **coverage of the band** at 2, 3 and 5 yd with the attributed
+fraction beside every downstream number; (3) the **de-attenuated estimate** side by side with
+D199's; (4) the **MAN-only** slice. The gate (≥500 attributed, ≥30% of the band) decides what the
+number may be called; below it the label is `DESCRIPTIVE ONLY — BELOW PRE-DECLARED GATE` and no
+claim is made in either direction.
+
+**Pre-flight, corrected from D198.** The stop is on **game tracking**, not on `player_play`: a file
+with exactly 1,048,575 rows, fewer than 300 players, a median of fewer than 15 players per play, or
+less than 90% of the band's plays is a truncation and stops the run, naming the file, value and
+threshold. The D198 lesson is written into the notebook: `player_play`'s 2.7 rows per play is the
+497-prospect cohort by design and is never used as a density test.
+
+**Result here: not measurable, by design.** On the sample file the pipeline reproduces D196's
+geometric table on the same 326 turns exactly (unique 4 · ambiguous 0 · none 59 · unobservable 263
+at 3 yd), which validates the implementation against an independent one. Across the band, 99.2% of
+turns are unobservable or untracked, and the elimination set yields 3 judgeable turns
+(agree 3, disagree 0) — below the pre-stated 50 — so no misattribution rate is reported and no
+estimate is fitted. That is the spec's pre-declared legitimate outcome; the number is produced on
+the laptop.
+
+**What Conor decides on the laptop.** Nothing before Run All. Afterwards: if misattribution is
+substantial and the geometric β is negative with a CI excluding zero and |β| ≥ 2.0, that is the
+finding D199 could not reach and a report section is *proposed*; if the rate is high and β stays
+null, the attenuation explanation is spent and the null is the result; if the rate is low, D199
+stands as a precise null. None of the three enters `TASK.md`, the band table, the figures or the
+report draft without his word.
+
+**Ships.** `notes/geometric-attribution-spec.md` (committed 4d6de4b, before any geometric fit);
+`notes/geometric-attribution-result.md`; `src/bdb27/geometric_match.py`;
+`scripts/geometric_attribution.py`; `notebooks/bdb27_geometric_attribution.ipynb` (committed
+unexecuted); `tests/test_geometric_match.py` (22), `tests/test_geometric_notebook.py` (10);
+`outputs/geometric_attribution_sample/` (`PLACEHOLDER_SAMPLE`: match table, coverage,
+misattribution, summary, verdict, manifest). Manifest carries sha256 for every input and output.
+`TASK.md`, the band table, the four figures and `notes/report-draft.md` untouched; no new figure.
+
+**Tests.** `./.venv/bin/python -m pytest -q` — green. The new tests pin the frozen rule (ties
+dropped, never resolved), each status, radius monotonicity, the four pre-flight stops, resume
+(shard reused, mtime unchanged), determinism, the misattribution arithmetic, the estimator's module
+identity, and that the verdict text never promotes a null under a failed gate. The notebook
+executed end to end here on the sample (`PLACEHOLDER_SAMPLE`) and stopped at the pre-declared
+condition with the correct message.
+
+**Evidence.** `notes/geometric-attribution-spec.md`, `notes/geometric-attribution-result.md`,
+`outputs/geometric_attribution_sample/{match_turns.csv,band_coverage.csv,misattribution_turns.csv,summary.json,verdict.txt,manifest.json}`,
+`src/bdb27/geometric_match.py`, `scripts/geometric_attribution.py`,
+`notebooks/bdb27_geometric_attribution.ipynb`, `tests/test_geometric_match.py`,
+`tests/test_geometric_notebook.py`.

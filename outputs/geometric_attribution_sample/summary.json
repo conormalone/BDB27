@@ -1,0 +1,86 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE",
+  "attribution": "INFERENCE \u2014 geometric proximity at the break frame; the dataset records no opponent identifier, so a receiver within the radius is not proof of coverage",
+  "rule": "unique opposing route-runner within 3 yd at the break frame; >=2 candidates ambiguous and dropped; none dropped; ties never broken by radius, distance or row order",
+  "spec": "notes/geometric-attribution-spec.md",
+  "band": {
+    "turns": 7777,
+    "plays": 7198
+  },
+  "tracking": [
+    {
+      "file": "game_tracking_2023_sample.csv",
+      "rows": 1048575,
+      "rows_kept": 47537
+    }
+  ],
+  "coverage": [
+    {
+      "radius_yd": 2.0,
+      "band_turns": 7777,
+      "unique": 1,
+      "multiple": 0,
+      "none": 62,
+      "unobservable": 263,
+      "untracked": 7451,
+      "break_frame_unrecovered": 0,
+      "untagged": 0,
+      "attributed_fraction": 0.0001,
+      "fallback_any_opponent_unique_3yd": 7,
+      "primary": false
+    },
+    {
+      "radius_yd": 3.0,
+      "band_turns": 7777,
+      "unique": 4,
+      "multiple": 0,
+      "none": 59,
+      "unobservable": 263,
+      "untracked": 7451,
+      "break_frame_unrecovered": 0,
+      "untagged": 0,
+      "attributed_fraction": 0.0005,
+      "fallback_any_opponent_unique_3yd": 7,
+      "primary": true
+    },
+    {
+      "radius_yd": 5.0,
+      "band_turns": 7777,
+      "unique": 5,
+      "multiple": 0,
+      "none": 58,
+      "unobservable": 263,
+      "untracked": 7451,
+      "break_frame_unrecovered": 0,
+      "untagged": 0,
+      "attributed_fraction": 0.0006,
+      "fallback_any_opponent_unique_3yd": 7,
+      "primary": false
+    }
+  ],
+  "misattribution": {
+    "agree": 3,
+    "disagree": 0,
+    "ambiguous": 0,
+    "none": 14,
+    "unmeasurable": 1714,
+    "judgeable": 3,
+    "elimination_turns": 1731,
+    "misattribution_rate": 0.0,
+    "label": "TOO FEW JUDGEABLE TURNS FOR A RATE"
+  },
+  "stop": {
+    "reason": "TRACKING DOES NOT OBSERVE OPPONENTS ON MOST PLAYS",
+    "unobservable": 263,
+    "untracked": 7451,
+    "band_turns": 7777,
+    "share": 0.9919
+  },
+  "gate": {
+    "attributed_turns": 4,
+    "attributed_fraction": 0.0005,
+    "min_turns": 500,
+    "min_share": 0.3,
+    "gate_met": false
+  }
+}
