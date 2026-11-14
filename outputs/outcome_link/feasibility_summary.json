@@ -1,8 +1,108 @@
 {
+  "ambiguity_candidates": {
+    "FULL": {
+      "candidate_rows": 4213,
+      "turns_with_candidate": 3008,
+      "turns_with_three_or_more_candidates": 191,
+      "turns_with_two_candidates": 815,
+      "two_candidate_distinct_plays": 750,
+      "two_candidate_distinct_receivers": 815,
+      "two_candidate_separation_gap_max_yd": 13.606,
+      "two_candidate_separation_gap_median_yd": 1.53,
+      "two_candidate_separation_gap_min_yd": 0.0,
+      "two_candidate_turns_with_a_target_row": 270,
+      "two_candidate_turns_with_both_separations": 704
+    },
+    "SAMPLE": {
+      "candidate_rows": 93,
+      "turns_with_candidate": 80,
+      "turns_with_three_or_more_candidates": 0,
+      "turns_with_two_candidates": 13,
+      "two_candidate_distinct_plays": 12,
+      "two_candidate_distinct_receivers": 13,
+      "two_candidate_separation_gap_max_yd": 13.606,
+      "two_candidate_separation_gap_median_yd": 1.261,
+      "two_candidate_separation_gap_min_yd": 0.179,
+      "two_candidate_turns_with_a_target_row": 6,
+      "two_candidate_turns_with_both_separations": 9
+    }
+  },
+  "availability": {
+    "players_file_players": 510,
+    "pp_games": 1001,
+    "pp_players": 497,
+    "pp_players_not_in_players_file": 0,
+    "pp_plays": 114954,
+    "pp_plays_with_both_sides": 67972,
+    "pp_plays_with_both_sides_share": 0.591297,
+    "pp_rows": 314197,
+    "pp_rows_per_play_max": 11,
+    "pp_rows_per_play_mean": 2.733241
+  },
   "band": {
     "closed": "left",
     "hi": 60.0,
     "lo": 30.0
+  },
+  "candidate_status": {
+    "FULL": [
+      {
+        "n_turns": 4768,
+        "population": "FULL",
+        "pp_candidate_status": "none_on_play",
+        "share_of_turns": 0.61309,
+        "total_turns": 7777
+      },
+      {
+        "n_turns": 2002,
+        "population": "FULL",
+        "pp_candidate_status": "single",
+        "share_of_turns": 0.257426,
+        "total_turns": 7777
+      },
+      {
+        "n_turns": 1007,
+        "population": "FULL",
+        "pp_candidate_status": "multiple",
+        "share_of_turns": 0.129484,
+        "total_turns": 7777
+      }
+    ],
+    "SAMPLE": [
+      {
+        "n_turns": 246,
+        "population": "SAMPLE",
+        "pp_candidate_status": "none_on_play",
+        "share_of_turns": 0.754601,
+        "total_turns": 326
+      },
+      {
+        "n_turns": 67,
+        "population": "SAMPLE",
+        "pp_candidate_status": "single",
+        "share_of_turns": 0.205521,
+        "total_turns": 326
+      },
+      {
+        "n_turns": 13,
+        "population": "SAMPLE",
+        "pp_candidate_status": "multiple",
+        "share_of_turns": 0.039877,
+        "total_turns": 326
+      }
+    ]
+  },
+  "candidate_turn_keys": {
+    "FULL": {
+      "rows_player_key": 7404,
+      "rows_turn_key": 7777,
+      "second_turns_dropped_by_player_key": 373
+    },
+    "SAMPLE": {
+      "rows_player_key": 309,
+      "rows_turn_key": 326,
+      "second_turns_dropped_by_player_key": 17
+    }
   },
   "full": {
     "full_band_games": 809,
@@ -14,12 +114,20 @@
     "full_plays_any_db_turn": 38438,
     "full_valid_db_turns": 58664
   },
-  "generated_utc": "2026-11-14T16:49:17Z",
+  "generated_utc": "2026-11-14T19:19:02Z",
   "geometry": {
     "tracked_players_per_play_median": 1.0,
     "turns_with_any_opponent_tracked": 63,
     "turns_with_opponent_within_3yd": 7,
     "turns_with_route_runner_within_3yd": 4
+  },
+  "geometry_scope_note": {
+    "max_tracked_players_per_play": 4,
+    "note": "this table measures the sample file, not data availability; multiple = 0 here is structural.",
+    "players_tracked": 154,
+    "players_tracked_share_of_player_play": 0.309859,
+    "plays_covered": 12638,
+    "rows_in_file": 1048575
   },
   "injury": {
     "db_position_mentions": 137,
@@ -94,6 +202,71 @@
     "unique": 4,
     "unique_with_separation": 4,
     "unobservable": 263
+  },
+  "preflight": {
+    "FULL": {
+      "band_turns": 7777,
+      "estimator_blocked": false,
+      "estimator_blocks": [],
+      "p1_turns_with_conflicting_team_label": 0,
+      "p1_turns_without_player_play_row": 0,
+      "p1_turns_without_team_label": 0,
+      "p1_unsided_turn_keys": [],
+      "p1_unsided_turns": 0,
+      "p2_ceiling_share": 0.38691,
+      "p2_turns_with_candidate": 3009,
+      "p3_cleared": true,
+      "p3_gate_min_turns": 500,
+      "p4_cleared": true,
+      "p4_gate_min_share": 0.3,
+      "p4_required_turns": 2334,
+      "p5_share_no_opposing_route": 0.4251,
+      "p5_share_no_opposing_row": 0.18799,
+      "p5_turns_no_opposing_route": 3306,
+      "p5_turns_no_opposing_row": 1462,
+      "p5_wording": "Cohort ceiling: a candidate is visible only if the player has a row in player_play.csv, and that file carries rows for the draft-prospect cohort in players.csv alone, so an opposing route-runner outside the cohort is invisible. 1,462 of 7,777 turns (18.8%) have no opposing player row at all, and 3,306 (42.5%) have opposing players recorded but no route-runner among them; on those turns the candidate count is limited by the cohort, not by the play. Every candidate count here is therefore a lower bound on what the full frame-level data would show, and the ceiling below is exact only for this file.",
+      "population": "FULL",
+      "share_of_ceiling_needed_for_30pct": 0.775673,
+      "share_of_ceiling_needed_for_500_turns": 0.166168,
+      "stop": false,
+      "turns_with_candidate_separation": 2601,
+      "turns_with_exactly_one_candidate_with_separation": 1731,
+      "turns_with_two_or_more_candidates_with_separation": 870,
+      "verdict": "GATE LIVE"
+    },
+    "SAMPLE": {
+      "band_turns": 326,
+      "estimator_blocked": true,
+      "estimator_blocks": [
+        "P3",
+        "P4"
+      ],
+      "p1_turns_with_conflicting_team_label": 0,
+      "p1_turns_without_player_play_row": 0,
+      "p1_turns_without_team_label": 0,
+      "p1_unsided_turn_keys": [],
+      "p1_unsided_turns": 0,
+      "p2_ceiling_share": 0.245399,
+      "p2_turns_with_candidate": 80,
+      "p3_cleared": false,
+      "p3_gate_min_turns": 500,
+      "p4_cleared": false,
+      "p4_gate_min_share": 0.3,
+      "p4_required_turns": 98,
+      "p5_share_no_opposing_route": 0.355828,
+      "p5_share_no_opposing_row": 0.398773,
+      "p5_turns_no_opposing_route": 116,
+      "p5_turns_no_opposing_row": 130,
+      "p5_wording": "Cohort ceiling: a candidate is visible only if the player has a row in player_play.csv, and that file carries rows for the draft-prospect cohort in players.csv alone, so an opposing route-runner outside the cohort is invisible. 130 of 326 turns (39.9%) have no opposing player row at all, and 116 (35.6%) have opposing players recorded but no route-runner among them; on those turns the candidate count is limited by the cohort, not by the play. Every candidate count here is therefore a lower bound on what the full frame-level data would show, and the ceiling below is exact only for this file.",
+      "population": "SAMPLE",
+      "share_of_ceiling_needed_for_30pct": 1.225,
+      "share_of_ceiling_needed_for_500_turns": 6.25,
+      "stop": false,
+      "turns_with_candidate_separation": 67,
+      "turns_with_exactly_one_candidate_with_separation": 58,
+      "turns_with_two_or_more_candidates_with_separation": 9,
+      "verdict": "GATE UNREACHABLE \u2014 descriptive only"
+    }
   },
   "provenance": "SAMPLE",
   "sample": {

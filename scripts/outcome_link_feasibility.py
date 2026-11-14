@@ -5,6 +5,17 @@ Feasibility, not analysis: this script counts what can be attributed to a DB's
 attribution ambiguity. It fits nothing and reports no association between turn
 quality and any outcome.
 
+Two separate questions are measured and never merged:
+
+* **candidate availability** — how many band turns have an opposing
+  route-runner on the play at all. Read from ``player_play.csv`` alone, over the
+  whole band population, with no frame-level data (``src/bdb27/outcome_link.py``).
+  Its pre-flight (P1-P5) is the notebook's stop-check: it stops on a real
+  condition only, and it has no rows-per-play threshold of any kind.
+* **geometric ambiguity** — how many turns resolve to exactly one opponent
+  inside the match radius. Measured on the local 2023 tracking *sample file*
+  only, and labelled as a property of that file.
+
 Provenance
 ----------
 Turn-level numbers are SAMPLE: ``outputs/turns/turns.parquet`` carries
@@ -12,9 +23,10 @@ Turn-level numbers are SAMPLE: ``outputs/turns/turns.parquet`` carries
 ``data/interim/full_run_20261111/bdb27_full_db_turns.parquet`` and are counts of
 turns and plays - no outcome-bearing FULL artefact exists on this machine.
 
-``player_play.csv`` carries rows only for the 497 players named in
+``player_play.csv`` carries rows only for the draft-prospect cohort named in
 ``players.csv``; that is a property of the file, not of this script, and it is
-the reason some outcomes are structurally unavailable for a given pairing.
+the reason some outcomes are structurally unavailable for a given pairing. It
+also makes every candidate count in the pre-flight a lower bound.
 
 Every geometric DB-to-receiver link computed here is an INFERENCE from
 positions. It is labelled as such in the per-turn table and never written into
@@ -26,6 +38,9 @@ Usage:
 Outputs (all tagged SAMPLE unless the column name says full_):
     outputs/outcome_link/feasibility_routes.csv
     outputs/outcome_link/feasibility_turns.csv
+    outputs/outcome_link/feasibility_candidates.csv
+    outputs/outcome_link/feasibility_preflight.csv
+    outputs/outcome_link/feasibility_ambiguity_candidates.csv
     outputs/outcome_link/feasibility_summary.json
 """
 
@@ -43,23 +58,30 @@ import duckdb
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "src"))
+
+from bdb27 import outcome_link as ol  # noqa: E402  (needs ROOT/src on the path)
 
 TURNS = ROOT / "outputs" / "turns" / "turns.parquet"
 PLAYER_PLAY = ROOT / "data" / "raw" / "player_play.csv"
 TRACKING = ROOT / "data" / "raw" / "game_tracking_2023_sample.csv"
 PLAYERS = ROOT / "bdb27_run" / "players.parquet"
+PLAYERS_CSV = ROOT / "data" / "raw" / "players.csv"
 FULL_TURNS = ROOT / "data" / "interim" / "full_run_20261111" / "bdb27_full_db_turns.parquet"
 OUT = ROOT / "outputs" / "outcome_link"
 
 STAMP_SAMPLE = "SAMPLE"
 STAMP_FULL = "FULL"
 
-BAND_LO, BAND_HI = 30.0, 60.0
+# The band and the frozen primary radius live in the shared module so the script
+# and the pre-flight notebook cannot drift apart.
+BAND_LO, BAND_HI = ol.BAND_LO, ol.BAND_HI
 DB_ALIGN = ("CB", "SLOT_CB", "HIGH_SAFETY", "BOX_SAFETY")
 # The radius sweep: the match is reported at every radius so the choice is
 # visible. PRIMARY_RADIUS is the declared design choice, not a result.
 RADII = (1, 2, 3, 4, 5, 6, 8)
-PRIMARY_RADIUS = 3
+PRIMARY_RADIUS = ol.PRIMARY_RADIUS_YD
 SECONDARY_RADII = (2, 5)
 #: The rule, recorded verbatim in the artefact and the note.
 MATCH_RULE = (
@@ -487,12 +509,84 @@ def sample_facts(con: duckdb.DuckDBPyConnection) -> dict:
     }
 
 
-def route_table(turns: pd.DataFrame, full: dict, inj: dict) -> pd.DataFrame:
+def candidate_block(con: duckdb.DuckDBPyConnection, turns: pd.DataFrame) -> dict:
+    """Candidate availability and the P1-P5 pre-flight, for both populations.
+
+    Reads ``player_play`` only. No tracking file is opened, passed or accepted
+    here, and no rows-per-play threshold of any kind is applied: the rows-per-play
+    figure is a property of the draft-prospect cohort, not a stop condition.
+    """
+    key = list(ol.TURN_KEY)
+    ol.register_band_turns(con, TURNS, "ol_band_sample")
+    ol.register_band_turns(con, FULL_TURNS, "ol_band_full")
+    keys = {STAMP_SAMPLE: ol.check_turn_key(con, "ol_band_sample"),
+            STAMP_FULL: ol.check_turn_key(con, "ol_band_full")}
+
+    cand, detail = {}, {}
+    for stamp, band in ((STAMP_SAMPLE, "ol_band_sample"), (STAMP_FULL, "ol_band_full")):
+        slug = stamp.lower()
+        cand[stamp] = ol.candidate_table(
+            con, band, f"ol_cand_{slug}", stamp, pp_table="pp")
+        detail[stamp] = ol.candidate_detail(
+            con, f"ol_cand_{slug}", f"ol_detail_{slug}", pp_table="pp")
+    pre = {stamp: ol.preflight(con, f"ol_cand_{stamp.lower()}", stamp)
+           for stamp in (STAMP_SAMPLE, STAMP_FULL)}
+
+    # R2's own ceiling: the same candidate rule restricted to MAN turns.
+    man_keys = turns.loc[turns["coverage_assignment"] == "MAN", key]
+    man_cand = cand[STAMP_SAMPLE].merge(man_keys, on=key, how="inner")
+
+    avail = {"players_file": None}
+    players_table = None
+    if PLAYERS_CSV.exists():
+        con.execute(
+            f"CREATE OR REPLACE TABLE ol_players AS SELECT TRY_CAST(nfl_id AS BIGINT) "
+            f"AS nfl_id FROM read_csv('{PLAYERS_CSV.as_posix()}', header=true, "
+            f"all_varchar=true, nullstr=['NA',''])")
+        players_table = "ol_players"
+    avail = ol.availability(con, "pp", players_table=players_table)
+
+    return {
+        "candidates": pd.concat([cand[STAMP_SAMPLE], cand[STAMP_FULL]],
+                                ignore_index=True),
+        "detail": pd.concat([detail[STAMP_SAMPLE], detail[STAMP_FULL]],
+                            ignore_index=True),
+        "preflight": pre,
+        "turn_keys": keys,
+        "tie_counts": {stamp: ol.ambiguity_counts(detail[stamp])
+                       for stamp in (STAMP_SAMPLE, STAMP_FULL)},
+        "status_totals": {stamp: ol.status_totals(cand[stamp], stamp)
+                          for stamp in (STAMP_SAMPLE, STAMP_FULL)},
+        "availability": avail,
+        "man_turns": int(len(man_keys)),
+        "man_candidate_ceiling": int((man_cand["pp_opp_route_rows"] >= 1).sum()),
+    }
+
+
+def route_table(turns: pd.DataFrame, full: dict, inj: dict, cand: dict) -> pd.DataFrame:
     n = len(turns)
     plays = turns[["game_id", "play_id"]].drop_duplicates()
     per_play = turns.groupby(["game_id", "play_id"]).size()
     pass_turns = int(turns["pass_result"].notna().sum())
     man = turns[turns.coverage_assignment == "MAN"]
+    pre_s, pre_f = cand["preflight"][STAMP_SAMPLE], cand["preflight"][STAMP_FULL]
+    # The geometric counts below stay exactly what they were: they measure the
+    # local 2023 tracking sample file. The candidate ceiling sits beside them and
+    # measures the full band population in player_play.
+    r1_ceiling = {
+        "sample_candidate_ceiling_turns": pre_s["p2_turns_with_candidate"],
+        "sample_candidate_ceiling_share": pre_s["p2_ceiling_share"],
+        "full_candidate_ceiling_turns": pre_f["p2_turns_with_candidate"],
+        "full_candidate_ceiling_share": pre_f["p2_ceiling_share"],
+    }
+    r2_ceiling = {
+        "sample_candidate_ceiling_turns": cand["man_candidate_ceiling"],
+        "sample_candidate_ceiling_share": (
+            round(cand["man_candidate_ceiling"] / cand["man_turns"], 6)
+            if cand["man_turns"] else None),
+        "full_candidate_ceiling_turns": None,
+        "full_candidate_ceiling_share": None,
+    }
 
     def cnt(mask):
         return int(mask.sum())
@@ -517,6 +611,9 @@ def route_table(turns: pd.DataFrame, full: dict, inj: dict) -> pd.DataFrame:
             "full_plays_available": full["full_band_plays"],
             "ambiguous_sample_n": cnt(turns.match_status == "multiple"),
             "ambiguous_sample_of": n,
+            **r1_ceiling,
+            "sample_turns_usable_source": (
+                "geometric sweep at the primary radius on the 2023 tracking sample file"),
             "measurable_on_local_sample": False,
             "needs_full_tracking": True,
             "controls": "entry_speed, position, alignment, coverage_assignment, cushion",
@@ -535,6 +632,9 @@ def route_table(turns: pd.DataFrame, full: dict, inj: dict) -> pd.DataFrame:
             "full_plays_available": None,
             "ambiguous_sample_n": int((man.match_status == "multiple").sum()),
             "ambiguous_sample_of": int(len(man)),
+            **r2_ceiling,
+            "sample_turns_usable_source": (
+                "geometric sweep on MAN turns of the 2023 tracking sample file"),
             "measurable_on_local_sample": False,
             "needs_full_tracking": True,
             "controls": "entry_speed, position, alignment, cushion",
@@ -551,6 +651,11 @@ def route_table(turns: pd.DataFrame, full: dict, inj: dict) -> pd.DataFrame:
             "full_plays_available": full["full_band_plays"],
             "ambiguous_sample_n": 0,
             "ambiguous_sample_of": n,
+            "sample_candidate_ceiling_turns": None,
+            "sample_candidate_ceiling_share": None,
+            "full_candidate_ceiling_turns": None,
+            "full_candidate_ceiling_share": None,
+            "sample_turns_usable_source": "exact same-player join; no geometry",
             "measurable_on_local_sample": True,
             "needs_full_tracking": False,
             "controls": "entry_speed, position, alignment, down, distance",
@@ -568,6 +673,11 @@ def route_table(turns: pd.DataFrame, full: dict, inj: dict) -> pd.DataFrame:
             "full_plays_available": full["full_band_plays"],
             "ambiguous_sample_n": int((per_play >= 2).sum()),
             "ambiguous_sample_of": int(len(per_play)),
+            "sample_candidate_ceiling_turns": None,
+            "sample_candidate_ceiling_share": None,
+            "full_candidate_ceiling_turns": None,
+            "full_candidate_ceiling_share": None,
+            "sample_turns_usable_source": "the play; no player-level geometry",
             "measurable_on_local_sample": True,
             "needs_full_tracking": False,
             "controls": "entry_speed, position, alignment, coverage_assignment, down, distance",
@@ -584,6 +694,11 @@ def route_table(turns: pd.DataFrame, full: dict, inj: dict) -> pd.DataFrame:
             "full_plays_available": full["full_band_plays"],
             "ambiguous_sample_n": inj["mentions_unresolved_or_ambiguous"],
             "ambiguous_sample_of": inj["injury_mentions"],
+            "sample_candidate_ceiling_turns": None,
+            "sample_candidate_ceiling_share": None,
+            "full_candidate_ceiling_turns": None,
+            "full_candidate_ceiling_share": None,
+            "sample_turns_usable_source": "free-text name resolution; no geometry",
             "measurable_on_local_sample": False,
             "needs_full_tracking": False,
             "controls": "none",
@@ -607,7 +722,29 @@ def main(argv=None) -> int:
     full = full_denominators(con)
     sample = sample_facts(con)
     inj = injury_facts(con)
-    routes = route_table(turns, full, inj)
+    cand = candidate_block(con, turns)
+    routes = route_table(turns, full, inj, cand)
+
+    # What the geometric sweep actually measured: the local 2023 tracking *sample
+    # file*, not data availability. Recorded beside the sweep so the two are never
+    # read as one.
+    tk_rows, tk_players, tk_plays, tk_max = con.execute("""
+        SELECT (SELECT COUNT(*) FROM tk),
+               (SELECT COUNT(DISTINCT nfl_id) FROM tk),
+               (SELECT COUNT(*) FROM (SELECT DISTINCT game_id, play_id FROM tk)),
+               (SELECT MAX(n) FROM (
+                  SELECT COUNT(DISTINCT nfl_id) AS n FROM tk GROUP BY game_id, play_id))
+        """).fetchone()
+    geometry_scope_note = {
+        "rows_in_file": int(tk_rows),
+        "players_tracked": int(tk_players),
+        "max_tracked_players_per_play": int(tk_max),
+        "plays_covered": int(tk_plays),
+        "players_tracked_share_of_player_play": round(
+            int(tk_players) / sample["sample_pp_players"], 6),
+        "note": ("this table measures the sample file, not data availability; "
+                 "multiple = 0 here is structural."),
+    }
 
     # Alignment proof: the recovered break frame must land on the stored centre.
     align_max = float(turns["align_dist"].max())
@@ -634,6 +771,12 @@ def main(argv=None) -> int:
         "sample": sample,
         "full": full,
         "match": match,
+        "availability": cand["availability"],
+        "preflight": cand["preflight"],
+        "candidate_status": cand["status_totals"],
+        "ambiguity_candidates": cand["tie_counts"],
+        "candidate_turn_keys": cand["turn_keys"],
+        "geometry_scope_note": geometry_scope_note,
         "turns": {
             "sample_db_turns_all": int(con.execute("SELECT COUNT(*) FROM turns").fetchone()[0]),
             "sample_band_turns": int(len(turns)),
@@ -692,10 +835,37 @@ def main(argv=None) -> int:
     turns_out.to_csv(OUT / "feasibility_turns.csv", index=False, float_format="%.6g")
     ambiguity.to_csv(OUT / "feasibility_ambiguity.csv", index=False)
     routes.to_csv(OUT / "feasibility_routes.csv", index=False)
-    (OUT / "feasibility_summary.json").write_text(
-        json.dumps(summary, indent=2, sort_keys=True, default=str) + "\n")
 
-    print(json.dumps({
+    # Candidate availability: one row per band turn per population. Sorted, so a
+    # second run is byte-identical.
+    cand_out = cand["candidates"][ol.ordered_columns(cand["candidates"], [
+        "population", *ol.TURN_KEY, "own_team", "pp_opp_rows", "pp_opp_route_rows",
+        "pp_opp_route_sep_rows", "pp_candidate_status"])].sort_values(
+        ["population", *ol.TURN_KEY], kind="mergesort")
+    cand_out.to_csv(OUT / "feasibility_candidates.csv", index=False)
+
+    # The pre-flight, one row per population: P1-P5, the ceiling, both gates and
+    # the verdict string.
+    pre_rows = []
+    for stamp in (STAMP_SAMPLE, STAMP_FULL):
+        pre_rows.append({k: (";".join(v) if isinstance(v, list) else v)
+                         for k, v in cand["preflight"][stamp].items()})
+    pd.DataFrame(pre_rows).to_csv(OUT / "feasibility_preflight.csv", index=False)
+
+    detail_out = cand["detail"][ol.ordered_columns(cand["detail"], [
+        "population", *ol.TURN_KEY, "candidate_rank", "candidate_nfl_id",
+        "candidate_position", "candidate_route", "candidate_separation",
+        "candidate_target", "own_team", "pp_candidate_status",
+        "n_candidates_on_turn", "n_candidates_with_separation",
+        "turn_separation_gap_yd"])].sort_values(
+        ["population", *ol.TURN_KEY, "candidate_nfl_id"], kind="mergesort")
+    detail_out.to_csv(OUT / "feasibility_ambiguity_candidates.csv", index=False)
+
+    (OUT / "feasibility_summary.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=str) + "\n",
+        encoding="utf-8")
+
+    report = {
         "sample_band_turns": summary["turns"]["sample_band_turns"],
         "sample_band_plays": summary["turns"]["sample_band_plays"],
         "tackles": summary["turns"]["tackles"],
@@ -704,7 +874,20 @@ def main(argv=None) -> int:
                    "unobservable", "attributed_fraction", "unique_with_separation")},
         "full_band_turns": full["full_band_turns"],
         "injury_mentions": inj["injury_mentions"],
-    }, indent=2))
+        "preflight": {},
+    }
+    for stamp in (STAMP_SAMPLE, STAMP_FULL):
+        p = cand["preflight"][stamp]
+        report["preflight"][stamp] = {
+            "band_turns": p["band_turns"],
+            "p1_unsided_turns": p["p1_unsided_turns"],
+            "p2_turns_with_candidate": p["p2_turns_with_candidate"],
+            "p2_ceiling_share": p["p2_ceiling_share"],
+            "p3_cleared": p["p3_cleared"],
+            "p4_cleared": p["p4_cleared"],
+            "verdict": p["verdict"],
+        }
+    print(json.dumps(report, indent=2))
     return 0
 
 

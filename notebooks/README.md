@@ -76,3 +76,11 @@ config.
 
 `archive/legacy-*/notebooks/` holds the superseded pipeline's notebooks. They ran a
 different analysis and must not be reused.
+
+## The outcome-link pre-flight
+
+* `bdb27_outcome_link_preflight.ipynb` — the stop-check that runs **before** any geometric
+  matching: how many band turns have an opposing route-runner on the play at all, measured on
+  `player_play.csv` alone (P1–P5), with the verdict printed for each population. It reads no
+  tracking file, writes nothing, and stops only on a real condition. The geometric match and the
+  tie rate are described in its §6 and remain unmeasured.

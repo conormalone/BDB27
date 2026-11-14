@@ -8218,3 +8218,82 @@ no id survives on a non-unique turn, and that the note carries the attributed fr
 `outputs/outcome_link/feasibility_ambiguity.csv`, `feasibility_turns.csv`, `feasibility_routes.csv`,
 `feasibility_summary.json`; `scripts/outcome_link_feasibility.py`;
 `tests/test_outcome_link_feasibility.py`.
+
+## D198 — The outcome-link pre-flight was a false stop: candidate availability from `player_play` replaces rows-per-play, and the tie rate is unmeasured, not zero · 2026-11-14
+
+**Correction, not a new direction.** D197's authorisation and its frozen rule stand exactly as
+written: unique opposing route-runner within 3 yd, ties dropped, sensitivity at 2 and 5 yd, the
+≥30% / ≥500 gate. What is corrected is D196/D197's *measurement* of what that route can yield and
+how often it is ambiguous. Spec: `notes/outcome-link-correction-spec.md`.
+
+**The defect.** D197's note (§6.1) opened the FULL-notebook design with: *"If the full file
+averages well under ~15 rows per play — as this machine's copy does at 2.7 — opposing players
+cannot be typed by team, geometric matching is impossible, and the notebook must stop."* That
+inference is false. `player_play.csv` is the full file: **314,197 rows, 1,001 games, 114,954
+plays, 497 players, mean 2.733 rows per play, maximum 11 rows on a single play**, and **67,972
+plays (59.1%) carry rows from both `possession_team` and an opponent**. The file carries rows only
+for the 497 draft prospects in `players.csv`, so rows-per-play measures the cohort, not the
+playability of the data. The "1.16 players per play / max 4 / 263 unobservable" figures came from
+`data/raw/game_tracking_2023_sample.csv` — **1,048,575 rows, 333 games, 12,638 of the 31,720
+plays in those games (39.8%), 154 of the 497 players, never more than 4 players on a play** — and
+that file cannot characterise availability at all.
+
+**Corrected candidate availability** (a candidate = an opposing-side row on the turn's play with a
+non-`NA` `route_ran`; turn key `(game_id, play_id, nfl_id, frame_start)`, because 373 FULL and 17
+SAMPLE turns are second turns by the same DB on one play and a three-column key drops them):
+
+| | `[SAMPLE]` 326 | `[FULL]` 7,777 |
+|---|---:|---:|
+| no opposing player row | 130 | 1,462 |
+| no opposing route-runner | 246 (75.5%) | 4,768 (61.3%) |
+| exactly one | 67 (20.6%) | 2,002 (25.7%) |
+| two or more | 13 (4.0%) | 1,007 (12.9%) |
+| **ceiling on `unique` (≥1 candidate)** | **80 (24.5%)** | **3,009 (38.7%)** |
+| ≥1 with separation recorded | 67 | 2,601 |
+
+The `[FULL]` column is **measured, not projected**: all 7,198 band plays and all 809 band games are
+present in `player_play`, so this is the first full-band number in the project that needs no
+SAMPLE→FULL step.
+
+**Gate verdict.** `[FULL]` ceiling 38.7% is above the 30% arm, so the share gate is **live and
+undecided**: ≥500 turns needs 16.6% of candidate turns unique at 3 yd (500/3,009), ≥30% needs
+77.5% (2,334/3,009). `[SAMPLE]` ceiling 24.5% is below the arm, so the local gate is
+**unreachable before any geometry runs** — which is the honest reason no estimate is computed
+here, and a better one than the tracking-density argument it replaces.
+
+**Ambiguity and ties.** At the candidate level, ambiguity exists: 13 `[SAMPLE]` turns carry two
+labelled receivers (9 with both separations; |Δseparation| median 1.26 yd, range 0.18–13.6; 6 name
+a `target`, which is post-hoc and may not break a tie). `[FULL]`: 815 turns carry exactly two
+candidates, 704 with both separations, 270 with a `target`, |Δseparation| min 0.00 / median 1.53 /
+max 13.61 — the 0.00 cases being pairs no separation-based rule could separate. **The geometric
+tie rate — how often two candidates are both inside 3 yd at the break frame — is unmeasured, not
+zero.** The sweep's `multiple = 0` at all seven radii is structural: the file used for it cannot
+put two receivers in one frame.
+
+**Selection limit, stated plainly.** A matched pair is prospect-versus-prospect: both the DB and
+the opposing receiver must be among the 497 named players. That is a selected subsample of
+coverage, not a random one, and it is reported beside every estimate.
+
+**What shipped.** New `src/bdb27/outcome_link.py` (candidate availability + P1–P5 pre-flight; the
+pre-flight takes no tracking argument and contains no rows-per-play threshold); `scripts/
+outcome_link_feasibility.py` extended with `feasibility_candidates.csv`,
+`feasibility_preflight.csv`, `feasibility_ambiguity_candidates.csv`, a `preflight` block in the
+summary and a `geometry_scope_note` on the sweep; new executable
+`notebooks/bdb27_outcome_link_preflight.ipynb` (runs on `player_play` alone; §6 states the
+geometric step is not implemented and will not be faked); the note carries a dated correction
+block above §1 plus in-place fixes in §3, §3.1, §3.2, §4, §6.1, §7 and §8.
+
+**Unchanged.** `TASK.md`, the band table, the four figures, `notes/report-draft.md`, the frozen
+rule, the radii, the sensitivity set, the gate thresholds. No model, no coefficient, no interval,
+no finding. One correction to the note's own prose: `route_ran` uses the string `NA` as its
+missing sentinel (260,889 rows), so a plain `IS NOT NULL` returns all 314,197 rows; 53,308 rows
+carry a route value (WR 28,074, SLOT_WR 18,740, TE 6,027, RB 284, FB 181, T 2).
+
+**Tests.** `./.venv/bin/python -m pytest -q` — green on the tree being committed; the
+outcome-link tests recompute every count above from the raw files, assert the nine two-candidate
+separations, and fail if the three-column turn key is used.
+
+**Evidence.** `notes/outcome-link-correction-spec.md`; `notes/outcome-link-feasibility.md`
+(correction block, §3.2, §6.1); `outputs/outcome_link/feasibility_preflight.csv`,
+`feasibility_candidates.csv`, `feasibility_ambiguity_candidates.csv`,
+`feasibility_summary.json`; `src/bdb27/outcome_link.py`; `notebooks/bdb27_outcome_link_preflight.ipynb`.
