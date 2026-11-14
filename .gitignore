@@ -67,3 +67,8 @@ Thumbs.db
 !outputs/sensitivity/speed_floor/
 !outputs/sensitivity/speed_floor/*.csv
 !outputs/sensitivity/speed_floor/*.json
+# Outcome-link feasibility (D196): small CSVs + summary, committed evidence.
+# Feasibility counts only - SAMPLE provenance, no FULL outcome artefact.
+!outputs/outcome_link/
+!outputs/outcome_link/*.csv
+!outputs/outcome_link/*.json

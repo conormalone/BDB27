@@ -8082,3 +8082,73 @@ change; the CSV and manifest checks still run against the untouched artefacts.
 **Evidence.** `scripts/plot_turn_angle_hist.py`;
 `outputs/figures/fig_turn_angle_hist_30_90.png` (sha256 `4500ece0…`, 49,816 bytes),
 `.csv` (`d1b6ba73…`), `.provenance.json`; `outputs/figures/figures_manifest.json`.
+
+## D196 — Outcome-link feasibility: five routes quantified, none usable on the local sample · 2026-11-14
+
+**Asked.** Conor, 14:59: "Without a link to separation, coverage success, tackling or injury, the
+recommendation is an assertion. Even a modest result (for example, DBs who retain more speed
+through 30–60° breaks allow less separation, after controlling for speed and position) would turn
+this from an observation into a finding."
+
+**Scope.** Feasibility only. Spec written first (`notes/outcome-link-feasibility-spec.md`): no
+model, no coefficient, no finding language, no inferred link into the claim, DB only, no change to
+`TASK.md`, the band table, the four figures or the report draft.
+
+**What was built.** `scripts/outcome_link_feasibility.py` (one deterministic pass,
+explicit column selection, SAMPLE provenance) → `outputs/outcome_link/feasibility_routes.csv`,
+`feasibility_turns.csv`, `feasibility_summary.json`; the note
+`notes/outcome-link-feasibility.md`; `tests/test_outcome_link_feasibility.py`.
+
+**The structural fact the note rests on.** `separation_at_pass_forward` is receiver-side only:
+46,737 rows, **0 of 75,428** DB-alignment rows (CB 35,017, SLOT_CB 14,537, HIGH_SAFETY 25,608,
+BOX_SAFETY 266). The 35,017 figure passed to this cycle was CB rows alone. No opponent or matchup
+identifier exists in any of the 64 columns, so every DB→receiver link is an **inference** and is
+labelled one.
+
+**Routes, `[SAMPLE]` 326 band turns / 309 plays in 30 players, 140 games; `[FULL]` denominators
+from the full turn artefact only:**
+
+| route | usable `[SAMPLE]` | `[FULL]` denominator | verdict |
+|---|---:|---|---|
+| R1 proximity → separation | 5 | 7,777 turns / 7,198 plays | not measurable locally |
+| R2 MAN-restricted R1 | 2 | not countable locally | not measurable locally |
+| R3 same-player events | 326 (40 tackles, 13 assists, 0 FF, 1 TFL) | 7,777 turns | exact attribution, underpowered, causal path unobserved |
+| R4 play-level outcomes | 202 pass-play turns (292/309 plays have one DB turn) | 6,656/7,198 single-turn plays | unit-level only |
+| R5 injury | 2 | 7,777 turns | unusable |
+
+**Correction to the brief: an injury signal exists.** `play_description` is free text with named
+players ("CHI-C.Williams was injured during the play"): 3,663 plays carry "injur" (5,125 with
+"hurt"); 2,548 distinct injured-player mentions; only 426 resolve to a unique `nfl_id` (16.7%),
+137 of them DBs. Of the 326 band turns, 8 fall on a play with an injury mention and 2 name the
+turning DB. It is a mention, not a measured injury — no severity, no return-to-play record.
+
+**Why the geometry cannot be measured here.** The 2023 tracking sample is a 1,048,575-row file
+(2²⁰−1: a row cap, not a random draw) tracking 1.16 players per play. 63 of 326 turns have any
+opponent tracked at the break, 10 have one within 5 yd, 5 have a route-runner within 5 yd who also
+has a separation value. Those counts describe the sample's density, not the NFL; no rate is
+inferred. The break frame itself is recovered and proved: nearest own tracked position to
+`(x_centre, y_centre)` is ≤ 0.063 yd on all 326 turns.
+
+**Provenance discipline.** SAMPLE and FULL are carried in separate columns and never multiplied;
+the FULL file supplies turn and play counts only, because no outcome-bearing FULL artefact exists
+locally. The note states that `player_play` carries rows only for the 497 players in `players.csv`
+(all 115 FULL DBs are inside that set), so a covered receiver outside it has no separation value
+at all — a structural ceiling of 30.6% of plays carrying any separation value `[SAMPLE]`.
+
+**Decision put to Conor (one).** Fund the full-data proximity notebook (R1, with R2 inside it) with
+an ambiguity gate as the stop rule, or accept that the recommendation stays an observation. PM
+recommendation: R1, because it is the only route whose outcome is the quantity Conor named and its
+fatal risk is measurable before any outcome is joined. The 30%-unique-within-3-yd gate is the PM's
+proposal, explicitly flagged for Conor to accept or change.
+
+**Not done.** No model fitted; no notebook shipped (a full-tracking path cannot be executed or
+tested on this machine, and an untested one is the failure this project has already had). No
+change to `TASK.md`, `notes/report-draft.md`, the band table or any figure.
+
+**Tests.** `./.venv/bin/python -m pytest -q` — 371 collected, 371 passed, exit 0, on the tree being
+committed.
+
+**Evidence.** `notes/outcome-link-feasibility-spec.md`; `notes/outcome-link-feasibility.md`;
+`outputs/outcome_link/feasibility_routes.csv`, `feasibility_turns.csv`,
+`feasibility_summary.json`; `scripts/outcome_link_feasibility.py`;
+`tests/test_outcome_link_feasibility.py`.

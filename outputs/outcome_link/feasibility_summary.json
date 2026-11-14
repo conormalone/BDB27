@@ -1,0 +1,145 @@
+{
+  "band": {
+    "closed": "left",
+    "hi": 60.0,
+    "lo": 30.0
+  },
+  "full": {
+    "full_band_games": 809,
+    "full_band_players": 113,
+    "full_band_plays": 7198,
+    "full_band_plays_one_turn": 6656,
+    "full_band_turns": 7777,
+    "full_db_players": 115,
+    "full_plays_any_db_turn": 38438,
+    "full_valid_db_turns": 58664
+  },
+  "generated_utc": "2026-11-14T16:30:25Z",
+  "geometry": {
+    "tracked_players_per_play_median": 1.0,
+    "turns_with_any_opponent_tracked": 63,
+    "turns_with_opponent_within_2yd": 3,
+    "turns_with_opponent_within_3yd": 7,
+    "turns_with_opponent_within_5yd": 10,
+    "turns_with_opponent_within_8yd": 17,
+    "turns_with_route_runner_within_5yd": 5,
+    "turns_with_route_runner_within_5yd_and_sep": 5,
+    "turns_with_two_plus_route_runners_within_5yd": 0
+  },
+  "injury": {
+    "db_position_mentions": 137,
+    "injury_mentions": 2548,
+    "mentions_resolved_unique": 426,
+    "mentions_unresolved_or_ambiguous": 2122,
+    "plays_total": 114954,
+    "plays_with_injury_text": 5125,
+    "resolved_by_position": {
+      "C": 14,
+      "CB": 66,
+      "DB": 1,
+      "DE": 23,
+      "DT": 29,
+      "FS": 19,
+      "G": 42,
+      "NT": 3,
+      "OLB": 44,
+      "SS": 52,
+      "T": 49,
+      "TE": 12,
+      "WR": 72
+    },
+    "return_status_mentions": 90,
+    "returned_mentions": 1128,
+    "turns_on_injury_play": 8,
+    "turns_where_turning_db_named": 2
+  },
+  "inputs": {
+    "full_turns": {
+      "path": "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
+      "sha256": "f2e7cd01db214b7d88ab3f029876fe0fe7ced1530d2f014b9ad55b1b2dfb8e04",
+      "stamp": "FULL"
+    },
+    "player_play": {
+      "path": "data/raw/player_play.csv",
+      "sha256": "68926a268c0a49e58616001fb35ea179018d9cbbce1c5c31e7a4095273c35b2a"
+    },
+    "tracking": {
+      "path": "data/raw/game_tracking_2023_sample.csv",
+      "sha256": "1e7c6fb3c7d7240dc6217b05d0cbdf2281a49f94d0b712fb84cbc3fa9fb01670"
+    },
+    "turns": {
+      "path": "outputs/turns/turns.parquet",
+      "sha256": "89a416096610c833f19d496152fd11c7227e33cdbd53ee69c069a322c72f81ac",
+      "stamp": "PLACEHOLDER_SAMPLE"
+    }
+  },
+  "label": "UNVALIDATED SAMPLE OUTPUT - feasibility counts only",
+  "provenance": "SAMPLE",
+  "sample": {
+    "db_alignment_breakdown": {
+      "BOX_SAFETY": {
+        "rows": 266,
+        "sep_rows": 0
+      },
+      "CB": {
+        "rows": 35017,
+        "sep_rows": 0
+      },
+      "HIGH_SAFETY": {
+        "rows": 25608,
+        "sep_rows": 0
+      },
+      "SLOT_CB": {
+        "rows": 14537,
+        "sep_rows": 0
+      }
+    },
+    "db_alignment_rows": 75428,
+    "db_alignment_rows_with_separation": 0,
+    "plays_with_separation": 35211,
+    "plays_with_target": 9842,
+    "receiver_separation_rows": 46737,
+    "sample_plays": 114954,
+    "sample_pp_games": 1001,
+    "sample_pp_players": 497,
+    "sample_pp_rows": 314197,
+    "sample_tracking_play_player_pairs": 14612,
+    "sample_tracking_players": 154,
+    "sample_tracking_players_per_play_mean": 1.1561956005697105,
+    "sample_tracking_plays": 12638,
+    "sample_tracking_rows": 1048575
+  },
+  "script": "scripts/outcome_link_feasibility.py",
+  "turns": {
+    "apex_retention_iqr": [
+      0.5708798766136169,
+      0.8585688173770905,
+      1.0
+    ],
+    "assists": 13,
+    "break_frame_alignment_max_yd": 0.06347953354087256,
+    "break_frame_recovered": 326,
+    "coverage_assignment_available": 155,
+    "cushion_available": 218,
+    "entry_speed_iqr": [
+      2.7498639822006226,
+      3.786238431930542,
+      4.95804750919342
+    ],
+    "forced_fumbles": 0,
+    "man_turns": 35,
+    "pass_play_turns": 202,
+    "plays_with_separation_available": 64,
+    "sample_band_games": 140,
+    "sample_band_players": 30,
+    "sample_band_plays": 309,
+    "sample_band_plays_one_turn": 292,
+    "sample_band_plays_two_turns": 17,
+    "sample_band_turns": 326,
+    "sample_db_turns_all": 2262,
+    "tackles": 40,
+    "tackles_for_loss": 1,
+    "turns_with_player_play_row": 326,
+    "turns_with_separation_available": 67
+  }
+}
