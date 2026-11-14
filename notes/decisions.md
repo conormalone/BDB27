@@ -8240,7 +8240,9 @@ that file cannot characterise availability at all.
 
 **Corrected candidate availability** (a candidate = an opposing-side row on the turn's play with a
 non-`NA` `route_ran`; turn key `(game_id, play_id, nfl_id, frame_start)`, because 373 FULL and 17
-SAMPLE turns are second turns by the same DB on one play and a three-column key drops them):
+SAMPLE turns are second turns by the same DB on one play and a three-column key drops them;
+and even the four-column key is not unique, 3 of the 7,777 keys carrying two distinct turns, so
+counts are taken per turn row):
 
 | | `[SAMPLE]` 326 | `[FULL]` 7,777 |
 |---|---:|---:|

@@ -68,7 +68,9 @@ returns all 314,197 rows and would make every opponent a candidate; the null is 
 Counted per turn, keyed on
 `(game_id, play_id, nfl_id, frame_start)` — not on `(game_id, play_id, nfl_id)`, which collapses
 373 `[FULL]` turns onto 362 player-keys and drops 17 `[SAMPLE]` turns: these are second turns by
-the same DB on the same play, and grouping on three columns silently loses them.
+the same DB on the same play, and grouping on three columns silently loses them. Even the
+four-column key is not quite unique on `[FULL]` — 3 of its 7,777 keys carry two distinct turns
+(7,774 distinct keys) — so every count here is taken per turn **row**, not per key.
 
 | | `[SAMPLE]` 326 | `[FULL]` 7,777 |
 |---|---:|---:|
