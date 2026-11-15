@@ -8614,3 +8614,51 @@ this turn file and the one-turn difference is not explained here.
 **Provenance.** `notes/turn-context.md`; `outputs/turn_context/*` with
 `manifest.json` sha256 for `data/interim/full_run_20261111/bdb27_full_db_turns.parquet` and
 `data/raw/player_play.csv`; 562 tests, 561 passed, 1 skipped, 0 failed.
+
+## D206 — Band reliability: the exposure is not a stable trait; the section now carries the evidence · 2026-11-15
+
+**Asked.** Conor, 2026-11-15 22:02 GMT, verbatim: *"Ok that's probably as good as we're
+going to get, fold those into the what we did not establish paragraph, we can give it
+some backup at least"* — "those" being the band-reliability checks and the `player_play`
+composition computed in chat that evening.
+
+**Built.** `scripts/band_reliability.py` and `src/bdb27/band_reliability.py`; artefact
+`outputs/band_reliability/{reliability.json,scenarios.csv,manifest.json}` with sha256 of
+both inputs (the turn parquet and `outputs/turn_context/turn_context.parquet`) and both
+outputs. The ICC(1) is **imported from `bdb27.fallback_validation.icc1`** (D203), not
+reimplemented, so both artefacts report the identical ANOVA-moment estimator. The band
+filter is the frozen one plus the mandatory `valid == True`: 7,778 band rows, one invalid,
+7,777 committed turns. `play_type` is joined on the turn's own
+`(game_id, play_id, nfl_id, frame_start)` key from the D205 table, deduplicated on that
+key and joined `many_to_one` (the same three duplicate turn keys as D205).
+
+**Result.** ICC(1) of `apex_retention` within player: **0.0034** across 7,777 turns from
+113 players (D203's committed value reproduced); **0.0093** at the drill's own entry
+speeds, 3–5 yd/s (3,385 turns, k̄ 30.0); **0.0085** there on pass plays (2,232 turns, 108
+players); **0.0046** on pass plays only (5,197 turns, 111 players, k̄ 46.8). Residualising
+retention on entry speed, entry speed², angle and angle² (R² = 0.406 whole band, 0.146 in
+the 3–5 window) moves the ICC only to 0.0037 and **0.0141** respectively. A player mean at
+k=30, ρ=0.0141 is ≈30% reliable (R = 0.2995), so any correlation with a perfectly measured
+criterion is attenuated to √R = 0.547 of its true size. A usable test (R = 0.70) needs
+ρ ≥ 0.072, i.e. ≈163 turns per player against the ~30 available (≈18,000 drill-speed
+turns against 3,385), or ≈590 clusters for the effect D204 observed (−0.38; 84 clusters
+scaled by the achieved SE). All targets are order-of-magnitude: ρ is a plug-in estimate.
+
+**Section rewritten.** `notes/validation-section.md`, title unchanged, one paragraph of
+205 words plus provenance. The paragraph now leads with the instability of the exposure,
+then attribution (61.3% unattributed; ceiling 38.7%), then composition (5,197 pass / 2,580
+run; 15.5% of run turns in the band against 12.4% of pass turns), then what a test would
+take. Gate arithmetic, MDE chains and the 77.5% figure are removed from the body and kept
+only as derivations in the provenance block; no null is promoted, and no underpowering is
+claimed at the 2.0 yd threshold. `notes/report-draft.md`, `TASK.md`, the band table and
+the four figures are untouched.
+
+**Not reproduced.** The brief's pass-only ICC of 0.0047 is not reproducible from the
+committed file: the value is 0.004559 → 0.0046. Every other scenario count, k̄ and ICC
+reproduces. The brief's ≈163 is 163.2 at the rounded ρ = 0.0141 and 163.7 at the
+artefact's ρ = 0.014055; both round to ≈163, and the ≈18,000 is one significant figure of
+18,497.
+
+**Provenance.** `notes/validation-section.md`; `outputs/band_reliability/*`;
+`src/bdb27/band_reliability.py`; `scripts/band_reliability.py`; 10 new tests in
+`tests/test_band_reliability.py`; full-suite count in the commit message.

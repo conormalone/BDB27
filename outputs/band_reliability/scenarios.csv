@@ -1,0 +1,5 @@
+name,rule,players,turns,kbar,icc,status
+all_band,no speed filter,113,7777,68.82300884955752,0.003382370067698427,ok
+entry_3_5,"entry_speed in [3, 5]",113,3385,29.95575221238938,0.009321248672369884,ok
+entry_3_5_pass,"entry_speed in [3, 5] AND play_type == 'pass'",108,2232,20.666666666666668,0.008460106513692953,ok
+pass_only,no speed filter AND play_type == 'pass',111,5197,46.81981981981982,0.004558973150856006,ok

@@ -1,0 +1,200 @@
+{
+  "provenance": "FULL",
+  "stamp": "[FULL]",
+  "band": {
+    "lo": 30.0,
+    "hi": 60.0,
+    "interval": "left-closed, right-open",
+    "setting": "game",
+    "position_group": "DB",
+    "valid_only": true
+  },
+  "scenario_rules": {
+    "entry_speed_window_yd_s": [
+      3.0,
+      5.0
+    ],
+    "pass_only": "play_type == 'pass' (includes scrambles, per D205)"
+  },
+  "sample": {
+    "rows_in_file": 58665,
+    "band_rows_before_valid": 7778,
+    "band_rows_invalid_dropped": 1,
+    "band_turns": 7777,
+    "players": 113,
+    "plays": 7198,
+    "games": 809,
+    "turns_per_player": {
+      "min": 1,
+      "median": 48.0,
+      "max": 300
+    },
+    "turns_without_context": 0,
+    "play_type": {
+      "pass": 5197,
+      "run": 2580
+    },
+    "join_rows": 7777,
+    "join_key": [
+      "game_id",
+      "play_id",
+      "nfl_id",
+      "frame_start"
+    ],
+    "join_validate": "many_to_one",
+    "context_keys_deduplicated": 3
+  },
+  "scenarios": [
+    {
+      "name": "all_band",
+      "rule": "no speed filter",
+      "players": 113,
+      "turns": 7777,
+      "kbar": 68.82300884955752,
+      "icc": 0.003382370067698427,
+      "clamped": false,
+      "msb": 0.08435062823180582,
+      "msw": 0.06849089330028832,
+      "sigma2_a": 0.00023244777179444267,
+      "sigma2_e": 0.06849089330028832,
+      "status": "ok"
+    },
+    {
+      "name": "entry_3_5",
+      "rule": "entry_speed in [3, 5]",
+      "players": 113,
+      "turns": 3385,
+      "kbar": 29.95575221238938,
+      "icc": 0.009321248672369884,
+      "clamped": false,
+      "msb": 0.07258582680571428,
+      "msw": 0.05673317938036784,
+      "sigma2_a": 0.0005337997532195857,
+      "sigma2_e": 0.05673317938036784,
+      "status": "ok"
+    },
+    {
+      "name": "entry_3_5_pass",
+      "rule": "entry_speed in [3, 5] AND play_type == 'pass'",
+      "players": 108,
+      "turns": 2232,
+      "kbar": 20.666666666666668,
+      "icc": 0.008460106513692953,
+      "clamped": false,
+      "msb": 0.06947093558636594,
+      "msw": 0.05913159419138801,
+      "sigma2_a": 0.0005045279453403239,
+      "sigma2_e": 0.05913159419138801,
+      "status": "ok"
+    },
+    {
+      "name": "pass_only",
+      "rule": "no speed filter AND play_type == 'pass'",
+      "players": 111,
+      "turns": 5197,
+      "kbar": 46.81981981981982,
+      "icc": 0.004558973150856006,
+      "clamped": false,
+      "msb": 0.08673150058594462,
+      "msw": 0.07152583861449806,
+      "sigma2_a": 0.0003275777962137113,
+      "sigma2_e": 0.07152583861449806,
+      "status": "ok"
+    }
+  ],
+  "adjustment": {
+    "all_band": {
+      "r_squared": 0.4057842110475185,
+      "n_parameters": 5,
+      "covariates": [
+        "entry_speed",
+        "entry_speed^2",
+        "abs_turn_angle",
+        "abs_turn_angle^2"
+      ],
+      "players": 113,
+      "turns": 7777,
+      "icc": 0.003685010845302767,
+      "clamped": false,
+      "status": "ok"
+    },
+    "entry_3_5": {
+      "r_squared": 0.14642505743300183,
+      "n_parameters": 5,
+      "covariates": [
+        "entry_speed",
+        "entry_speed^2",
+        "abs_turn_angle",
+        "abs_turn_angle^2"
+      ],
+      "players": 113,
+      "turns": 3385,
+      "icc": 0.014054573049674082,
+      "clamped": false,
+      "status": "ok"
+    }
+  },
+  "derived": {
+    "formulas": {
+      "reliability_of_player_mean": "R = k*rho / (1 + (k-1)*rho)",
+      "attenuation_ceiling": "|r_obs| = sqrt(R) * |r_true|",
+      "rho_for_target_reliability": "rho = R / (k - (k-1)*R)",
+      "k_for_target_reliability": "k = R(1-rho) / (rho(1-R))",
+      "clusters_for_observed_effect": "n_req = n_achieved * (SE_achieved / (|b| / (z_.975 + z_.80)))^2"
+    },
+    "inputs": {
+      "kbar_entry_3_5": 29.95575221238938,
+      "rho_all_band": 0.003382370067698427,
+      "rho_entry_3_5": 0.009321248672369884,
+      "rho_entry_3_5_adjusted": 0.014054573049674082,
+      "players_entry_3_5": 113,
+      "turns_entry_3_5": 3385,
+      "target_RELIABILITY": 0.7
+    },
+    "reliability_of_player_mean": [
+      {
+        "k": 30.0,
+        "rho": 0.014054573049674082,
+        "R": 0.2995470290456922,
+        "note": "at the adjusted 3-5 yd/s ICC and k=30"
+      },
+      {
+        "k": 30.0,
+        "rho": 0.009321248672369884,
+        "R": 0.2201321668100091,
+        "note": "at the unadjusted 3-5 yd/s ICC and k=30"
+      }
+    ],
+    "attenuation_ceiling_sqrt_R": {
+      "at_adjusted_rho": 0.5473088972835104,
+      "at_unadjusted_rho": 0.4691824451213079
+    },
+    "rho_needed_for_R_0_70_at_k30": 0.07216494845360823,
+    "k_needed_for_R_0_70_at_adjusted_rho": 163.6861768350984,
+    "turns_needed_for_R_0_70": {
+      "k_needed": 163.6861768350984,
+      "players": 113,
+      "turns_needed": 18496.537982366117,
+      "turns_held": 3385,
+      "note": "order of magnitude: rho is a plug-in estimate with its own uncertainty, so this target inherits it"
+    },
+    "clusters_for_observed_effect": {
+      "observed_effect": -0.38,
+      "se_achieved": 0.35970048429460955,
+      "clusters_achieved": 84,
+      "mde_constant": 2.801585,
+      "se_needed": 0.13563750519795043,
+      "scaling_factor": 7.032705944515264,
+      "clusters_required": 590.7472993392822,
+      "status": "ok",
+      "source": "D204 geometric point estimate -0.38, 95% CI [-1.08, +0.33], 84 clusters; SE from the published interval"
+    },
+    "caveat": "rho is a plug-in point estimate with non-trivial uncertainty; every target here is order-of-magnitude, not a design guarantee"
+  },
+  "estimator": {
+    "name": "ICC(1), one-way random effects, unbalanced (ANOVA moments)",
+    "implementation": "bdb27.fallback_validation.icc1 (imported, not duplicated)",
+    "group": "nfl_id",
+    "value": "apex_retention (residualised for the adjusted columns)"
+  }
+}

@@ -1,42 +1,97 @@
 # What we did not establish
 
-*(Previously titled "Validation"; rewritten 2026-11-15 because the earlier draft defended a claim the paper does not make. The drafting spec it answered, `notes/validation-section-spec.md`, is superseded.)*
-
-The claim is a gap claim: the Combine never asks a defensive back to turn and run with a receiver. A gap matters only if the missing movement does, so separation at pass forward is its one defender-attributable measure: `EPA` and `pass_result` fold in the throw and the decision, tackles come after the break, injuries are free text. The consequence test would ask whether a defensive back's 30–60° break retention predicts the separation of the receiver he covers, match fixed at the break frame before the fit. It cannot run here: 61.3% of 7,777 band turns carry no labelled opponent, `player_play` holding only the 497 prospects (115 defensive backs). Coverage caps at 38.7%; the 30% share arm needs 2,333 of 3,009 candidates to resolve uniquely: full-roster identification and a match rule resolving most to one defender, both, not just the first. On what we hold, the 2.0 yd threshold was already excludable: minimum detectable effects 1.01 yd (geometric; 411 turns, 84 players) and 0.59 yd (elimination; 1,731 turns, 102 players). We had power for half the bar and found nothing: −0.38 [−1.08, +0.33], +0.05 [−0.36, +0.46]. The paper's claim needs none of this: a disclosure, not a validation.
+The consequence test would ask whether a defensive back's 30–60° break retention predicts the separation of the receiver he covers, match fixed at the break frame before the fit. The primary obstacle is that the exposure is not a stable player trait: ICC(1) is 0.0034 across 7,777 turns from 113 players, and restricting to the drill's own entry speeds (3–5 yd/s, 3,385 turns) while adjusting for entry speed and angle lifts it only to 0.0141. At 0.0141 a player mean is ≈30% reliable, so any correlation with the Combine is attenuated to roughly half its true size, and a weak one cannot be read as the battery missing information. Attribution is the second obstacle: 61.3% of band turns carry no labelled opponent because `player_play` holds only the 497 prospects (115 defensive backs), capping coverage at 38.7%. Composition compounds it: of the 7,777 turns, 5,197 are on pass plays and 2,580 on runs, and runs over-produce the band (15.5% of run turns against 12.4% of pass turns), so a coverage-only validation would describe a subset. A usable test needs ρ ≥ 0.072, i.e. about 163 turns per player against the ~30 available (≈18,000 drill-speed turns against 3,385), or, for the effect actually observed, ≈590 player clusters.
 
 ## Provenance
 
-Word count of the paragraph above: **198** (body only, excluding this heading, the note and the table).
+Word count of the paragraph above: **205** (body only, excluding this heading and the provenance block).
+
+Every reliability number is written by `scripts/band_reliability.py` from
+`src/bdb27/band_reliability.py` to
+`outputs/band_reliability/reliability.json`, with sha256 digests of both inputs
+and both outputs in `outputs/band_reliability/manifest.json`. The ICC(1) itself
+is **imported** from `bdb27.fallback_validation.icc1` (D203), not reimplemented,
+so the two artefacts report the identical estimator.
 
 | Number in paragraph | Value(s) | Artefact |
 |---|---|---|
 | Band | 30–60° | `TASK.md`; `notes/fallback-validation-spec.md` §1.2 |
-| Band turns | 7,777 | `outputs/fallback_validation/reliability.json` (`sample.n_turns`); `TASK.md` |
-| Turns with no labelled opposing route-runner | 4,768 | `notes/outcome-link-feasibility.md` (coverage table, both `[FULL]` blocks); `notes/outcome-link-correction-spec.md` (coverage table) |
+| Band turns | 7,777 | `outputs/band_reliability/reliability.json` → `sample.band_turns`; `outputs/fallback_validation/reliability.json` → `sample.n_turns` |
+| Invalid band rows dropped | 1 (7,778 − 7,777) | `outputs/band_reliability/reliability.json` → `sample.band_rows_before_valid`, `sample.band_rows_invalid_dropped` |
+| Band ICC(1) | 0.0034 | `outputs/band_reliability/reliability.json` → `scenarios[name=all_band].icc` (0.003382); D203 |
+| Band players | 113 | `scenarios[name=all_band].players` |
+| Drill-speed window | 3–5 yd/s | `TASK.md` §3; `notes/fallback-validation-spec.md` §3 |
+| Drill-speed turns | 3,385 | `scenarios[name=entry_3_5].turns` |
+| Drill-speed ICC(1) | 0.0093 | `scenarios[name=entry_3_5].icc` (0.009321) |
+| Drill-speed k̄ | 30.0 | `scenarios[name=entry_3_5].kbar` (29.956) |
+| Drill-speed + pass turns | 2,232 | `scenarios[name=entry_3_5_pass].turns` |
+| Drill-speed + pass players | 108 | `scenarios[name=entry_3_5_pass].players` |
+| Drill-speed + pass ICC(1) | 0.0085 | `scenarios[name=entry_3_5_pass].icc` (0.008460) |
+| Pass-only turns | 5,197 | `scenarios[name=pass_only].turns`; `outputs/turn_context/summary.json` → `play_type.pass` |
+| Pass-only players | 111 | `scenarios[name=pass_only].players` |
+| Pass-only k̄ | 46.8 | `scenarios[name=pass_only].kbar` (46.820) |
+| Pass-only ICC(1) | 0.0046 | `scenarios[name=pass_only].icc` (0.004559) |
+| Adjustment R², whole band | 0.406 | `adjustment.all_band.r_squared` (0.405784) |
+| Adjusted ICC, whole band | 0.0037 | `adjustment.all_band.icc` (0.003685) |
+| Adjustment R², 3–5 yd/s | 0.146 | `adjustment.entry_3_5.r_squared` (0.146425) |
+| Adjusted ICC, 3–5 yd/s | 0.0141 | `adjustment.entry_3_5.icc` (0.014055) |
+| Reliability of a player mean at k=30, ρ=0.0141 | ≈0.30 | `derived.reliability_of_player_mean[0].R` (0.2995) |
+| Attenuation ceiling √R | ≈0.55 ("roughly half") | `derived.attenuation_ceiling_sqrt_R.at_adjusted_rho` (0.5473) |
+| ρ needed for R=0.70 at k=30 | 0.072 | `derived.rho_needed_for_R_0_70_at_k30` (0.072165) |
+| Turns per player for R=0.70 at ρ=0.0141 | ≈163 | `derived.k_needed_for_R_0_70_at_adjusted_rho` (163.7 at the artefact's ρ; 163.2 at the rounded 0.0141) |
+| Drill-speed turns needed | ≈18,000 | `derived.turns_needed_for_R_0_70.turns_needed` (18,497 at 163.7 × 113; one significant figure) |
+| Turns held | 3,385 | `scenarios[name=entry_3_5].turns` |
+| Player clusters for the observed effect | ≈590 | `derived.clusters_for_observed_effect.clusters_required` (590.7) |
+| Turns with no labelled opponent | 4,768 | `notes/outcome-link-feasibility.md` (coverage table, both `[FULL]` blocks) |
 | Share with none | 61.3% | 4,768 / 7,777 = 61.309% (`notes/outcome-link-feasibility.md`) |
-| Cohort | 497 prospects; 115 defensive backs | `notes/outcome-link-feasibility.md` (cohort); `TASK.md` §2; `notes/fallback-validation-spec.md` §5 |
-| Turns with ≥1 candidate | 3,009 | `notes/outcome-link-feasibility.md` (coverage table); `notes/outcome-link-correction-spec.md` |
+| Cohort | 497 prospects; 115 defensive backs | `notes/outcome-link-feasibility.md` (cohort); `TASK.md` §2 |
+| Turns with ≥1 candidate | 3,009 | `notes/outcome-link-feasibility.md` (coverage table) |
 | Share with ≥1 | 38.7% | 3,009 / 7,777 = 38.691% |
-| Gate, share arm | ≥30% of band turns | D197 (gate proposal); `notes/geometric-attribution-spec.md` §10 |
-| Gate in turns | 2,333 | 0.30 × 7,777 = 2,333.1, printed as 2,333 (the brief's figure; strictly ≥30% needs 2,334 — a one-turn difference); also printed in `notes/outcome-link-feasibility.md` |
-| Pre-declared finding bar | \|β\| ≥ 2.0 yd per unit retention | `notes/outcome-test-spec.md` §6(e); `notes/geometric-attribution-spec.md` §11; D199 |
-| Minimum detectable effect — geometric | 1.01 yd | derived, see (A) below |
-| Minimum detectable effect — elimination | 0.59 yd | derived, see (A) below |
-| Elimination-matched turns | 1,731 | D199; `notes/outcome-test-result.md` |
-| Elimination-matched players | 102 | D199; `notes/outcome-test-result.md` |
-| Elimination point estimate | +0.05 yd per unit retention | D199; `notes/outcome-test-result.md` |
-| Elimination 95% CI | −0.36 to +0.46 | D199; `notes/outcome-test-result.md` |
-| Estimator sample — turns | 411 | D204; `notes/geometric-attribution-result.md` |
-| Estimator sample — clusters | 84 | D204; `notes/geometric-attribution-result.md` |
-| Geometric point estimate | −0.38 yd per unit retention | D204; `notes/geometric-attribution-result.md` |
-| Geometric 95% CI | −1.08 to +0.33 | D204; `notes/geometric-attribution-result.md` |
-| Confidence level | 95% | D199 and D204 (both published intervals) |
+| Pass turns in band | 5,197 | `outputs/turn_context/summary.json` → `play_type.pass`; D205 |
+| Run turns in band | 2,580 | `outputs/turn_context/summary.json` → `play_type.run`; D205 |
+| Band share of pass turns | 12.4% | `outputs/turn_context/demand_scope.csv` → `pass.band_share_of_scope` (0.1237) |
+| Band share of run turns | 15.5% | `outputs/turn_context/demand_scope.csv` → `run.band_share_of_scope` (0.1549) |
 
 ### Derived quantities — formula and inputs
 
-**(A) Minimum detectable effect.** `MDE = 2.8016 × SE`, where `2.8016 = z(0.975) + z(0.80)` (two-sided 5%, 80% power). `SE` is recovered from each published interval as `(upper − lower) / (2 × 1.959964)`:
+**(A) Scenario ICCs.** Frame: `setting == 'game'`, `position_group == 'DB'`,
+`30 <= abs_turn_angle < 60`, `valid == True`; then `play_type` is joined from
+`outputs/turn_context/turn_context.parquet` on
+`(game_id, play_id, nfl_id, frame_start)`, deduplicated on that key and joined
+`many_to_one` (three turn keys repeat because two segmentations of the same turn
+share the key; both rows carry the same play). `ICC(1)` is
+`bdb27.fallback_validation.icc1(apex_retention, nfl_id)`, one-way random effects,
+unbalanced ANOVA moments.
 
-- geometric: `(0.33 + 1.08) / 3.919928 = 0.360` → `MDE = 2.8016 × 0.360 = 1.008` → **1.01 yd** (input: D204 CI −1.08 to +0.33);
-- elimination: `(0.46 + 0.36) / 3.919928 = 0.209` → `MDE = 2.8016 × 0.209 = 0.586` → **0.59 yd** (input: D199 CI −0.36 to +0.46).
+Reproduction of the brief's table: all four scenario counts, all k̄ values and
+three of four ICCs reproduce exactly. **Pass-only is the exception:** the brief
+quotes 0.0047; the file gives 0.004559 → **0.0046**. The ordinary (non-pass)
+3–5 yd/s ICC reproduces at 0.009321 → 0.0093, and the adjusted values reproduce
+at 0.003685 and 0.014055. The 7,777 depends on the `valid` filter: the parquet
+holds 7,778 band rows, one with `valid == False`.
 
-Both figures are computed at the achieved sample, so neither depends on any scaling assumption.
+**(B) Reliability of a player mean and its attenuation.**
+`R = k·ρ / (1 + (k−1)·ρ)`. At `k = 30`, `ρ = 0.014055`:
+`30 × 0.014055 = 0.42164`; `1 + 29 × 0.014055 = 1.40759`; `R = 0.2995`.
+At `ρ = 0.009321`: `R = 0.2201`. A correlation with a perfectly measured
+criterion observed through this exposure is `|r_obs| = √R · |r_true|`, so
+`√0.2995 = 0.5473` — roughly half.
+
+**(C) What a usable test needs.** For `R = 0.70` at `k = 30`:
+`ρ = R / (k − (k−1)R) = 0.70 / (30 − 29 × 0.70) = 0.70 / 9.70 = 0.07216`.
+Turns per player at `ρ = 0.014055`:
+`k = R(1−ρ) / (ρ(1−R)) = 0.70 × 0.98595 / (0.014055 × 0.30) = 163.7`
+(163.2 using the rounded 0.0141; the paragraph says ≈163). Across 113 players
+that is 18,497 turns — ≈18,000 at one significant figure — against 3,385 held.
+
+**(D) Clusters for the effect actually observed.** From D204's geometric
+estimate, `b = −0.38` yd per unit retention, 95% CI `[−1.08, +0.33]`, 84
+clusters. `SE = (0.33 + 1.08) / (2 × 1.959964) = 0.3597`;
+`SE_needed = 0.38 / (1.959964 + 0.841621) = 0.1356`;
+`n_req = 84 × (0.3597 / 0.1356)² = 590.7` → **≈590**.
+
+**Caveat.** `ρ` is a plug-in point estimate with its own interval (D203's
+bootstrap CI for the band ICC is `[−0.001, 0.008]`), so the reliability,
+attenuation and sample-size targets above are order-of-magnitude statements, not
+design guarantees. They are printed for scale, not as a threshold any test here
+was required to clear.
