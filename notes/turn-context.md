@@ -137,9 +137,9 @@ turn shape. Both subsets are reported above; neither is chosen here.
   (`.venv` readings: no turn sits at exactly 30.0° or exactly 60.0°), so the
   inclusive-edge count cannot be reproduced from this turn file. Every count
   here is 7,777-based; the pass figure follows, 5,197 rather than 5,198.
-- **Pass is 5,197, of which 371 are scrambles.** The pre-measurement did not
-  separate `pass_result = 'R'`; the three-way breakdown is in
-  `play_type_split.csv` and the two-way split is unchanged by it.
+- **Pass is 5,197, of which 371 are scrambles.** The pre-measurement's pass
+  figure is reported here as one bucket; the scramble subset is broken out in
+  `play_type_split.csv` and the two-way split is unchanged by the separation.
 - **`separation_at_pass_forward` is 0% present on band turns.** It cannot be
   measured on the defender's own row. The MAN/ZONE separation figures quoted
   from band *plays* are a receiver-row measurement and are not part of this
