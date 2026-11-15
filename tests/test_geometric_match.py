@@ -160,38 +160,47 @@ def test_radius_counts_are_monotone(tmp_path):
 
 
 # ------------------------------------------------------------------ pre-flight
-def test_preflight_stops_on_the_exact_truncation_row_count():
+def test_preflight_reports_the_exact_truncation_and_keeps_going():
     v = gm.preflight_verdict({"path": "x.csv", "rows": gm.TRUNCATION_ROWS,
                               "players": 154, "median_players_on_play": 1.0,
-                              "plays": 12638})
-    assert v["ok"] is False
-    assert any("1,048,575" in s for s in v["stops"])
-
-
-def test_preflight_stops_on_too_few_players():
-    v = gm.preflight_verdict({"path": "x.csv", "rows": 9_000_000, "players": 154,
-                              "median_players_on_play": 22.0, "plays": 30000})
-    assert any("154" in s for s in v["stops"])
-
-
-def test_preflight_stops_on_low_median_players_per_play():
-    v = gm.preflight_verdict({"path": "x.csv", "rows": 9_000_000, "players": 2000,
-                              "median_players_on_play": 4.0, "plays": 30000})
-    assert any("median" in s for s in v["stops"])
-
-
-def test_preflight_stops_when_the_band_is_not_covered():
-    v = gm.preflight_verdict({"path": "x.csv", "rows": 9_000_000, "players": 2000,
-                              "median_players_on_play": 22.0, "plays": 1000},
-                             band_plays=7198)
-    assert any("90%" in s for s in v["stops"])
-
-
-def test_preflight_accepts_a_full_looking_file():
-    v = gm.preflight_verdict({"path": "x.csv", "rows": 30_000_000, "players": 2200,
-                              "median_players_on_play": 22.0, "plays": 31720},
-                             band_plays=7198)
+                              "max_players_on_play": 4, "plays": 12638,
+                              "games": 333})
     assert v["ok"] is True and v["stops"] == []
+    assert v["truncated"] is True
+    assert any("1,048,575" in s for s in v["findings"])
+
+
+def test_preflight_reports_a_cohort_shaped_file_without_judging_it():
+    v = gm.preflight_verdict({"path": "x.csv", "rows": 9_000_000, "players": 497,
+                              "median_players_on_play": 2.0,
+                              "max_players_on_play": 11, "plays": 114_954,
+                              "games": 272})
+    text = " ".join(v["findings"])
+    assert v["stops"] == [] and v["truncated"] is False
+    assert "497" in text and "2.0" in text
+    for word in ("anomal", "defect", "too few", "STOP"):
+        assert word not in text
+
+
+def test_preflight_reports_the_band_size_and_does_not_gate_on_it():
+    v = gm.preflight_verdict({"path": "x.csv", "rows": 9_000_000, "players": 497,
+                              "median_players_on_play": 2.0, "plays": 1000},
+                             band_plays=7198)
+    assert v["stops"] == []
+    assert any("7,198" in s for s in v["findings"])
+
+
+def test_preflight_never_stops_whatever_the_counts():
+    for counts in (
+        {"path": "x.csv", "rows": 0, "players": 0, "plays": 0,
+         "median_players_on_play": 0.0},
+        {"path": "x.csv", "rows": 30_000_000, "players": 2200,
+         "median_players_on_play": 22.0, "plays": 31720},
+        {"path": "x.csv", "rows": gm.TRUNCATION_ROWS, "players": 2,
+         "median_players_on_play": 1.0, "plays": 1},
+    ):
+        v = gm.preflight_verdict(counts, band_plays=7198)
+        assert v["ok"] is True and v["stops"] == [] and v["findings"]
 
 
 # ------------------------------------------------------------------ ambiguity
@@ -216,7 +225,9 @@ def test_misattribution_rate_and_labels():
     assert res["agree"] == 2 and res["disagree"] == 1
     assert res["ambiguous"] == 1 and res["judgeable"] == 3
     assert res["misattribution_rate"] == pytest.approx(1 / 3)
-    assert res["label"] == "TOO FEW JUDGEABLE TURNS FOR A RATE"
+    # Reported with its denominator whatever the denominator is (D201).
+    assert res["label"] == "MISATTRIBUTION RATE"
+    assert res["judgeable_share"] == pytest.approx(0.75)
 
 
 # ------------------------------------------------------------------ extraction
@@ -303,6 +314,7 @@ def test_verdict_never_upgrades_a_null_under_a_failed_gate():
                      "DESCRIPTIVE ONLY — BELOW PRE-DECLARED GATE"},
     }
     text = " ".join(gm.plain_english_verdict(summary))
+    assert "of 900 turns where both rules" in text
     assert "22.2%" in text
     assert "2026" not in text
     assert "NOT MET" in text
@@ -317,7 +329,7 @@ def test_verdict_says_not_fitted_when_there_is_no_estimate():
                         "min_turns": 500, "min_share": 0.30, "gate_met": False}}
     text = " ".join(gm.plain_english_verdict(summary))
     assert "not fitted" in text.lower()
-    assert "unrevised" in text.lower()
+    assert "no statement about the coefficient" in text.lower()
 
 
 def test_manifest_hashes_every_file(tmp_path):

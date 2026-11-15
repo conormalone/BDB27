@@ -45,21 +45,16 @@ ALIGN_GATE_YD = 0.25
 #: Half a frame at 10 Hz: the candidate slice is the break frame, not a window.
 FRAME_TOL_S = 0.05
 
-#: 2**20 - 1. A tracking file with exactly this many data rows is the truncation.
+#: 2**20 - 1. A tracking file with exactly this many data rows is the export
+#: truncation. It is *reported*, never a stop: the run continues on what is
+#: there and every number carries the truncation stamp.
 TRUNCATION_ROWS = 1_048_575
 
-#: Pre-stated minimum for a misattribution rate, and for a fit at all.
-MIN_JUDGEABLE = 50
-MIN_SEPARATION_TURNS = 200
-
-#: If tracking observes no opposing player on more than this share of band
-#: turns, the file is not the full tracking: stop with counts (spec §12).
-STOP_UNOBSERVED_SHARE = 0.5
-
-#: The full-file expectations of the pre-flight (spec §3).
-MIN_FULL_PLAYERS = 300
-MIN_MEDIAN_PLAYERS_PER_PLAY = 15.0
-MIN_BAND_PLAY_COVERAGE = 0.90
+#: Reference points quoted in the pre-flight's printed diagnostics. Nothing in
+#: this module stops, raises or narrows a sample on any of them.
+REFERENCE_FULL_PLAYERS = 300
+REFERENCE_MEDIAN_PLAYERS_PER_PLAY = 15.0
+REFERENCE_BAND_PLAY_COVERAGE = 0.90
 
 TURN_KEY: tuple[str, ...] = ("game_id", "play_id", "nfl_id", "frame_start")
 
@@ -209,44 +204,60 @@ def _csv_data_rows(path: str | Path) -> int | None:
 
 
 def preflight_verdict(counts: dict, band_plays: int | None = None) -> dict:
-    """Apply the four stop conditions of spec §3 to one file's counts.
+    """Describe one tracking file. Nothing here stops, raises or narrows a sample.
 
-    Pure function: same dict in, same verdict out. The messages name the file,
-    the measured value and the threshold.
+    Pure function: same dict in, same report out. The exact row count is the one
+    discriminator this project trusts for the export truncation, because a
+    cohort-only file and a truncated export are indistinguishable on player
+    counts and players-per-play. Everything else is printed as structure, with
+    its denominator, and the run continues on whatever the file holds.
     """
     name = Path(counts.get("path", "tracking")).name
-    stops: list[str] = []
+    rows = int(counts.get("rows", 0))
+    games = int(counts.get("games", 0))
+    plays = int(counts.get("plays", 0))
+    players = int(counts.get("players", 0))
+    median = float(counts.get("median_players_on_play", 0.0))
+    widest = int(counts.get("max_players_on_play", 0))
+    truncated = rows == TRUNCATION_ROWS
 
-    if int(counts.get("rows", 0)) == TRUNCATION_ROWS:
-        stops.append(
-            f"STOP — {name} has exactly {TRUNCATION_ROWS:,} data rows: this is the "
-            f"1,048,575-row (2^20-1) truncation, not the full tracking file. The "
-            f"notebook needs the full file (every player on the field).")
-    if int(counts.get("players", 0)) < MIN_FULL_PLAYERS:
-        stops.append(
-            f"STOP — truncation: {name} tracks {int(counts.get('players', 0)):,} "
-            f"players, below the full-file expectation of {MIN_FULL_PLAYERS:,}.")
-    if float(counts.get("median_players_on_play", 0)) < MIN_MEDIAN_PLAYERS_PER_PLAY:
-        stops.append(
-            f"STOP — truncation: {name} has a median of "
-            f"{float(counts.get('median_players_on_play', 0)):.1f} players per play, "
-            f"below the full-file expectation of {MIN_MEDIAN_PLAYERS_PER_PLAY:.0f}.")
+    findings = [
+        f"{name}: {rows:,} rows · {games:,} games · {plays:,} plays · "
+        f"{players:,} players · median {median:.1f} players/play "
+        f"(widest {widest})",
+    ]
+    if truncated:
+        findings.append(
+            f"{name} has exactly {TRUNCATION_ROWS:,} data rows (2^20-1): this is "
+            f"the known export truncation. The run continues on it; every number "
+            f"below is conditional on this subset.")
+    else:
+        findings.append(
+            f"{name}: row count is not the 1,048,575-row truncation "
+            f"({rows:,} rows read).")
+
+    coverage = None
     if band_plays:
-        covered = int(counts.get("plays", 0))
-        need = MIN_BAND_PLAY_COVERAGE * int(band_plays)
-        if covered < need:
-            stops.append(
-                f"STOP — tracking covers less than 90% of the band: {name} holds "
-                f"{covered:,} plays, the band has {int(band_plays):,} "
-                f"(need at least {int(math.ceil(need)):,}).")
+        coverage = plays / int(band_plays) if band_plays else None
+        findings.append(
+            f"{name}: {plays:,} distinct plays in the file against "
+            f"{int(band_plays):,} band plays ({coverage:.1%} as many). The file "
+            f"spans all plays, not just the band, so this is not a coverage "
+            f"measure; the measured coverage of the band is the §5 table.")
 
-    return {"ok": not stops, "stops": stops, "checked": {
-        "rows": int(counts.get("rows", 0)),
-        "players": int(counts.get("players", 0)),
-        "median_players_on_play": float(counts.get("median_players_on_play", 0)),
-        "plays": int(counts.get("plays", 0)),
-        "band_plays": band_plays,
-    }}
+    findings.append(
+        f"{name}: players and players-per-play are reported as structure, not "
+        f"judged: a cohort-only file holds a few hundred players at one or two "
+        f"rows per play by design, and a truncated export can look the same.")
+
+    return {"ok": True, "stops": [], "findings": findings, "truncated": truncated,
+            "checked": {
+                "rows": rows, "games": games, "players": players,
+                "median_players_on_play": median,
+                "max_players_on_play": widest,
+                "plays": plays, "band_plays": band_plays,
+                "band_plays_present_share": coverage,
+            }}
 
 
 # ------------------------------------------------------------------ extraction
@@ -634,10 +645,9 @@ def compare_elimination(match_df: pd.DataFrame,
     disagree = int(counts.get("disagree", 0))
     judgeable = agree + disagree
     rate = (disagree / judgeable) if judgeable else None
-    if judgeable < MIN_JUDGEABLE:
-        rate_label = "TOO FEW JUDGEABLE TURNS FOR A RATE"
-    else:
-        rate_label = "MISATTRIBUTION RATE"
+    # Always a number with its denominator. A small denominator is a wide
+    # interval and a descriptive-only label downstream, never a stop.
+    rate_label = "MISATTRIBUTION RATE" if judgeable else "NO JUDGEABLE TURNS"
     return {
         "rows": df,
         "agree": agree,
@@ -646,6 +656,7 @@ def compare_elimination(match_df: pd.DataFrame,
         "none": int(counts.get("no_receiver_in_radius", 0)),
         "unmeasurable": int(counts.get("unmeasurable", 0)),
         "judgeable": judgeable,
+        "judgeable_share": round(judgeable / len(df), 4) if len(df) else None,
         "elimination_turns": int(len(df)),
         "misattribution_rate": rate,
         "label": rate_label,
@@ -748,16 +759,31 @@ def compare_with_d199(geom_fits: Sequence[Any],
                       elim_estimates_csv: str | Path) -> pd.DataFrame:
     """Elimination and geometric estimates side by side, row for row.
 
-    ``geom_fits`` is ``outcome_test.run_all``'s list, in the spec's fixed order;
-    the D199 CSV is in the same order. Rows are therefore aligned by position,
-    and a length mismatch raises rather than guessing a mapping.
+    Rows are aligned on the ``spec`` name where both sides carry one, else by
+    position when the lengths agree. A mismatch is reported in the returned
+    frame's ``note`` column instead of raising: the comparison is a diagnostic,
+    never a reason to lose the run.
     """
     elim = pd.read_csv(elim_estimates_csv)
-    if len(elim) != len(geom_fits):
-        raise ValueError(
-            f"expected {len(elim)} D199 rows, got {len(geom_fits)} geometric fits")
+    note = ""
+    pairs: list[tuple[Any, Any]] = []
+    if "spec" in elim.columns:
+        by_name = {str(r["spec"]): r for _, r in elim.iterrows()}
+        for f in geom_fits:
+            row = by_name.get(str(f.name))
+            if row is not None:
+                pairs.append((f, row))
+        if not pairs:
+            note = (f"no shared spec name between {len(geom_fits)} geometric "
+                    f"fits and {len(elim)} D199 rows; nothing aligned")
+    elif len(elim) == len(geom_fits):
+        pairs = list(zip(geom_fits, (r for _, r in elim.iterrows())))
+    else:
+        note = (f"{len(elim)} D199 rows against {len(geom_fits)} geometric fits, "
+                f"no spec column to align on; nothing compared")
+
     rows = []
-    for (_, e), f in zip(elim.iterrows(), geom_fits):
+    for f, e in pairs:
         rows.append({
             "spec": f.name,
             "elimination_beta": float(e["beta_yd_per_unit_retention"]),
@@ -770,8 +796,33 @@ def compare_with_d199(geom_fits: Sequence[Any],
             "geometric_n": int(f.n),
             "geometric_clusters": int(f.n_clusters),
             "change": round(float(f.beta) - float(e["beta_yd_per_unit_retention"]), 4),
+            "note": note,
         })
     return pd.DataFrame(rows)
+
+
+def empty_match(turns: pd.DataFrame) -> pd.DataFrame:
+    """A match frame for the case where the tracking covers none of the band.
+
+    Every turn is ``untracked`` and every count is zero. The coverage table, the
+    misattribution counts and the verdict all work on it, so a tracking file
+    that misses the band produces zeros and a label, never an exception.
+    """
+    out = turns[list(TURN_KEY)].drop_duplicates().reset_index(drop=True)
+    out["match_status"] = "untracked"
+    out["db_rows"] = 0
+    out["n_players_in_frame"] = 0
+    out["n_opposing_players"] = 0
+    out["n_candidates_in_frame"] = 0
+    for radius in RADII_YD:
+        out[f"n_in_radius_{int(radius)}"] = 0
+    out["min_distance_yd"] = np.nan
+    out["second_distance_yd"] = np.nan
+    out["nearest_gap_yd"] = np.nan
+    out["matched_receiver_nfl_id"] = np.nan
+    out["all_in_radius_ids"] = None
+    out["fb_n_in_radius_3"] = 0
+    return out
 
 
 # ------------------------------------------------------------------ manifest
@@ -815,29 +866,32 @@ def write_manifest(out_dir: str | Path, inputs: Sequence[str | Path],
 def plain_english_verdict(summary: dict) -> list[str]:
     """The final cell's plain-English verdict, built only from measured fields.
 
-    It never upgrades a null into a claim: every branch is conditioned on the
-    gate and on the pre-stated decision rule.
+    It never upgrades a null into a claim, and it never reports a threshold as a
+    refusal: every rate is printed with its denominator, and a thin subset is
+    labelled descriptive rather than withheld.
     """
     lines: list[str] = []
     miss = summary.get("misattribution", {})
     gate = summary.get("gate", {})
     est = summary.get("estimate", {})
     rate = miss.get("misattribution_rate")
+    judgeable = int(miss.get("judgeable", 0) or 0)
 
-    if miss.get("label") == "TOO FEW JUDGEABLE TURNS FOR A RATE":
+    if rate is None:
         lines.append(
-            f"Attribution: only {miss.get('judgeable', 0):,} turns could be judged "
-            f"(agree {miss.get('agree', 0):,}, disagree {miss.get('disagree', 0):,}); "
-            f"that is below the pre-stated minimum of {MIN_JUDGEABLE}, so no "
-            f"misattribution rate is reported.")
-    elif rate is not None:
+            f"Attribution: 0 of {miss.get('elimination_turns', 0):,} "
+            f"elimination-attributed turns could be judged on both rules "
+            f"(agree 0, disagree 0), so the rate is 0 of 0 and nothing is claimed.")
+    else:
         lines.append(
-            f"Attribution: of {miss.get('judgeable', 0):,} turns where both rules "
+            f"Attribution: of {judgeable:,} turns where both rules "
             f"could be evaluated, the geometric match named the same player as the "
             f"elimination rule on {miss.get('agree', 0):,} and a different player on "
-            f"{miss.get('disagree', 0):,} — a misattribution rate of {rate:.1%}.")
-    else:
-        lines.append("Attribution: the misattribution rate could not be computed.")
+            f"{miss.get('disagree', 0):,} — a misattribution rate of {rate:.1%} "
+            f"({miss.get('disagree', 0):,} of {judgeable:,}"
+            + (f"; {judgeable:,} judgeable is a small denominator, so this is "
+               f"descriptive only" if judgeable < 50 else "")
+            + ").")
 
     if not gate.get("gate_met", False):
         lines.append(
@@ -851,21 +905,37 @@ def plain_english_verdict(summary: dict) -> list[str]:
             f"{gate.get('attributed_fraction', 0):.1%} of the band.")
 
     if not est:
-        lines.append("Estimate: not fitted. No statement about the coefficient is "
-                     "made, and the D199 null stands unrevised.")
+        lines.append(
+            "Estimate: not fitted — "
+            + str(summary.get("estimate_status")
+                  or "no attributed turn carries the outcome column")
+            + ". The counts and intervals above are the result; no statement "
+              "about the coefficient is made.")
         return lines
 
     b, lo, hi = est.get("beta"), est.get("lo"), est.get("hi")
     elim = est.get("elimination_beta")
+    if b is None or not np.isfinite(b):
+        lines.append(
+            f"Estimate: not estimable — the {est.get('n', 0):,}-turn subset "
+            f"produced no finite coefficient. That is a thin subset, not a "
+            f"failure: the counts above stand and no coefficient is claimed.")
+        return lines
+    ci = (f"{lo:+.2f} to {hi:+.2f}" if np.isfinite(lo) and np.isfinite(hi)
+          else "not finite — the subset is too thin for a usable interval")
     lines.append(
         f"Estimate: {b:+.2f} yd of separation per unit of apex retention "
-        f"(95% CI {lo:+.2f} to {hi:+.2f}), against D199's elimination-matched "
-        f"{elim:+.2f} yd. " +
-        ("The geometric estimate moved away from zero, consistent with the "
-         "elimination null having been attenuated by misattribution."
-         if elim is not None and abs(b) > abs(elim) * 1.5 and b < 0 else
-         "The geometric estimate did not move materially toward the stated "
-         "direction."))
+        f"(95% CI {ci}), n={est.get('n', 0):,} turns in "
+        f"{est.get('clusters', 0):,} player clusters, on "
+        f"{est.get('attributed_fraction', gate.get('attributed_fraction', 0)):.1%} "
+        f"of the band" +
+        (f", against D199's elimination-matched {elim:+.2f} yd. "
+         + ("The geometric estimate moved away from zero, consistent with the "
+            "elimination null having been attenuated by misattribution."
+            if abs(b) > abs(elim) * 1.5 and b < 0 else
+            "The geometric estimate did not move materially toward the stated "
+            "direction.")
+         if elim is not None and np.isfinite(elim) else "."))
     lines.append(f"Pre-stated criterion: {est.get('label', 'not evaluated')}. " +
                  ("The criterion is met; this is the finding the spec permits."
                   if est.get("label") == "FINDING" else

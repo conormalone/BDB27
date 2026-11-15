@@ -146,24 +146,22 @@ def main(argv: list[str] | None = None) -> int:
             counts[key]["mtime_ns"] = stat.st_mtime_ns
     preflight_path.write_text(json.dumps(counts, indent=2), encoding="utf-8")
 
-    verdicts = [gm.preflight_verdict(c, band_plays=len(band_plays))
-                for c in counts.values()]
-    for c, v in zip(counts.values(), verdicts):
-        _log(f"  {Path(c['path']).name}: {c['rows']:,} rows, {c['games']:,} games, "
-             f"{c['plays']:,} plays, {c['players']:,} players, median "
-             f"{c['median_players_on_play']:.1f} players/play -> "
-             f"{'OK' if v['ok'] else 'STOP'}")
-    if not all(v["ok"] for v in verdicts) and not args.allow_sample_tracking:
-        for v in verdicts:
-            for s in v["stops"]:
-                _log(s)
-        _log("Nothing was extracted. This is the pre-flight doing its job.")
-        return 2
-    if not all(v["ok"] for v in verdicts):
+    reports = [gm.preflight_verdict(c, band_plays=len(band_plays))
+               for c in counts.values()]
+    for report in reports:
+        for line in report["findings"]:
+            _log("  " + line)
+    truncated = any(r["truncated"] for r in reports)
+    stamp = ("PLACEHOLDER_SAMPLE" if args.allow_sample_tracking
+             else ("TRUNCATED" if truncated else "FULL"))
+    if truncated:
         _log("=" * 78)
-        _log("WARNING — PRE-FLIGHT STOP BYPASSED (--allow-sample-tracking).")
-        _log("Every number below is PLACEHOLDER_SAMPLE and is NOT a result.")
+        _log("FINDING — TRUNCATED EXPORT: the tracking file ends at exactly "
+             "1,048,575 rows. The run continues on it; every number is "
+             f"conditional on this subset. Stamp: {stamp}.")
         _log("=" * 78)
+    else:
+        _log(f"provenance stamp: {stamp}")
 
     # ---- extraction ------------------------------------------------------
     _log("extraction: streaming tracking, keeping the band's plays")
@@ -178,16 +176,21 @@ def main(argv: list[str] | None = None) -> int:
 
     # ---- break frame, candidates, match ----------------------------------
     con = gm.connect()
-    t0 = time.time()
-    bps = gm.recover_break_frames(con, band, shards)
-    _log(f"break frames: {int(bps['break_frame_ok'].sum()):,} of {len(band):,} "
-         f"recovered within {gm.ALIGN_GATE_YD} yd "
-         f"({time.time() - t0:,.0f}s)")
-    frames = gm.candidate_frame(con, bps, shards)
-    _log(f"candidate frames: {len(frames):,} player-rows across "
-         f"{frames.groupby(list(gm.TURN_KEY), sort=False).ngroups:,} turns")
-
-    match = gm.match_turns(band, frames, bps, pp_path)
+    have_tracking = sum(s["rows_kept"] for s in shards) > 0
+    if have_tracking:
+        t0 = time.time()
+        bps = gm.recover_break_frames(con, band, shards)
+        _log(f"break frames: {int(bps['break_frame_ok'].sum()):,} of {len(band):,} "
+             f"recovered within {gm.ALIGN_GATE_YD} yd "
+             f"({time.time() - t0:,.0f}s)")
+        frames = gm.candidate_frame(con, bps, shards)
+        _log(f"candidate frames: {len(frames):,} player-rows across "
+             f"{frames.groupby(list(gm.TURN_KEY), sort=False).ngroups:,} turns")
+        match = gm.match_turns(band, frames, bps, pp_path)
+    else:
+        _log(f"FINDING — no tracking row for any of the {len(band):,} band turns. "
+             "Every turn is reported untracked and every count is zero.")
+        match = gm.empty_match(band)
     match.to_csv(out / "match_turns.csv", index=False, encoding="utf-8")
 
     coverage = gm.coverage_table(match, band_turn_count)
@@ -209,11 +212,12 @@ def main(argv: list[str] | None = None) -> int:
          f"ambiguous {miss['ambiguous']:,} · none {miss['none']:,} · "
          f"unmeasurable {miss['unmeasurable']:,}")
     if miss["misattribution_rate"] is None:
-        _log(f"  {miss['label']} (judgeable {miss['judgeable']:,} < "
-             f"{gm.MIN_JUDGEABLE:,})")
+        _log(f"  {miss['label']}: 0 of 0 judgeable turns "
+             f"({miss['elimination_turns']:,} elimination-attributed compared)")
     else:
         _log(f"  {miss['label']}: {miss['misattribution_rate']:.1%} "
-             f"({miss['disagree']:,}/{miss['judgeable']:,})")
+             f"({miss['disagree']:,} of {miss['judgeable']:,} judgeable turns; "
+             f"{miss['elimination_turns']:,} elimination-attributed compared)")
 
     # ---- legitimate stops before any fit ---------------------------------
     n_band = band_turn_count
@@ -245,19 +249,31 @@ def main(argv: list[str] | None = None) -> int:
         "min_turns": 500, "min_share": 0.30, "gate_met": bool(gate_met),
     }
 
-    if n_band and unseen / n_band > gm.STOP_UNOBSERVED_SHARE:
-        summary["stop"] = {
-            "reason": "TRACKING DOES NOT OBSERVE OPPONENTS ON MOST PLAYS",
+    unseen_share = unseen / n_band if n_band else 0.0
+    summary["findings"] = {
+        "opponent_visibility": {
+            "band_turns": n_band,
+            "turns_with_an_opponent_in_frame": int(n_band - unseen),
             "unobservable": int(match["match_status"].eq("unobservable").sum()),
             "untracked": int(match["match_status"].eq("untracked").sum()),
-            "band_turns": n_band,
-            "share": round(unseen / n_band, 4),
-        }
-        _log(f"STOP — TRACKING DOES NOT OBSERVE OPPONENTS ON MOST PLAYS: "
-             f"{unseen:,} of {n_band:,} ({unseen / n_band:.1%}) are unobservable "
-             f"({int(match['match_status'].eq('unobservable').sum()):,}) or "
-             f"untracked ({int(match['match_status'].eq('untracked').sum()):,}). "
-             f"No estimate is fitted.")
+            "share_unobservable_or_untracked": round(unseen_share, 4),
+        },
+        "truncated_export": bool(truncated),
+    }
+    _log(f"opponent visibility: {n_band - unseen:,} of {n_band:,} band turns carry "
+         f"an opposing player in the break frame; {unseen:,} ({unseen_share:.1%}) are "
+         f"unobservable or untracked — reported, not a stop.")
+    summary["geometric_sample"] = dict(outcome_test.sample_summary(sample)) if len(sample) else {}
+    _log(f"attributed: {attributed:,} unique at {gm.PRIMARY_RADIUS_YD:.0f} yd "
+         f"({attributed_fraction:.1%} of the band); with the matched receiver's "
+         f"separation recorded: {len(sample):,}; gate "
+         f"{'MET' if gate_met else 'NOT MET'}")
+
+    if len(sample) == 0:
+        summary["estimate_status"] = (
+            f"0 of {attributed:,} attributed turns carry the matched receiver's "
+            f"separation_at_pass_forward ({attributed} of {n_band:,} band turns)")
+        _log("estimate: not fitted — " + summary["estimate_status"] + ".")
         (out / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         _write_verdict(out, summary)
         gm.write_manifest(out, [turns_path, pp_path, *tracking],
@@ -267,25 +283,11 @@ def main(argv: list[str] | None = None) -> int:
                           config={"chunk_rows": args.chunk_rows,
                                   "resume": not args.no_resume,
                                   "allow_sample_tracking": args.allow_sample_tracking},
-                          extra={"stage": "stop-before-fit", "provenance": stamp})
+                          extra={"stage": "no-attributed-outcome",
+                                 "provenance": stamp})
         return 0
 
-    summary["geometric_sample"] = dict(outcome_test.sample_summary(sample)) if len(sample) else {}
-    _log(f"attributed: {attributed:,} unique at {gm.PRIMARY_RADIUS_YD:.0f} yd "
-         f"({attributed_fraction:.1%} of the band); with the matched receiver's "
-         f"separation recorded: {len(sample):,}; gate "
-         f"{'MET' if gate_met else 'NOT MET'}")
-
-    if attributed == 0:
-        summary["stop"] = {"reason": "NO_UNIQUE_MATCH_AT_ANY_RADIUS"}
-    elif len(sample) < gm.MIN_SEPARATION_TURNS:
-        summary["stop"] = {
-            "reason": "TOO_FEW_TURNS_WITH_OUTCOME",
-            "turns_with_separation": int(len(sample)),
-            "minimum": gm.MIN_SEPARATION_TURNS,
-        }
-
-    if summary["stop"] is None:
+    if len(sample):
         fits, boot = outcome_test.run_all(sample)
         verdict = outcome_test.verdict(fits, boot)
         est = {
@@ -317,7 +319,7 @@ def main(argv: list[str] | None = None) -> int:
              f"clusters={est['clusters']:,}, label {est['label']}")
 
     # ---- persistence diagnostic -----------------------------------------
-    pf = gm.pass_forward_points(con, shards)
+    pf = gm.pass_forward_points(con, shards) if have_tracking else pd.DataFrame()
     if len(pf):
         at_pf = gm.players_at_pass_forward(con, pf, shards)
         pers = gm.persistence_check(match, pf, at_pf, pp_path)

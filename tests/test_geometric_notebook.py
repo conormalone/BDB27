@@ -101,9 +101,12 @@ def test_the_inference_label_is_on_the_surface():
     assert "no opponent identifier" in all_source()
 
 
-def test_it_names_the_preflight_stops():
+def test_it_reports_the_findings_instead_of_stopping():
+    """D201: the truncation and the visibility share are printed, never raised."""
     src = all_source()
     assert "1,048,575" in src
-    assert "TRACKING DOES NOT OBSERVE OPPONENTS ON MOST PLAYS" in src
+    assert "TRACKING DOES NOT OBSERVE OPPONENTS ON MOST PLAYS" not in src
+    assert "opponent visibility" in src
+    assert 'raise SystemExit("pre-flight stop")' not in src
     assert "miss['label']" in src, "the misattribution label must come from the module"
     assert "DESCRIPTIVE ONLY — BELOW PRE-DECLARED GATE" in src

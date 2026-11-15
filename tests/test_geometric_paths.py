@@ -6,8 +6,8 @@ sits in a folder he chose, not in the repo. ``TURNS = None`` must therefore
 on the Linux box, as a symlink to the USB drive).
 
 These tests are static/exec-in-memory: the search helper cell is lifted out of the
-.ipynb, given a temp repo and temp home, and exercised directly. The truncation
-stop is the module's own ``preflight_verdict`` — unchanged.
+.ipynb, given a temp repo and temp home, and exercised directly. The truncation is
+reported by the module's own ``preflight_verdict`` and never stops the run (D201).
 """
 
 from __future__ import annotations
@@ -279,34 +279,32 @@ def test_relative_paths_resolve_against_the_repo_and_absolute_paths_do_not(tmp_p
                                                 / "x.parquet").resolve()
 
 
-# ------------------------------------ 5. sample / truncation still stops loudly
+# ------------------------------------ 5. a truncation is reported, never a stop
 
-def test_a_truncated_or_sample_file_still_trips_the_preflight_stop():
-    from bdb27.geometric_match import (MIN_FULL_PLAYERS, TRUNCATION_ROWS,
-                                       preflight_verdict)
+def test_a_truncated_file_is_reported_and_the_run_continues():
+    from bdb27.geometric_match import TRUNCATION_ROWS, preflight_verdict
 
     truncated = preflight_verdict({"path": "game_tracking.csv",
                                    "rows": TRUNCATION_ROWS, "players": 5000,
                                    "plays": 900, "median_players_on_play": 22.0})
-    assert truncated["ok"] is False
-    assert any("1,048,575-row (2^20-1) truncation" in s for s in truncated["stops"])
+    assert truncated["stops"] == [] and truncated["ok"] is True
+    assert truncated["truncated"] is True
+    assert any("1,048,575" in s for s in truncated["findings"])
 
-    sample = preflight_verdict({"path": "game_tracking_sample.csv", "rows": 1000,
-                                "players": 4, "plays": 250,
-                                "median_players_on_play": 4.0})
-    assert sample["ok"] is False
-    assert str(MIN_FULL_PLAYERS) in " ".join(sample["stops"]) or "300" in " ".join(
-        sample["stops"])
-    assert any("truncation" in s for s in sample["stops"])
+    cohort = preflight_verdict({"path": "game_tracking_cohort.csv", "rows": 1000,
+                                "players": 497, "plays": 250,
+                                "median_players_on_play": 2.0})
+    assert cohort["stops"] == [] and cohort["truncated"] is False
+    assert any("497" in s for s in cohort["findings"])
 
 
-def test_the_notebook_keeps_the_preflight_stop_and_the_bypass_flag():
-    src = cell_with("def find_candidates(") + cell_with("preflight_verdict(")
+def test_the_notebook_reports_the_preflight_and_never_stops_on_it():
     inputs = cell_with("preflight_verdict(")
-    assert "ALLOW_SAMPLE_TRACKING" in inputs
-    assert 'raise SystemExit("pre-flight stop")' in inputs
+    config = cell_with("CONFIG")
     assert "preflight_verdict(c, band_plays=len(band_plays))" in inputs
-    assert src.count("is_dir()") >= 1
+    assert 'raise SystemExit("pre-flight stop")' not in inputs
+    assert "stamp" in config, "the provenance stamp must be defined by the config cell"
+    assert "ALLOW_SAMPLE_TRACKING" in config
     # the search is depth-bounded and refuses to walk the whole disk
     helper_src = cell_with("def find_candidates(")
     assert "SEARCH_DEPTH" in helper_src and "SEARCH_MAX_DIRS" in helper_src
