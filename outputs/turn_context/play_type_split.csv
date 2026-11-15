@@ -1,0 +1,4 @@
+play_type,bucket,n,denominator,share
+pass,not_scramble,4826,7777,0.6205477690626205
+pass,scramble,371,7777,0.04770477047704771
+run,not_scramble,2580,7777,0.33174746046033177

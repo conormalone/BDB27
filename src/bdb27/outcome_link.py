@@ -108,16 +108,23 @@ def _as_posix(path: str | Path) -> str:
 
 def load_player_play(con: duckdb.DuckDBPyConnection,
                      path: str | Path,
-                     table: str = PP_TABLE) -> str:
+                     table: str = PP_TABLE,
+                     extra: Sequence[tuple[str, str]] = ()) -> str:
     """Register ``player_play.csv`` as a typed table; return the table name.
 
     Two steps on purpose: a bare ``SELECT *`` with ``all_varchar`` stops DuckDB
     pushing a cast into the CSV reader (which re-infers types and fails on
     ``NA``); every column is then cast with ``TRY_CAST``.
+
+    ``extra`` adds columns as ``(name, sql_type)`` pairs, each cast with
+    ``TRY_CAST``. It is empty by default, so the base column set — and every
+    caller that relies on it — is unchanged.
     """
     con.execute(
         f"CREATE OR REPLACE TABLE raw_{table} AS SELECT * FROM read_csv("
         f"'{_as_posix(path)}', header=true, all_varchar=true, nullstr=['NA',''])")
+    extra_sql = "".join(f",\n      TRY_CAST({name} AS {sql_type}) AS {name}"
+                        for name, sql_type in extra)
     con.execute(f"""
     CREATE OR REPLACE TABLE {table} AS
     SELECT
@@ -125,7 +132,7 @@ def load_player_play(con: duckdb.DuckDBPyConnection,
       CAST(nfl_id AS BIGINT) AS nfl_id, team_abbr, lined_up_position, route_ran,
       TRY_CAST(target AS BOOLEAN) AS target,
       TRY_CAST(separation_at_pass_forward AS DOUBLE) AS separation_at_pass_forward,
-      possession_team
+      possession_team{extra_sql}
     FROM raw_{table}
     """)
     return table

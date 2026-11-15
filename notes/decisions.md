@@ -8574,3 +8574,43 @@ supply-against-demand claim. 78 tests green at the result commit.
 
 **Provenance.** `notes/fallback-validation-spec.md`; commits `c95c983`, `f7d25b4`;
 `outputs/fallback_validation/{reliability.json,discriminant.csv,speed_coverage.json,verdict.txt,manifest.json}`.
+
+## D205 — The band joined to `player_play`: two thirds coverage breaks, one third run support · 2026-11-15
+
+**Asked.** Conor, 2026-11-15 20:52 GMT, verbatim: *"Couldn't we combine it, calculate the angle
+from the tracking but take the results from the play file?"* A join on the turn's own
+`(game_id, play_id, nfl_id)` row — no inference, no radius, no attribution.
+
+**Built.** `scripts/turn_context.py` and `src/bdb27/turn_context.py`. Table
+`outputs/turn_context/turn_context.parquet` (7,777 rows × 88 columns), counts in
+`play_type_split.csv`, `field_availability.csv`, `demand_scope.csv`, `medians.csv`,
+`description_check.csv`, `summary.json`, digests of every input and output in `manifest.json`.
+The band and the `player_play` reader are reused from `bdb27.outcome_link` — its
+`load_player_play` gained a default-empty `extra` column list, so every existing caller is
+unchanged. No turn detection, band edge or CSV reader was reimplemented.
+
+**Result.** 7,777 band turns, **0** without a `player_play` row, across 7,198 plays, 113 players,
+809 games. Split by `pass_result` presence: **5,197 pass (66.8%) / 2,580 run (33.2%)** — and
+**371 of the pass turns are scrambles** (`pass_result = 'R'`), leaving 4,826 (62.1%) dropbacks that
+end in a throw, interception or sack. `coverage_assignment` is present on **5 of 2,580 run turns
+(0.19%)** against 4,134 of 5,197 pass turns (79.5%); the defensive-event block (tackle, assist,
+tackle for loss, forced fumble) is present on 1,232 turns (15.8%) and co-occurs exactly.
+`separation_at_pass_forward` and `route_ran` are 0 of 7,777 by construction — they are not filled on
+a defender's row, so the earlier MAN/ZONE separation figures are a receiver-row measurement on band
+plays, not this table.
+
+**What it does to the claim.** The band share is 13.26% of all valid game DB turns (58,664),
+12.37% of pass turns (42,004) and 15.49% of run turns (16,660): run turns are slightly *more* likely
+to sit in the band, so `TASK.md`'s 6.01× supply-against-demand ratio is not inflated by run support.
+What the split constrains is wording, not arithmetic: any sentence describing the band as coverage
+demand must condition on `play_type = 'pass'` or be reworded to describe turn shape. `TASK.md`, the
+band table, the four figures, the report draft and the validation section are untouched, and both
+subsets are reported side by side for Conor to choose between.
+
+**Disagreement with the pre-measurement.** 7,777 turns, not 7,778 (hence 5,197 pass, not 5,198).
+No turn sits at exactly 30.0° or exactly 60.0°, so the inclusive-edge run cannot be reproduced from
+this turn file and the one-turn difference is not explained here.
+
+**Provenance.** `notes/turn-context.md`; `outputs/turn_context/*` with
+`manifest.json` sha256 for `data/interim/full_run_20261111/bdb27_full_db_turns.parquet` and
+`data/raw/player_play.csv`; 562 tests, 561 passed, 1 skipped, 0 failed.
