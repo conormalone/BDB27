@@ -8434,3 +8434,50 @@ condition with the correct message.
 `src/bdb27/geometric_match.py`, `scripts/geometric_attribution.py`,
 `notebooks/bdb27_geometric_attribution.ipynb`, `tests/test_geometric_match.py`,
 `tests/test_geometric_notebook.py`.
+
+## D204 — Geometric attribution on FULL: misattribution 0 of 213, gate missed, estimate descriptive only · 2026-11-15
+
+**Asked.** The geometric notebook (D200) was built for one purpose: a single Run All on Conor's
+laptop, where the full game tracking lives. He ran it on 2026-11-15 and pasted the closing output
+at 09:52 GMT. This entry records what that run printed. It fits nothing and measures nothing new.
+
+**Result, as reported.** Of **213 turns where both rules could be evaluated**, the geometric match
+named the same player as the elimination rule on **213** and a different player on **0** — a
+misattribution rate of **0.0% (0 of 213)**. **471 turns were attributed, 6.1% of the 7,777-turn
+band.** On the geometric unique set the estimate is **−0.38 yd per unit `apex_retention`, 95% CI
+−1.08 to +0.33, n = 411 turns in 84 player clusters**, against D199's +0.05 yd [−0.36, +0.46] on
+the elimination-matched set. Both intervals include zero and overlap heavily; the point estimates
+sit either side of it.
+
+**Gate.** Both arms of the frozen gate fail: **471 < 500** attributed turns and **6.1% < 30%** of
+the band. Label: `DESCRIPTIVE ONLY — BELOW PRE-DECLARED GATE` (spec §10, §11). The number is
+reported in full; no finding and no claim is made in either direction.
+
+**Denominators, stated.** The misattribution check sees **213 of the 471** attributed turns
+(45.2%); the other 258 sit outside the elimination set, where the elimination rule has no unique
+candidate to compare against (spec §5). **411 of the 471** attributed turns enter the estimator;
+the paste does not decompose the 60-turn gap between 471 and 411, so this entry does not either.
+The rate conditions on geometry being able to decide and on the elimination rule having a unique
+candidate; both counts are printed so that conditioning is visible.
+
+**Pre-stated branch, quoted.** D200, verbatim: *"The gate (≥500 attributed, ≥30% of the band)
+decides what the number may be called; below it the label is `DESCRIPTIVE ONLY — BELOW
+PRE-DECLARED GATE` and no claim is made in either direction."* And for the low rate: *"if the rate
+is low, D199 stands as a precise null."* Both are hit at once; the gate sentence fixes the label.
+
+**What this does not do.** It does not upgrade the null, does not claim an attenuation fix, and
+does not overturn D199. 0 of 213 measures agreement between two rules on a conditioned subset, not
+the error of either (spec §6). A negative point estimate on 6.1% of the band with an interval
+spanning zero is descriptive, and it is left descriptive.
+
+**Provenance.** Reported by Conor's paste from his laptop; no artefact of the FULL run is on this
+machine — `outputs/geometric_attribution/` exists and is empty here. No manifest, no sha256 and no
+FULL row or play count is claimed for it. `notes/geometric-attribution-spec.md` was committed
+4d6de4b before any fit; the sample run under `outputs/geometric_attribution_sample/` remains the
+code-path validation.
+
+**Unchanged.** `TASK.md`, the band table, the four figures and `notes/report-draft.md`. Per D200,
+none of the outcomes enters the report draft without Conor's word, and he has not given it.
+
+**Evidence.** `notes/geometric-attribution-result.md` (FULL section);
+`notes/geometric-attribution-spec.md` §5–§11; D199, D200.
