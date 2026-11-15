@@ -79,3 +79,9 @@ Thumbs.db
 !outputs/geometric_attribution_sample/*.csv
 !outputs/geometric_attribution_sample/*.json
 !outputs/geometric_attribution_sample/*.txt
+# Fallback validation (D203): the diagnostic note's five artefacts. Small JSON,
+# CSV and TXT; the per-turn parquet and every input stay ignored.
+!outputs/fallback_validation/
+!outputs/fallback_validation/*.json
+!outputs/fallback_validation/*.csv
+!outputs/fallback_validation/*.txt

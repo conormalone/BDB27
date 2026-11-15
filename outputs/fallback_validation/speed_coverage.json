@@ -1,0 +1,516 @@
+{
+  "provenance": "FULL",
+  "spec": "notes/fallback-validation-spec.md",
+  "status": "descriptive — no criterion, no verdict, no inference",
+  "game_band_entry_speed": {
+    "n": 7777,
+    "percentiles": {
+      "p5": 2.165,
+      "p10": 2.334,
+      "p25": 2.727,
+      "p50": 3.675,
+      "p75": 4.916,
+      "p90": 5.986,
+      "p95": 6.563
+    },
+    "min": 2.001,
+    "max": 9.64,
+    "mean": 3.942,
+    "shares": {
+      "n": 7777,
+      "below 3": {
+        "turns": 2557,
+        "share": 0.3288
+      },
+      "3-5": {
+        "turns": 3385,
+        "share": 0.4353
+      },
+      "5-7": {
+        "turns": 1630,
+        "share": 0.2096
+      },
+      "above 7": {
+        "turns": 205,
+        "share": 0.0264
+      }
+    },
+    "unit": "yd/s",
+    "n_turns": 7777,
+    "n_players": 113
+  },
+  "combine_band_entry_speed": {
+    "n": 26,
+    "percentiles": {
+      "p5": 2.831,
+      "p10": 3.003,
+      "p25": 3.371,
+      "p50": 3.593,
+      "p75": 4.21,
+      "p90": 5.055,
+      "p95": 6.437
+    },
+    "min": 2.655,
+    "max": 7.701,
+    "mean": 4.017,
+    "values_sorted": [
+      2.655,
+      2.801,
+      2.919,
+      3.086,
+      3.34,
+      3.342,
+      3.362,
+      3.401,
+      3.456,
+      3.491,
+      3.536,
+      3.548,
+      3.563,
+      3.624,
+      3.714,
+      3.815,
+      4.059,
+      4.079,
+      4.12,
+      4.24,
+      4.824,
+      4.826,
+      4.87,
+      5.24,
+      6.836,
+      7.701
+    ],
+    "n_turns": 26,
+    "n_players": 16,
+    "note": "the 26 turns are small enough to print whole (spec §3.2)"
+  },
+  "combine_by_drill_in_band": [
+    {
+      "drill": "THREE_CONE_DRILL",
+      "n": 14,
+      "percentiles": {
+        "p5": 3.354,
+        "p25": 3.505,
+        "p50": 3.937,
+        "p75": 4.678,
+        "p95": 4.999
+      },
+      "median": 3.937,
+      "min": 3.34,
+      "max": 5.24
+    },
+    {
+      "drill": "BACK_PEDAL_AND_90_DEGREE_BREAK_TO_BALL",
+      "n": 4,
+      "percentiles": {
+        "p5": 3.012,
+        "p25": 3.382,
+        "p50": 3.807,
+        "p75": 4.768,
+        "p95": 6.422
+      },
+      "median": 3.807,
+      "min": 2.919,
+      "max": 6.836
+    },
+    {
+      "drill": "TERYL_AUSTIN_DRILL_2",
+      "n": 2,
+      "percentiles": {
+        "p5": 3.566,
+        "p25": 3.578,
+        "p50": 3.593,
+        "p75": 3.609,
+        "p95": 3.621
+      },
+      "median": 3.593,
+      "min": 3.563,
+      "max": 3.624
+    },
+    {
+      "drill": "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION",
+      "n": 1,
+      "percentiles": {
+        "p5": 3.342,
+        "p25": 3.342,
+        "p50": 3.342,
+        "p75": 3.342,
+        "p95": 3.342
+      },
+      "median": 3.342,
+      "min": 3.342,
+      "max": 3.342
+    },
+    {
+      "drill": "BOX_DRILL",
+      "n": 1,
+      "percentiles": {
+        "p5": 3.401,
+        "p25": 3.401,
+        "p50": 3.401,
+        "p75": 3.401,
+        "p95": 3.401
+      },
+      "median": 3.401,
+      "min": 3.401,
+      "max": 3.401
+    },
+    {
+      "drill": "FORTY_YARD_DASH",
+      "n": 1,
+      "percentiles": {
+        "p5": 3.086,
+        "p25": 3.086,
+        "p50": 3.086,
+        "p75": 3.086,
+        "p95": 3.086
+      },
+      "median": 3.086,
+      "min": 3.086,
+      "max": 3.086
+    },
+    {
+      "drill": "SHORT_SHUTTLE",
+      "n": 1,
+      "percentiles": {
+        "p5": 2.655,
+        "p25": 2.655,
+        "p50": 2.655,
+        "p75": 2.655,
+        "p95": 2.655
+      },
+      "median": 2.655,
+      "min": 2.655,
+      "max": 2.655
+    },
+    {
+      "drill": "TERYL_AUSTIN_DRILL_1",
+      "n": 1,
+      "percentiles": {
+        "p5": 7.701,
+        "p25": 7.701,
+        "p50": 7.701,
+        "p75": 7.701,
+        "p95": 7.701
+      },
+      "median": 7.701,
+      "min": 7.701,
+      "max": 7.701
+    },
+    {
+      "drill": "W_DRILL",
+      "n": 1,
+      "percentiles": {
+        "p5": 2.801,
+        "p25": 2.801,
+        "p50": 2.801,
+        "p75": 2.801,
+        "p95": 2.801
+      },
+      "median": 2.801,
+      "min": 2.801,
+      "max": 2.801
+    }
+  ],
+  "task_md_drill_medians_quoted": {
+    "three_cone": {
+      "median": 3.98,
+      "source": "TASK.md §3",
+      "provenance": "FULL"
+    },
+    "short_shuttle": {
+      "median": 3.55,
+      "source": "TASK.md §3",
+      "provenance": "FULL"
+    }
+  },
+  "combine_max_entry_speed": {
+    "max": 8.627,
+    "n_turns_scanned": 1179,
+    "n_players_scanned": 122,
+    "game_band_turns_above": 3,
+    "game_band_turns": 7777,
+    "game_band_share_above": 0.0004,
+    "note": "the single number the leg exists for: the fastest entry speed the Combine DB set ever records, and how much of the game band runs faster than it"
+  },
+  "crosstab": {
+    "speed_classes": [
+      "below 3",
+      "3-5",
+      "5-7",
+      "above 7"
+    ],
+    "angle_classes": [
+      "30-60",
+      "60-90",
+      "90-120",
+      "120-180"
+    ],
+    "grid": "4 speed classes x 4 angle classes x 2 settings (the spec's '4 x 2')",
+    "turns_outside_the_four_angle_classes": {
+      "game": 5213,
+      "combine": 130,
+      "note": "game: valid DB turns below 30 deg or at/above 180 deg, excluded at load; combine: the >180 deg band"
+    },
+    "cells": [
+      {
+        "setting": "game",
+        "angle_class": "30-60",
+        "speed_class": "below 3",
+        "turns": 2557
+      },
+      {
+        "setting": "game",
+        "angle_class": "30-60",
+        "speed_class": "3-5",
+        "turns": 3385
+      },
+      {
+        "setting": "game",
+        "angle_class": "30-60",
+        "speed_class": "5-7",
+        "turns": 1630
+      },
+      {
+        "setting": "game",
+        "angle_class": "30-60",
+        "speed_class": "above 7",
+        "turns": 205
+      },
+      {
+        "setting": "game",
+        "angle_class": "60-90",
+        "speed_class": "below 3",
+        "turns": 4204
+      },
+      {
+        "setting": "game",
+        "angle_class": "60-90",
+        "speed_class": "3-5",
+        "turns": 6356
+      },
+      {
+        "setting": "game",
+        "angle_class": "60-90",
+        "speed_class": "5-7",
+        "turns": 2350
+      },
+      {
+        "setting": "game",
+        "angle_class": "60-90",
+        "speed_class": "above 7",
+        "turns": 167
+      },
+      {
+        "setting": "game",
+        "angle_class": "90-120",
+        "speed_class": "below 3",
+        "turns": 3134
+      },
+      {
+        "setting": "game",
+        "angle_class": "90-120",
+        "speed_class": "3-5",
+        "turns": 6534
+      },
+      {
+        "setting": "game",
+        "angle_class": "90-120",
+        "speed_class": "5-7",
+        "turns": 3082
+      },
+      {
+        "setting": "game",
+        "angle_class": "90-120",
+        "speed_class": "above 7",
+        "turns": 266
+      },
+      {
+        "setting": "game",
+        "angle_class": "120-180",
+        "speed_class": "below 3",
+        "turns": 5102
+      },
+      {
+        "setting": "game",
+        "angle_class": "120-180",
+        "speed_class": "3-5",
+        "turns": 10094
+      },
+      {
+        "setting": "game",
+        "angle_class": "120-180",
+        "speed_class": "5-7",
+        "turns": 4159
+      },
+      {
+        "setting": "game",
+        "angle_class": "120-180",
+        "speed_class": "above 7",
+        "turns": 226
+      },
+      {
+        "setting": "combine",
+        "angle_class": "30-60",
+        "speed_class": "below 3",
+        "turns": 3
+      },
+      {
+        "setting": "combine",
+        "angle_class": "30-60",
+        "speed_class": "3-5",
+        "turns": 20
+      },
+      {
+        "setting": "combine",
+        "angle_class": "30-60",
+        "speed_class": "5-7",
+        "turns": 2
+      },
+      {
+        "setting": "combine",
+        "angle_class": "30-60",
+        "speed_class": "above 7",
+        "turns": 1
+      },
+      {
+        "setting": "combine",
+        "angle_class": "60-90",
+        "speed_class": "below 3",
+        "turns": 79
+      },
+      {
+        "setting": "combine",
+        "angle_class": "60-90",
+        "speed_class": "3-5",
+        "turns": 96
+      },
+      {
+        "setting": "combine",
+        "angle_class": "60-90",
+        "speed_class": "5-7",
+        "turns": 18
+      },
+      {
+        "setting": "combine",
+        "angle_class": "60-90",
+        "speed_class": "above 7",
+        "turns": 44
+      },
+      {
+        "setting": "combine",
+        "angle_class": "90-120",
+        "speed_class": "below 3",
+        "turns": 30
+      },
+      {
+        "setting": "combine",
+        "angle_class": "90-120",
+        "speed_class": "3-5",
+        "turns": 39
+      },
+      {
+        "setting": "combine",
+        "angle_class": "90-120",
+        "speed_class": "5-7",
+        "turns": 64
+      },
+      {
+        "setting": "combine",
+        "angle_class": "90-120",
+        "speed_class": "above 7",
+        "turns": 26
+      },
+      {
+        "setting": "combine",
+        "angle_class": "120-180",
+        "speed_class": "below 3",
+        "turns": 164
+      },
+      {
+        "setting": "combine",
+        "angle_class": "120-180",
+        "speed_class": "3-5",
+        "turns": 347
+      },
+      {
+        "setting": "combine",
+        "angle_class": "120-180",
+        "speed_class": "5-7",
+        "turns": 108
+      },
+      {
+        "setting": "combine",
+        "angle_class": "120-180",
+        "speed_class": "above 7",
+        "turns": 8
+      }
+    ],
+    "combine_label_agreement": {
+      "rows_compared": 1179,
+      "disagreements": 0,
+      "note": "derived classes from abs_turn_angle vs the CSV's own en-dash band label; >180° is outside the four classes"
+    }
+  },
+  "figure_policy": "no figure — TASK.md allows exactly four and forbids a fifth",
+  "discriminant_labels": {
+    "per_drill": {
+      "three_cone": {
+        "material_s": false,
+        "material_p": false,
+        "b_s_bar": 0.0155,
+        "b_s_ci_excludes_zero": false,
+        "delta": -0.0035,
+        "delta_bar": 0.0155,
+        "delta_meets_bar": false,
+        "delta_ci_excludes_zero": false
+      },
+      "short_shuttle": {
+        "material_s": false,
+        "material_p": false,
+        "b_s_bar": 0.0155,
+        "b_s_ci_excludes_zero": false,
+        "delta": -0.0104,
+        "delta_bar": 0.0155,
+        "delta_meets_bar": false,
+        "delta_ci_excludes_zero": false
+      },
+      "forty": {
+        "material_s": true,
+        "material_p": false,
+        "b_s_bar": 0.0155,
+        "b_s_ci_excludes_zero": true,
+        "delta": -0.0175,
+        "delta_bar": 0.0155,
+        "delta_meets_bar": false,
+        "delta_ci_excludes_zero": false
+      },
+      "ten_yd_split": {
+        "material_s": false,
+        "material_p": false,
+        "b_s_bar": 0.0155,
+        "b_s_ci_excludes_zero": false,
+        "delta": -0.0073,
+        "delta_bar": 0.0155,
+        "delta_meets_bar": false,
+        "delta_ci_excludes_zero": false
+      }
+    },
+    "fired": [
+      "NULL-BATTERY"
+    ],
+    "thresholds": {
+      "material_share_of_sd": 0.25
+    },
+    "bars": {
+      "sd_s": 0.0622,
+      "sd_p": 0.0703,
+      "b_s_bar": 0.0155,
+      "b_p_bar": 0.0176
+    },
+    "label": "NULL-BATTERY",
+    "consequence": "the drills do not even predict the deep plant in this cohort: the discriminant logic has no purchase and the leg is uninformative, not support",
+    "why": "no drill predicts the deep plant materially — the discriminant logic has no purchase"
+  }
+}
