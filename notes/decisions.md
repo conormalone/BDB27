@@ -8481,3 +8481,96 @@ none of the outcomes enters the report draft without Conor's word, and he has no
 
 **Evidence.** `notes/geometric-attribution-result.md` (FULL section);
 `notes/geometric-attribution-spec.md` §5–§11; D199, D200.
+
+## D201 — Path resolution: search for the turns and `player_play` files, never assume a folder · 2026-11-15
+
+**Backfilled 2026-11-15.** This decision was recorded in its commit messages only; the entries for
+D201–D203 were never written to this log. This is a **reconstruction**, quoted from `96d4d66` and
+its addendum `e2875aa`, not a contemporaneous record. Where the commit text is silent, nothing is
+inferred.
+
+**Decision (quoted, `96d4d66`).** *"TURNS = None no longer resolves to data/interim/full_run_20261111,
+which exists only on the Linux box (as a symlink to the USB drive) and is dead on a fresh checkout.
+The notebook now searches, bounded (4 levels, 6,000 directories, symlinks followed): repo, repo/data,
+working directory, ~/Downloads, ~/Documents, ~/Desktop (and the same three under ~/OneDrive), plus
+any full_run_* / *bdb27* folder in those."*
+
+- Every candidate is printed with size and modified time; one hit is used and said so; several hits
+  use the newest and print the rest so the choice is visible; none stops and names the patterns,
+  every directory searched, and the exact config line to set.
+- Test fixtures, scratch folders and sample/demo-named files are skipped, so committed fixtures can
+  never be mistaken for the real turns table.
+- `PLAYER_PLAY` prefers the repo's `data/raw/player_play.csv`, else the same search; tracking keeps
+  its `data/raw` auto-detect. "The pre-flight truncation/sample stop is unchanged."
+- 13 new tests in `tests/test_geometric_paths.py`.
+
+**Addendum (`e2875aa`, titled "D201 addendum — no arbitrary gates: the notebook runs to a number on
+whatever it finds").** Quoting Conor, 2026-11-15: *"Just run the notebook on whatever, there was no
+need to have it fail on arbitrary limits, never have a notebook fail arbitrarily again."* Removed,
+not relaxed: `MIN_FULL_PLAYERS`, `MIN_MEDIAN_PLAYERS_PER_PLAY`, `MIN_BAND_PLAY_COVERAGE`,
+`MIN_JUDGEABLE`, `MIN_SEPARATION_TURNS`, `STOP_UNOBSERVED_SHARE` and every branch they fed. The
+pre-flight only reports. A saturated design now prints a non-finite interval and *"interval not
+identified"* instead of a machine-precision point estimate; the bootstrap p is suppressed there too.
+`stamp` is defined in the config cell so no cell order leaves it undefined. 17 tests in
+`tests/test_gate_free.py`; full suite 465 passed.
+
+**Provenance.** Commits `96d4d66` (path resolution) and `e2875aa` (addendum); the resulting rule is
+restated as a constraint in `notes/fallback-validation-spec.md` §6. `TASK.md`, the band table, the
+figures and `notes/report-draft.md` untouched.
+
+## D202 — No arbitrary gates: the notebook reports, then runs to a number on whatever it finds · 2026-11-15
+
+**Backfilled 2026-11-15** from commit `41bca5b`; reconstruction, not a contemporaneous record.
+
+**Decision (quoted).** *"preflight_verdict -> preflight_report, always ok: row count, player count,
+players-per-play and band coverage are printed with denominators and never stop the run.
+MIN_FULL_PLAYERS / MIN_MEDIAN_PLAYERS_PER_PLAY / MIN_BAND_PLAY_COVERAGE deleted. MIN_JUDGEABLE and
+the 0.5 unobserved share are reporting references only: the rate and the coverage still print.
+Empty extraction and zero unique matches produce an empty_match frame, zeros and 'not fitted'
+instead of SystemExit. The estimator, match rule and band table are restored to HEAD~1 (the interim
+identification guard in cluster_ols is reverted). Opening markdown states the dataset is the
+draft-prospect cohort. Tests: cohort-only file, four-turn, empty, judgeable<50 and unobserved>50%
+all complete."*
+
+**Why it is separate from D201.** D201's addendum removed the gates from the notebook; D202 carried
+the same semantics through the empty and zero-match paths so that *no* data condition can end a run,
+and reverted the interim `cluster_ols` guard so the estimator's maths is unchanged from D199/D200.
+The only legitimate failures left are a missing file (every path tried is named), an unreadable file
+and a missing required column.
+
+**Provenance.** Commit `41bca5b`. Carried forward as the pre-declared rule in
+`notes/fallback-validation-spec.md` §1.4 and §6: *"These are verdict labels, never control flow."*
+
+## D203 — Fallback validation: band reliability, battery discriminant validity, speed coverage — result VOID · 2026-11-15
+
+**Backfilled 2026-11-15** from commits `c95c983` (spec) and `f7d25b4` (result) plus
+`notes/fallback-validation-spec.md`; reconstruction, not a contemporaneous record.
+
+**Asked.** Conor, 2026-11-15 00:18, quoted in the spec: *"Ok, and we need another plan to validate
+this if this doesn't work out"* — the fallback for the outcome route, which is capped by cohort
+coverage rather than unsolved (D199, D200).
+
+**Decision (`c95c983`, verbatim commit subject).** *"D203 spec — fallback validation: band
+reliability (ICC), battery discriminant validity, speed coverage. Written and committed before any
+fit; states the refutation criteria up front."* The spec's three legs: (1) ICC(1) of
+`apex_retention` within player in the 30–60° band, with split-half and season-to-season checks;
+(2) discriminant validity of the 3-cone, short shuttle, forty and ten-yard split against shallow-band
+and deep-plant retention, tested on the paired difference Δ = b_P − b_S; (3) descriptive speed
+coverage, no criterion. Label thresholds and the verdict rule (§4) were fixed in the spec before any
+fit, and §4.1 states in advance what would refute the recommendation. Nothing enters `TASK.md`, the
+band table, the four figures or the report draft.
+
+**Result (`f7d25b4`, quoted).** *"Leg 1 (30-60 deg band reliability) VOID: ICC(1)=0.0034, bootstrap
+CI [-0.0012, 0.0080]; split-half r=-0.0501, Spearman-Brown -0.105 (n=112); season-to-season r=0.196
+(n=66). No stable player-level band capacity in this cohort to measure."* Leg 2: *"NULL-BATTERY: no
+drill predicts the deep plant materially"*, with the only flicker — forty at the shallow band,
+b = 0.0158 against a 0.0156 bar — failing to survive the n-weighted fit (0.0023). Leg 3:
+*"3 of 7,777 game turns (0.04%) exceed the cohort max combine entry speed of 8.627 yd/s."* Under the
+spec's ordering (RULE 1) the headline is **VOID**.
+
+**What it licenses.** A diagnostic note only; leg 1 says the 30–60° band is not a stable
+between-player trait in this cohort, which bears on the recommendation, not on `TASK.md`'s
+supply-against-demand claim. 78 tests green at the result commit.
+
+**Provenance.** `notes/fallback-validation-spec.md`; commits `c95c983`, `f7d25b4`;
+`outputs/fallback_validation/{reliability.json,discriminant.csv,speed_coverage.json,verdict.txt,manifest.json}`.
