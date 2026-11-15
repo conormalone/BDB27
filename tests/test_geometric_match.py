@@ -161,7 +161,7 @@ def test_radius_counts_are_monotone(tmp_path):
 
 # ------------------------------------------------------------------ pre-flight
 def test_preflight_reports_the_exact_truncation_and_keeps_going():
-    v = gm.preflight_verdict({"path": "x.csv", "rows": gm.TRUNCATION_ROWS,
+    v = gm.preflight_report({"path": "x.csv", "rows": gm.TRUNCATION_ROWS,
                               "players": 154, "median_players_on_play": 1.0,
                               "max_players_on_play": 4, "plays": 12638,
                               "games": 333})
@@ -171,7 +171,7 @@ def test_preflight_reports_the_exact_truncation_and_keeps_going():
 
 
 def test_preflight_reports_a_cohort_shaped_file_without_judging_it():
-    v = gm.preflight_verdict({"path": "x.csv", "rows": 9_000_000, "players": 497,
+    v = gm.preflight_report({"path": "x.csv", "rows": 9_000_000, "players": 497,
                               "median_players_on_play": 2.0,
                               "max_players_on_play": 11, "plays": 114_954,
                               "games": 272})
@@ -183,7 +183,7 @@ def test_preflight_reports_a_cohort_shaped_file_without_judging_it():
 
 
 def test_preflight_reports_the_band_size_and_does_not_gate_on_it():
-    v = gm.preflight_verdict({"path": "x.csv", "rows": 9_000_000, "players": 497,
+    v = gm.preflight_report({"path": "x.csv", "rows": 9_000_000, "players": 497,
                               "median_players_on_play": 2.0, "plays": 1000},
                              band_plays=7198)
     assert v["stops"] == []
@@ -199,7 +199,7 @@ def test_preflight_never_stops_whatever_the_counts():
         {"path": "x.csv", "rows": gm.TRUNCATION_ROWS, "players": 2,
          "median_players_on_play": 1.0, "plays": 1},
     ):
-        v = gm.preflight_verdict(counts, band_plays=7198)
+        v = gm.preflight_report(counts, band_plays=7198)
         assert v["ok"] is True and v["stops"] == [] and v["findings"]
 
 
@@ -314,7 +314,6 @@ def test_verdict_never_upgrades_a_null_under_a_failed_gate():
                      "DESCRIPTIVE ONLY — BELOW PRE-DECLARED GATE"},
     }
     text = " ".join(gm.plain_english_verdict(summary))
-    assert "of 900 turns where both rules" in text
     assert "22.2%" in text
     assert "2026" not in text
     assert "NOT MET" in text

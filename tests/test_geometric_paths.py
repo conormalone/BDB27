@@ -6,8 +6,8 @@ sits in a folder he chose, not in the repo. ``TURNS = None`` must therefore
 on the Linux box, as a symlink to the USB drive).
 
 These tests are static/exec-in-memory: the search helper cell is lifted out of the
-.ipynb, given a temp repo and temp home, and exercised directly. The truncation is
-reported by the module's own ``preflight_verdict`` and never stops the run (D201).
+.ipynb, given a temp repo and temp home, and exercised directly. The truncation
+report is the module's own ``preflight_report`` — it never stops.
 """
 
 from __future__ import annotations
@@ -282,16 +282,16 @@ def test_relative_paths_resolve_against_the_repo_and_absolute_paths_do_not(tmp_p
 # ------------------------------------ 5. a truncation is reported, never a stop
 
 def test_a_truncated_file_is_reported_and_the_run_continues():
-    from bdb27.geometric_match import TRUNCATION_ROWS, preflight_verdict
+    from bdb27.geometric_match import TRUNCATION_ROWS, preflight_report
 
-    truncated = preflight_verdict({"path": "game_tracking.csv",
+    truncated = preflight_report({"path": "game_tracking.csv",
                                    "rows": TRUNCATION_ROWS, "players": 5000,
                                    "plays": 900, "median_players_on_play": 22.0})
     assert truncated["stops"] == [] and truncated["ok"] is True
     assert truncated["truncated"] is True
     assert any("1,048,575" in s for s in truncated["findings"])
 
-    cohort = preflight_verdict({"path": "game_tracking_cohort.csv", "rows": 1000,
+    cohort = preflight_report({"path": "game_tracking_cohort.csv", "rows": 1000,
                                 "players": 497, "plays": 250,
                                 "median_players_on_play": 2.0})
     assert cohort["stops"] == [] and cohort["truncated"] is False
@@ -299,9 +299,9 @@ def test_a_truncated_file_is_reported_and_the_run_continues():
 
 
 def test_the_notebook_reports_the_preflight_and_never_stops_on_it():
-    inputs = cell_with("preflight_verdict(")
+    inputs = cell_with("preflight_report(")
     config = cell_with("CONFIG")
-    assert "preflight_verdict(c, band_plays=len(band_plays))" in inputs
+    assert "preflight_report(c, band_plays=len(band_plays))" in inputs
     assert 'raise SystemExit("pre-flight stop")' not in inputs
     assert "stamp" in config, "the provenance stamp must be defined by the config cell"
     assert "ALLOW_SAMPLE_TRACKING" in config

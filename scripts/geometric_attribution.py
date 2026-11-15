@@ -146,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
             counts[key]["mtime_ns"] = stat.st_mtime_ns
     preflight_path.write_text(json.dumps(counts, indent=2), encoding="utf-8")
 
-    reports = [gm.preflight_verdict(c, band_plays=len(band_plays))
+    reports = [gm.preflight_report(c, band_plays=len(band_plays))
                for c in counts.values()]
     for report in reports:
         for line in report["findings"]:

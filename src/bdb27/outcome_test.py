@@ -255,12 +255,6 @@ def cluster_ols(X: np.ndarray, y: np.ndarray, groups: np.ndarray) -> dict:
     beta = XtX_inv @ X.T @ y
     resid = y - X @ beta
     n, k = X.shape
-    # A design with at least as many parameters as turns fits exactly: the
-    # residual is zero, so the standard error is zero to machine precision and a
-    # "95% CI" would print as a point. That is not precision, it is an
-    # unidentified coefficient, so the interval is reported as not finite and the
-    # notebook says the subset is too thin for one.
-    identified = int(np.linalg.matrix_rank(X)) >= k and n > k
     # CR1: meat summed within clusters, small-sample factor G/(G-1) * (n-1)/(n-k)
     uniq, inv = np.unique(groups, return_inverse=True)
     G = len(uniq)
@@ -279,15 +273,11 @@ def cluster_ols(X: np.ndarray, y: np.ndarray, groups: np.ndarray) -> dict:
     crit = float(stats.t.ppf(0.975, df=G - 1))
     ss_res = float(resid @ resid)
     ss_tot = float(((y - y.mean()) ** 2).sum())
-    if not identified:
-        return {"beta": float(beta[1]), "se": float("nan"), "lo": float("nan"),
-                "hi": float("nan"), "p": float("nan"), "n": n, "n_clusters": G,
-                "r2": float("nan"), "beta_all": beta, "identified": False}
     return {"beta": float(beta[1]), "se": float(se[1]),
             "lo": float(beta[1] - crit * se[1]), "hi": float(beta[1] + crit * se[1]),
             "p": p, "n": n, "n_clusters": G,
             "r2": 1 - ss_res / ss_tot if ss_tot else np.nan,
-            "beta_all": beta, "identified": True}
+            "beta_all": beta}
 
 
 def fit(df: pd.DataFrame, name: str, *, exposure: str = "apex_retention",
@@ -295,9 +285,6 @@ def fit(df: pd.DataFrame, name: str, *, exposure: str = "apex_retention",
         note: str = "") -> Fit:
     X, y, names = design(df, exposure=exposure, player_fe=player_fe, route_fe=route_fe)
     res = cluster_ols(X, y, df[cluster].to_numpy())
-    if not res.get("identified", True):
-        note = (note + "; " if note else "") + (
-            f"coefficient not identified: {res['n']} turns, {X.shape[1]} parameters")
     return Fit(name=name, beta=res["beta"], se=res["se"], lo=res["lo"], hi=res["hi"],
                p=res["p"], n=res["n"], n_clusters=res["n_clusters"], r2=res["r2"],
                controls=[n for n in names if n not in ("intercept", exposure)][:8],

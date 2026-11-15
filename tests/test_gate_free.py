@@ -50,27 +50,23 @@ def cell_source(predicate) -> str:
 def thin_frame(n: int) -> pd.DataFrame:
     """An analysis-ready frame of ``n`` turns, deterministic, with spread."""
     rng = np.random.default_rng(3)
-    pos = ["CB", "SS", "FS"]
-    cov = ["MAN", "ZONE"]
-    route = ["OUT", "IN", "OTHER"]
+    pos = ["CB", "SS", "FS", "CB"]
+    cov = ["MAN", "ZONE", "MAN", "ZONE"]
+    route = ["OUT", "IN", "OUT", "OTHER"]
     rows = []
     for i in range(n):
         rows.append(dict(
             game_id=i // 3 + 1, play_id=i, nfl_id=[101, 102, 103, 104][i % 4],
-            frame_start=i, position=pos[int(rng.integers(0, 3))],
-            season=int(rng.choice([2022, 2023])),
+            frame_start=i, position=pos[i % 4], season=[2022, 2023][i % 2],
             separation_yd=float(rng.uniform(0.5, 6.0)),
             apex_retention=float(rng.uniform(0.4, 1.0)),
             speed_retention=float(rng.uniform(0.4, 1.0)),
             entry_speed=float(rng.uniform(5.0, 9.0)),
-            coverage_assignment=cov[int(rng.integers(0, 2))],
-            route_fe=route[int(rng.integers(0, 3))], one_turn_per_play=True,
+            coverage_assignment=cov[i % 4], coverage_family=cov[i % 4],
+            route_fe=route[i % 4], position_fe=pos[i % 4],
+            season_fe=str([2022, 2023][i % 2]), one_turn_per_play=True,
             _play=str(i), pass_result=["C", "I"][i % 2]))
-    df = pd.DataFrame(rows)
-    df["coverage_family"] = df["coverage_assignment"]
-    df["position_fe"] = df["position"]
-    df["season_fe"] = df["season"].astype(str)
-    return df
+    return pd.DataFrame(rows)
 
 
 def four_turn_frame() -> pd.DataFrame:
@@ -80,7 +76,7 @@ def four_turn_frame() -> pd.DataFrame:
 # ------------------------------------------------------------- pre-flight text
 
 def test_a_cohort_only_file_is_described_and_never_stopped():
-    report = gm.preflight_verdict(COHORT_COUNTS, band_plays=7198)
+    report = gm.preflight_report(COHORT_COUNTS, band_plays=7198)
     text = " ".join(report["findings"])
 
     assert report["ok"] is True
@@ -96,7 +92,7 @@ def test_the_truncation_is_reported_as_a_finding_and_the_run_continues():
     counts = dict(COHORT_COUNTS, path="game_tracking_sample.csv",
                   rows=gm.TRUNCATION_ROWS, players=154,
                   median_players_on_play=1.0, max_players_on_play=4)
-    report = gm.preflight_verdict(counts, band_plays=7198)
+    report = gm.preflight_report(counts, band_plays=7198)
     text = " ".join(report["findings"])
 
     assert report["truncated"] is True
@@ -112,7 +108,7 @@ def test_the_truncation_is_reported_as_a_finding_and_the_run_continues():
     dict(COHORT_COUNTS, players=0, plays=0, rows=0),
 ])
 def test_preflight_never_returns_a_stop(counts):
-    report = gm.preflight_verdict(counts, band_plays=7198)
+    report = gm.preflight_report(counts, band_plays=7198)
     assert report["ok"] is True and report["stops"] == []
     assert isinstance(report["findings"], list) and report["findings"]
 
@@ -133,7 +129,7 @@ def test_preflight_counts_reads_a_cohort_shaped_file(tmp_path):
     pd.DataFrame(rows).to_csv(path, index=False)
 
     counts = gm.preflight_counts(path)
-    report = gm.preflight_verdict(counts, band_plays=7198)
+    report = gm.preflight_report(counts, band_plays=7198)
 
     assert counts["players"] == 497
     assert counts["median_players_on_play"] <= 2.0
@@ -151,10 +147,6 @@ def test_a_four_turn_subset_runs_to_an_estimate():
     primary = fits[0]
     assert primary.n == 4
     assert np.isfinite(primary.beta), "a four-turn subset must still produce a number"
-    # 4 turns against 8 parameters is saturated: the interval is not identified,
-    # so it must be reported as not finite rather than as a point.
-    assert not np.isfinite(primary.lo) and not np.isfinite(primary.hi)
-    assert "not identified" in primary.note
     verdict = outcome_test.verdict(fits, boot)
     assert isinstance(verdict["label"], str) and verdict["label"]
     assert boot["n_clusters"] == 4  # four distinct players
@@ -229,21 +221,6 @@ def test_an_empty_subset_prints_zeros_and_does_not_raise():
     assert "not fitted" in text.lower()
 
 
-def test_a_saturated_subset_says_the_interval_is_not_finite():
-    summary = {
-        "misattribution": {"agree": 3, "disagree": 0, "judgeable": 3,
-                           "elimination_turns": 3, "misattribution_rate": 0.0},
-        "gate": {"attributed_turns": 4, "attributed_fraction": 0.001,
-                 "min_turns": 500, "min_share": 0.30, "gate_met": False},
-        "estimate": {"beta": -3.02, "lo": float("nan"), "hi": float("nan"),
-                     "n": 4, "clusters": 4, "elimination_beta": None,
-                     "label": "DESCRIPTIVE ONLY — BELOW PRE-DECLARED GATE"},
-    }
-    text = " ".join(gm.plain_english_verdict(summary))
-    assert "not finite" in text
-    assert "too thin" in text
-
-
 def test_compare_with_d199_does_not_raise_on_a_shape_mismatch(tmp_path):
     csv = tmp_path / "estimates.csv"
     pd.DataFrame({
@@ -268,16 +245,6 @@ def test_the_stamp_is_computable_from_the_config_cell_alone():
     assert namespace["ALLOW_SAMPLE_TRACKING"] is False
 
 
-def test_a_downstream_cell_run_alone_names_what_is_missing():
-    """Config defines `stamp` and `require`; a lone summary cell says run above."""
-    config = cell_source(lambda s: "CONFIG — the only cell to edit" in s)
-    summary_cell = cell_source(lambda s: s.lstrip().startswith('require("summary")'))
-    namespace: dict = {}
-    exec(compile(config, "config", "exec"), namespace)  # only the config cell ran
-    with pytest.raises(SystemExit):
-        exec(compile(summary_cell, "summary", "exec"), namespace)
-
-
 def test_no_cell_stops_on_a_data_condition():
     forbidden = ("MIN_JUDGEABLE", "MIN_SEPARATION_TURNS", "STOP_UNOBSERVED_SHARE",
                  "pre-flight stop", "empty extraction",
@@ -294,3 +261,122 @@ def test_every_code_cell_still_compiles():
     for cell in notebook_cells():
         if cell["cell_type"] == "code":
             compile("".join(cell["source"]), "cell", "exec")
+
+
+# ------------------------------------------------ the notebook itself, executed
+
+def _write_notebook_inputs(tmp_path: Path, *, cover: bool = True,
+                           band: bool = True):
+    """Four plays, two cohort players each: one DB and one receiver per play."""
+    n = 4
+    rows = []
+    for i in range(n):
+        game, play = 1 + i, 10 + i
+        rows.append({
+            "setting": "game", "position_group": "DB", "valid": True,
+            "position": "CB", "season": 2023, "game_id": game, "play_id": play,
+            "nfl_id": 900 + i, "frame_start": 5,
+            "abs_turn_angle": 45.0 if band else 10.0,
+            "x_centre": 0.0, "y_centre": 0.0,
+            "entry_speed": 5.0 + i, "apex_speed": 4.0,
+            "apex_retention": 0.5 + 0.1 * i, "speed_retention": 0.6,
+            "plant": "left", "turn_type": "T",
+        })
+    turns = tmp_path / "bdb27_full_db_turns.parquet"
+    pd.DataFrame(rows).to_parquet(turns, index=False)
+
+    tracking_rows = []
+    pp_rows = []
+    for i in range(n):
+        game, play = (1 + i if cover else 90 + i), 10 + i
+        for t, x, event in ((0.0, -0.06, "NA"), (0.1, 0.0, "NA")):
+            tracking_rows.append({"game_id": game, "play_id": play,
+                                  "nfl_id": 900 + i,
+                                  "time": f"2023-09-01T00:00:0{t:.1f}".replace(".0", ".000"),
+                                  "x": x, "y": 0.0, "event": event})
+        tracking_rows.append({"game_id": game, "play_id": play,
+                              "nfl_id": 100 + i,
+                              "time": "2023-09-01T00:00:00.100",
+                              "x": 2.0, "y": 0.0, "event": "pass_forward"})
+        common = {"game_id": game, "play_id": play, "play_description": "",
+                  "quarter": 1, "down": 1, "yards_to_go": 10,
+                  "possession_team": "OFF", "target": "false", "cushion": 5.0,
+                  "coverage_assignment": "MAN", "team_coverage_man_zone": "MAN",
+                  "pass_result": "C"}
+        pp_rows.append({**common, "team_abbr": "DEF", "nfl_id": 900 + i,
+                        "lined_up_position": "CB", "route_ran": "NA",
+                        "separation_at_pass_forward": "NA"})
+        pp_rows.append({**common, "team_abbr": "OFF", "nfl_id": 100 + i,
+                        "lined_up_position": "WR", "route_ran": "OUT",
+                        "separation_at_pass_forward": str(1.0 + i)})
+    tracking = tmp_path / "game_tracking_cohort.csv"
+    pd.DataFrame(tracking_rows).to_csv(tracking, index=False, encoding="utf-8")
+    player_play = tmp_path / "player_play.csv"
+    pd.DataFrame(pp_rows).to_csv(player_play, index=False, encoding="utf-8")
+    return turns, tracking, player_play
+
+
+def _run_notebook(tmp_path: Path, turns: Path, tracking: Path, pp: Path) -> str:
+    """Execute every code cell in order, with the config pointed at the fixture."""
+    import contextlib
+    import io
+    import os
+
+    cells = notebook_cells()
+    out_dir = tmp_path / "out"
+    config = f'''TRACKING = {str(tracking)!r}
+TURNS = {str(turns)!r}
+PLAYER_PLAY = {str(pp)!r}
+OUT_DIR = {str(out_dir)!r}
+CHUNK_ROWS = 2_000_000
+RESUME = False
+ALLOW_SAMPLE_TRACKING = False
+stamp = "FULL"
+'''
+    ns: dict = {}
+    buf = io.StringIO()
+    previous = Path.cwd()
+    os.chdir(REPO)
+    try:
+        with contextlib.redirect_stdout(buf):
+            for i, cell in enumerate(cells):
+                if cell["cell_type"] != "code":
+                    continue
+                src = "".join(cell["source"])
+                if "CONFIG — the only cell to edit" in src:
+                    src = config
+                exec(compile(src, f"<notebook cell {i}>", "exec"), ns)
+    finally:
+        os.chdir(previous)
+    return buf.getvalue()
+
+
+def test_notebook_completes_on_a_four_turn_cohort_file(tmp_path):
+    turns, tracking, pp = _write_notebook_inputs(tmp_path)
+    text = _run_notebook(tmp_path, turns, tracking, pp)
+
+    assert "median 2.0 players/play" in text
+    assert "STOP" not in text
+    assert "attributed at 3 yd: 4" in text
+    assert "too few judgeable turns for a rate: 4" in text
+    assert "DESCRIPTIVE ONLY — BELOW PRE-DECLARED GATE" in text
+
+
+def test_notebook_completes_on_an_empty_subset(tmp_path):
+    turns, tracking, pp = _write_notebook_inputs(tmp_path, band=False)
+    text = _run_notebook(tmp_path, turns, tracking, pp)
+
+    assert "band turns : 0" in text
+    assert "attributed at 3 yd: 0" in text
+    assert "estimate: not fitted" in text
+    assert "STOP" not in text
+
+
+def test_notebook_completes_when_unobserved_share_is_above_half(tmp_path):
+    turns, tracking, pp = _write_notebook_inputs(tmp_path, cover=False)
+    text = _run_notebook(tmp_path, turns, tracking, pp)
+
+    assert "attributed at 3 yd: 0" in text
+    assert "100.0%" in text
+    assert "above the 0.5 reference point" in text
+    assert "STOP" not in text

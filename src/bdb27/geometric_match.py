@@ -50,11 +50,10 @@ FRAME_TOL_S = 0.05
 #: there and every number carries the truncation stamp.
 TRUNCATION_ROWS = 1_048_575
 
-#: Reference points quoted in the pre-flight's printed diagnostics. Nothing in
-#: this module stops, raises or narrows a sample on any of them.
-REFERENCE_FULL_PLAYERS = 300
-REFERENCE_MEDIAN_PLAYERS_PER_PLAY = 15.0
-REFERENCE_BAND_PLAY_COVERAGE = 0.90
+#: Report-only reference points. They are printed beside the measured numbers
+#: and never used as a branch: a thin or cohort-shaped file still runs.
+MIN_JUDGEABLE = 50
+UNOBSERVED_SHARE_REFERENCE = 0.5
 
 TURN_KEY: tuple[str, ...] = ("game_id", "play_id", "nfl_id", "frame_start")
 
@@ -203,7 +202,7 @@ def _csv_data_rows(path: str | Path) -> int | None:
         return None
 
 
-def preflight_verdict(counts: dict, band_plays: int | None = None) -> dict:
+def preflight_report(counts: dict, band_plays: int | None = None) -> dict:
     """Describe one tracking file. Nothing here stops, raises or narrows a sample.
 
     Pure function: same dict in, same report out. The exact row count is the one
@@ -890,7 +889,7 @@ def plain_english_verdict(summary: dict) -> list[str]:
             f"{miss.get('disagree', 0):,} — a misattribution rate of {rate:.1%} "
             f"({miss.get('disagree', 0):,} of {judgeable:,}"
             + (f"; {judgeable:,} judgeable is a small denominator, so this is "
-               f"descriptive only" if judgeable < 50 else "")
+               f"descriptive only" if judgeable < MIN_JUDGEABLE else "")
             + ").")
 
     if not gate.get("gate_met", False):
@@ -932,9 +931,12 @@ def plain_english_verdict(summary: dict) -> list[str]:
         (f", against D199's elimination-matched {elim:+.2f} yd. "
          + ("The geometric estimate moved away from zero, consistent with the "
             "elimination null having been attenuated by misattribution."
-            if abs(b) > abs(elim) * 1.5 and b < 0 else
-            "The geometric estimate did not move materially toward the stated "
-            "direction.")
+            if gate.get("gate_met", False)
+            and abs(b) > abs(elim) * 1.5 and b < 0 else
+            ("The subset is descriptive only, so no attenuation claim is made."
+             if not gate.get("gate_met", False) else
+             "The geometric estimate did not move materially toward the stated "
+             "direction."))
          if elim is not None and np.isfinite(elim) else "."))
     lines.append(f"Pre-stated criterion: {est.get('label', 'not evaluated')}. " +
                  ("The criterion is met; this is the finding the spec permits."
