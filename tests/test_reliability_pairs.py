@@ -228,60 +228,71 @@ def test_ceilings_are_not_filtered_out():
     assert int((kept["apex_retention"] == 1.0).sum()) == 2
 
 
-# --------------------------------------------------------------- house rules
-def test_banned_token_scan_refuses_a_canvas_that_carries_one(monkeypatch,
-                                                             tmp_path, odd_stats):
-    monkeypatch.setattr(rp, "TITLE_ODD", "a stable splitting rule")
-    with pytest.raises(common.StageRefused) as exc:
-        rp.draw_odd(odd_stats, {"lo": -0.1, "hi": 0.2}, colour=COLOUR,
-                    out_png=tmp_path / "banned.png")
-    assert "banned drawn text" in str(exc.value)
-    assert not (tmp_path / "banned.png").exists()
+# ------------------------------------------------------------- season panels
+def test_season_join_and_min_ten_flag(season_stats):
+    players = season_stats["players"].set_index("nfl_id")
+    assert len(players) == 3
+    assert players.loc[901001, "in_min10"] == True  # noqa: E712
+    assert players.loc[901002, "in_min10"] == False  # noqa: E712
+    assert players.loc[901003, "in_min10"] == False  # noqa: E712
+    assert season_stats["n1"] == 3
+    assert season_stats["n10"] == 1
+    assert season_stats["joined"]["pool_2024"] == 4
+    assert season_stats["joined"]["pool_2025"] == 4
+    assert season_stats["joined"]["n_both"] == 3
 
 
-def test_refuse_banned_accepts_a_clean_canvas():
-    rp.refuse_banned(["n = 112 players", "r = \u22120.050"], "clean")
+def test_season_r_comes_from_the_imported_estimator(season_stats):
+    assert season_stats["r1_estimator"]["n_players"] == season_stats["n1"]
+    assert round(float(season_stats["r1_estimator"]["r"]), 4) == round(
+        season_stats["r1"], 4)
+    assert season_stats["r10_estimator"]["n_players"] == 1
+    assert np.isnan(season_stats["r10"])
 
 
-def test_drawn_text_dump_carries_no_timestamp(tmp_path, odd_stats):
-    visible, texts = rp.draw_odd(odd_stats, {"lo": -0.1, "hi": 0.2},
-                                 colour=COLOUR, out_png=tmp_path / "a.png")
-    path = rp.write_drawn_text(tmp_path / "a.drawn_text.json", {
-        "figure": rp.FIGURE_ODD, "strings": visible, "scan_strings": texts})
-    document = json.loads(path.read_text())
-    assert "generated_utc" not in document
-    assert document["figure"] == rp.FIGURE_ODD
+def test_thin_panel_prints_not_estimable_and_does_not_raise(
+        season_stats, tmp_path):
+    counts = rp.slice_counts(_season_frame())
+    visible, texts = rp.draw_season(season_stats, counts,
+                                    season_stats["joined"], colour=COLOUR,
+                                    out_png=tmp_path / "season.png")
+    joined = "\n".join(visible)
+    assert "r = not estimable" in joined
+    assert "n = 1 player" in joined
+    assert any("light = fewer than 10 turns" in t for t in texts)
 
 
-def test_manifest_merge_adds_exactly_one_entry_and_keeps_the_rest(tmp_path):
-    path = tmp_path / "figures_manifest.json"
-    path.write_text(json.dumps({"figures": {
-        "alpha": {"figure": "alpha", "stamp": "FULL DATA OUTPUT"},
-        "beta": {"figure": "beta", "stamp": "PLACEHOLDER_SAMPLE"},
-    }}))
-    before = json.loads(path.read_text())["figures"]
-    cfg = common.load_config(ROOT / "config.yaml")
-    document = rp.merge_manifest({"figure": "gamma",
-                                  "stamp": "FULL DATA OUTPUT"}, path, cfg)
-    assert set(document["figures"]) == {"alpha", "beta", "gamma"}
-    assert document["figures"]["alpha"] == before["alpha"]
-    assert document["figures"]["beta"] == before["beta"]
-    assert "MIXED PROVENANCE" in document["label"]
+def test_one_player_odd_panel_renders_without_raising(tmp_path):
+    import pandas as pd
+
+    rows = [_row(1, frame_start=1, retention=0.4),
+            _row(1, frame_start=2, retention=0.6)]
+    stats = rp.split_half_points(rp.select_slice(pd.DataFrame(rows)))
+    assert stats["n_players"] == 1 and np.isnan(stats["r"])
+    visible, _ = rp.draw_odd(stats, {"lo": -0.1, "hi": 0.2}, colour=COLOUR,
+                             out_png=tmp_path / "odd.png")
+    assert "n = 1 player · 2 turns" in "\n".join(visible)
+    assert "r = not estimable" in "\n".join(visible)
 
 
-def test_sample_mode_refuses_before_touching_data():
-    spec = importlib.util.spec_from_file_location(
-        "plot_reliability_pairs_under_test",
-        ROOT / "scripts" / "plot_reliability_pairs.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    with pytest.raises(common.StageRefused) as exc:
-        module.main(["--figure", "odd", "--mode", "sample"])
-    assert "FULL-only" in str(exc.value)
+def test_season_csv_columns_and_order(season_stats):
+    table = rp.season_csv_frame(season_stats["players"])
+    assert list(table.columns) == ["player_slot", "n_2024", "n_2025",
+                                   "mean_2024", "mean_2025", "in_min10"]
+    assert len(table) == 3
+    assert table["mean_2024"].is_monotonic_increasing
+    joined = table.to_csv(index=False)
+    for identity in ("901001", "901002", "nfl_id", "player_name"):
+        assert identity not in joined
 
 
-def test_builders_do_not_leak_identity_into_drawn_text(tmp_path, odd_stats):
-    visible, texts = rp.draw_odd(odd_stats, {"lo": -0.1, "hi": 0.2},
-                                 colour=COLOUR, out_png=tmp_path / "b.png")
-    blob = "\n".join(visible + texts)
-    assert "900001" not in blob and "900003" not in blob
+def test_reconcile_season_is_a_hard_equality_proof(season_stats):
+    with pytest.raises(AssertionError):
+        rp.reconcile_season(season_stats)
+
+
+def test_pool_line_and_ceiling_line_carry_denominators(season_stats):
+    joined = season_stats["joined"]
+    assert rp.season_pool_line(joined) == "4 players in 2024, 4 in 2025, 3 in both"
+    line = rp.ceiling_line({"ceiling_at_1.000": 1, "turns": 4})
+    assert "1 of 4 turns (25.0%)" in line

@@ -1,0 +1,62 @@
+{
+  "provenance": "FULL",
+  "label": "FULL DATA OUTPUT",
+  "config_sha": "a76cf3bd9012f085",
+  "generated_utc": "2026-11-16T21:43:45Z",
+  "stage": "06_figures",
+  "artefact_version": 1,
+  "figure": "fig_season_vs_season",
+  "exploratory": true,
+  "in_report": false,
+  "title": "2024 against 2025: the apparent relationship lives in the thin per-season samples",
+  "claim": "Per-player mean retention in 2024 against 2025: r = 0.1959 across all 66 players with a turn in both seasons, and r = 0.0067 across the 39 players with at least 10 turns in each. The apparent relationship lives in the thin per-season samples.",
+  "stamp": "FULL DATA OUTPUT",
+  "filter": "bdb27_full_db_turns.parquet: setting == 'game' & position_group == 'DB' & 30 <= abs_turn_angle < 60 & valid == True",
+  "caveats": [
+    "Measurement ceiling: 2,197 of 7,777 turns sit at exactly 1.000, pulling every player mean toward the same value.",
+    "Regression to the mean: both axes are per-season means and therefore noisy; splitting one player's turns by season enlarges that noise, which flattens the cloud even when a real player effect exists. Neither panel estimates a player effect.",
+    "DB only; no other position group is drawn, not even as context.",
+    "Exploratory: not one of the four report figures; written output does not cite it."
+  ],
+  "png": "outputs/figures/fig_season_vs_season.png",
+  "csv": "outputs/figures/fig_season_vs_season.csv",
+  "png_sha256": "6307252ebb89b5014ce68800afc49fe320f8e8bd1a2de21862234bcc613f13d0",
+  "csv_sha256": "9b377a3a70846617378505694cd79d0e867c47b573374ab16f6c54be78086070",
+  "numbers": {
+    "n_panel_min1": 66,
+    "r_panel_min1": 0.1959,
+    "turns_2024_min1": 2648,
+    "turns_2025_min1": 2721,
+    "n_panel_min10": 39,
+    "r_panel_min10": 0.0067,
+    "turns_2024_min10": 2389,
+    "turns_2025_min10": 2433,
+    "n_hollow_min1_panel": 27,
+    "pool_2024": 75,
+    "pool_2025": 100,
+    "pool_both": 66,
+    "min_turns_rule": 10,
+    "n_ceiling_at_1.000": 2197,
+    "n_turns": 7777,
+    "ceiling_share_pct": 28.2
+  },
+  "sources": [
+    "data/interim/full_run_20261111/bdb27_full_db_turns.parquet"
+  ],
+  "source_artefacts": [
+    {
+      "path": "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
+      "sha256": "f2e7cd01db214b7d88ab3f029876fe0fe7ced1530d2f014b9ad55b1b2dfb8e04",
+      "provenance": "FULL",
+      "role": "uploaded full-run turn table (2023-2025), DB only"
+    }
+  ],
+  "git_rev": "713ab3e",
+  "outputs": {
+    "png": "outputs/figures/fig_season_vs_season.png",
+    "png_sha256": "6307252ebb89b5014ce68800afc49fe320f8e8bd1a2de21862234bcc613f13d0",
+    "csv": "outputs/figures/fig_season_vs_season.csv",
+    "csv_sha256": "9b377a3a70846617378505694cd79d0e867c47b573374ab16f6c54be78086070"
+  },
+  "seed": 20261115
+}
