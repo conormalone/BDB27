@@ -111,6 +111,7 @@ _STREAMS = {
     "split_half": 102,
     "split_half_min4": 103,
     "discriminant": 104,
+    "descriptive_share": 105,
 }
 
 

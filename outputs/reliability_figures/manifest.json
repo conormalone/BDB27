@@ -1,0 +1,31 @@
+{
+  "stage": "descriptive_between_player_share",
+  "written_utc": "2026-11-16T21:45:27Z",
+  "git_head": "6fda2ff",
+  "seed": 20261115,
+  "reps": 2000,
+  "inputs": [
+    {
+      "path": "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
+      "sha256": "f2e7cd01db214b7d88ab3f029876fe0fe7ced1530d2f014b9ad55b1b2dfb8e04"
+    },
+    {
+      "path": "outputs/band_reliability/reliability.json",
+      "sha256": "39698757ed13132f0c01e2d5960412d80a5084b960f7696cbe8b33a417c71d9f"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "outputs/reliability_figures/descriptive_share.json",
+      "sha256": "1df520e415830615f700c3c9bba992af172cb79906688dded1f4114ffc37c59b"
+    }
+  ],
+  "numbers": {
+    "point": 0.0176796,
+    "ci_lo": 0.012744,
+    "ci_hi": 0.022886,
+    "ci_20000_lo": 0.013018,
+    "ci_20000_hi": 0.023077,
+    "icc_committed": 0.003382
+  }
+}

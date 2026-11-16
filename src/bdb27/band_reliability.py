@@ -3,8 +3,10 @@
 D206. The question is not whether a single break is measured well, but whether a
 defensive back's *typical* retention in the band is a stable trait that could
 carry a player-level correlation with the Combine. That is a one-way
-random-effects ICC(1) on ``apex_retention`` with player as the group: the share
-of total variance that sits between players rather than between turns.
+random-effects ICC(1) on ``apex_retention`` with player as the group: the ratio
+of the between-player variance component to the total variance under that
+model. It is a variance-component ratio, **not** the observed share of variance
+that sits between players; the raw descriptive share is a different quantity.
 
 The estimator is **not reimplemented here**. :func:`bdb27.band_reliability.icc1`
 is imported from :mod:`bdb27.fallback_validation` (D203), so both artefacts
@@ -22,8 +24,8 @@ correlation with the Combine would only be interpretable near that speed:
 An *adjusted* ICC is also reported: ``apex_retention`` is residualised on
 ``entry_speed``, ``entry_speed**2``, ``abs_turn_angle`` and
 ``abs_turn_angle**2`` (OLS with an intercept), and ICC(1) is recomputed on the
-residuals. This asks whether the between-player share survives the obvious
-turn-level covariates, not whether it becomes large.
+residuals. This asks whether the between-player variance component survives the
+obvious turn-level covariates, not whether it becomes large.
 
 Every count is reported against its denominator. Nothing here gates, skips or
 raises on a thin subset; the only failures are a missing file, an unreadable

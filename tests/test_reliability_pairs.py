@@ -296,3 +296,131 @@ def test_pool_line_and_ceiling_line_carry_denominators(season_stats):
     assert rp.season_pool_line(joined) == "4 players in 2024, 4 in 2025, 3 in both"
     line = rp.ceiling_line({"ceiling_at_1.000": 1, "turns": 4})
     assert "1 of 4 turns (25.0%)" in line
+
+
+# ------------------------------------------------------- descriptive share
+def test_eta_squared_on_a_hand_computed_fixture():
+    out = rp.eta_squared(np.array([1.0, 2.0, 3.0, 4.0, 5.0]),
+                         np.array(["a", "a", "a", "b", "b"]))
+    # grand = 3; SSB = 3*(2-3)^2 + 2*(4.5-3)^2 = 7.5; SST = 10
+    assert out["ssb"] == pytest.approx(7.5)
+    assert out["sst"] == pytest.approx(10.0)
+    assert out["eta2"] == pytest.approx(0.75)
+
+
+def test_eta_squared_never_raises_on_an_empty_frame():
+    out = rp.eta_squared(np.array([], float), np.array([]))
+    assert out["eta2"] is None and out["n_obs"] == 0
+
+
+def test_bootstrap_is_deterministic_for_the_same_seed(season_slice):
+    first = rp.cluster_bootstrap_eta2(season_slice, reps=200)
+    second = rp.cluster_bootstrap_eta2(season_slice, reps=200)
+    assert first == second
+    assert first["seed"] == fv.SEED
+    assert first["stream"] == "descriptive_share"
+
+
+def test_descriptive_share_stream_is_registered_once():
+    assert fv._STREAMS["descriptive_share"] == 105
+    assert {key: fv._STREAMS[key]
+            for key in ("icc1", "split_half", "split_half_min4",
+                        "discriminant")} == {
+        "icc1": 101, "split_half": 102, "split_half_min4": 103,
+        "discriminant": 104}
+
+
+# --------------------------------------------------------------- house rules
+def test_banned_token_scan_refuses_a_canvas_that_carries_one(monkeypatch,
+                                                             tmp_path, odd_stats):
+    monkeypatch.setattr(rp, "TITLE_ODD", "a stable splitting rule")
+    with pytest.raises(common.StageRefused) as exc:
+        rp.draw_odd(odd_stats, {"lo": -0.1, "hi": 0.2}, colour=COLOUR,
+                    out_png=tmp_path / "banned.png")
+    assert "banned drawn text" in str(exc.value)
+    assert not (tmp_path / "banned.png").exists()
+
+
+def test_refuse_banned_accepts_a_clean_canvas():
+    rp.refuse_banned(["n = 112 players", "r = \u22120.050"], "clean")
+
+
+def test_drawn_text_dump_carries_no_timestamp(tmp_path, odd_stats):
+    visible, texts = rp.draw_odd(odd_stats, {"lo": -0.1, "hi": 0.2},
+                                 colour=COLOUR, out_png=tmp_path / "a.png")
+    path = rp.write_drawn_text(tmp_path / "a.drawn_text.json", {
+        "figure": rp.FIGURE_ODD, "strings": visible, "scan_strings": texts})
+    document = json.loads(path.read_text())
+    assert "generated_utc" not in document
+    assert document["figure"] == rp.FIGURE_ODD
+
+
+def test_manifest_merge_adds_exactly_one_entry_and_keeps_the_rest(tmp_path):
+    path = tmp_path / "figures_manifest.json"
+    path.write_text(json.dumps({"figures": {
+        "alpha": {"figure": "alpha", "stamp": "FULL DATA OUTPUT"},
+        "beta": {"figure": "beta", "stamp": "PLACEHOLDER_SAMPLE"},
+    }}))
+    before = json.loads(path.read_text())["figures"]
+    cfg = common.load_config(ROOT / "config.yaml")
+    document = rp.merge_manifest({"figure": "gamma",
+                                  "stamp": "FULL DATA OUTPUT"}, path, cfg)
+    assert set(document["figures"]) == {"alpha", "beta", "gamma"}
+    assert document["figures"]["alpha"] == before["alpha"]
+    assert document["figures"]["beta"] == before["beta"]
+    assert "MIXED PROVENANCE" in document["label"]
+
+
+def test_sample_mode_refuses_before_touching_data():
+    spec = importlib.util.spec_from_file_location(
+        "plot_reliability_pairs_under_test",
+        ROOT / "scripts" / "plot_reliability_pairs.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with pytest.raises(common.StageRefused) as exc:
+        module.main(["--figure", "odd", "--mode", "sample"])
+    assert "FULL-only" in str(exc.value)
+
+
+def test_builders_do_not_leak_identity_into_drawn_text(tmp_path, odd_stats):
+    visible, texts = rp.draw_odd(odd_stats, {"lo": -0.1, "hi": 0.2},
+                                 colour=COLOUR, out_png=tmp_path / "b.png")
+    blob = "\n".join(visible + texts)
+    assert "900001" not in blob and "900003" not in blob
+
+
+# --------------------------------------------------------------- integration
+PARQUET = rp.repo_path(rp.TURNS_PARQUET)
+
+
+@pytest.mark.skipif(not PARQUET.exists(),
+                    reason=f"{PARQUET} absent — full-run pins skipped")
+def test_full_run_pins_the_committed_numbers():
+    turns = rp.load_turns()
+    slice_df = rp.select_slice(turns)
+    counts = rp.slice_counts(slice_df)
+    assert counts == {"turns": 7777, "players": 113, "plays": 7198,
+                      "games": 809, "ceiling_at_1.000": 2197,
+                      "above_1.000": 1062}
+
+    stats = rp.split_half_points(slice_df)
+    rp.reconcile_odd(stats)
+    assert round(float(stats["r"]), 4) == -0.0501
+    assert round(float(stats["spearman_brown"]), 4) == -0.1055
+    assert stats["n_players"] == 112
+    assert stats["n_dropped"] == 1
+    ci = rp.load_split_half_ci()
+    assert [round(ci["lo"], 4), round(ci["hi"], 4)] == [-0.2598, 0.1486]
+
+    panels = rp.season_panels(slice_df)
+    rp.reconcile_season(panels)
+    assert round(float(panels["r1"]), 4) == 0.1959 and panels["n1"] == 66
+    assert round(float(panels["r10"]), 4) == 0.0067 and panels["n10"] == 39
+    assert panels["n_hollow"] == 27
+
+    share = rp.descriptive_share(slice_df, reps=2000, reps_precision=20000)
+    assert round(share["point"]["eta2"], 7) == 0.0176796
+    assert share["ci"]["reps"] == 2000
+    assert share["ci_precision"]["reps"] == 20000
+    assert round(100 * share["ci_precision"]["lo"], 2) == 1.30
+    assert round(100 * share["ci_precision"]["hi"], 2) == 2.31

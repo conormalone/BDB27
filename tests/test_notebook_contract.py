@@ -376,10 +376,10 @@ def test_gallery_lists_every_manifest_entry(notebook):
     """(a) Every figure the manifest carries appears in the rendered text."""
     manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
     entries = manifest["figures"]
-    # Eighteen report figures plus the D193 exploratory turn-angle histogram,
-    # which is manifest-listed (and therefore displayed) but marked
-    # ``exploratory: true`` / ``in_report: false``.
-    assert len(entries) == 19, f"stage 06 should list nineteen figures, found {len(entries)}"
+    # Eighteen report figures plus three exploratory, manifest-listed figures
+    # (the D193 turn-angle histogram and the two reliability pair figures),
+    # all marked ``exploratory: true`` / ``in_report: false``.
+    assert len(entries) == 21, f"stage 06 should list twenty-one figures, found {len(entries)}"
 
     text, returned, shown = run_gallery(notebook, REAL_MANIFEST, REAL_FIGURES)
 
