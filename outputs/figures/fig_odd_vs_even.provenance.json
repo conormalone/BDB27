@@ -1,0 +1,84 @@
+{
+  "provenance": "FULL",
+  "label": "FULL DATA OUTPUT",
+  "config_sha": "a76cf3bd9012f085",
+  "generated_utc": "2026-11-16T21:42:58Z",
+  "stage": "06_figures",
+  "artefact_version": 1,
+  "figure": "fig_odd_vs_even",
+  "exploratory": true,
+  "in_report": false,
+  "title": "Odd turns against even turns: the same player's two halves do not agree",
+  "claim": "A player's odd-numbered and even-numbered band turns do not agree: r = -0.0501 (Spearman\u2013Brown -0.1055), 95% bootstrap CI on r [-0.2598, 0.1486], 112 of 113 players plotted. 2,197 of 7,777 turns sit at exactly 1.000.",
+  "stamp": "FULL DATA OUTPUT",
+  "filter": "bdb27_full_db_turns.parquet: setting == 'game' & position_group == 'DB' & 30 <= abs_turn_angle < 60 & valid == True",
+  "caveats": [
+    "2,197 of 7,777 turns sit at exactly 1.000: a measurement ceiling, not player structure, which pulls every player mean toward 1.0.",
+    "The interval is the bootstrap interval on r, not on Spearman-Brown.",
+    "DB only; no other position group is drawn, not even as context.",
+    "Exploratory: not one of the four report figures; written output does not cite it."
+  ],
+  "png": "outputs/figures/fig_odd_vs_even.png",
+  "csv": "outputs/figures/fig_odd_vs_even.csv",
+  "png_sha256": "42de7ab99e0066764fdf643ddeeb355b31334f7bc510003ca3934668d667bcd7",
+  "csv_sha256": "13b6b41a25d488fbf47794380c68c474ae80b36b2c3f9f582b46a3af6b86ce7b",
+  "numbers": {
+    "n_players_plotted": 112,
+    "n_players_total": 113,
+    "n_turns": 7777,
+    "n_dropped_one_sided": 1,
+    "r": -0.0501,
+    "r_3dp": -0.05,
+    "spearman_brown": -0.1055,
+    "spearman_brown_3dp": -0.105,
+    "ci_lo": -0.2598,
+    "ci_hi": 0.1486,
+    "ci_lo_3dp": -0.26,
+    "ci_hi_3dp": 0.149,
+    "n_ceiling_at_1.000": 2197,
+    "ceiling_share_pct": 28.2,
+    "n_above_1.000": 1062,
+    "legend_turns": [
+      10,
+      50,
+      100
+    ]
+  },
+  "split_half": {
+    "method": "odd/even by (season, game, play, frame) + Spearman-Brown",
+    "ci": {
+      "lo": -0.2598,
+      "hi": 0.1486,
+      "reps": 2000,
+      "seed": 20261115,
+      "kind": "percentile bootstrap interval on r; players resampled with replacement and r recomputed (never the interval on Spearman-Brown)",
+      "source": "outputs/fallback_validation/reliability.json"
+    }
+  },
+  "sources": [
+    "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
+    "outputs/fallback_validation/reliability.json"
+  ],
+  "source_artefacts": [
+    {
+      "path": "data/interim/full_run_20261111/bdb27_full_db_turns.parquet",
+      "sha256": "f2e7cd01db214b7d88ab3f029876fe0fe7ced1530d2f014b9ad55b1b2dfb8e04",
+      "provenance": "FULL",
+      "role": "uploaded full-run turn table (2023-2025), DB only"
+    },
+    {
+      "path": "outputs/fallback_validation/reliability.json",
+      "sha256": "c79d76a3156facdb8f597850d4e56e94a96002792dd9771d54d10d06e7299126",
+      "provenance": "FULL",
+      "role": "committed split-half coefficient and bootstrap interval"
+    }
+  ],
+  "git_rev": "5adbfba",
+  "outputs": {
+    "png": "outputs/figures/fig_odd_vs_even.png",
+    "png_sha256": "42de7ab99e0066764fdf643ddeeb355b31334f7bc510003ca3934668d667bcd7",
+    "csv": "outputs/figures/fig_odd_vs_even.csv",
+    "csv_sha256": "13b6b41a25d488fbf47794380c68c474ae80b36b2c3f9f582b46a3af6b86ce7b"
+  },
+  "seed": 20261115
+}
