@@ -1,0 +1,116 @@
+{
+  "provenance": "FULL",
+  "label": "FULL DATA OUTPUT",
+  "config_sha": "a76cf3bd9012f085",
+  "generated_utc": "2026-11-16T15:53:19Z",
+  "figure": "fig_third_of_one_percent",
+  "title": "A third of one percent is the player: share of total variance in the 30\u201360\u00b0 DB band",
+  "claim": "Across the whole 30\u201360\u00b0 DB band the between-player share of total variance in apex_retention is 0.34% (ICC 0.0034 on 7,777 turns, 113 players): 99.66% of the variation is turn to turn, so a player mean carries almost no player-level information.",
+  "source_artefacts": [
+    {
+      "path": "outputs/band_reliability/reliability.json",
+      "sha256": "54a12bc0439dc71a74ea3e602691107366dc048f62e7b04ff90326b1ec2c4676",
+      "role": "D206 band reliability: four ICC(1) scenarios, two adjusted ICCs, derived reliability/attenuation/sample-size block"
+    }
+  ],
+  "numbers": {
+    "rule": "between_share = sigma2_a / (sigma2_a + sigma2_e) = icc",
+    "scenarios": [
+      {
+        "scenario": "all_band",
+        "rule_label": "all band turns",
+        "players": 113,
+        "turns": 7777,
+        "kbar": 68.82300884955752,
+        "icc": 0.003382370067698427,
+        "sigma2_a": 0.00023244777179444267,
+        "sigma2_e": 0.06849089330028832,
+        "between_share": 0.003382370067698427,
+        "status": "ok",
+        "mark": "0.34%  \u00b7  7,777 T / 113 P  \u00b7  k\u0304 68.8"
+      },
+      {
+        "scenario": "entry_3_5",
+        "rule_label": "3\u20135 yd/s entry",
+        "players": 113,
+        "turns": 3385,
+        "kbar": 29.95575221238938,
+        "icc": 0.009321248672369884,
+        "sigma2_a": 0.0005337997532195857,
+        "sigma2_e": 0.05673317938036784,
+        "between_share": 0.009321248672369884,
+        "status": "ok",
+        "mark": "0.93%  \u00b7  3,385 T / 113 P  \u00b7  k\u0304 30.0"
+      },
+      {
+        "scenario": "entry_3_5_pass",
+        "rule_label": "3\u20135 yd/s on pass plays",
+        "players": 108,
+        "turns": 2232,
+        "kbar": 20.666666666666668,
+        "icc": 0.008460106513692953,
+        "sigma2_a": 0.0005045279453403239,
+        "sigma2_e": 0.05913159419138801,
+        "between_share": 0.008460106513692953,
+        "status": "ok",
+        "mark": "0.85%  \u00b7  2,232 T / 108 P  \u00b7  k\u0304 20.7"
+      },
+      {
+        "scenario": "pass_only",
+        "rule_label": "pass plays only",
+        "players": 111,
+        "turns": 5197,
+        "kbar": 46.81981981981982,
+        "icc": 0.004558973150856006,
+        "sigma2_a": 0.0003275777962137113,
+        "sigma2_e": 0.07152583861449806,
+        "between_share": 0.004558973150856006,
+        "status": "ok",
+        "mark": "0.46%  \u00b7  5,197 T / 111 P  \u00b7  k\u0304 46.8"
+      }
+    ],
+    "annotation": "the accent segment is the ICC, drawn to scale."
+  },
+  "adjusted_not_drawn": {
+    "all_band_adjusted": {
+      "icc": 0.003685010845302767,
+      "sigma2_a": 0.00015048371126865438,
+      "sigma2_e": 0.040686224126504446,
+      "between_share": 0.003685010845302767,
+      "players": 113,
+      "turns": 7777,
+      "r_squared": 0.4057842110475185,
+      "covariates": [
+        "entry_speed",
+        "entry_speed^2",
+        "abs_turn_angle",
+        "abs_turn_angle^2"
+      ],
+      "note": "adjusted rows are residualised on entry_speed and abs_turn_angle; they are CSV and manifest text only and are never a fifth bar"
+    },
+    "entry_3_5_adjusted": {
+      "icc": 0.014054573049674082,
+      "sigma2_a": 0.0006870664460440056,
+      "sigma2_e": 0.048198548479123596,
+      "between_share": 0.014054573049674082,
+      "players": 113,
+      "turns": 3385,
+      "r_squared": 0.14642505743300183,
+      "covariates": [
+        "entry_speed",
+        "entry_speed^2",
+        "abs_turn_angle",
+        "abs_turn_angle^2"
+      ],
+      "note": "adjusted rows are residualised on entry_speed and abs_turn_angle; they are CSV and manifest text only and are never a fifth bar"
+    }
+  },
+  "manifest_provenance": "FULL",
+  "outputs": {
+    "png": "outputs/figures/fig_third_of_one_percent.png",
+    "csv": "outputs/figures/fig_third_of_one_percent.csv",
+    "drawn_text": "outputs/figures/fig_third_of_one_percent.drawn_text.json",
+    "manifest": "outputs/figures/figures_manifest.json"
+  },
+  "git_rev": null
+}

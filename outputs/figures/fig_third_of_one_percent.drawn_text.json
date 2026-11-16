@@ -1,0 +1,48 @@
+{
+  "provenance": "FULL",
+  "label": "FULL DATA OUTPUT",
+  "config_sha": "a76cf3bd9012f085",
+  "figure": "fig_third_of_one_percent",
+  "stamp": "FULL DATA OUTPUT",
+  "strings": [
+    "0.34%  \u00b7  7,777 T / 113 P  \u00b7  k\u0304 68.8",
+    "0.93%  \u00b7  3,385 T / 113 P  \u00b7  k\u0304 30.0",
+    "0.85%  \u00b7  2,232 T / 108 P  \u00b7  k\u0304 20.7",
+    "0.46%  \u00b7  5,197 T / 111 P  \u00b7  k\u0304 46.8",
+    "the accent segment is the ICC, drawn to scale.",
+    "share of total variance",
+    "all band turns",
+    "3\u20135 yd/s entry",
+    "3\u20135 yd/s on pass plays",
+    "pass plays only",
+    "A third of one percent is the player: share of total variance in the 30\u201360\u00b0 DB band"
+  ],
+  "scan_strings": [
+    "A third of one percent is the player: share of total variance in the 30\u201360\u00b0 DB band",
+    "0.34%  \u00b7  7,777 T / 113 P  \u00b7  k\u0304 68.8",
+    "0.93%  \u00b7  3,385 T / 113 P  \u00b7  k\u0304 30.0",
+    "0.85%  \u00b7  2,232 T / 108 P  \u00b7  k\u0304 20.7",
+    "0.46%  \u00b7  5,197 T / 111 P  \u00b7  k\u0304 46.8",
+    "the accent segment is the ICC, drawn to scale.",
+    "share of total variance",
+    "all band turns",
+    "3\u20135 yd/s entry",
+    "3\u20135 yd/s on pass plays",
+    "pass plays only"
+  ],
+  "banned_tokens": [
+    "PLACEHOLDER",
+    "UNVALIDATED",
+    "SAMPLE OUTPUT",
+    "PENDING FULL RUN"
+  ],
+  "banned_words": [
+    "VOID",
+    "stable",
+    "separation",
+    "pressure",
+    "production",
+    "predicts"
+  ],
+  "banned_hits": []
+}
