@@ -1,6 +1,6 @@
 {
-  "written_utc": "2026-11-15T22:24:21.643264+00:00",
-  "git_head": "b4c29736aba6d609aa7d9af368401813fa84a21f",
+  "written_utc": "2026-11-16T15:29:28.596774+00:00",
+  "git_head": "b900f9eb07603613358d574278363f5ced120058",
   "rule": "ICC(1) of apex_retention within player on the 30-60 deg DB band; four scenarios reported side by side; adjusted ICC on residuals of entry_speed, entry_speed^2, abs_turn_angle, abs_turn_angle^2; no gate, every count against its denominator",
   "provenance": "FULL",
   "config": {
@@ -43,8 +43,8 @@
   },
   "outputs": {
     "outputs/band_reliability/reliability.json": {
-      "sha256": "39698757ed13132f0c01e2d5960412d80a5084b960f7696cbe8b33a417c71d9f",
-      "bytes": 5730
+      "sha256": "54a12bc0439dc71a74ea3e602691107366dc048f62e7b04ff90326b1ec2c4676",
+      "bytes": 5984
     },
     "outputs/band_reliability/scenarios.csv": {
       "sha256": "d77dd56cc9b3f2983f933f9b33dd610c60b68f77debbd9ce1c87567402d5a7a3",
@@ -119,7 +119,10 @@
       "turns": 7777,
       "icc": 0.003685010845302767,
       "clamped": false,
-      "status": "ok"
+      "status": "ok",
+      "sigma2_a": 0.00015048371126865438,
+      "sigma2_a_raw": 0.00015048371126865438,
+      "sigma2_e": 0.040686224126504446
     },
     "entry_3_5": {
       "r_squared": 0.14642505743300183,
@@ -134,7 +137,10 @@
       "turns": 3385,
       "icc": 0.014054573049674082,
       "clamped": false,
-      "status": "ok"
+      "status": "ok",
+      "sigma2_a": 0.0006870664460440056,
+      "sigma2_a_raw": 0.0006870664460440056,
+      "sigma2_e": 0.048198548479123596
     }
   },
   "derived": {
