@@ -197,14 +197,7 @@ def residualise(frame: pd.DataFrame) -> tuple[np.ndarray, float, int]:
 
 
 def adjusted_icc(frame: pd.DataFrame) -> dict:
-    """R-squared and ICC(1) on the residualised retention.
-
-    The variance components are copied from the same ``icc1`` call that produced
-    ``icc`` (D207, spec ``notes/spec-reliability-figures.md`` §3.1): nothing is
-    re-estimated, so ``sigma2_a / (sigma2_a + sigma2_e)`` is ``icc`` by
-    construction. ``sigma2_a`` is the clamped component and ``sigma2_a_raw`` the
-    unclamped one, the same pair the scenario rows carry.
-    """
+    """R-squared and ICC(1) on the residualised retention."""
     resid, r2, n_par = residualise(frame)
     out = icc1(resid, frame["nfl_id"].to_numpy())
     return {
@@ -216,9 +209,6 @@ def adjusted_icc(frame: pd.DataFrame) -> dict:
         "icc": out["icc"],
         "clamped": bool(out["clamped"]),
         "status": out["status"],
-        "sigma2_a": out["sigma2_a"],
-        "sigma2_a_raw": out.get("sigma2_a_raw"),
-        "sigma2_e": out["sigma2_e"],
     }
 
 
