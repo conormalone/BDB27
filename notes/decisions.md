@@ -8817,5 +8817,49 @@ differ, by construction). `src/bdb27/outcome_test.py` was refactored —
 *derived* from the sample's own text rather than re-typed; `build_sample`'s output is unchanged and
 `tests/test_outcome_test.py` passes unchanged.
 
+**Amendment — within 3 yd, V4 nearest, the margin (Conor, 18:13).** *"Let's see what the within 3
+yards statistics look like if there's two or more, we might just take the nearest one anyway."*
+Two tables and one variant, all on the 870 multi-candidate turns, all printed with denominators
+whether or not tracking exists:
+
+- **Within 3 yd, by candidate count.** Zero / exactly one / exactly two / three or more candidates
+  inside 3 yd at the break frame, each with its count, its share of the *evaluated* turns and its
+  share of *all 870*. This is the table that decides whether the frozen rule's refusal to tie-break
+  was protecting genuine ambiguity or discarding turns it could have resolved: if most 2+ turns have
+  exactly one man inside 3 yd, the ambiguity was never real and the frozen rule was leaving
+  resolvable turns on the floor.
+- **Margin, second-nearest − nearest.** Bucketed `< 0.25`, `0.25–0.5`, `0.5–1`, `> 1` yd (the third
+  bucket closed at 1.0, the fourth open above it), with counts and shares of the evaluated turns,
+  plus median and mean. Turns with fewer than two tracked candidates are counted separately, never
+  dropped silently. This is the evidence for whether "take the nearest" is a measurement or a coin
+  flip — it is not collapsed into one number, and no bucket is a gate.
+- **V4 — nearest inside 3 yd.** Where two or more candidates are inside 3 yd, pair to the nearest and
+  carry on. Labelled **`V4 INFERENCE — nearest inside 3 yd (TIE-BREAK)`**, with its own `n` (the
+  1,731 frozen turns plus the nearest-resolved ambiguous ones), its coefficient printed beside V1–V3,
+  and its attribution string saying in words that the frozen rule **refuses** tie-breaks and that
+  this is therefore a variant, not the frozen rule's result. **V4 is not a slot of `N`:** the
+  headline stays **2,295**, the overlap between V4's turns and Route A's is printed, and the net new
+  turns under a hypothetical precedence (frozen → V4 → Route A) are printed beside it so the cost of
+  that choice is visible without being taken.
+
+**What the amendment says on this machine: nothing yet, and it says so.** Both tables are
+`NOT EVALUABLE` — **0 of 870** turns evaluated, four buckets `n/a` against the 870 denominator — and
+V4's coefficient is `n/a` with `n = 1,731` frozen + 0 nearest-resolved. The cells print those
+denominators and complete; nothing aborts, and the separation gap is never substituted for a
+distance. The number Conor actually wants here needs his full tracking, and the notebook prints it
+on the machine that has it.
+
+**One label fixed.** `single_turn_geometry.csv` had stamped its 1,731 frozen rows with the
+`INFERENCE` string. They are the frozen matches: now `RULE` on every row, matching
+`build_frame(status="single")`, with a test pinning it. No number moved.
+
+**Provenance and two writers.** This amendment was built across two sessions after a recovery
+commit raced this one: the tree briefly held both writers' work, one commit of mine was undone to
+avoid attributing the other session's unreviewed code, and the final amendment landed as `3e16d93`
+with this session's script block and label fix inside it. Suite at that commit: **660 collected,
+659 passed, 1 skipped** (43 tests in `tests/test_ambiguity_attribution.py`, 17 in
+`tests/test_multi_candidate_notebook.py`). New artefacts: `within_3yd.csv`, `margin_buckets.csv`,
+`v4_nearest.csv`, and `geometry.csv` gains `n_in_radius_3` and `nearest_nfl_id`.
+
 **Unchanged.** `TASK.md`, the band table, the four figures, `notes/report-draft.md` and every
 pre-existing artefact under `outputs/`.
