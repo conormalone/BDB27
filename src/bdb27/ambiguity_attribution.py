@@ -1460,6 +1460,50 @@ def geometry_slots(turns_path, player_play_path, frame_all: pd.DataFrame, *,
                 "rows": rows, "paths_tried": "; ".join(str(p) for p in tried),
                 "n_turns_considered": int(len(rows))}
 
+    info = _distances_for_turns(turns_path, turn_keys,
+                                frame[key + ["receiver_nfl_id"]], found, con=con)
+    cf, recovered, tracked_plays = info["cf"], info["recovered"], info["tracked_plays"]
+
+    r5, r8 = (float(radii[0]), float(radii[1]))
+    rows: list[dict] = []
+    for k in map(tuple, turn_keys[key].to_numpy().tolist()):
+        grp = cf[(cf["game_id"] == k[0]) & (cf["play_id"] == k[1])
+                 & (cf["nfl_id"] == k[2]) & (cf["frame_start"] == k[3])]
+        d = grp["dist_yd"].to_numpy(float)
+        rec = dict(zip(key, k))
+        rec["n_candidates_tracked"] = int(len(d))
+        rec["dist_yd"] = float(d.min()) if len(d) else np.nan
+        slot, man = "", np.nan
+        if len(d):
+            in5 = grp.loc[grp["dist_yd"] <= r5, "receiver_nfl_id"].to_numpy()
+            in8 = grp.loc[grp["dist_yd"] <= r8, "receiver_nfl_id"].to_numpy()
+            if len(in5) == 1:
+                slot, man = "5", int(in5[0])
+            elif len(in8) == 1:
+                slot, man = "8", int(in8[0])
+        rec["slot"], rec["attributed_nfl_id"] = slot, man
+        rec["geometry_status"] = _turn_status(k, tracked_plays, recovered, len(d))
+        rows.append(rec)
+    out = pd.DataFrame(rows)
+    return {"n_geo_5": int((out["slot"] == "5").sum()),
+            "n_geo_8": int((out["slot"] == "8").sum()),
+            "status": (GEOMETRY_NOT_EVALUABLE if not (out["geometry_status"]
+                                                      == "tracked").any()
+                       else "tracked"),
+            "rows": out, "paths_tried": "; ".join(str(p) for p in found),
+            "n_turns_considered": int(len(out))}
+
+
+def _distances_for_turns(turns_path, turn_keys: pd.DataFrame,
+                         candidates: pd.DataFrame, found: Sequence[Path], *,
+                         con: duckdb.DuckDBPyConnection | None = None) -> dict:
+    """The break-frame distance from each DB to each visible candidate.
+
+    Shared by the geometric slots and the single-turn 3-yd check so the two can
+    never disagree about what "distance at the break frame" means. Returns the
+    matched frame plus the two coverage sets used to label a turn honestly.
+    """
+    key = list(ot.TURN_KEY)
     from . import geometric_match as gm
     band = gm.load_band(turns_path)
     band = band[band["valid"] & (band["setting"] == "game")
@@ -1486,13 +1530,66 @@ def geometry_slots(turns_path, player_play_path, frame_all: pd.DataFrame, *,
         if own_con:
             con.close()
     cf = cf.rename(columns={"cand_nfl_id": "receiver_nfl_id"})
-    cf = cf.merge(frame[key + ["receiver_nfl_id"]],
+    cf = cf.merge(candidates.drop_duplicates(subset=key + ["receiver_nfl_id"]),
                   on=key + ["receiver_nfl_id"], how="inner")
     cf = cf.sort_values(key + ["dist_yd", "receiver_nfl_id"], kind="mergesort")
 
     recovered = set(map(tuple, bps.loc[bps["break_frame_ok"], key]
                         .to_numpy().tolist()))
-    r5, r8 = (float(radii[0]), float(radii[1]))
+    return {"cf": cf, "recovered": recovered, "tracked_plays": tracked_plays}
+
+
+def _turn_status(key_tuple, tracked_plays: set, recovered: set, n_tracked: int) -> str:
+    """Why a turn is or is not measured — one vocabulary for both tables."""
+    if (key_tuple[0], key_tuple[1]) not in tracked_plays:
+        return "untracked_play"
+    if key_tuple not in recovered:
+        return "break_frame_unrecovered"
+    if not n_tracked:
+        return "no_candidate_tracked"
+    return "tracked"
+
+
+def single_candidate_geometry(turns_path, frame_single: pd.DataFrame, *,
+                              tracking: Sequence[str | Path] | None = None,
+                              radius: float | None = None,
+                              con: duckdb.DuckDBPyConnection | None = None) -> dict:
+    """The frozen 3-yd test on the 1,731 single-candidate turns — the 471 check.
+
+    These turns are already inside ``N_frozen``: this table is a **check on the
+    frozen set**, not a recovery route, and it adds nothing to ``N``. It exists
+    so the 1,731 → "how many are within 3 yd" step is visible on the machine
+    doing the run instead of taken on trust from a pasted laptop number (D204
+    reported 471).
+
+    Each single turn carries exactly one visible opposing route-runner, so its
+    distance is that man's distance at the break frame. A turn whose play the
+    tracking does not cover carries a null and a status; nothing is imputed.
+    """
+    from . import outcome_link as ol
+    frozen_radius = float(radius if radius is not None else ol.PRIMARY_RADIUS_YD)
+    key = list(ot.TURN_KEY)
+    frame = frame_single.drop_duplicates(subset=[*key, "receiver_nfl_id"],
+                                         keep="first")
+    turn_keys = frame.drop_duplicates(subset=key)[key].reset_index(drop=True)
+    tried = _tracking_candidates(tracking)
+    found = [p for p in tried if p.exists()]
+    base = turn_keys.copy()
+    base["attribution"] = ATTRIBUTION
+    common = {"radius_yd": frozen_radius, "n_turns": int(len(base)),
+              "paths_tried": "; ".join(str(p) for p in tried),
+              "d204_reported": 471}
+    if not found:
+        base["dist_nearest_yd"] = np.nan
+        base["n_candidates_tracked"] = 0
+        base["within_radius"] = pd.NA
+        base["geometry_status"] = GEOMETRY_NOT_EVALUABLE
+        return {**common, "status": GEOMETRY_NOT_EVALUABLE, "n_tracked": 0,
+                "n_within_radius": 0, "rows": base}
+
+    info = _distances_for_turns(turns_path, turn_keys,
+                                frame[key + ["receiver_nfl_id"]], found, con=con)
+    cf, recovered, tracked_plays = info["cf"], info["recovered"], info["tracked_plays"]
     rows: list[dict] = []
     for k in map(tuple, turn_keys[key].to_numpy().tolist()):
         grp = cf[(cf["game_id"] == k[0]) & (cf["play_id"] == k[1])
@@ -1500,33 +1597,17 @@ def geometry_slots(turns_path, player_play_path, frame_all: pd.DataFrame, *,
         d = grp["dist_yd"].to_numpy(float)
         rec = dict(zip(key, k))
         rec["n_candidates_tracked"] = int(len(d))
-        rec["dist_yd"] = float(d.min()) if len(d) else np.nan
-        slot, man = "", np.nan
-        if len(d):
-            in5 = grp.loc[grp["dist_yd"] <= r5, "receiver_nfl_id"].to_numpy()
-            in8 = grp.loc[grp["dist_yd"] <= r8, "receiver_nfl_id"].to_numpy()
-            if len(in5) == 1:
-                slot, man = "5", int(in5[0])
-            elif len(in8) == 1:
-                slot, man = "8", int(in8[0])
-        rec["slot"], rec["attributed_nfl_id"] = slot, man
-        if (k[0], k[1]) not in tracked_plays:
-            rec["geometry_status"] = "untracked_play"
-        elif k not in recovered:
-            rec["geometry_status"] = "break_frame_unrecovered"
-        elif not len(d):
-            rec["geometry_status"] = "no_candidate_tracked"
-        else:
-            rec["geometry_status"] = "tracked"
+        rec["dist_nearest_yd"] = float(d.min()) if len(d) else np.nan
+        rec["within_radius"] = (bool(d.min() <= frozen_radius) if len(d) else pd.NA)
+        rec["geometry_status"] = _turn_status(k, tracked_plays, recovered, len(d))
         rows.append(rec)
     out = pd.DataFrame(rows)
-    return {"n_geo_5": int((out["slot"] == "5").sum()),
-            "n_geo_8": int((out["slot"] == "8").sum()),
-            "status": (GEOMETRY_NOT_EVALUABLE if not (out["geometry_status"]
-                                                      == "tracked").any()
-                       else "tracked"),
-            "rows": out, "paths_tried": "; ".join(str(p) for p in found),
-            "n_turns_considered": int(len(out))}
+    out["attribution"] = ATTRIBUTION
+    tracked = out.loc[out["geometry_status"] == "tracked"]
+    return {**common, "status": ("tracked" if len(tracked) else GEOMETRY_NOT_EVALUABLE),
+            "n_tracked": int(len(tracked)),
+            "n_within_radius": int(tracked["within_radius"].fillna(False).astype(bool).sum()),
+            "rows": out}
 
 
 def agreement(route_a_turns: pd.DataFrame, geometry_rows: pd.DataFrame) -> pd.DataFrame:
@@ -1678,6 +1759,16 @@ def plain_english_verdict(summary: dict) -> list[str]:
         if asm.get("route_a_by_rule"):
             lines.append("  Route A by rule: " + " · ".join(
                 f"{k} {v:,}" for k, v in asm["route_a_by_rule"].items()))
+
+    chk = summary.get("frozen_3yd_check")
+    if chk:
+        lines.append("")
+        lines.append(
+            f"Frozen 3-yd check on the {chk['n_turns']:,} single-candidate turns: "
+            f"{chk['n_within_radius']:,} of {chk['n_tracked']:,} tracked turns are "
+            f"within {chk['radius_yd']:g} yd ({chk['status']}); D204 reported "
+            f"{chk['d204_reported']:,} on the full file. This is a check on "
+            "N_frozen — it adds nothing to N.")
 
     agree = summary.get("agreement") or []
     overall = next((r for r in agree if r.get("scope") == "overall"), None)

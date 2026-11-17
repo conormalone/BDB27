@@ -246,6 +246,22 @@ def main(argv: list[str] | None = None) -> int:
     if len(geo_slots["rows"]):
         st = geo_slots["rows"]["geometry_status"].value_counts()
         _log("  per-turn status: " + " · ".join(f"{k} {v:,}" for k, v in st.items()))
+    singles_geo = aa.single_candidate_geometry(turns_path, single,
+                                               tracking=args.tracking)
+    _log("Frozen 3-yd check on the single-candidate set — a check on N_frozen, "
+         "not a recovery route")
+    _log(f"  {singles_geo['status']}")
+    _log(f"  tracked {singles_geo['n_tracked']:,} of {singles_geo['n_turns']:,} · "
+         f"within {singles_geo['radius_yd']:g} yd "
+         f"{singles_geo['n_within_radius']:,} of {singles_geo['n_tracked']:,} "
+         f"tracked turns · D204 reported {singles_geo['d204_reported']:,} on the "
+         f"full file")
+    if len(singles_geo["rows"]):
+        st = singles_geo["rows"]["geometry_status"].value_counts()
+        _log("  per-turn status: " + " · ".join(f"{k} {v:,}" for k, v in st.items()))
+    _log("  these turns are already inside N_frozen; nothing here is added to N")
+    _log("")
+
     agree = aa.agreement(route_turns, geo_slots["rows"])
     if len(agree) and int(agree.loc[agree["scope"] == "overall", "n_both"].sum()):
         r = agree[agree["scope"] == "overall"].iloc[0]
@@ -307,6 +323,8 @@ def main(argv: list[str] | None = None) -> int:
     route_audit.to_csv(out / "route_a_audit.csv", index=False, encoding="utf-8")
     pd.DataFrame(assembled["composition"]).to_csv(out / "assembly.csv", index=False,
                                                   encoding="utf-8")
+    singles_geo["rows"].to_csv(out / "single_turn_geometry.csv", index=False,
+                               encoding="utf-8")
 
     summary = {
         "provenance": stamp,
@@ -364,6 +382,17 @@ def main(argv: list[str] | None = None) -> int:
             "per_turn_status": (geo_slots["rows"]["geometry_status"]
                                 .value_counts().to_dict() if len(geo_slots["rows"]) else {}),
         },
+        "frozen_3yd_check": {
+            "n_turns": singles_geo["n_turns"],
+            "n_tracked": singles_geo["n_tracked"],
+            "n_within_radius": singles_geo["n_within_radius"],
+            "radius_yd": singles_geo["radius_yd"],
+            "status": singles_geo["status"],
+            "d204_reported": singles_geo["d204_reported"],
+            "paths_tried": singles_geo["paths_tried"],
+            "note": ("a check on the frozen single-candidate set: these turns are "
+                     "already inside N_frozen, so nothing here is added to N"),
+        },
         "agreement": agree.to_dict("records") if len(agree) else [],
         "alignment_counts": align.to_dict("records"),
         "geometry": {
@@ -404,7 +433,8 @@ def main(argv: list[str] | None = None) -> int:
                                  "variants.csv", "composition.csv",
                                  "random_pairings.csv", "geometry.csv",
                                  "route_a_turns.csv", "route_a_audit.csv",
-                                 "assembly.csv", "summary.json", "verdict.txt")],
+                                 "single_turn_geometry.csv", "assembly.csv",
+                                 "summary.json", "verdict.txt")],
         config={"mode": args.mode, "reps": args.reps, "seed": args.seed,
                 "specs": list(aa.SPECS), "pairing_rules": list(aa.PAIRING_RULES),
                 "tracking": args.tracking},

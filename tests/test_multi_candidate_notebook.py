@@ -137,6 +137,19 @@ def test_the_shares_of_n_are_printed_and_add_up(executed):
     assert "INFERENCE share of N" in executed["_stdout"]
 
 
+def test_the_single_turn_check_is_present_and_separate_from_recovery(executed):
+    singles = executed["singles"]
+    assert singles["n_turns"] == len(executed["single"])
+    assert singles["status"].startswith("NOT EVALUABLE")
+    assert singles["n_within_radius"] == 0
+    out = executed["_stdout"]
+    assert "D204 reported 471" in out
+    assert "adds nothing to N" in out
+    # The composition says which turns came from which route.
+    assert "the frozen slot is the 1,731 single-candidate turns" in out
+    assert "the variants on 1,731 + 870 = 2,601 turns" in out
+
+
 def test_geometry_and_agreement_say_not_evaluable_rather_than_zero(executed):
     out = executed["_stdout"]
     assert "NOT EVALUABLE" in out

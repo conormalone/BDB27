@@ -8694,6 +8694,19 @@ candidate on that turn. The text names a man the file does not carry; that is co
 reported, never guessed. Coverage label of the attributed turns (A4, the DB's own
 `coverage_assignment`): ZONE 369, MAN 119, MISSING 76.
 
+**The single-candidate set — the "one match" turns.** The statistics already cover them and now
+say so out loud: the primary specification is fitted on the **1,731** single-candidate turns and the
+variants on **1,731 + 870 = 2,601**. The geometry table did *not* cover them — `geometry.csv` is the
+870 ambiguous turns, which is defensible (a single needs no disambiguation) but left the frozen
+3-yd step invisible on exactly the set D204's 471 came from. `single_candidate_geometry()` now
+measures the distance from the DB to the one visible candidate on all 1,731 at the break frame and
+reports how many are within `outcome_link.PRIMARY_RADIUS_YD` = 3 yd: on this machine
+**NOT EVALUABLE** (no tracking); against the 2023 truncation 11 of 1,731 are tracked and 3 of those
+11 are within 3 yd; on the laptop with the full files it prints the 1,731 → 471 step itself, with
+D204's 471 carried alongside as a comparison, not as an expectation to match. **It is a check on
+`N_frozen` and not a slot: it adds nothing to N**, and the notebook says so in the cell, in the
+composition line and in `summary.json`'s separate `frozen_3yd_check` block.
+
 **The diagnostic.** On the FULL band the funnel
 reproduces §1 exactly: **7,777** band turns, of which **1,462** (18.8%) have no opposing
 `player_play` row, **3,306** (42.5%) have opposing rows but no route-runner among them, **3,009**
@@ -8768,7 +8781,7 @@ things remain open against the spec, and they are recorded rather than papered o
   (1 of 1). That is a code-path check, not a result; the laptop run with the full files is what
   would produce the real `N_geo` slots.
 
-**The notebook is the interface (AC8).** `notebooks/bdb27_multi_candidate.ipynb`, ten cells, one
+**The notebook is the interface (AC8).** `notebooks/bdb27_multi_candidate.ipynb`, eleven cells (nine code), one
 config cell, no baked outputs, no CLI, no shell escapes. It runs end to end on this machine with no
 tracking: the geometric columns come back null, `NOT EVALUABLE` prints, and the run still reports
 `N` with its composition (it does not abort). Pointed at tracking, the same notebook computes the
@@ -8794,8 +8807,8 @@ in the artefact and in the tests.
 **Provenance.** `notes/multi-candidate-spec.md` (`8726120`, `556e658`); `src/bdb27/ambiguity_attribution.py`
 (frames, O2, variants, Route A, assembly, geometry slots, alignment anchor);
 `scripts/ambiguity_attribution.py`; `notebooks/bdb27_multi_candidate.ipynb`;
-`tests/test_ambiguity_attribution.py` (33 tests) and `tests/test_multi_candidate_notebook.py`
-(12 tests); `outputs/ambiguity_attribution/{funnel,composition,bounds,variants,geometry,multi_turns,random_pairings,route_a_turns,route_a_audit,assembly}.csv`,
+`tests/test_ambiguity_attribution.py` (36 tests) and `tests/test_multi_candidate_notebook.py`
+(13 tests); `outputs/ambiguity_attribution/{funnel,composition,bounds,variants,geometry,multi_turns,random_pairings,route_a_turns,route_a_audit,single_turn_geometry,assembly}.csv`,
 `summary.json`, `manifest.json`, `verdict.txt`; one `outputs/run_log.csv` row. The seven artefacts
 from the first commit of this cycle reproduced **byte for byte** after Route A and the notebook were
 added, and a second full run reproduces them again (only `manifest.json`'s UTC stamp and `git_head`

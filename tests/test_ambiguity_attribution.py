@@ -445,3 +445,32 @@ def test_the_route_a_turn_count_is_additive_with_the_frozen_one(route, tables):
     assert n == 1731 + 564          # the number the run reports, pinned
     frozen = set(map(tuple, route["frozen"]))
     assert frozen.isdisjoint(set(map(tuple, route["turns"][KEY].to_numpy().tolist())))
+
+
+# ------------------------------------------------------------------ the frozen 3-yd check
+def test_single_turn_check_without_tracking_is_a_stated_gap_not_a_zero(single):
+    out = aa.single_candidate_geometry(TURNS, single)
+    assert out["n_turns"] == len(single) == 1731
+    assert out["n_tracked"] == 0 and out["n_within_radius"] == 0
+    assert out["status"] == aa.GEOMETRY_NOT_EVALUABLE
+    assert len(out["rows"]) == 1731
+    assert out["rows"]["within_radius"].isna().all()      # null, not False
+    assert out["paths_tried"]                                # it named what it looked for
+
+
+def test_single_turn_check_uses_the_frozen_radius(single):
+    from bdb27 import outcome_link as ol
+    out = aa.single_candidate_geometry(TURNS, single)
+    assert out["radius_yd"] == float(ol.PRIMARY_RADIUS_YD) == 3.0
+    # D204's laptop figure is carried for comparison, never as the result.
+    assert out["d204_reported"] == 471
+
+
+def test_single_turn_check_adds_nothing_to_the_number(single, route, tables):
+    """The check is on N_frozen; N is still the four slots and nothing else."""
+    out = aa.assemble_attribution({
+        "n_frozen": len(single), "n_geo_5": 0, "n_geo_8": 0,
+        "n_route_a": len(route["turns"]), "band_turns": 7777})
+    assert out["N"] == len(single) + len(route["turns"])
+    assert "singles" not in out and "n_single" not in out["slots"]
+    assert set(out["slots"]) == {"n_frozen", "n_geo_5", "n_geo_8", "n_route_a"}
