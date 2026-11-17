@@ -508,6 +508,16 @@
       "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players": 1277
     }
   },
+  "frozen_3yd_check": {
+    "n_turns": 1731,
+    "n_tracked": 0,
+    "n_within_radius": 0,
+    "radius_yd": 3.0,
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "d204_reported": 471,
+    "paths_tried": "/home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2023.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2024.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2025.csv",
+    "note": "a check on the frozen single-candidate set: these turns are already inside N_frozen, so nothing here is added to N"
+  },
   "agreement": [],
   "alignment_counts": [
     {

@@ -1,6 +1,6 @@
 {
-  "written_utc": "2026-11-17T18:43:57.990728+00:00",
-  "git_head": "f841ecd67d21ee0acaee13fef8ac9f2d470049b1",
+  "written_utc": "2026-11-17T19:08:34.645358+00:00",
+  "git_head": "a318d23de68ed5001034a07681745f73481e3428",
   "spec": "notes/multi-candidate-spec.md",
   "attribution": "INFERENCE \u2014 multi-candidate attribution; the dataset records no opponent identifier, so no pairing here identifies the man covered",
   "config": {
@@ -67,17 +67,21 @@
       "sha256": "245b12524b69136be75cc84f08f95e417952f9d297eb9a41485718a3a7874a59",
       "bytes": 575
     },
+    "outputs/ambiguity_attribution/single_turn_geometry.csv": {
+      "sha256": "5adc3032efb09a78e153f8fe46c2fe1ba7e87fd0df9e27426a8cbdee263b0e2b",
+      "bytes": 550159
+    },
     "outputs/ambiguity_attribution/assembly.csv": {
       "sha256": "6f0dea815f90d9545235ad017c28636b01625bed1fff7739adc093dfdedc4585",
       "bytes": 572
     },
     "outputs/ambiguity_attribution/summary.json": {
-      "sha256": "ecd76ea0d03e716eabd2a97af873f717243c2bad62b85123de2e8287bd2a4c7d",
-      "bytes": 23095
+      "sha256": "4e598cbd056acb600b41c33a9b608e07b90c9e317a0f15cb3dda7f2a5e805ab2",
+      "bytes": 23864
     },
     "outputs/ambiguity_attribution/verdict.txt": {
-      "sha256": "8ba268c12fdaa648406c6846de068ea3373284eb54464f53de20cee7593f10ce",
-      "bytes": 4127
+      "sha256": "49ccd994851900365f80a51bf4fc4b2477b066aff4a18eb268198b21ec1b4e0b",
+      "bytes": 4465
     }
   },
   "stage": "complete",

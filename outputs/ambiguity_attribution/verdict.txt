@@ -26,6 +26,8 @@ N = 2,295 of 7,777 band turns (29.5%): frozen 1,731 + geo_5 0 + geo_8 0 + route_
   INFERENCE — Route A             564 of N (24.6%)
   RULE share of N 75.4% · INFERENCE share 24.6%
   Route A by rule: target 365 · alignment 199
+
+Frozen 3-yd check on the 1,731 single-candidate turns: 0 of 0 tracked turns are within 3 yd (NOT EVALUABLE — candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players); D204 reported 471 on the full file. This is a check on N_frozen — it adds nothing to N.
 Cross-check where both routes fired: NOT EVALUABLE — no tracking on this machine, so no turn was paired by both routes.
 
 Every pairing above is an INFERENCE: the dataset records no opponent identifier, so none of them names the man covered. two_candidate_separation_gap_yd is MAX(sep) - MIN(sep), not a distance between two players.
