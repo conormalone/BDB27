@@ -121,6 +121,26 @@ ATTRIBUTION = (
     "identifier, so no pairing here identifies the man covered"
 )
 
+#: V4's radius: the frozen rule's own 3 yd, used as a tie-break gate.
+V4_RADIUS_YD = 3.0
+
+#: V4 is a tie-break and must never wear the frozen rule's clothes. Its label
+#: says both what it does and that the frozen rule refuses to do it.
+V4_LABEL = "V4 INFERENCE — nearest inside 3 yd (TIE-BREAK)"
+V4_ATTRIBUTION = (
+    "INFERENCE — V4 nearest-man TIE-BREAK inside 3 yd; the frozen rule "
+    "explicitly refuses tie-breaks, so this is a variant, not the frozen "
+    "rule's result")
+
+#: Margin buckets: second-nearest minus nearest distance, in yards. The edges
+#: are report buckets only; no edge selects or drops a turn.
+MARGIN_BUCKETS: tuple[tuple[str, float, float], ...] = (
+    ("< 0.25 yd", 0.0, 0.25),
+    ("0.25–0.5 yd", 0.25, 0.5),
+    ("0.5–1 yd", 0.5, 1.0),
+    ("> 1 yd", 1.0, float("inf")),
+)
+
 #: Where the cohort's display names live (spec §3 A2 resolves a parsed
 #: ``X.Surname`` against them: first-initial + surname equality).
 DEFAULT_PLAYERS = Path(__file__).resolve().parents[2] / "data" / "raw" / "players.csv"
@@ -642,6 +662,9 @@ def _variant_from_pairs(frame: pd.DataFrame, spec: str, rule: str,
                    "separation (no population change)",
         "max_sep": "single turns + every ambiguous turn, paired to its larger "
                    "separation (no population change)",
+        "nearest_3yd": "single turns + the ambiguous turns with two or more "
+                       "candidates inside 3 yd at the break frame, paired to the "
+                       "nearest (a TIE-BREAK, not the frozen rule)",
         "random": "single turns + every ambiguous turn, uniform draw per turn",
     }
     base = {"spec": spec, "rule": rule, "variant": _variant_name(rule),
@@ -681,6 +704,7 @@ def _variant_name(rule: str) -> str:
     return {"target": "V1 INFERENCE — target",
             "min_sep": "V2 INFERENCE — smallest separation",
             "max_sep": "V3 INFERENCE — largest separation",
+            "nearest_3yd": V4_LABEL,
             "random": "INFERENCE — random pairing"}[rule]
 
 
@@ -1336,8 +1360,9 @@ def candidate_distance_table(frames: pd.DataFrame, turns, player_play,
     if not found:
         out = base.copy()
         for col in ("dist_nearest_yd", "dist_second_yd", "nearest_gap_yd",
-                    "cand_gap_yd"):
+                    "cand_gap_yd", "n_in_radius_3"):
             out[col] = np.nan
+        out["nearest_nfl_id"] = np.nan
         out["n_candidates_tracked"] = 0
         out["geometry_status"] = GEOMETRY_NOT_EVALUABLE
         out["paths_tried"] = "; ".join(str(p) for p in tried)
@@ -1376,6 +1401,9 @@ def candidate_distance_table(frames: pd.DataFrame, turns, player_play,
         rec["dist_second_yd"] = float(np.sort(d)[1]) if len(d) > 1 else np.nan
         rec["nearest_gap_yd"] = (rec["dist_second_yd"] - rec["dist_nearest_yd"]
                                  if len(d) > 1 else np.nan)
+        rec["n_in_radius_3"] = int((d <= V4_RADIUS_YD).sum()) if len(d) else np.nan
+        rec["nearest_nfl_id"] = (int(grp.iloc[0]["receiver_nfl_id"])
+                                 if len(d) else np.nan)
         if len(d) > 1:
             two = grp.iloc[:2]
             rec["cand_gap_yd"] = float(np.hypot(
@@ -1388,8 +1416,9 @@ def candidate_distance_table(frames: pd.DataFrame, turns, player_play,
     out = base.merge(dist, on=key, how="left") if len(dist) else base
     if "dist_nearest_yd" not in out.columns:
         for col in ("dist_nearest_yd", "dist_second_yd", "nearest_gap_yd",
-                    "cand_gap_yd"):
+                    "cand_gap_yd", "n_in_radius_3"):
             out[col] = np.nan
+        out["nearest_nfl_id"] = np.nan
         out["n_candidates_tracked"] = 0
     # Per-turn status, so a turn whose play the tracker does not cover says so
     # instead of silently carrying nulls (the truncation covers 12,638 of
@@ -1575,7 +1604,10 @@ def single_candidate_geometry(turns_path, frame_single: pd.DataFrame, *,
     tried = _tracking_candidates(tracking)
     found = [p for p in tried if p.exists()]
     base = turn_keys.copy()
-    base["attribution"] = ATTRIBUTION
+    # These are the frozen single matches, so their label is ``RULE`` — the same
+    # label ``build_frame(status="single")`` carries. An INFERENCE stamp here
+    # would label a rule-attributed turn as an inference.
+    base["attribution"] = LABEL_RULE
     common = {"radius_yd": frozen_radius, "n_turns": int(len(base)),
               "paths_tried": "; ".join(str(p) for p in tried),
               "d204_reported": 471}
@@ -1602,12 +1634,258 @@ def single_candidate_geometry(turns_path, frame_single: pd.DataFrame, *,
         rec["geometry_status"] = _turn_status(k, tracked_plays, recovered, len(d))
         rows.append(rec)
     out = pd.DataFrame(rows)
-    out["attribution"] = ATTRIBUTION
+    out["attribution"] = LABEL_RULE
     tracked = out.loc[out["geometry_status"] == "tracked"]
     return {**common, "status": ("tracked" if len(tracked) else GEOMETRY_NOT_EVALUABLE),
             "n_tracked": int(len(tracked)),
             "n_within_radius": int(tracked["within_radius"].fillna(False).astype(bool).sum()),
             "rows": out}
+
+
+# ------------------------------------------------------------------ within 3 yd (§ amendment)
+def _complete_geometry(geom: pd.DataFrame) -> pd.Series:
+    """Turns where **every** visible candidate has a measured distance.
+
+    ``geometry_status == "tracked"`` only means at least one candidate was
+    measured. A count of men inside 3 yd and the identity of the nearest man are
+    only exact when no visible candidate is missing from the tracking frame, so
+    the amendment's tables use this stricter mask. When the candidate-count
+    columns are absent (hand-built frames), completeness is assumed.
+    """
+    if "n_candidates" in geom.columns and "n_candidates_tracked" in geom.columns:
+        have = pd.to_numeric(geom["n_candidates_tracked"], errors="coerce")
+        want = pd.to_numeric(geom["n_candidates"], errors="coerce")
+        return have.notna() & want.notna() & (have == want) & (want > 0)
+    return pd.Series(True, index=geom.index)
+
+
+def within_radius_distribution(geom: pd.DataFrame,
+                               radius: float = V4_RADIUS_YD) -> dict:
+    """How many candidates sit inside 3 yd on the ambiguous turns.
+
+    ``geom`` is :func:`candidate_distance_table`'s per-turn output. The buckets
+    are zero / exactly one / exactly two / three or more, each with its count
+    and its share of the **evaluated** turns and of all ambiguous turns. This is
+    the table that says whether the frozen rule's no-tie-break clause was
+    guarding genuine ambiguity or discarding turns it could have resolved.
+
+    With no frame-level tracking the function returns ``NOT EVALUABLE`` and the
+    denominators it does know (the ambiguous-turn total); every bucket count is
+    null, never zero. It does not raise and it does not substitute the
+    separation gap for a distance.
+    """
+    radius = float(radius)
+    if radius != V4_RADIUS_YD:
+        raise ValueError(f"only the frozen {V4_RADIUS_YD:g}-yd radius is defined "
+                         f"for this table, got {radius:g}")
+    n_turns = int(len(geom))
+    cols = set(geom.columns)
+    complete = _complete_geometry(geom)
+    if "geometry_status" in cols:
+        evaluated = geom.loc[(geom["geometry_status"] == "tracked")
+                             & complete].copy()
+    else:
+        evaluated = geom.loc[complete].copy()
+    if "geometry_status" in cols:
+        n_partial = int(((geom["geometry_status"] == "tracked")
+                         & ~complete).sum())
+    else:
+        n_partial = int((~complete).sum())
+    n_in = (pd.to_numeric(evaluated.get("n_in_radius_3"), errors="coerce")
+            if "n_in_radius_3" in evaluated.columns
+            else pd.Series(dtype="float64"))
+    if len(evaluated) and "n_in_radius_3" not in evaluated.columns:
+        n_in = pd.Series(np.nan, index=evaluated.index, dtype="float64")
+    if not isinstance(n_in, pd.Series):
+        n_in = pd.Series(np.nan, index=evaluated.index, dtype="float64")
+    n_evaluated = int(n_in.notna().sum())
+    per_turn_candidates = (pd.to_numeric(evaluated.get("n_candidates_tracked"),
+                                         errors="coerce")
+                           if "n_candidates_tracked" in evaluated.columns
+                           else pd.Series(dtype="float64"))
+    n_candidate_rows = int(per_turn_candidates.fillna(0).sum()) if len(evaluated) else 0
+
+    buckets = []
+    for label, lo, hi in (("zero", 0, 0), ("exactly one", 1, 1),
+                          ("exactly two", 2, 2),
+                          ("three or more", 3, float("inf"))):
+        if n_evaluated:
+            count = int(((n_in >= lo) & (n_in <= hi)).sum())
+        else:
+            count = None
+        buckets.append({
+            "bucket": label,
+            "n_turns": count,
+            "share_of_evaluated": (count / n_evaluated
+                                   if count is not None and n_evaluated else np.nan),
+            "share_of_ambiguous": (count / n_turns
+                                   if count is not None and n_turns else np.nan),
+        })
+
+    return {
+        "radius_yd": radius,
+        "n_turns": n_turns,
+        "n_evaluated": n_evaluated,
+        "n_not_evaluable": n_turns - n_evaluated,
+        "n_partially_tracked": n_partial,
+        "complete_rule": ("all visible candidates measured at the break frame"
+                          if "n_candidates" in cols
+                          else "candidate counts absent; completeness assumed"),
+        "n_candidate_rows_tracked": n_candidate_rows,
+        "status": "tracked" if n_evaluated else GEOMETRY_NOT_EVALUABLE,
+        "buckets": buckets,
+        "paths_tried": (str(geom["paths_tried"].iloc[0])
+                        if n_turns and "paths_tried" in geom.columns else ""),
+        "attribution": ATTRIBUTION,
+    }
+
+
+def margin_distribution(geom: pd.DataFrame) -> dict:
+    """``second-nearest − nearest`` at the break frame, in fixed buckets.
+
+    The margin is the evidence for whether "nearest" is a discrimination or a
+    coin flip. Buckets are left-closed: ``[0, 0.25)``, ``[0.25, 0.5)``,
+    ``[0.5, 1.0]``, ``(1.0, inf)``. A turn with fewer than two tracked
+    candidates has no margin and is counted separately, not dropped silently.
+    Every count carries its denominator; no bucket is a gate.
+    """
+    n_turns = int(len(geom))
+    complete = _complete_geometry(geom)
+    if "geometry_status" in geom.columns:
+        complete = complete & (geom["geometry_status"] == "tracked")
+    margins = (pd.to_numeric(geom.get("nearest_gap_yd"), errors="coerce")
+               if "nearest_gap_yd" in geom.columns
+               else pd.Series(np.nan, index=geom.index, dtype="float64"))
+    margins = margins.where(complete)
+    finite = margins.dropna()
+    n_evaluated = int(len(finite))
+    buckets = []
+    for label, lo, hi in MARGIN_BUCKETS:
+        if n_evaluated:
+            if np.isinf(hi):
+                mask = finite > lo
+            else:
+                mask = (finite >= lo) & (finite <= hi if hi == 1.0 else finite < hi)
+            count = int(mask.sum())
+        else:
+            count = None
+        buckets.append({
+            "bucket": label,
+            "n_turns": count,
+            "share_of_evaluated": (count / n_evaluated
+                                   if count is not None and n_evaluated else np.nan),
+        })
+    return {
+        "n_turns": n_turns,
+        "n_evaluated": n_evaluated,
+        "n_without_two_candidates": n_turns - n_evaluated,
+        "n_partially_tracked": int((~complete).sum()),
+        "median_yd": float(finite.median()) if n_evaluated else np.nan,
+        "mean_yd": float(finite.mean()) if n_evaluated else np.nan,
+        "status": "tracked" if n_evaluated else GEOMETRY_NOT_EVALUABLE,
+        "buckets": buckets,
+        "attribution": ATTRIBUTION,
+    }
+
+
+def nearest_variant(frame: pd.DataFrame, geom: pd.DataFrame,
+                    *, spec: str = "primary",
+                    route_turns: pd.DataFrame | None = None) -> dict:
+    """V4: on turns with two or more candidates inside 3 yd, pair to the nearest.
+
+    This is a **tie-break**, so it is a variant and never the frozen rule's
+    result. Its population is the frozen single turns plus the ambiguous turns
+    the geometry can resolve by nearest-man; its ``n`` is printed with every
+    coefficient.
+
+    Precedence when composed with the headline ``N``: the additive chain is
+    frozen → geometry 5 → geometry 8 → Route A, and V4 is **not** one of its
+    slots. It is evaluated beside that chain, and its turns are checked against
+    Route A's so an overlap is named rather than quietly added. If V4 took
+    precedence it would sit immediately after the frozen rule (a 3-yd geometric
+    tie-break is stronger evidence than a description-only route); the returned
+    ``overlap_route_a`` and ``n_new_if_precedence`` are the cost of that
+    decision, and the headline ``N`` stays 2,295 because V4 does not enter it.
+    """
+    frame = _check_frame(frame)
+    key = list(ot.TURN_KEY)
+    status = ("tracked" if "geometry_status" in geom.columns
+              and (geom["geometry_status"] == "tracked").any() else GEOMETRY_NOT_EVALUABLE)
+    n_ambiguous = int(len(geom))
+    if "n_in_radius_3" in geom.columns:
+        in3 = pd.to_numeric(geom["n_in_radius_3"], errors="coerce")
+    else:
+        in3 = pd.Series(np.nan, index=geom.index, dtype="float64")
+    complete = _complete_geometry(geom)
+    if "geometry_status" in geom.columns:
+        complete = complete & (geom["geometry_status"] == "tracked")
+    eligible = geom.loc[(in3 >= 2) & complete
+                        & geom.get("nearest_nfl_id", pd.Series(index=geom.index,
+                                                             dtype="float64")).notna()].copy()
+    n_eligible = int(len(eligible))
+
+    base_pairs: dict[tuple, float] = {}
+    single = _rows_of(frame, "single")
+    for k, grp in single.groupby(key, sort=True):
+        ys = pd.to_numeric(grp["separation_yd"], errors="coerce").dropna()
+        if len(ys):
+            base_pairs[tuple(k)] = float(ys.iloc[0])
+    n_frozen_turns = int(len(base_pairs))
+
+    v4_keys: set[tuple] = set()
+    skipped_no_separation = 0
+    if n_eligible:
+        multi = _rows_of(frame, "multiple")
+        cand = (multi[key + ["receiver_nfl_id", "separation_yd"]]
+                .drop_duplicates(subset=key + ["receiver_nfl_id"]))
+        want = eligible[key + ["nearest_nfl_id"]].rename(
+            columns={"nearest_nfl_id": "receiver_nfl_id"})
+        want = want.drop_duplicates(subset=key)
+        chosen = want.merge(cand, on=key + ["receiver_nfl_id"], how="left")
+        for _, row in chosen.iterrows():
+            sep = pd.to_numeric(pd.Series([row["separation_yd"]]),
+                                errors="coerce").iloc[0]
+            if pd.isna(sep):
+                skipped_no_separation += 1
+                continue
+            k = tuple(row[c] for c in key)
+            v4_keys.add(k)
+            base_pairs[k] = float(sep)
+
+    pairs = dict(base_pairs)
+    fitted = _variant_from_pairs(frame, spec, "nearest_3yd", pairs)
+    fitted["attribution"] = V4_ATTRIBUTION
+    fitted["population"] = (f"single turns + the {len(v4_keys):,} ambiguous turns "
+                            "with >= 2 candidates inside 3 yd at the break frame, "
+                            "paired to the nearest (a TIE-BREAK)")
+    fitted["tie_break"] = True
+    fitted["status"] = status
+    fitted["n_ambiguous_turns"] = n_ambiguous
+    fitted["n_nearest_turns"] = int(len(v4_keys))
+    fitted["n_frozen_turns"] = n_frozen_turns
+    fitted["n_turns"] = n_frozen_turns + int(len(v4_keys))
+    fitted["n_skipped_no_separation"] = int(skipped_no_separation)
+
+    overlap = 0
+    if route_turns is not None and len(route_turns) and v4_keys:
+        route_keys = set(map(tuple, route_turns[key].drop_duplicates()
+                             .to_numpy().tolist()))
+        overlap = len(v4_keys & route_keys)
+    fitted["overlap_route_a"] = int(overlap)
+    fitted["n_new_if_precedence"] = int(len(v4_keys) - overlap)
+
+    if status == GEOMETRY_NOT_EVALUABLE:
+        fitted.update({"beta": np.nan, "se": np.nan, "lo": np.nan, "hi": np.nan,
+                       "p": np.nan, "n_clusters": 0,
+                       "label": "NOT EVALUABLE — no frame-level tracking",
+                       "note": ("no candidate distance is measurable on this "
+                                "machine; the frozen base is carried for its n "
+                                "only and no V4 coefficient is claimed")})
+    elif n_eligible and not v4_keys:
+        fitted["label"] = "NO TURNS RESOLVED"
+    elif fitted.get("label") == "":
+        fitted["label"] = "FIT"
+    return fitted
 
 
 def agreement(route_a_turns: pd.DataFrame, geometry_rows: pd.DataFrame) -> pd.DataFrame:
@@ -1769,6 +2047,34 @@ def plain_english_verdict(summary: dict) -> list[str]:
             f"within {chk['radius_yd']:g} yd ({chk['status']}); D204 reported "
             f"{chk['d204_reported']:,} on the full file. This is a check on "
             "N_frozen — it adds nothing to N.")
+
+    w3 = summary.get("within_3yd")
+    if w3:
+        lines.append("")
+        lines.append(
+            f"Within {w3['radius_yd']:g} yd at the break frame, on the "
+            f"{w3['n_turns']:,} ambiguous turns ({w3['status']}; "
+            f"{w3['n_evaluated']:,} evaluable):")
+        for b in w3["buckets"]:
+            n = "n/a" if b["n_turns"] is None else f"{b['n_turns']:,}"
+            lines.append(f"  {b['bucket']:<14s} {n} of {w3['n_evaluated']:,} "
+                         f"evaluated ({_pct(b['n_turns'], w3['n_evaluated'])})")
+    mg = summary.get("margin")
+    if mg:
+        lines.append(
+            f"Margin second-nearest − nearest: {mg['n_evaluated']:,} of "
+            f"{mg['n_turns']:,} evaluable"
+            + "".join(f" · {b['bucket']} "
+                      + ("n/a" if b["n_turns"] is None else f"{b['n_turns']:,}")
+                      for b in mg["buckets"])
+            + "; no bucket is a gate.")
+    v4 = summary.get("v4_nearest")
+    if v4:
+        lines.append(
+            f"{v4['variant']}: beta {_num(v4['beta'])}, n={v4['n']:,} "
+            f"({v4['n_frozen_turns']:,} frozen + {v4['n_nearest_turns']:,} "
+            f"nearest-resolved) — {v4['label']}. A TIE-BREAK the frozen rule "
+            "refuses; it is not a slot of N and N is unchanged.")
 
     agree = summary.get("agreement") or []
     overall = next((r for r in agree if r.get("scope") == "overall"), None)

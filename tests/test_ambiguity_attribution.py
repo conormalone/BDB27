@@ -474,3 +474,102 @@ def test_single_turn_check_adds_nothing_to_the_number(single, route, tables):
     assert out["N"] == len(single) + len(route["turns"])
     assert "singles" not in out and "n_single" not in out["slots"]
     assert set(out["slots"]) == {"n_frozen", "n_geo_5", "n_geo_8", "n_route_a"}
+
+
+# ------------------------------------------------------------------ amendment: within 3 yd, V4, margin
+@pytest.fixture(scope="module")
+def geom(multiple):
+    """The 870's per-turn geometry on this machine: every distance is null."""
+    return aa.candidate_distance_table(multiple, TURNS, PLAYER_PLAY)
+
+
+def test_within_3yd_distribution_is_not_evaluable_with_denominators(geom):
+    out = aa.within_radius_distribution(geom)
+    assert out["n_turns"] == 870
+    assert out["n_evaluated"] == 0
+    assert out["n_not_evaluable"] == 870
+    assert out["status"] == aa.GEOMETRY_NOT_EVALUABLE
+    assert [b["bucket"] for b in out["buckets"]] == [
+        "zero", "exactly one", "exactly two", "three or more"]
+    assert all(b["n_turns"] is None for b in out["buckets"])
+    assert out["paths_tried"]                       # names what it looked for
+
+
+def test_within_3yd_buckets_count_and_share_with_denominators():
+    fake = pd.DataFrame({
+        "geometry_status": ["tracked"] * 5,
+        "n_in_radius_3": [0, 1, 2, 3, 4],
+        "n_candidates_tracked": [2, 2, 2, 3, 4],
+    })
+    out = aa.within_radius_distribution(fake)
+    assert out["n_evaluated"] == 5
+    counts = {b["bucket"]: b["n_turns"] for b in out["buckets"]}
+    assert counts == {"zero": 1, "exactly one": 1, "exactly two": 1,
+                      "three or more": 2}
+    shares = {b["bucket"]: b["share_of_evaluated"] for b in out["buckets"]}
+    assert shares["three or more"] == pytest.approx(0.4)
+    assert sum(shares.values()) == pytest.approx(1.0)
+
+
+def test_margin_distribution_is_not_evaluable_without_two_candidates(geom):
+    out = aa.margin_distribution(geom)
+    assert out["n_turns"] == 870 and out["n_evaluated"] == 0
+    assert out["n_without_two_candidates"] == 870
+    assert out["status"] == aa.GEOMETRY_NOT_EVALUABLE
+    assert all(b["n_turns"] is None for b in out["buckets"])
+
+
+def test_margin_buckets_are_left_closed_and_one_yard_stays_in_the_third():
+    fake = pd.DataFrame({"nearest_gap_yd": [0.1, 0.249, 0.25, 0.5, 1.0, 1.001]})
+    out = aa.margin_distribution(fake)
+    counts = {b["bucket"]: b["n_turns"] for b in out["buckets"]}
+    assert counts == {"< 0.25 yd": 2, "0.25–0.5 yd": 1, "0.5–1 yd": 2,
+                      "> 1 yd": 1}
+    assert out["n_evaluated"] == 6
+
+
+def test_v4_is_labelled_a_tie_break_and_not_evaluable_locally(analysis, geom):
+    out = aa.nearest_variant(analysis, geom)
+    assert out["tie_break"] is True
+    assert "TIE-BREAK" in out["variant"]
+    assert "frozen rule" in out["attribution"]
+    assert out["status"] == aa.GEOMETRY_NOT_EVALUABLE
+    assert out["n_nearest_turns"] == 0
+    assert out["n_frozen_turns"] == 1731
+    assert out["n_turns"] == 1731
+    assert np.isnan(out["beta"])
+    assert out["label"].startswith("NOT EVALUABLE")
+
+
+def test_v4_pairs_the_nearest_candidate_and_names_route_a_overlap(analysis, multiple):
+    """A synthetic distance table exercises the nearest pairing without tracking."""
+    key = KEY + ["receiver_nfl_id", "separation_yd"]
+    sample = multiple[key].drop_duplicates(subset=KEY + ["receiver_nfl_id"])
+    keys = sample[KEY].drop_duplicates().head(2)
+    rows = []
+    for _, k in keys.iterrows():
+        sub = sample[(sample[key[0]] == k[key[0]]) & (sample[key[1]] == k[key[1]])
+                     & (sample[key[2]] == k[key[2]]) & (sample[key[3]] == k[key[3]])]
+        sub = sub.dropna(subset=["separation_yd"]).sort_values(
+            ["separation_yd", "receiver_nfl_id"], kind="mergesort")
+        if sub.empty:
+            continue
+        rows.append({**k.to_dict(), "n_in_radius_3": 2,
+                     "nearest_nfl_id": int(sub.iloc[0]["receiver_nfl_id"]),
+                     "n_candidates_tracked": int(len(sub)),
+                     "geometry_status": "tracked"})
+    fake = pd.DataFrame(rows)
+    assert len(fake) == 2
+
+    route = fake[KEY].head(1).copy()
+    out = aa.nearest_variant(analysis, fake, route_turns=route)
+    assert out["status"] == "tracked"
+    assert out["n_nearest_turns"] == 2
+    assert out["n_turns"] == out["n_frozen_turns"] + 2
+    assert np.isfinite(out["beta"])
+    assert out["overlap_route_a"] == 1
+    assert out["n_new_if_precedence"] == 1
+def test_single_turn_check_keeps_the_rule_label(single):
+    """These ARE the frozen matches: RULE, not INFERENCE, on every row."""
+    out = aa.single_candidate_geometry(TURNS, single)
+    assert set(out["rows"]["attribution"]) == {aa.LABEL_RULE}

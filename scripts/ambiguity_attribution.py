@@ -262,6 +262,46 @@ def main(argv: list[str] | None = None) -> int:
     _log("  these turns are already inside N_frozen; nothing here is added to N")
     _log("")
 
+    within3 = aa.within_radius_distribution(geom)
+    margin = aa.margin_distribution(geom)
+    _log("Within 3 yd at the break frame — the 870, by how many candidates are inside")
+    _log(f"  {within3['status']} · evaluable {within3['n_evaluated']:,} of "
+         f"{within3['n_turns']:,} ambiguous turns · "
+         f"{within3['n_candidate_rows_tracked']:,} tracked candidate rows")
+    for b in within3["buckets"]:
+        n = "n/a" if b["n_turns"] is None else f"{int(b['n_turns']):,}"
+        se = _share(b["n_turns"], within3["n_evaluated"]) if b["n_turns"] is not None else "n/a"
+        sa = _share(b["n_turns"], within3["n_turns"]) if b["n_turns"] is not None else "n/a"
+        _log(f"  {b['bucket']:<14s} {n:>6s} of {within3['n_evaluated']:,} evaluated "
+             f"({se:>7s}) · of {within3['n_turns']:,} ambiguous ({sa:>7s})")
+    _log("")
+
+    _log("Margin — second-nearest minus nearest at the break frame")
+    _log(f"  {margin['status']} · evaluable {margin['n_evaluated']:,} of "
+         f"{margin['n_turns']:,} ambiguous turns · "
+         f"{margin['n_without_two_candidates']:,} with fewer than two tracked candidates")
+    for b in margin["buckets"]:
+        n = "n/a" if b["n_turns"] is None else f"{int(b['n_turns']):,}"
+        se = (_share(b["n_turns"], margin["n_evaluated"])
+              if b["n_turns"] is not None else "n/a")
+        _log(f"  {b['bucket']:<14s} {n:>6s} of {margin['n_evaluated']:,} evaluated ({se:>7s})")
+    _log(f"  median {_fmt(margin['median_yd'], 3, False)} yd · "
+         f"mean {_fmt(margin['mean_yd'], 3, False)} yd · no bucket is a gate")
+    _log("")
+
+    v4 = aa.nearest_variant(frame, geom, spec="primary", route_turns=route_turns)
+    _log("V4 — nearest inside 3 yd (INFERENCE, TIE-BREAK; NOT a slot of N)")
+    _log(f"  beta {_fmt(v4['beta'])} [{_fmt(v4['lo'])}, {_fmt(v4['hi'])}] "
+         f"n={v4['n']:,} · status {v4['status']}")
+    _log(f"  {v4['n_frozen_turns']:,} frozen + {v4['n_nearest_turns']:,} "
+         f"nearest-resolved ambiguous turns (of {v4['n_ambiguous_turns']:,}); "
+         f"overlap with Route A {v4['overlap_route_a']:,} · "
+         f"net new if it took precedence {v4['n_new_if_precedence']:,}")
+    _log(f"  label {v4['label']}")
+    _log(f"  {v4['attribution']}")
+    _log("  the frozen number above is unchanged by this row")
+    _log("")
+
     agree = aa.agreement(route_turns, geo_slots["rows"])
     if len(agree) and int(agree.loc[agree["scope"] == "overall", "n_both"].sum()):
         r = agree[agree["scope"] == "overall"].iloc[0]
@@ -325,6 +365,11 @@ def main(argv: list[str] | None = None) -> int:
                                                   encoding="utf-8")
     singles_geo["rows"].to_csv(out / "single_turn_geometry.csv", index=False,
                                encoding="utf-8")
+    pd.DataFrame(within3["buckets"]).to_csv(out / "within_3yd.csv", index=False,
+                                            encoding="utf-8")
+    pd.DataFrame(margin["buckets"]).to_csv(out / "margin_buckets.csv", index=False,
+                                           encoding="utf-8")
+    pd.DataFrame([v4]).to_csv(out / "v4_nearest.csv", index=False, encoding="utf-8")
 
     summary = {
         "provenance": stamp,
@@ -393,6 +438,10 @@ def main(argv: list[str] | None = None) -> int:
             "note": ("a check on the frozen single-candidate set: these turns are "
                      "already inside N_frozen, so nothing here is added to N"),
         },
+        "within_3yd": within3,
+        "margin": margin,
+        "v4_nearest": {k: (None if isinstance(v, float) and not np.isfinite(v) else v)
+                       for k, v in v4.items()},
         "agreement": agree.to_dict("records") if len(agree) else [],
         "alignment_counts": align.to_dict("records"),
         "geometry": {
@@ -433,8 +482,9 @@ def main(argv: list[str] | None = None) -> int:
                                  "variants.csv", "composition.csv",
                                  "random_pairings.csv", "geometry.csv",
                                  "route_a_turns.csv", "route_a_audit.csv",
-                                 "single_turn_geometry.csv", "assembly.csv",
-                                 "summary.json", "verdict.txt")],
+                                 "single_turn_geometry.csv", "within_3yd.csv",
+                                 "margin_buckets.csv", "v4_nearest.csv",
+                                 "assembly.csv", "summary.json", "verdict.txt")],
         config={"mode": args.mode, "reps": args.reps, "seed": args.seed,
                 "specs": list(aa.SPECS), "pairing_rules": list(aa.PAIRING_RULES),
                 "tracking": args.tracking},

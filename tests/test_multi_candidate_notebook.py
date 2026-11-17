@@ -171,3 +171,46 @@ def test_nothing_is_written_when_the_flag_is_off(executed):
     assert executed["WRITE_ARTEFACTS"] is False
     target = ROOT / "outputs" / "ambiguity_attribution_notebook"
     assert not target.exists(), "the default run wrote artefacts"
+
+
+# ------------------------------------------------- amendment: 3 yd, V4, margin
+def test_the_within_3yd_table_prints_denominators_and_not_evaluable(executed):
+    within3 = executed["within3"]
+    out = executed["_stdout"]
+    assert within3["n_turns"] == 870
+    assert within3["n_evaluated"] == 0
+    assert "WITHIN 3 YD AT THE BREAK FRAME" in out
+    assert "evaluable 0 of 870 ambiguous turns" in out
+    for bucket in ("zero", "exactly one", "exactly two", "three or more"):
+        assert bucket in out
+
+
+def test_the_margin_table_is_its_own_table_with_counts(executed):
+    margin = executed["margin"]
+    out = executed["_stdout"]
+    assert margin["n_turns"] == 870
+    assert "MARGIN — second-nearest minus nearest" in out
+    for bucket in ("< 0.25 yd", "0.25–0.5 yd", "0.5–1 yd", "> 1 yd"):
+        assert bucket in out
+    assert "No bucket is a gate" in out
+
+
+def test_v4_is_beside_the_variants_and_wears_tie_break(executed):
+    v4 = executed["v4"]
+    out = executed["_stdout"]
+    assert v4["tie_break"] is True
+    assert "TIE-BREAK" in v4["variant"]
+    assert "V1 INFERENCE — target" in out
+    assert "V4 INFERENCE — nearest inside 3 yd (TIE-BREAK)" in out
+    assert v4["n_frozen_turns"] == 1731
+    assert v4["n_nearest_turns"] == 0            # no tracking on this machine
+
+
+def test_v4_is_not_a_slot_of_the_headline_number(executed):
+    out = executed["_stdout"]
+    asm = executed["assembled"]
+    assert asm["N"] == 2295
+    assert "V4 (INFERENCE — TIE-BREAK, not a slot of N)" in out
+    assert "headline N unchanged" in out
+    assert "2,295 = 1,731 frozen + 564 Route A" in out
+    assert "overlap with Route A's 564 turns" in out
