@@ -1647,6 +1647,117 @@ def _paths_tried(tried: Sequence[Path],
     return text or search_summary(tracking)
 
 
+# ------------------------------------------------------- run status on disk
+#: The file a run writes before it measures anything, and appends to as it goes.
+#: A run that dies in a later cell then leaves the last step it reached on disk,
+#: which console output does not (Conor, 2026-11-17).
+RUN_STATUS_NAME = "run_status.txt"
+
+
+def _status_path_line(label: str, value) -> str:
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return f"{label:<16}(auto-discovery)"
+        parts = []
+        for raw in value:
+            p = Path(raw).expanduser()
+            parts.append(f"{p}{'' if p.exists() else ' [MISSING]'}")
+        return f"{label:<16}" + "; ".join(parts)
+    p = Path(value).expanduser()
+    return f"{label:<16}{p}  [{'exists' if p.exists() else 'MISSING'}]"
+
+
+def _dir_listing(path: Path) -> list[str]:
+    try:
+        entries = sorted(path.iterdir(), key=lambda q: q.name.lower())
+    except OSError as exc:
+        return [f"  unreadable: {type(exc).__name__}: {exc}"]
+    lines = []
+    for q in entries:
+        try:
+            size = "<dir>" if q.is_dir() else f"{q.stat().st_size:,} bytes"
+        except OSError:
+            size = "unreadable"
+        lines.append(f"  {q.name + ('/' if q.is_dir() else ''):<34}{size}")
+    return lines or ["  (empty)"]
+
+
+def run_status_header(root: str | Path, out_dir: str | Path,
+                      inputs: dict, tracking: dict | None = None,
+                      started: str | None = None) -> str:
+    """The status block written before any analysis runs.
+
+    Names the run's UTC start, the resolved repo root and every input path with
+    its existence, what the tracking search found and what the raw directory
+    actually holds. ``tracking=None`` means discovery had not finished when this
+    was written — the file exists either way.
+    """
+    root, out_dir = Path(root), Path(out_dir)
+    lines = [
+        "BDB27 — multi-candidate attribution notebook, run status",
+        f"started (UTC)   {started or pd.Timestamp.now(tz='UTC').isoformat()}",
+        f"repo            {root}",
+        f"out             {out_dir}",
+    ]
+    for label, value in inputs.items():
+        lines.append(_status_path_line(label, value))
+    if tracking is None:
+        lines.append("tracking: (discovery not finished)")
+    elif tracking.get("status") == "FOUND":
+        lines.append(f"tracking: FOUND {len(tracking.get('files') or [])} files")
+        for f in tracking.get("files") or []:
+            lines.append(f"  {f['path']}  [{_fmt_bytes(f.get('bytes'))}]"
+                         "  [exists]")
+    else:
+        lines.append("tracking: NONE")
+    for entry in (tracking or {}).get("roots") or []:
+        if entry.get("kind") == "file":
+            continue
+        lines.append(f"searched        {entry['path']}"
+                     + ("" if entry.get("exists") else "  [does not exist]"))
+        lines.extend(_dir_listing(Path(entry["path"])) if entry.get("exists")
+                     else ["  (not a directory)"])
+    lines.append("---- progress ----")
+    return "\n".join(lines) + "\n"
+
+
+def write_run_status(path: str | Path, text: str, *,
+                     keep_progress: bool = True) -> Path:
+    """Create or overwrite the run status file (parents created).
+
+    ``keep_progress`` keeps the progress lines already appended below the
+    ``---- progress ----`` marker, so refreshing the header mid-run does not
+    erase the trail. The first write of a run passes ``False``, which is what
+    makes every run start from a clean file rather than inheriting the last one.
+    """
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    marker = "---- progress ----\n"
+    if keep_progress and p.is_file():
+        old = p.read_text(encoding="utf-8")
+        if marker in old:
+            tail = old.split(marker, 1)[1]
+            if tail.strip():
+                text = text.rstrip("\n") + "\n" + tail
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def note_run_status(path: str | Path, line: str,
+                    *, reset: bool = False) -> Path:
+    """Append one timestamped step to the run status file.
+
+    ``reset=True`` truncates first, which is how a new run starts: the file is
+    overwritten on every run, never appended across runs.
+    """
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    stamp = pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")
+    with p.open("w" if reset else "a", encoding="utf-8") as fh:
+        fh.write(f"{stamp}  {line}\n")
+    return p
+
+
 def candidate_distance_table(frames: pd.DataFrame, turns, player_play,
                              *, tracking: Sequence[str | Path] | None = None,
                              con: duckdb.DuckDBPyConnection | None = None

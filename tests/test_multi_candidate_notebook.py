@@ -170,11 +170,12 @@ def test_every_table_is_written_not_just_three(executed):
     out = executed["_out_dir"]
     assert sorted(p.name for p in out.glob("*.csv")) == sorted(FOURTEEN)
     assert (out / "manifest.json").is_file()
+    assert (out / "run_status.txt").is_file()
 
     text = executed["_stdout"]
     assert f"outputs: {out}" in text
-    assert "14 tables + manifest.json" in text
-    assert "15 files written by this run" in text
+    assert "14 tables + run_status.txt + manifest.json" in text
+    assert "16 files written by this run" in text
 
 
 def test_the_manifest_stamps_the_run_and_says_no_tracking(executed):
@@ -196,7 +197,49 @@ def test_the_output_path_is_printed_at_the_top_and_beside_n(executed):
     assert text.index(path) < text.index("band_turns")     # before any table
     line = [ln for ln in text.splitlines() if ln.startswith("N = ")][0]
     following = text.split(line, 1)[1].splitlines()[:3]
-    assert any(path in ln and "15 files written" in ln for ln in following)
+    assert any(path in ln and "16 files written" in ln for ln in following)
+
+
+# ------------------------------- the on-disk run trail (Conor, 2026-11-17)
+def test_run_status_records_every_step_and_the_tracking_answer(executed):
+    """A run that dies leaves its last step on disk, not only in the console."""
+    text = (executed["_out_dir"] / "run_status.txt").read_text(encoding="utf-8")
+    assert "started (UTC)" in text
+    assert "tracking: NONE" in text
+    assert any(ln.startswith("repo") for ln in text.splitlines())
+    assert "[exists]" in text                       # each input carries its flag
+    for step in ("run started", "tracking searched", "funnel ok", "bounds ok",
+                 "route_a 564", "geometry NOT EVALUABLE", "singles NOT EVALUABLE",
+                 "within_3yd/margin NOT EVALUABLE", "N = 2,295",
+                 "wrote 16 files", "complete"):
+        assert step in text, f"run_status is missing {step!r}"
+    assert (text.index("funnel ok") < text.index("N = 2,295")
+            < text.index("complete"))
+
+
+def test_a_run_that_dies_before_analysis_still_leaves_a_status_file(
+        notebook, tmp_path):
+    """The folder and the file exist before cell 3 runs; that is the whole point."""
+    ns: dict = {"__name__": "__main__"}
+    with redirect_stdout(io.StringIO()):
+        for source in code_sources(notebook):
+            if CONFIG_MARKER in source:
+                source = re.sub(r"^OUT_DIR\s*=.*$", f"OUT_DIR = {str(tmp_path)!r}",
+                                source, flags=re.M)
+            exec(compile(source, "<notebook cell>", "exec"), ns)  # noqa: S102
+            if "TRACKING_STATUS = aa.tracking_status" in source:
+                break                                  # stop before the funnel
+
+    status = tmp_path / "run_status.txt"
+    assert status.is_file(), "the status file must exist before any analysis"
+    text = status.read_text(encoding="utf-8")
+    assert "started (UTC)" in text
+    assert "tracking: NONE" in text or "tracking: FOUND" in text
+    assert "player_play.csv" in text and "[exists]" in text
+    assert "game_tracking_2023_sample.csv" in text     # the raw listing, with sizes
+    assert "bytes" in text
+    assert "N =" not in text                           # nothing was measured yet
+    assert "---- progress ----" in text
 
 
 def test_the_default_output_directory_is_the_scripts(notebook):
