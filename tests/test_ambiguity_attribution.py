@@ -322,3 +322,126 @@ def test_separation_gap_is_max_minus_min_and_says_so(single, multiple):
     note = str(gap["note"].iloc[0])
     assert "not a distance between two players" in note
     assert "MAX(sep) - MIN(sep)" in str(gap["level"].iloc[0])
+
+
+# ------------------------------------------------------------------ Route A (AC5, §3)
+@pytest.fixture(scope="module")
+def route(tables):
+    """Route A on the real frame, with the frozen turns excluded as §0 requires."""
+    frame_all = aa.all_candidates_frame(TURNS, PLAYER_PLAY)
+    frozen = list(map(tuple, tables["single"][KEY].drop_duplicates()
+                      .to_numpy().tolist()))
+    turns, audit = aa.route_a_tables(frame_all, PLAYER_PLAY, exclude=frozen)
+    return {"frame": frame_all, "frozen": frozen, "turns": turns, "audit": audit}
+
+
+def test_route_a_never_repicks_a_frozen_turn(route):
+    assert len(route["turns"]) > 0
+    got = set(map(tuple, route["turns"][KEY].to_numpy().tolist()))
+    assert got.isdisjoint(set(route["frozen"]))
+    assert len(got) == len(route["turns"])            # one row per turn, at most once
+
+
+def test_route_a_attributes_only_visible_candidates(route):
+    visible = (route["frame"].drop_duplicates(subset=KEY + ["receiver_nfl_id"])
+               .set_index(KEY + ["receiver_nfl_id"]).index)
+    got = route["turns"].set_index(KEY + ["attributed_nfl_id"]).index
+    assert got.isin(visible).all()
+
+
+def test_route_a_rules_are_labelled_as_inference(route):
+    allowed = {"target": "INFERENCE — target", "description": "INFERENCE — description",
+               "alignment": "INFERENCE — alignment"}
+    assert set(route["turns"]["route_a_rule"]) <= set(allowed)
+    for rule, label in zip(route["turns"]["route_a_rule"],
+                           route["turns"]["attribution_label"]):
+        assert label == allowed[rule]
+    assert (route["turns"]["attribution"] == aa.ATTRIBUTION).all()
+
+
+def test_route_a_audit_accounts_for_every_eligible_turn(route):
+    audit = route["audit"]
+    eligible = int(audit["denominator"].iloc[0])
+    assert set(audit["denominator"]) == {eligible}
+    attributed = int(audit.loc[audit["outcome"] == "attributed", "n"].sum())
+    assert attributed == len(route["turns"])
+    # The audit's misses and hits are disjoint outcomes of the same turns.
+    assert (audit["n"] >= 0).all()
+    assert audit.loc[audit["outcome"] == "unresolved", "reason"].str.len().gt(0).all()
+
+
+def test_description_parse_reads_the_named_receiver_after_the_pass_verb():
+    assert aa.parse_description(
+        "(3:49) (Shotgun) T.Taylor pass incomplete short middle to A.Lazard (T.Smith)."
+    ) == ("A", "lazard")
+    # The first ``to X.Surname`` after the verb, not a later one.
+    assert aa.parse_description(
+        "(6:32) M.Jones pass deep middle to R.Pearsall to ARZ 46 for 18 yards (D.Burke)."
+    ) == ("R", "pearsall")
+    assert aa.parse_description(
+        "(:26) (Shotgun) D.Lock sacked at SEA 3 for -11 yards (L.Vilain).") is None
+    assert aa.parse_description(None) is None
+
+
+def test_alignment_counts_reports_the_anchor_it_cannot_reproduce():
+    table = aa.alignment_counts(PLAYER_PLAY)
+    assert {"pair", "n_plays", "all_plays", "spec_anchor", "matches"} <= set(table.columns)
+    total = table[table["pair"] == "two-receiver plays (total)"].iloc[0]
+    assert int(total["spec_anchor"]) == 9341
+    # The recomputation is printed, not adjusted to match: if it disagrees the
+    # row says False and the difference stays visible.
+    assert total["matches"] == False                     # noqa: E712 - a printed False
+    assert (table["n_plays"] >= 0).all()
+    assert (table["all_plays"] > 0).all()
+
+
+# ------------------------------------------------------------------ the one number (§0)
+def test_assembly_sums_the_slots_and_carries_each_status():
+    counts = {"n_frozen": 1731, "n_geo_5": 0, "n_geo_8": 0, "n_route_a": 564,
+              "band_turns": 7777,
+              "status": {"geo_5": aa.GEOMETRY_NOT_EVALUABLE,
+                         "geo_8": aa.GEOMETRY_NOT_EVALUABLE},
+              "route_a_by_rule": {"target": 365, "alignment": 199},
+              "coverage": {"ZONE": 369, "MAN": 119, "MISSING": 76}}
+    out = aa.assemble_attribution(counts)
+    assert out["N"] == 2295
+    assert sum(c["n"] for c in out["composition"]) == out["N"]
+    assert [c["slot"] for c in out["composition"]] == ["frozen", "geo_5", "geo_8",
+                                                      "route_a"]
+    assert out["rule_share_of_N"] + out["inference_share_of_N"] == pytest.approx(1.0)
+    assert out["share_of_band"] == pytest.approx(2295 / 7777)
+    # A slot with no evidence is 0 *and* says why — never a silent zero.
+    assert out["composition"][1]["n"] == 0
+    assert out["composition"][1]["status"].startswith("NOT EVALUABLE")
+
+
+def test_assembly_refuses_an_incomplete_or_negative_count():
+    with pytest.raises(ValueError, match="missing"):
+        aa.assemble_attribution({"n_frozen": 1})
+    with pytest.raises(ValueError, match="negative"):
+        aa.assemble_attribution({"n_frozen": -1, "n_geo_5": 0, "n_geo_8": 0,
+                                 "n_route_a": 0})
+
+
+def test_assembly_handles_a_zero_n_without_dividing():
+    out = aa.assemble_attribution({"n_frozen": 0, "n_geo_5": 0, "n_geo_8": 0,
+                                  "n_route_a": 0, "band_turns": 7777})
+    assert out["N"] == 0
+    assert out["rule_share_of_N"] is None and out["share_of_band"] == 0.0
+
+
+def test_geometry_slots_without_tracking_are_zero_with_a_reason(route):
+    out = aa.geometry_slots(TURNS, PLAYER_PLAY, route["frame"],
+                            exclude=route["frozen"])
+    assert out["n_geo_5"] == 0 and out["n_geo_8"] == 0
+    assert out["status"] == aa.GEOMETRY_NOT_EVALUABLE
+    assert out["n_turns_considered"] == len(route["frame"][KEY].drop_duplicates()) \
+        - len(route["frozen"])
+    assert out["paths_tried"]
+
+
+def test_the_route_a_turn_count_is_additive_with_the_frozen_one(route, tables):
+    n = len(tables["single"]) + len(route["turns"])
+    assert n == 1731 + 564          # the number the run reports, pinned
+    frozen = set(map(tuple, route["frozen"]))
+    assert frozen.isdisjoint(set(map(tuple, route["turns"][KEY].to_numpy().tolist())))

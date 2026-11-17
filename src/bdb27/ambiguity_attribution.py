@@ -53,6 +53,7 @@ is a comparison, not a coincidence.
 
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -119,6 +120,32 @@ ATTRIBUTION = (
     "INFERENCE — multi-candidate attribution; the dataset records no opponent "
     "identifier, so no pairing here identifies the man covered"
 )
+
+#: Where the cohort's display names live (spec §3 A2 resolves a parsed
+#: ``X.Surname`` against them: first-initial + surname equality).
+DEFAULT_PLAYERS = Path(__file__).resolve().parents[2] / "data" / "raw" / "players.csv"
+
+#: The receiving classes the alignment table is defined over (§3 A3).
+RECEIVING_CLASSES: tuple[str, ...] = ("WR", "SLOT_WR", "TE")
+
+#: Suffixes dropped before a display name's surname is taken.
+_NAME_SUFFIXES: frozenset[str] = frozenset({"jr", "sr", "ii", "iii", "iv", "v"})
+
+#: ``pass … to X.Surname`` — the first such token after the pass verb (§3 A2).
+#: The surname may carry an internal space ("A.St. Brown"), which is why the
+#: second group allows one.
+PASS_TO_NAME = re.compile(
+    r"\bpass\b[^\n]*?\bto\s+([A-Z])\.\s*"
+    r"([A-Za-z][A-Za-z'\-]*(?:\s+[A-Z][A-Za-z'\-]*)?)")
+
+#: The four slots of §0, in precedence order, with the label each carries.
+SLOT_ORDER: tuple[str, ...] = ("frozen", "geo_5", "geo_8", "route_a")
+SLOT_LABELS: dict[str, str] = {
+    "frozen": LABEL_RULE,
+    "geo_5": "INFERENCE — geometry 5 yd",
+    "geo_8": "INFERENCE — geometry 8 yd",
+    "route_a": "INFERENCE — Route A",
+}
 
 #: What the notebook/script must say whenever candidate geometry is requested
 #: without frame-level tracking.
@@ -773,6 +800,348 @@ def composition(frame_single: pd.DataFrame,
     return pd.DataFrame(rows)
 
 
+# ------------------------------------------------------------------ Route A (spec §3)
+def _norm_name(token) -> str:
+    """Letters only, lower case — ``Taylor-Britt`` and ``Taylor Britt`` agree."""
+    return re.sub(r"[^a-z]", "", str(token).lower())
+
+
+def _surname_key(display_name) -> str:
+    """The surname of a display name, dropping a trailing generational suffix."""
+    parts = [p for p in str(display_name).replace(".", " ").split() if p]
+    while parts and parts[-1].lower() in _NAME_SUFFIXES:
+        parts.pop()
+    return _norm_name(parts[-1]) if parts else ""
+
+
+def display_index(players_path: str | Path | None = None
+                  ) -> dict[tuple[str, str], list[int]]:
+    """``(first initial, surname key) -> [nfl_id, ...]`` from ``players.csv``.
+
+    A list, not a single id: 17 of the cohort's 510 display names share an
+    initial + surname, and A2 must be able to say ``multiple_matches`` rather
+    than pick one of them.
+    """
+    path = Path(players_path) if players_path else DEFAULT_PLAYERS
+    _require_files([path])
+    df = pd.read_csv(path, usecols=["nfl_id", "display_name"])
+    out: dict[tuple[str, str], list[int]] = {}
+    for nfl_id, name in zip(df["nfl_id"], df["display_name"]):
+        key = (str(name).strip()[:1].upper(), _surname_key(name))
+        out.setdefault(key, []).append(int(nfl_id))
+    return out
+
+
+def parse_description(description) -> tuple[str, str] | None:
+    """``(initial, surname_key)`` from ``… pass … to X.Surname``, or ``None``."""
+    if not isinstance(description, str) or not description:
+        return None
+    m = PASS_TO_NAME.search(description)
+    if not m:
+        return None
+    initial, surname = m.group(1).upper(), m.group(2)
+    return initial, _norm_name(surname.split()[-1])
+
+
+def _descriptions(player_play_path: str | Path) -> dict[tuple[int, int], str]:
+    """``(game_id, play_id) -> play_description``, one row per play."""
+    path = Path(player_play_path)
+    _require_files([path])
+    con = connect()
+    try:
+        con.execute(f"""
+            CREATE OR REPLACE TABLE pp_desc AS SELECT * FROM read_csv(
+              '{_posix(path)}', header=true, all_varchar=true, nullstr=['NA',''])""")
+        df = con.execute("""
+            SELECT DISTINCT CAST(game_id AS BIGINT) AS game_id,
+                            CAST(play_id AS BIGINT) AS play_id,
+                            play_description
+            FROM pp_desc WHERE play_description IS NOT NULL""").df()
+    finally:
+        con.close()
+    return {(int(g), int(p)): str(d)
+            for g, p, d in zip(df["game_id"], df["play_id"], df["play_description"])}
+
+
+def _route_a_one(rows: pd.DataFrame, description, index, rules: Sequence[str]
+                 ) -> tuple[str | None, int | None, list[tuple[str, str]]]:
+    """One turn through A1 → A2 → A3, in the fixed order. First hit wins.
+
+    Returns ``(rule, attributed_nfl_id, attempts)``. ``attempts`` is one
+    ``(rule, outcome)`` per rule that looked at the turn, in order, ending at
+    the first attribution; every miss carries its own reason, so a turn that
+    fails A2 and then A3 is counted once under each and never double-counted
+    within a rule (AC5).
+    """
+    rows = rows.drop_duplicates(subset="receiver_nfl_id")
+    visible = [int(v) for v in rows["receiver_nfl_id"]]
+    attempts: list[tuple[str, str]] = []
+
+    if "target" in rules:
+        hits = rows.loc[rows["receiver_target"].fillna(False).astype(bool)]
+        hits = hits.drop_duplicates(subset="receiver_nfl_id")
+        if len(hits) == 1:
+            attempts.append(("target", "attributed"))
+            return "target", int(hits["receiver_nfl_id"].iloc[0]), attempts
+        attempts.append(("target", "no_single_target" if len(hits) == 0
+                         else "multiple_targets"))
+
+    if "description" in rules:
+        if not description:
+            attempts.append(("description", "no_description"))
+        else:
+            parsed = parse_description(description)
+            if parsed is None:
+                attempts.append(("description", "no_name_after_pass_verb"))
+            else:
+                matches = [i for i in index.get(parsed, []) if i in visible]
+                if len(matches) == 1:
+                    attempts.append(("description", "attributed"))
+                    return "description", int(matches[0]), attempts
+                if matches:
+                    attempts.append(("description", "multiple_matches"))
+                else:
+                    named_in_cohort = bool(index.get(parsed))
+                    attempts.append(("description",
+                                     "named_man_not_visible" if named_in_cohort
+                                     else "named_man_not_a_cohort_player"))
+
+    if "alignment" in rules:
+        if len(rows) != 2:
+            attempts.append(("alignment", "not_two_candidates"))
+        else:
+            positions = [str(p) for p in rows["receiver_position"]]
+            if positions[0] == positions[1]:
+                attempts.append(("alignment", "same_class"))
+            else:
+                own = str(rows["own_position"].iloc[0])
+                mapping = ALIGNMENT_IMPLIES.get(own)
+                if mapping is None:
+                    attempts.append(("alignment", "safety_pair" if "SAFETY" in own
+                                     else "own_class_unmapped"))
+                else:
+                    implies, others = mapping
+                    hit = rows.loc[rows["receiver_position"] == implies,
+                                   "receiver_nfl_id"]
+                    other = [p for p in positions if p != implies]
+                    if len(hit) == 1 and other and other[0] in others:
+                        attempts.append(("alignment", "attributed"))
+                        return "alignment", int(hit.iloc[0]), attempts
+                    attempts.append(("alignment", "pair_not_supported"))
+
+    return None, None, attempts
+
+
+def _route_a_pass(frame_all: pd.DataFrame, player_play_path: str | Path, *,
+                  rules: Sequence[str] = ROUTE_A_RULES,
+                  exclude: Iterable[tuple] | None = None,
+                  players_path: str | Path | None = None,
+                  descriptions: dict | None = None,
+                  index: dict | None = None
+                  ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The attributed turns and the audit table, from one pass over the frame."""
+    for rule in rules:
+        if rule not in ROUTE_A_RULES:
+            raise ValueError(f"rule must be one of {ROUTE_A_RULES}, got {rule!r}")
+    key = list(ot.TURN_KEY)
+    frame = frame_all.drop_duplicates(subset=[*key, "receiver_nfl_id"],
+                                      keep="first")
+    if exclude is not None:
+        taken = pd.DataFrame(list(exclude), columns=key)
+        frame = frame.merge(taken.assign(_taken=True), on=key, how="left")
+        frame = frame[frame["_taken"].isna()].drop(columns="_taken")
+    desc = descriptions if descriptions is not None else _descriptions(
+        player_play_path)
+    idx = index if index is not None else display_index(players_path)
+
+    attributed: list[dict] = []
+    attempts: list[dict] = []
+    for k, grp in frame.groupby(key, sort=True):
+        rule, nfl_id, tried = _route_a_one(
+            grp, desc.get((int(k[0]), int(k[1]))), idx, rules)
+        row = dict(zip(key, k))
+        for tried_rule, outcome in tried:
+            attempts.append({**row, "route_a_rule": tried_rule,
+                             "outcome": outcome})
+        if rule:
+            attributed.append({
+                **row, "route_a_rule": rule,
+                "attribution_label": ROUTE_A_LABELS[rule],
+                "attributed_nfl_id": nfl_id,
+                "coverage_family": grp["coverage_family"].iloc[0],
+                "attribution": ATTRIBUTION,
+            })
+
+    out = pd.DataFrame(attributed) if attributed else pd.DataFrame(
+        columns=[*key, "route_a_rule", "attribution_label",
+                 "attributed_nfl_id", "coverage_family", "attribution"])
+    seen = pd.DataFrame(attempts)
+    rows: list[dict] = []
+    total = int(frame[key].drop_duplicates().shape[0])
+    for rule in rules:
+        sub = seen[seen["route_a_rule"] == rule]
+        rows.append({"route_a_rule": rule, "outcome": "attributed",
+                     "reason": "",
+                     "n": int((sub["outcome"] == "attributed").sum()),
+                     "denominator": total})
+        for reason, n in sub.loc[sub["outcome"] != "attributed",
+                                 "outcome"].value_counts().items():
+            rows.append({"route_a_rule": rule, "outcome": "unresolved",
+                         "reason": str(reason), "n": int(n),
+                         "denominator": total})
+    return out, pd.DataFrame(rows)
+
+
+def route_a_tables(frame_all: pd.DataFrame, player_play_path: str | Path, *,
+                   rules: Sequence[str] = ROUTE_A_RULES,
+                   exclude: Iterable[tuple] | None = None,
+                   players_path: str | Path | None = None
+                   ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The attributed turns and the audit table, from one pass over the frame."""
+    return _route_a_pass(frame_all, player_play_path, rules=rules, exclude=exclude,
+                         players_path=players_path)
+
+
+def route_a(frame_all: pd.DataFrame, player_play_path: str | Path, *,
+            rules: Sequence[str] = ROUTE_A_RULES,
+            exclude: Iterable[tuple] | None = None,
+            players_path: str | Path | None = None) -> pd.DataFrame:
+    """One row per turn Route A can attribute, with its rule and its man (§9)."""
+    return route_a_tables(frame_all, player_play_path, rules=rules,
+                          exclude=exclude, players_path=players_path)[0]
+
+
+def route_a_audit(frame_all: pd.DataFrame, player_play_path: str | Path, *,
+                  rules: Sequence[str] = ROUTE_A_RULES,
+                  exclude: Iterable[tuple] | None = None,
+                  players_path: str | Path | None = None) -> pd.DataFrame:
+    """Every turn Route A saw, by rule and by unresolved reason (AC5)."""
+    return route_a_tables(frame_all, player_play_path, rules=rules,
+                          exclude=exclude, players_path=players_path)[1]
+
+
+def alignment_counts(player_play_path: str | Path, *,
+                     con: duckdb.DuckDBPyConnection | None = None) -> pd.DataFrame:
+    """AC10: plays with exactly two receivers, by the pair's two classes.
+
+    Recomputed from ``player_play.csv``, printed with its denominator and
+    compared with the anchor the spec quotes (9,341 plays; 7,009 mixed —
+    WR+slot 4,585, WR+TE 1,626, slot+TE 609 — and 2,332 same-class). Where the
+    recomputation disagrees the row says so; nothing is adjusted to match.
+    """
+    _require_files([player_play_path])
+    own_con = con is None
+    con = con or connect()
+    try:
+        con.execute(f"""
+            CREATE OR REPLACE TABLE pp_ac AS SELECT * FROM read_csv(
+              '{_posix(player_play_path)}', header=true, all_varchar=true,
+              nullstr=['NA',''])""")
+        table = con.execute("""
+            WITH r AS (
+              SELECT DISTINCT CAST(game_id AS BIGINT) AS game_id,
+                              CAST(play_id AS BIGINT) AS play_id,
+                              CAST(nfl_id AS BIGINT) AS nfl_id,
+                              lined_up_position AS pos
+              FROM pp_ac
+              WHERE lined_up_position IN ('WR', 'SLOT_WR', 'TE')),
+            k AS (
+              SELECT game_id, play_id, COUNT(*) AS n,
+                     MIN(pos) AS a, MAX(pos) AS b
+              FROM r GROUP BY 1, 2)
+            SELECT CASE WHEN a = b THEN a || '+' || a ELSE a || '+' || b END AS pair,
+                   COUNT(*) AS n_plays
+            FROM k WHERE n = 2 GROUP BY 1 ORDER BY 1""").df()
+        total_plays = int(con.execute(
+            "SELECT COUNT(DISTINCT game_id || '-' || play_id) FROM pp_ac"
+        ).fetchone()[0])
+    finally:
+        if own_con:
+            con.close()
+
+    #: Per-pair anchors only for the three mixed pairs the spec itemises; the
+    #: same-class total and the grand total are anchored on their own rows.
+    expected = {"SLOT_WR+WR": 4585, "TE+WR": 1626, "SLOT_WR+TE": 609}
+    rows = []
+    two = int(table["n_plays"].sum())
+    for _, r in table.iterrows():
+        pair, n = str(r["pair"]), int(r["n_plays"])
+        parts = pair.split("+")
+        mixed = len(parts) == 2 and parts[0] != parts[1]
+        rows.append({"pair": pair, "mixed": mixed, "n_plays": n,
+                     "two_receiver_plays": two, "all_plays": total_plays,
+                     "share_of_two_receiver_plays": round(n / two, 6) if two else np.nan,
+                     "spec_anchor": expected.get(pair) if mixed else None,
+                     "matches": ((expected[pair] == n) if pair in expected
+                                 else None)})
+    mixed_n = int(table.loc[table["pair"].map(
+        lambda p: p.split("+")[0] != p.split("+")[1]), "n_plays"].sum())
+    rows.append({"pair": "mixed (total)", "mixed": True, "n_plays": mixed_n,
+                 "two_receiver_plays": two, "all_plays": total_plays,
+                 "share_of_two_receiver_plays": round(mixed_n / two, 6) if two else np.nan,
+                 "spec_anchor": 7009, "matches": 7009 == mixed_n})
+    rows.append({"pair": "same_class (total)", "mixed": False,
+                 "n_plays": two - mixed_n, "two_receiver_plays": two,
+                 "all_plays": total_plays,
+                 "share_of_two_receiver_plays": round((two - mixed_n) / two, 6) if two else np.nan,
+                 "spec_anchor": 2332, "matches": 2332 == (two - mixed_n)})
+    rows.append({"pair": "two-receiver plays (total)", "mixed": None,
+                 "n_plays": two, "two_receiver_plays": two,
+                 "all_plays": total_plays,
+                 "share_of_two_receiver_plays": 1.0,
+                 "spec_anchor": 9341, "matches": 9341 == two})
+    return pd.DataFrame(rows)
+
+
+# ------------------------------------------------------------------ the one number (§0)
+def assemble_attribution(counts: dict) -> dict:
+    """``N = N_frozen + N_geo(5) + N_geo(8) + N_routeA`` (§0, §9).
+
+    ``counts`` carries the four slot counts plus what the composition needs:
+    ``band_turns``, ``status`` (per slot, e.g. ``NOT EVALUABLE``),
+    ``route_a_by_rule`` and ``coverage``. The slots are added as given and never
+    adjusted; a slot with no evidence is 0 **and** carries its status, so the
+    number cannot quietly pass off a missing route as a zero measurement.
+    """
+    need = ("n_frozen", "n_geo_5", "n_geo_8", "n_route_a")
+    missing = [k for k in need if k not in counts]
+    if missing:
+        raise ValueError("assemble_attribution is missing: " + ", ".join(missing))
+    slots = {k: int(counts[k]) for k in need}
+    negative = [k for k, v in slots.items() if v < 0]
+    if negative:
+        raise ValueError("counts cannot be negative: " + ", ".join(negative))
+    n = sum(slots.values())
+    band = counts.get("band_turns")
+    band = int(band) if band is not None else None
+    status = dict(counts.get("status") or {})
+    by_rule = dict(counts.get("route_a_by_rule") or {})
+    coverage = dict(counts.get("coverage") or {})
+
+    composition = [{
+        "slot": slot,
+        "label": SLOT_LABELS[slot],
+        "n": slots[key],
+        "share_of_N": (slots[key] / n) if n else np.nan,
+        "share_of_band": (slots[key] / band) if band else np.nan,
+        "status": status.get(slot, ""),
+    } for slot, key in zip(SLOT_ORDER, need)]
+
+    return {
+        "N": n,
+        "slots": slots,
+        "composition": composition,
+        "band_turns": band,
+        "share_of_band": (n / band) if band else None,
+        "rule_share_of_N": (slots["n_frozen"] / n) if n else None,
+        "inference_share_of_N": ((n - slots["n_frozen"]) / n) if n else None,
+        "route_a_by_rule": by_rule,
+        "coverage": coverage,
+        "status": status,
+        "attribution": ATTRIBUTION,
+    }
+
+
 # ------------------------------------------------------------------ funnel (O1)
 _FUNNEL_EXPECTED: tuple[tuple[str, int], ...] = (
     ("band_turns", 7777),
@@ -1051,6 +1420,145 @@ def candidate_distance_table(frames: pd.DataFrame, turns, player_play,
     return out
 
 
+# ------------------------------------------------------------------ the geometric slots (§0, §4)
+def geometry_slots(turns_path, player_play_path, frame_all: pd.DataFrame, *,
+                   tracking: Sequence[str | Path] | None = None,
+                   exclude: Iterable[tuple] | None = None,
+                   radii: Sequence[float] = (5.0, 8.0),
+                   con: duckdb.DuckDBPyConnection | None = None) -> dict:
+    """``N_geo(5)`` and ``N_geo(8)``: the radius rule, extended on what is left.
+
+    The frozen slot is never re-picked: ``exclude`` holds the turn keys it took,
+    and they are removed before anything is measured. For each remaining turn
+    the distance from the DB to **every** visible candidate is taken at the
+    break frame (``geometric_match.candidate_frame``, the frozen definition);
+    exactly one candidate inside 5 yd takes the turn, else exactly one inside
+    8 yd, else it stays for Route A. No tie is broken — a turn with two men
+    inside a radius is simply not taken by that radius.
+
+    Without tracking the slots are 0 with ``NOT EVALUABLE`` and the rows carry
+    nulls; nothing is approximated from the separation gap.
+    """
+    key = list(ot.TURN_KEY)
+    frame = frame_all.drop_duplicates(subset=[*key, "receiver_nfl_id"], keep="first")
+    if exclude is not None:
+        taken = pd.DataFrame(list(exclude), columns=key)
+        frame = frame.merge(taken.assign(_taken=True), on=key, how="left")
+        frame = frame[frame["_taken"].isna()].drop(columns="_taken")
+    turn_keys = frame.drop_duplicates(subset=key)[key].reset_index(drop=True)
+    tried = _tracking_candidates(tracking)
+    found = [p for p in tried if p.exists()]
+
+    if not found:
+        rows = turn_keys.copy()
+        rows["slot"] = ""
+        rows["attributed_nfl_id"] = np.nan
+        rows["dist_yd"] = np.nan
+        rows["n_candidates_tracked"] = 0
+        rows["geometry_status"] = GEOMETRY_NOT_EVALUABLE
+        return {"n_geo_5": 0, "n_geo_8": 0, "status": GEOMETRY_NOT_EVALUABLE,
+                "rows": rows, "paths_tried": "; ".join(str(p) for p in tried),
+                "n_turns_considered": int(len(rows))}
+
+    from . import geometric_match as gm
+    band = gm.load_band(turns_path)
+    band = band[band["valid"] & (band["setting"] == "game")
+                & (band["position_group"] == "DB")]
+    band = band[(band["abs_turn_angle"] >= ot.BAND_LO)
+                & (band["abs_turn_angle"] < ot.BAND_HI)]
+    band = band[band.set_index(key).index.isin(turn_keys.set_index(key).index)]
+    band = band.reset_index(drop=True)
+    shard_dir = Path(tempfile.mkdtemp(prefix="bdb27_geomslots_"))
+    shards = gm.extract_plays(found, band[key[:2]].drop_duplicates(), shard_dir,
+                              resume=False)
+    own_con = con is None
+    con = con or gm.connect()
+    try:
+        bps = gm.recover_break_frames(con, band, shards)
+        cf = gm.candidate_frame(con, bps, shards)
+        # Which plays the tracking actually covers — a play absent from the
+        # file is untracked, not a recovered-frame failure, and the two must
+        # not be reported as the same thing.
+        tracked_plays = set(map(tuple, con.execute(
+            "SELECT DISTINCT game_id, play_id FROM gm_tracking").df()
+            .to_numpy().tolist()))
+    finally:
+        if own_con:
+            con.close()
+    cf = cf.rename(columns={"cand_nfl_id": "receiver_nfl_id"})
+    cf = cf.merge(frame[key + ["receiver_nfl_id"]],
+                  on=key + ["receiver_nfl_id"], how="inner")
+    cf = cf.sort_values(key + ["dist_yd", "receiver_nfl_id"], kind="mergesort")
+
+    recovered = set(map(tuple, bps.loc[bps["break_frame_ok"], key]
+                        .to_numpy().tolist()))
+    r5, r8 = (float(radii[0]), float(radii[1]))
+    rows: list[dict] = []
+    for k in map(tuple, turn_keys[key].to_numpy().tolist()):
+        grp = cf[(cf["game_id"] == k[0]) & (cf["play_id"] == k[1])
+                 & (cf["nfl_id"] == k[2]) & (cf["frame_start"] == k[3])]
+        d = grp["dist_yd"].to_numpy(float)
+        rec = dict(zip(key, k))
+        rec["n_candidates_tracked"] = int(len(d))
+        rec["dist_yd"] = float(d.min()) if len(d) else np.nan
+        slot, man = "", np.nan
+        if len(d):
+            in5 = grp.loc[grp["dist_yd"] <= r5, "receiver_nfl_id"].to_numpy()
+            in8 = grp.loc[grp["dist_yd"] <= r8, "receiver_nfl_id"].to_numpy()
+            if len(in5) == 1:
+                slot, man = "5", int(in5[0])
+            elif len(in8) == 1:
+                slot, man = "8", int(in8[0])
+        rec["slot"], rec["attributed_nfl_id"] = slot, man
+        if (k[0], k[1]) not in tracked_plays:
+            rec["geometry_status"] = "untracked_play"
+        elif k not in recovered:
+            rec["geometry_status"] = "break_frame_unrecovered"
+        elif not len(d):
+            rec["geometry_status"] = "no_candidate_tracked"
+        else:
+            rec["geometry_status"] = "tracked"
+        rows.append(rec)
+    out = pd.DataFrame(rows)
+    return {"n_geo_5": int((out["slot"] == "5").sum()),
+            "n_geo_8": int((out["slot"] == "8").sum()),
+            "status": (GEOMETRY_NOT_EVALUABLE if not (out["geometry_status"]
+                                                      == "tracked").any()
+                       else "tracked"),
+            "rows": out, "paths_tried": "; ".join(str(p) for p in found),
+            "n_turns_considered": int(len(out))}
+
+
+def agreement(route_a_turns: pd.DataFrame, geometry_rows: pd.DataFrame) -> pd.DataFrame:
+    """§4's cross-check: on turns where both routes fired, do they name the same man?
+
+    Reports ``agree / (agree + disagree)`` with both counts, overall and by
+    Route A sub-rule. A high disagreement rate is the error rate to quote for
+    the no-tracking turns, and it ships whether or not it flatters Route A.
+    """
+    key = list(ot.TURN_KEY)
+    if not len(route_a_turns) or not len(geometry_rows):
+        return pd.DataFrame(columns=["scope", "agree", "disagree", "n_both", "rate"])
+    geo = geometry_rows.loc[geometry_rows["slot"].astype(str) != "",
+                            key + ["attributed_nfl_id"]]
+    geo = geo.rename(columns={"attributed_nfl_id": "geom_nfl_id"})
+    both = route_a_turns[key + ["route_a_rule", "attributed_nfl_id"]].merge(
+        geo, on=key, how="inner")
+    if not len(both):
+        return pd.DataFrame(columns=["scope", "agree", "disagree", "n_both", "rate"])
+    both["agree"] = (both["attributed_nfl_id"].astype("Int64")
+                     == both["geom_nfl_id"].astype("Int64"))
+    rows = []
+    scopes = [("overall", both)] + [
+        (f"route_a:{rule}", both[both["route_a_rule"] == rule])
+        for rule in ROUTE_A_RULES]
+    for scope, sub in scopes:
+        a, d = int(sub["agree"].sum()), int((~sub["agree"]).sum())
+        rows.append({"scope": scope, "agree": a, "disagree": d,
+                     "n_both": a + d, "rate": (a / (a + d)) if (a + d) else np.nan})
+    return pd.DataFrame(rows)
+
+
 # ------------------------------------------------------------------ provenance
 def file_sha256(path: str | Path) -> str:
     import hashlib
@@ -1152,6 +1660,36 @@ def plain_english_verdict(summary: dict) -> list[str]:
         lines.append(
             f"{row['variant']}: beta {_num(row['beta'])}, n={row['n']:,} — "
             f"{row['population']}")
+
+    asm = summary.get("assembly")
+    if asm:
+        lines.append("")
+        lines.append(
+            f"N = {asm['N']:,} of {asm['band_turns']:,} band turns "
+            f"({_pct(asm['N'], asm['band_turns'])}): "
+            + " + ".join(f"{c['slot']} {c['n']:,}" for c in asm["composition"]))
+        for c in asm["composition"]:
+            note = f" — {c['status']}" if c["status"] else ""
+            lines.append(f"  {c['label']:<28s} {c['n']:>6,} of N "
+                         f"({_pct(c['n'], asm['N'])}){note}")
+        lines.append(
+            f"  RULE share of N {_pct(asm['slots']['n_frozen'], asm['N'])} · "
+            f"INFERENCE share {_pct(asm['N'] - asm['slots']['n_frozen'], asm['N'])}")
+        if asm.get("route_a_by_rule"):
+            lines.append("  Route A by rule: " + " · ".join(
+                f"{k} {v:,}" for k, v in asm["route_a_by_rule"].items()))
+
+    agree = summary.get("agreement") or []
+    overall = next((r for r in agree if r.get("scope") == "overall"), None)
+    if overall and overall.get("n_both"):
+        lines.append(
+            f"Cross-check where both routes fired: {overall['agree']:,} agree / "
+            f"{overall['disagree']:,} disagree ({_pct(overall['agree'], overall['n_both'])}).")
+    else:
+        lines.append(
+            "Cross-check where both routes fired: NOT EVALUABLE — no tracking on "
+            "this machine, so no turn was paired by both routes.")
+
     lines.append("")
     lines.append(
         "Every pairing above is an INFERENCE: the dataset records no opponent "

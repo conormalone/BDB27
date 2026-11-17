@@ -219,6 +219,79 @@ def main(argv: list[str] | None = None) -> int:
         _log(f"  paths tried: {geom['paths_tried'].iloc[0]}")
     _log("")
 
+    # ---- Route A (§3) and the geometric slots (§0) ----------------------
+    frame_all = aa.all_candidates_frame(turns_path, pp_path)
+    frozen_keys = list(map(tuple, single[list(outcome_test.TURN_KEY)]
+                           .drop_duplicates().to_numpy().tolist()))
+    route_turns, route_audit = aa.route_a_tables(frame_all, pp_path,
+                                                 exclude=frozen_keys)
+    route_eligible = (frame_all[list(outcome_test.TURN_KEY)].drop_duplicates()
+                      .shape[0] - len(frozen_keys))
+    _log(f"Route A — no-tracking recovery on the {route_eligible:,} turns the "
+         f"frozen rule did not take")
+    for _, r in route_audit.iterrows():
+        _log(f"  {r['route_a_rule']:<12s} {r['outcome']:<11s} "
+             f"{r['reason'] or '-':<32s} {int(r['n']):>5,} of {int(r['denominator']):,}")
+    _log(f"  attributed by Route A: {len(route_turns):,} of {route_eligible:,} "
+         f"({_share(len(route_turns), route_eligible)})")
+    _log("")
+
+    geo_slots = aa.geometry_slots(turns_path, pp_path, frame_all,
+                                  tracking=args.tracking, exclude=frozen_keys)
+    _log("Geometric slots (5 then 8 yd, on what neither the frozen rule nor the "
+         "radius before it took)")
+    _log(f"  {geo_slots['status']} · turns considered {geo_slots['n_turns_considered']:,} · "
+         f"N_geo(5) {geo_slots['n_geo_5']:,} · N_geo(8) {geo_slots['n_geo_8']:,}")
+    _log(f"  paths tried: {geo_slots['paths_tried']}")
+    if len(geo_slots["rows"]):
+        st = geo_slots["rows"]["geometry_status"].value_counts()
+        _log("  per-turn status: " + " · ".join(f"{k} {v:,}" for k, v in st.items()))
+    agree = aa.agreement(route_turns, geo_slots["rows"])
+    if len(agree) and int(agree.loc[agree["scope"] == "overall", "n_both"].sum()):
+        r = agree[agree["scope"] == "overall"].iloc[0]
+        _log(f"  cross-check on turns both routes fired: {int(r['agree']):,} agree / "
+             f"{int(r['disagree']):,} disagree ({_share(r['agree'], r['n_both'])})")
+    else:
+        _log("  cross-check: NOT EVALUABLE — no turn where both routes fired")
+    _log("")
+
+    by_rule = (route_turns["route_a_rule"].value_counts().to_dict()
+               if len(route_turns) else {})
+    coverage = (route_turns["coverage_family"].fillna("MISSING").value_counts()
+                .to_dict() if len(route_turns) else {})
+    assembled = aa.assemble_attribution({
+        "n_frozen": int(frozen_primary["n_frozen"]),
+        "n_geo_5": int(geo_slots["n_geo_5"]),
+        "n_geo_8": int(geo_slots["n_geo_8"]),
+        "n_route_a": int(len(route_turns)),
+        "band_turns": int(funnel.loc[funnel["step"] == "band_turns", "n"].iloc[0]),
+        "status": {"geo_5": geo_slots["status"], "geo_8": geo_slots["status"]},
+        "route_a_by_rule": by_rule,
+        "coverage": coverage,
+    })
+    _log(f"N = {assembled['N']:,} of {assembled['band_turns']:,} band turns "
+         f"({_share(assembled['N'], assembled['band_turns'])})")
+    for c in assembled["composition"]:
+        _log(f"  {c['slot']:<8s} {c['label']:<28s} {c['n']:>6,}  "
+             f"of N {_share(c['n'], assembled['N']):>7s}"
+             + (f"  [{c['status'][:40]}]" if c["status"] else ""))
+    _log(f"  RULE share of N {_share(assembled['slots']['n_frozen'], assembled['N'])} · "
+         f"INFERENCE share {_share(assembled['N'] - assembled['slots']['n_frozen'], assembled['N'])}")
+    if by_rule:
+        _log("  Route A by rule: " + " · ".join(f"{k} {v:,}" for k, v in by_rule.items()))
+    if coverage:
+        _log("  coverage label of the attributed turns: "
+             + " · ".join(f"{k} {v:,}" for k, v in coverage.items()))
+    _log("")
+
+    align = aa.alignment_counts(pp_path)
+    _log("AC10 — plays with exactly two receivers, recomputed from player_play.csv")
+    for _, r in align.iterrows():
+        mark = "" if r["matches"] in (True, None) else f"  <- spec says {int(r['spec_anchor']):,}"
+        _log(f"  {r['pair']:<26s} {int(r['n_plays']):>6,} of {int(r['all_plays']):,} plays"
+             f" ({_share(r['n_plays'], r['all_plays'])}){mark}")
+    _log("")
+
     # ---- artefacts ------------------------------------------------------
     funnel.to_csv(out / "funnel.csv", index=False, encoding="utf-8")
     multi_turns = _multi_turn_table(multi)
@@ -230,6 +303,10 @@ def main(argv: list[str] | None = None) -> int:
     comp.to_csv(out / "composition.csv", index=False, encoding="utf-8")
     randoms.to_csv(out / "random_pairings.csv", index=False, encoding="utf-8")
     geom.to_csv(out / "geometry.csv", index=False, encoding="utf-8")
+    route_turns.to_csv(out / "route_a_turns.csv", index=False, encoding="utf-8")
+    route_audit.to_csv(out / "route_a_audit.csv", index=False, encoding="utf-8")
+    pd.DataFrame(assembled["composition"]).to_csv(out / "assembly.csv", index=False,
+                                                  encoding="utf-8")
 
     summary = {
         "provenance": stamp,
@@ -260,6 +337,35 @@ def main(argv: list[str] | None = None) -> int:
             "all_inside_bound": bool(randoms["inside_bound"].all()),
             "max_abs_closed_form_minus_fit": float(randoms["abs_difference"].max()),
         },
+        "assembly": {
+            "N": assembled["N"],
+            "slots": assembled["slots"],
+            "composition": assembled["composition"],
+            "band_turns": assembled["band_turns"],
+            "share_of_band": assembled["share_of_band"],
+            "rule_share_of_N": assembled["rule_share_of_N"],
+            "inference_share_of_N": assembled["inference_share_of_N"],
+            "route_a_by_rule": by_rule,
+            "coverage": coverage,
+            "status": assembled["status"],
+        },
+        "route_a": {
+            "eligible_turns": int(route_eligible),
+            "attributed_turns": int(len(route_turns)),
+            "by_rule": by_rule,
+            "audit": route_audit.to_dict("records"),
+        },
+        "geometry_slots": {
+            "n_geo_5": geo_slots["n_geo_5"],
+            "n_geo_8": geo_slots["n_geo_8"],
+            "status": geo_slots["status"],
+            "n_turns_considered": geo_slots["n_turns_considered"],
+            "paths_tried": geo_slots["paths_tried"],
+            "per_turn_status": (geo_slots["rows"]["geometry_status"]
+                                .value_counts().to_dict() if len(geo_slots["rows"]) else {}),
+        },
+        "agreement": agree.to_dict("records") if len(agree) else [],
+        "alignment_counts": align.to_dict("records"),
         "geometry": {
             "status": (geom["geometry_status"].iloc[0] if len(geom) else "NO AMBIGUOUS TURNS"),
             "rows": int(len(geom)),
@@ -297,7 +403,8 @@ def main(argv: list[str] | None = None) -> int:
         [out / name for name in ("funnel.csv", "multi_turns.csv", "bounds.csv",
                                  "variants.csv", "composition.csv",
                                  "random_pairings.csv", "geometry.csv",
-                                 "summary.json", "verdict.txt")],
+                                 "route_a_turns.csv", "route_a_audit.csv",
+                                 "assembly.csv", "summary.json", "verdict.txt")],
         config={"mode": args.mode, "reps": args.reps, "seed": args.seed,
                 "specs": list(aa.SPECS), "pairing_rules": list(aa.PAIRING_RULES),
                 "tracking": args.tracking},
@@ -308,7 +415,8 @@ def main(argv: list[str] | None = None) -> int:
     wall = time.time() - t0
     append_run_log("ambiguity_attribution", args.mode, wall, len(frame),
                    "OK", f"single {len(single):,} · ambiguous "
-                         f"{frozen_primary['n_ambiguous']:,} · label "
+                         f"{frozen_primary['n_ambiguous']:,} · N {assembled['N']:,} "
+                         f"(route A {len(route_turns):,}) · label "
                          f"{frozen_primary['branch']}")
     _log(f"run_log: one row appended ({wall:,.0f}s, {len(frame):,} analysis rows)")
     return 0

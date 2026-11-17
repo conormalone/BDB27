@@ -8663,7 +8663,7 @@ artefact's ρ = 0.014055; both round to ≈163, and the ≈18,000 is one signifi
 `src/bdb27/band_reliability.py`; `scripts/band_reliability.py`; 10 new tests in
 `tests/test_band_reliability.py`; full-suite count in the commit message.
 
-## D207 — Multi-candidate attribution: the 870 are bounded, not identified — and the "one number" cycle is half-built · 2026-11-17
+## D207 — Multi-candidate attribution: N = 2,295 of the 7,777 with its composition; the 870 are bounded, not identified · 2026-11-17
 
 **Asked.** Conor, 14:04 GMT: *"Ok well we're going to have to do our best to assess the 2 or more on
 a play"*, after being told that the 870 band turns with two or more opposing route-runners are
@@ -8672,7 +8672,29 @@ just more accurate"*. 14:30: *"I guess try both but I think the tracking data wi
 binding text for the cycle is `notes/multi-candidate-spec.md`, committed twice before any count or
 coefficient existed — `8726120` (original) and `556e658` (Amendment 1 + 2, which is HEAD's version).
 
-**Result — the diagnostic half, which is all that was built.** On the FULL band the funnel
+**The number.** One headline, the spec's §0 arithmetic, all four slots printed with the label and
+share each carries:
+
+```
+N = 2,295 of 7,777 band turns (29.5%)
+  N_frozen   RULE                        1,731   75.4% of N
+  N_geo(5)   INFERENCE — geometry 5 yd       0    0.0% of N   [NOT EVALUABLE — no tracking]
+  N_geo(8)   INFERENCE — geometry 8 yd       0    0.0% of N   [NOT EVALUABLE — no tracking]
+  N_routeA   INFERENCE — Route A            564   24.6% of N
+```
+
+Route A attributed **564 of the 1,277 turns** the frozen rule did not take (44.2%), all of them
+`INFERENCE`: **365 by A1 `target`** (exactly one visible candidate carries `target` True) and
+**199 by A3 `alignment`** (exactly two candidates, different classes, the DB's own class mapping
+to one of them under the fixed table). **A2 `description` attributed 0**, and the reason is the
+cohort, not the parser: of the 912 turns it saw, 460 descriptions carry no `pass … to X.Surname`
+token at all (sacks, scrambles, no pass verb), 431 name a receiver who is not a cohort player
+(1,561 of 1,670 parses across the wider set), and 21 name a cohort player who is not a visible
+candidate on that turn. The text names a man the file does not carry; that is counted and
+reported, never guessed. Coverage label of the attributed turns (A4, the DB's own
+`coverage_assignment`): ZONE 369, MAN 119, MISSING 76.
+
+**The diagnostic.** On the FULL band the funnel
 reproduces §1 exactly: **7,777** band turns, of which **1,462** (18.8%) have no opposing
 `player_play` row, **3,306** (42.5%) have opposing rows but no route-runner among them, **3,009**
 carry at least one visible opposing route-runner, **2,601** carry a candidate separation — **1,731**
@@ -8728,23 +8750,32 @@ with the four distance columns null and `geometry_status = NOT EVALUABLE — can
 frame-level tracking, which is not on this machine; the separation gap is not a distance between two
 players`. No local geometric result is claimed, and none is approximated from separations.
 
-**What this cycle did not build, against its own spec.** The spec's deliverable (§0) is **one number**
-`N = N_frozen + N_geo(5) + N_geo(8) + N_routeA` with a composition underneath and `RULE` /
-`INFERENCE` shares printed. That number does not exist on disk. Specifically, against the spec:
+**What this cycle still does not satisfy.** The number exists in code and in the notebook, but four
+things remain open against the spec, and they are recorded rather than papered over:
 
-- §3 Route A (`INFERENCE — target` / `— description` / `— alignment`) is **not implemented**; the
-  API's `route_a()` does not exist. So `N_routeA` is absent and the A1 anchor (270 of 815) is
-  unreproduced by code.
-- §9 `assemble_attribution(counts)` and `alignment_counts(player_play_path)` do not exist, so the
-  N-with-composition assembly and the AC10 two-receiver anchor (9,341 all-two-receiver plays, 7,009
-  mixed) are unreproduced.
-- §4 / AC8 `notebooks/bdb27_multi_candidate.ipynb` is **not written** — the only route that could
-  produce `N_geo(5)` / `N_geo(8)` on Conor's laptop. `outputs/ambiguity_attribution/route_a_turns.csv`
-  and `assembly.csv` (spec §8) are absent.
-- `notes/multi-candidate-result.md` (spec §8) is not written; this entry is the record until it is.
-- Consequences in the artefacts: `verdict.txt` lists the twelve variant rows without naming their
-  specification (each line is true; the reader cannot tell `primary` from `man_only`), and no
-  `RULE`/`INFERENCE` share of `N` is printed anywhere because there is no `N`.
+- **AC10's anchor does not reproduce.** The two-receiver count from `player_play.csv` is **9,260
+  plays** (8.1% of 114,954), of which **6,910 mixed** (WR+slot 4,605, WR+TE 1,681, slot+TE 624) and
+  **2,350 same-class**, against the spec's 9,341 / 7,009 / 2,332. The spec's own components do not
+  sum to its total either (4,585 + 1,626 + 609 = 6,820, not 7,009). Every row prints both numbers
+  and a `matches` flag; the difference is reported, not adjusted away. It does not touch `N`.
+- **`verdict.txt` still lists the twelve variant rows without naming their specification** — each
+  line is true, but `primary` and `man_only` are indistinguishable in that block. Left as it is so
+  the committed artefacts stay byte-identical; the fix is one line in `plain_english_verdict`.
+- **`notes/multi-candidate-result.md` (spec §8) is not written.** This entry is the record.
+- **The geometric slots are unexercised against full tracking.** The code path is exercised locally
+  only against `game_tracking_2023_sample.csv` (1,048,575 rows, 12,638 plays — a truncation): 6 of
+  1,277 turns tracked, `N_geo(5)` = 1 on that check, and the one turn both routes could pair agreed
+  (1 of 1). That is a code-path check, not a result; the laptop run with the full files is what
+  would produce the real `N_geo` slots.
+
+**The notebook is the interface (AC8).** `notebooks/bdb27_multi_candidate.ipynb`, ten cells, one
+config cell, no baked outputs, no CLI, no shell escapes. It runs end to end on this machine with no
+tracking: the geometric columns come back null, `NOT EVALUABLE` prints, and the run still reports
+`N` with its composition (it does not abort). Pointed at tracking, the same notebook computes the
+geometric slots, prints what the file is (rows, plays, players, rows per play — and names 1,048,575
+rows as a truncation rather than a season), and prints the agreement rate on turns both routes
+paired. `tests/test_multi_candidate_notebook.py` (12 tests) pins the structure, the no-baked-outputs
+rule, and that the no-tracking path completes.
 
 The funnel also prints its per-turn candidate block on a denominator of **7,209 band rows** (or
 7,206 turn keys), not 7,777: the shortfall is the band rows whose DB has no `player_play` row of his
@@ -8760,14 +8791,15 @@ And `two_candidate_separation_gap_yd` is **MAX(sep) − MIN(sep)** of the candid
 (median 1.729 yd over the 870) — **not** a distance between two players, and it is labelled that way
 in the artefact and in the tests.
 
-**Provenance.** `notes/multi-candidate-spec.md` (`8726120`, `556e658`); `src/bdb27/ambiguity_attribution.py`;
-`scripts/ambiguity_attribution.py`; `tests/test_ambiguity_attribution.py` (22 tests: label rule,
-funnel reconciliation against `outputs/outcome_link/feasibility_summary.json`, the frozen base against
-`outputs/outcome_test/attributed_turns.csv`, additivity, the 20-pairing determinism check, the no-gate
-and no-tracking behaviours); `outputs/ambiguity_attribution/{funnel,composition,bounds,variants,geometry,multi_turns,random_pairings}.csv`,
-`summary.json`, `manifest.json`, `verdict.txt`; one `outputs/run_log.csv` row. A second full run
-reproduced **all nine artefacts byte for byte** (only `manifest.json`'s UTC stamp and
-`git_head` differ, by construction). `src/bdb27/outcome_test.py` was refactored in this commit —
+**Provenance.** `notes/multi-candidate-spec.md` (`8726120`, `556e658`); `src/bdb27/ambiguity_attribution.py`
+(frames, O2, variants, Route A, assembly, geometry slots, alignment anchor);
+`scripts/ambiguity_attribution.py`; `notebooks/bdb27_multi_candidate.ipynb`;
+`tests/test_ambiguity_attribution.py` (33 tests) and `tests/test_multi_candidate_notebook.py`
+(12 tests); `outputs/ambiguity_attribution/{funnel,composition,bounds,variants,geometry,multi_turns,random_pairings,route_a_turns,route_a_audit,assembly}.csv`,
+`summary.json`, `manifest.json`, `verdict.txt`; one `outputs/run_log.csv` row. The seven artefacts
+from the first commit of this cycle reproduced **byte for byte** after Route A and the notebook were
+added, and a second full run reproduces them again (only `manifest.json`'s UTC stamp and `git_head`
+differ, by construction). `src/bdb27/outcome_test.py` was refactored —
 `SINGLE_CANDIDATE_SQL` and `prepare_tables()` lifted to module level — so the multi-candidate SQL is
 *derived* from the sample's own text rather than re-typed; `build_sample`'s output is unchanged and
 `tests/test_outcome_test.py` passes unchanged.
