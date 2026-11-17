@@ -8662,3 +8662,115 @@ artefact's ρ = 0.014055; both round to ≈163, and the ≈18,000 is one signifi
 **Provenance.** `notes/validation-section.md`; `outputs/band_reliability/*`;
 `src/bdb27/band_reliability.py`; `scripts/band_reliability.py`; 10 new tests in
 `tests/test_band_reliability.py`; full-suite count in the commit message.
+
+## D207 — Multi-candidate attribution: the 870 are bounded, not identified — and the "one number" cycle is half-built · 2026-11-17
+
+**Asked.** Conor, 14:04 GMT: *"Ok well we're going to have to do our best to assess the 2 or more on
+a play"*, after being told that the 870 band turns with two or more opposing route-runners are
+dropped whole by the frozen match rule. 14:10: *"Include the one match as well, I want 1 number,
+just more accurate"*. 14:30: *"I guess try both but I think the tracking data will be needed"*. The
+binding text for the cycle is `notes/multi-candidate-spec.md`, committed twice before any count or
+coefficient existed — `8726120` (original) and `556e658` (Amendment 1 + 2, which is HEAD's version).
+
+**Result — the diagnostic half, which is all that was built.** On the FULL band the funnel
+reproduces §1 exactly: **7,777** band turns, of which **1,462** (18.8%) have no opposing
+`player_play` row, **3,306** (42.5%) have opposing rows but no route-runner among them, **3,009**
+carry at least one visible opposing route-runner, **2,601** carry a candidate separation — **1,731**
+single-candidate and **870** ambiguous. The candidate-level artefact's split (815 / 185 / 5 / 1 at
+two, three, four and six visible candidates; 704 of the 815 two-candidate turns carrying a
+separation for both) reproduces row for row.
+
+Primary specification, frozen rule only (D199 recomputed, not quoted): **β = +0.051 yd per unit
+`apex_retention`, 95% CI [−0.358, +0.460], n = 1,731, 102 player clusters.** The identified set over
+*every* admissible pairing of the 870 is **[−1.308, +1.361] yd, width 2.669** — against a CI width of
+**0.817**. It straddles zero and is wider than the CI, so the label is **`BOUND — NOT IDENTIFIED`**,
+set by O2 alone.
+
+The three other bounded specifications agree in kind: `player_fe` +0.060 [−0.359, +0.479], set
+[−1.363, +1.363]; `pass_only` +0.071 [−0.361, +0.504], n = 1,683, set [−1.310, +1.372]; `man_only`
+−0.463 [−1.339, +0.414], n = 337, 61 clusters, set [−1.061, +0.601]. `man_only` is the one case the
+reading-rule table has no row for — it straddles zero and is *narrower* than its CI (1.662 vs 1.752)
+— so it is labelled `BOUND — NOT IDENTIFIED` by the table's order and the row carries that fact in
+`branch_note` rather than being quietly relabelled.
+
+The three resolution variants, each an **INFERENCE**, primary specification: V1 target **+0.344**
+(n = 769, targeted passes only — a population change), V2 smallest separation **−0.013** (n = 2,601),
+V3 largest separation **+0.066** (n = 2,601). Twenty fixed-seed random pairings (seed **20261117**)
+all land inside the bound, and the closed form reproduces `outcome_test.fit` to **3.1e-15**.
+
+**The label rule, and where it is written.** The reading rule is three arithmetic branches, fixed
+before the run: set ⊆ the frozen CI → `BOUND CONTAINED IN CI`; set wider than the CI and straddling
+zero → `BOUND — NOT IDENTIFIED`; set excludes zero → `SIGN IDENTIFIED`; nothing fittable →
+`NOT FITTED`. Only the bound sets the label; no branch upgrades to a claim in `TASK.md`. **This table
+is in `8726120` §4 and is *not* in the amended spec at HEAD** (`556e658` renumbered the sections and
+now has Route B at §4). The rule did not change with the amendment; it survives here, in
+`src/bdb27/ambiguity_attribution._branch_label`, and in `8726120`. That is a documentation gap in
+the binding text, not a change of method, and it is recorded rather than repaired after the fact.
+
+**Why the identified set is the right frame here.** For a specification whose design matrix `D` is
+built only from the DB's own turn and the DB's own `player_play` row, `D` does not depend on which
+candidate is attached, so `β(pairing) = c·y` with `c` = row 1 of `pinv(D'D)D'`. The coefficient is
+then linear in a per-turn choice between observed separation values, and its exact range over every
+admissible pairing is `Σ_i min_j(c_i y_ij)` to `Σ_i max_j(c_i y_ij)` — no search, no sampling
+assumption, no tie-break. That is the only statement the data supports about "which of the two men":
+the dataset carries **no opponent identifier**, so any single pairing would be an invented decision,
+while the range is a fact about the estimator. It is reported *beside* the D199 CI and never
+combined with it: the bound has no sampling error, and the CI has no pairing uncertainty. It is also
+conditional on the true receiver being among the visible candidates — the cohort hides candidates,
+so the true set can only be wider, and the bound is optimistic in the direction of precision.
+
+**Geometry is unevaluable here, and that is a result, not a failure.** Candidate distance, the
+nearest-candidate margin and the gap between the two nearest candidates all need frame-level
+tracking. This machine has none: the only tracking file present is
+`data/raw/game_tracking_2023_sample.csv`, and the module refuses a sample-named file by construction
+because the truncation cannot answer these questions. `geometry.csv` therefore carries **870 rows**
+with the four distance columns null and `geometry_status = NOT EVALUABLE — candidate distances need
+frame-level tracking, which is not on this machine; the separation gap is not a distance between two
+players`. No local geometric result is claimed, and none is approximated from separations.
+
+**What this cycle did not build, against its own spec.** The spec's deliverable (§0) is **one number**
+`N = N_frozen + N_geo(5) + N_geo(8) + N_routeA` with a composition underneath and `RULE` /
+`INFERENCE` shares printed. That number does not exist on disk. Specifically, against the spec:
+
+- §3 Route A (`INFERENCE — target` / `— description` / `— alignment`) is **not implemented**; the
+  API's `route_a()` does not exist. So `N_routeA` is absent and the A1 anchor (270 of 815) is
+  unreproduced by code.
+- §9 `assemble_attribution(counts)` and `alignment_counts(player_play_path)` do not exist, so the
+  N-with-composition assembly and the AC10 two-receiver anchor (9,341 all-two-receiver plays, 7,009
+  mixed) are unreproduced.
+- §4 / AC8 `notebooks/bdb27_multi_candidate.ipynb` is **not written** — the only route that could
+  produce `N_geo(5)` / `N_geo(8)` on Conor's laptop. `outputs/ambiguity_attribution/route_a_turns.csv`
+  and `assembly.csv` (spec §8) are absent.
+- `notes/multi-candidate-result.md` (spec §8) is not written; this entry is the record until it is.
+- Consequences in the artefacts: `verdict.txt` lists the twelve variant rows without naming their
+  specification (each line is true; the reader cannot tell `primary` from `man_only`), and no
+  `RULE`/`INFERENCE` share of `N` is printed anywhere because there is no `N`.
+
+The funnel also prints its per-turn candidate block on a denominator of **7,209 band rows** (or
+7,206 turn keys), not 7,777: the shortfall is the band rows whose DB has no `player_play` row of his
+own, and those rows are inside the `1,462` "no opposing player row" step rather than named as their
+own line. The arithmetic closes (7,777 = 568 + 894 + 3,306 + 3,009); the 568 is derivable but not
+printed.
+
+**What this cannot say.** It does not say which man was covered — no pairing here identifies one, and
+every non-frozen pairing is prefixed `INFERENCE`. It does not say `N` is a coverage count. It does
+not enter `TASK.md`, the band table, the four figures or the report draft: `TASK.md` forbids outcome
+tests and per-prospect claims, and this is a diagnostic on an estimator `TASK.md` already excludes.
+And `two_candidate_separation_gap_yd` is **MAX(sep) − MIN(sep)** of the candidates' separation values
+(median 1.729 yd over the 870) — **not** a distance between two players, and it is labelled that way
+in the artefact and in the tests.
+
+**Provenance.** `notes/multi-candidate-spec.md` (`8726120`, `556e658`); `src/bdb27/ambiguity_attribution.py`;
+`scripts/ambiguity_attribution.py`; `tests/test_ambiguity_attribution.py` (22 tests: label rule,
+funnel reconciliation against `outputs/outcome_link/feasibility_summary.json`, the frozen base against
+`outputs/outcome_test/attributed_turns.csv`, additivity, the 20-pairing determinism check, the no-gate
+and no-tracking behaviours); `outputs/ambiguity_attribution/{funnel,composition,bounds,variants,geometry,multi_turns,random_pairings}.csv`,
+`summary.json`, `manifest.json`, `verdict.txt`; one `outputs/run_log.csv` row. A second full run
+reproduced **all nine artefacts byte for byte** (only `manifest.json`'s UTC stamp and
+`git_head` differ, by construction). `src/bdb27/outcome_test.py` was refactored in this commit —
+`SINGLE_CANDIDATE_SQL` and `prepare_tables()` lifted to module level — so the multi-candidate SQL is
+*derived* from the sample's own text rather than re-typed; `build_sample`'s output is unchanged and
+`tests/test_outcome_test.py` passes unchanged.
+
+**Unchanged.** `TASK.md`, the band table, the four figures, `notes/report-draft.md` and every
+pre-existing artefact under `outputs/`.

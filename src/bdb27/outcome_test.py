@@ -64,15 +64,44 @@ def _posix(path: str | Path) -> str:
     return Path(path).as_posix()
 
 
-def build_sample(con: duckdb.DuckDBPyConnection,
-                 turns_path: str | Path,
-                 player_play_path: str | Path) -> pd.DataFrame:
-    """One row per elimination-attributed 30-60 degree DB game turn.
+#: The sample's SQL, module level so a second frame builder cannot re-implement
+#: it. ``ambiguity_attribution`` adds only the multi-candidate ``WHERE`` clause
+#: to this same text, which is what makes its AC1 check a comparison.
+SINGLE_CANDIDATE_SQL = """
+        SELECT b.game_id, b.play_id, b.nfl_id, b.frame_start, b.position,
+               b.season, b.abs_turn_angle, b.entry_speed, b.apex_speed,
+               b.apex_retention, b.speed_retention, b.plant, b.turn_type,
+               o.own_team,
+               k.n_opp_route, k.n_opp_route_sep,
+               r.nfl_id AS receiver_nfl_id,
+               r.lined_up_position AS receiver_position,
+               r.route_ran AS receiver_route,
+               r.separation_at_pass_forward AS separation_yd,
+               r.target AS receiver_target,
+               d.coverage_assignment, d.cushion, d.down, d.yards_to_go,
+               d.team_coverage_man_zone, d.pass_result
+        FROM band b
+        JOIN own o ON o.game_id = b.game_id AND o.play_id = b.play_id
+                  AND o.nfl_id = b.nfl_id
+        JOIN cand k ON k.game_id = b.game_id AND k.play_id = b.play_id
+                   AND k.nfl_id = b.nfl_id
+        JOIN pp r ON r.game_id = b.game_id AND r.play_id = b.play_id
+                 AND r.team_abbr IS NOT NULL AND r.team_abbr <> o.own_team
+                 AND r.route_ran IS NOT NULL
+                 AND r.separation_at_pass_forward IS NOT NULL
+        LEFT JOIN pp d ON d.game_id = b.game_id AND d.play_id = b.play_id
+                      AND d.nfl_id = b.nfl_id
+        WHERE k.n_opp_route = 1 AND k.n_opp_route_sep = 1"""
 
-    A turn is kept iff the play carries **exactly one** opposing-side
-    ``player_play`` row with a non-``NA`` ``route_ran`` *and* that row carries
-    ``separation_at_pass_forward``. Ties and unmatched turns are dropped, never
-    resolved (no radius, distance or row order is used to choose).
+
+def prepare_tables(con: duckdb.DuckDBPyConnection,
+                   turns_path: str | Path,
+                   player_play_path: str | Path) -> None:
+    """``pp_raw`` -> ``pp`` (typed) -> ``band`` -> ``own`` -> ``cand``.
+
+    The one place the sample's tables are defined. ``build_sample`` and
+    ``ambiguity_attribution``'s frame builders both start here, so a change to
+    the candidate rule cannot drift between the two analyses.
     """
     con.execute(f"""
         CREATE OR REPLACE TABLE pp_raw AS SELECT * FROM read_csv(
@@ -115,34 +144,23 @@ def build_sample(con: duckdb.DuckDBPyConnection,
         JOIN pp c ON c.game_id = o.game_id AND c.play_id = o.play_id
                  AND c.nfl_id <> o.nfl_id
         GROUP BY 1, 2, 3""")
-    con.execute("""
-        CREATE OR REPLACE TABLE attributed AS
-        SELECT b.game_id, b.play_id, b.nfl_id, b.frame_start, b.position,
-               b.season, b.abs_turn_angle, b.entry_speed, b.apex_speed,
-               b.apex_retention, b.speed_retention, b.plant, b.turn_type,
-               o.own_team,
-               k.n_opp_route, k.n_opp_route_sep,
-               r.nfl_id AS receiver_nfl_id,
-               r.lined_up_position AS receiver_position,
-               r.route_ran AS receiver_route,
-               r.separation_at_pass_forward AS separation_yd,
-               r.target AS receiver_target,
-               d.coverage_assignment, d.cushion, d.down, d.yards_to_go,
-               d.team_coverage_man_zone, d.pass_result
-        FROM band b
-        JOIN own o ON o.game_id = b.game_id AND o.play_id = b.play_id
-                  AND o.nfl_id = b.nfl_id
-        JOIN cand k ON k.game_id = b.game_id AND k.play_id = b.play_id
-                   AND k.nfl_id = b.nfl_id
-        JOIN pp r ON r.game_id = b.game_id AND r.play_id = b.play_id
-                 AND r.team_abbr IS NOT NULL AND r.team_abbr <> o.own_team
-                 AND r.route_ran IS NOT NULL
-                 AND r.separation_at_pass_forward IS NOT NULL
-        LEFT JOIN pp d ON d.game_id = b.game_id AND d.play_id = b.play_id
-                      AND d.nfl_id = b.nfl_id
-        WHERE k.n_opp_route = 1 AND k.n_opp_route_sep = 1""")
+
+
+def build_sample(con: duckdb.DuckDBPyConnection,
+                 turns_path: str | Path,
+                 player_play_path: str | Path) -> pd.DataFrame:
+    """One row per elimination-attributed 30-60 degree DB game turn.
+
+    A turn is kept iff the play carries **exactly one** opposing-side
+    ``player_play`` row with a non-``NA`` ``route_ran`` *and* that row carries
+    ``separation_at_pass_forward``. Ties and unmatched turns are dropped, never
+    resolved (no radius, distance or row order is used to choose).
+    """
+    prepare_tables(con, turns_path, player_play_path)
     df = con.execute("""
-        SELECT * FROM attributed
+        SELECT * FROM (
+""" + SINGLE_CANDIDATE_SQL + """
+        )
         ORDER BY game_id, play_id, nfl_id, frame_start""").df()
     return derive_columns(df)
 
