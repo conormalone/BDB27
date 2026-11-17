@@ -99,14 +99,24 @@ def test_text_writes_name_their_encoding(notebook):
 
 
 @pytest.fixture(scope="module")
-def executed(notebook) -> dict:
-    """Run every code cell in one namespace — the no-tracking path, end to end."""
+def executed(notebook, tmp_path_factory) -> dict:
+    """Run every code cell in one namespace — the no-tracking path, end to end.
+
+    ``OUT_DIR`` is redirected to a temporary directory so the module run writes
+    real files without touching the committed ``outputs/ambiguity_attribution``
+    (the notebook's default). Everything else runs as written.
+    """
+    out_dir = tmp_path_factory.mktemp("notebook_outputs")
     ns: dict = {"__name__": "__main__"}
     buf = io.StringIO()
     with redirect_stdout(buf):
         for source in code_sources(notebook):
+            if CONFIG_MARKER in source:
+                source = re.sub(r"^OUT_DIR\s*=.*$", f"OUT_DIR = {str(out_dir)!r}",
+                                source, flags=re.M)
             exec(compile(source, "<notebook cell>", "exec"), ns)  # noqa: S102
     ns["_stdout"] = buf.getvalue()
+    ns["_out_dir"] = out_dir
     return ns
 
 
@@ -141,6 +151,71 @@ def test_the_heading_status_is_echoed_beside_the_number(executed):
     assert headline, "the headline N line is missing"
     assert "tracking: NONE FOUND" in headline[0]
     assert executed["assembled"]["N"] == 2295
+
+
+# ------------------------------------- what the run writes (Conor, 2026-11-17)
+#: The fourteen tables one complete run writes. Pinned here independently of
+#: the library constant: a run that writes three of them is the defect.
+FOURTEEN = (
+    "assembly.csv", "bounds.csv", "composition.csv", "funnel.csv",
+    "geometry.csv", "margin_buckets.csv", "multi_turns.csv",
+    "random_pairings.csv", "route_a_audit.csv", "route_a_turns.csv",
+    "single_turn_geometry.csv", "v4_nearest.csv", "variants.csv",
+    "within_3yd.csv",
+)
+
+
+def test_every_table_is_written_not_just_three(executed):
+    """A table that exists only in memory is how stale files got read as results."""
+    out = executed["_out_dir"]
+    assert sorted(p.name for p in out.glob("*.csv")) == sorted(FOURTEEN)
+    assert (out / "manifest.json").is_file()
+
+    text = executed["_stdout"]
+    assert f"outputs: {out}" in text
+    assert "14 tables + manifest.json" in text
+    assert "15 files written by this run" in text
+
+
+def test_the_manifest_stamps_the_run_and_says_no_tracking(executed):
+    """A stale file is identifiable by its own contents, not by machine memory."""
+    path = executed["_out_dir"] / "manifest.json"
+    m = json.loads(path.read_text(encoding="utf-8"))
+    assert m["written_utc"].endswith("+00:00")            # a UTC timestamp
+    assert m["tracking"] == "none found"                  # this machine, no tracking
+    assert m["config"]["mode"] == "notebook"
+    assert len(m["outputs"]) == 14
+    assert all(len(v["sha256"]) == 64 for v in m["outputs"].values())
+    assert any(k.endswith("bdb27_full_db_turns.parquet") for k in m["inputs"])
+    assert all(len(v["sha256"]) == 64 for v in m["inputs"].values())
+
+
+def test_the_output_path_is_printed_at_the_top_and_beside_n(executed):
+    text = executed["_stdout"]
+    path = str(executed["_out_dir"])
+    assert text.index(path) < text.index("band_turns")     # before any table
+    line = [ln for ln in text.splitlines() if ln.startswith("N = ")][0]
+    following = text.split(line, 1)[1].splitlines()[:3]
+    assert any(path in ln and "15 files written" in ln for ln in following)
+
+
+def test_the_default_output_directory_is_the_scripts(notebook):
+    """Same directory as ``scripts/ambiguity_attribution.py``: one output set."""
+    config = [s for s in code_sources(notebook) if CONFIG_MARKER in s][0]
+    assert 'OUT_DIR         = "outputs/ambiguity_attribution"' in config
+    assert "WRITE_ARTEFACTS = True" in config
+
+
+def test_the_notebook_and_the_script_write_the_same_fourteen():
+    """Two surfaces, one output set: neither may drop a table the other writes."""
+    from bdb27 import ambiguity_attribution as aa
+
+    assert sorted(aa.ARTEFACT_TABLES) == sorted(FOURTEEN)
+    assert len(aa.ARTEFACT_TABLES) == 14
+    script = (ROOT / "scripts" / "ambiguity_attribution.py").read_text(
+        encoding="utf-8")
+    for name in FOURTEEN:
+        assert f'out / "{name}"' in script, f"the script does not write {name}"
 
 
 def test_the_config_comment_describes_the_discovery_code(notebook):
@@ -202,10 +277,11 @@ def test_route_a_audit_accounts_for_every_eligible_turn(executed):
     assert (audit["n"] >= 0).all()
 
 
-def test_nothing_is_written_when_the_flag_is_off(executed):
-    assert executed["WRITE_ARTEFACTS"] is False
-    target = ROOT / "outputs" / "ambiguity_attribution_notebook"
-    assert not target.exists(), "the default run wrote artefacts"
+def test_the_run_does_not_touch_the_committed_artefacts(executed):
+    """The redirected fixture writes to tmp; the committed directory is untouched."""
+    assert executed["WRITE_ARTEFACTS"] is True
+    assert ROOT / "outputs" / "ambiguity_attribution" != executed["_out_dir"]
+    assert not (ROOT / "outputs" / "ambiguity_attribution_notebook").exists()
 
 
 # ------------------------------------------------- amendment: 3 yd, V4, margin

@@ -167,6 +167,18 @@ SLOT_LABELS: dict[str, str] = {
     "route_a": "INFERENCE — Route A",
 }
 
+#: The fourteen tables one complete run writes. The notebook and
+#: ``scripts/ambiguity_attribution.py`` write THIS set into the SAME directory:
+#: when they differed, a reader could open a committed file the run never wrote
+#: and read it as this run's result (Conor, 2026-11-17).
+ARTEFACT_TABLES: tuple[str, ...] = (
+    "funnel.csv", "multi_turns.csv", "bounds.csv", "variants.csv",
+    "composition.csv", "random_pairings.csv", "geometry.csv",
+    "route_a_turns.csv", "route_a_audit.csv", "assembly.csv",
+    "single_turn_geometry.csv", "within_3yd.csv", "margin_buckets.csv",
+    "v4_nearest.csv",
+)
+
 #: What the notebook/script must say whenever candidate geometry is requested
 #: without frame-level tracking.
 GEOMETRY_NOT_EVALUABLE = (
@@ -762,6 +774,31 @@ def random_assignments(frame: pd.DataFrame, spec: str = "primary",
 
 
 # ------------------------------------------------------------------ composition
+def multi_turn_table(multi: pd.DataFrame) -> pd.DataFrame:
+    """One row per ambiguous turn: its candidate count and separation span.
+
+    The script wrote this table and the notebook did not, which is how a reader
+    came to open a ``multi_turns.csv`` this run had never produced.
+    """
+    key = list(ot.TURN_KEY)
+    columns = [*key, "n_candidates", "n_candidates_with_separation",
+               "separation_min_yd", "separation_max_yd", "separation_gap_yd",
+               "n_target", "attribution"]
+    if not len(multi):
+        return pd.DataFrame(columns=columns)
+    df = multi.drop_duplicates(subset=[*key, "receiver_nfl_id"])
+    out = df.groupby(key, sort=True).agg(
+        n_candidates=("receiver_nfl_id", "nunique"),
+        n_candidates_with_separation=("separation_yd", lambda s: int(s.notna().sum())),
+        separation_min_yd=("separation_yd", "min"),
+        separation_max_yd=("separation_yd", "max"),
+        n_target=("receiver_target", lambda s: int(s.fillna(False).sum())),
+    ).reset_index()
+    out["separation_gap_yd"] = out["separation_max_yd"] - out["separation_min_yd"]
+    out["attribution"] = ATTRIBUTION
+    return out
+
+
 def composition(frame_single: pd.DataFrame,
                 frame_multiple: pd.DataFrame) -> pd.DataFrame:
     """O4: the 870 against the 1,731, every share with its denominator.
@@ -2221,6 +2258,28 @@ def git_head(start: str | Path | None = None) -> str | None:
                               check=True).stdout.strip()
     except Exception:  # a checkout without git still produces a manifest
         return None
+
+
+def write_artefacts(out_dir: str | Path, tables: dict[str, pd.DataFrame],
+                    *, encoding: str = "utf-8") -> list[Path]:
+    """Write every one of :data:`ARTEFACT_TABLES`; return the paths in order.
+
+    A missing table is a bug in the run, not a data condition, so it is named
+    and raised here rather than silently omitted — a table that exists only in
+    memory is the defect this function exists to stop.
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    missing = [name for name in ARTEFACT_TABLES if name not in tables]
+    if missing:
+        raise KeyError(f"the run did not build {len(missing)} of its "
+                       f"{len(ARTEFACT_TABLES)} tables: {', '.join(missing)}")
+    for name in ARTEFACT_TABLES:
+        path = out / name
+        tables[name].to_csv(path, index=False, encoding=encoding)
+        written.append(path)
+    return written
 
 
 def write_manifest(out_dir: str | Path, inputs: Sequence[str | Path],

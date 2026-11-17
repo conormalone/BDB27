@@ -509,23 +509,9 @@ def rule_is_bounded(rule: str) -> bool:
 
 def _multi_turn_table(multi: pd.DataFrame) -> pd.DataFrame:
     """One row per ambiguous turn: its candidate count and separation span."""
-    key = list(outcome_test.TURN_KEY)
-    if not len(multi):
-        return pd.DataFrame(columns=[*key, "n_candidates", "n_candidates_with_separation",
-                                     "separation_min_yd", "separation_max_yd",
-                                     "separation_gap_yd", "n_target",
-                                     "attribution"])
-    df = multi.drop_duplicates(subset=[*key, "receiver_nfl_id"])
-    out = df.groupby(key, sort=True).agg(
-        n_candidates=("receiver_nfl_id", "nunique"),
-        n_candidates_with_separation=("separation_yd", lambda s: int(s.notna().sum())),
-        separation_min_yd=("separation_yd", "min"),
-        separation_max_yd=("separation_yd", "max"),
-        n_target=("receiver_target", lambda s: int(s.fillna(False).sum())),
-    ).reset_index()
-    out["separation_gap_yd"] = out["separation_max_yd"] - out["separation_min_yd"]
-    out["attribution"] = aa.ATTRIBUTION
-    return out
+    # One implementation, shared with the notebook: the two surfaces must write
+    # the same table, not two tables that look alike.
+    return aa.multi_turn_table(multi)
 
 
 if __name__ == "__main__":
