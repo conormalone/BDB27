@@ -1,0 +1,73 @@
+{
+  "written_utc": "2026-11-17T18:03:28.756459+00:00",
+  "git_head": "5a3a8ff17c6cee03011a54392b9d3f9fb640d536",
+  "spec": "notes/multi-candidate-spec.md",
+  "attribution": "INFERENCE \u2014 multi-candidate attribution; the dataset records no opponent identifier, so no pairing here identifies the man covered",
+  "config": {
+    "mode": "full",
+    "reps": 20,
+    "seed": 20261117,
+    "specs": [
+      "primary",
+      "player_fe",
+      "pass_only",
+      "man_only"
+    ],
+    "pairing_rules": [
+      "target",
+      "min_sep",
+      "max_sep"
+    ],
+    "tracking": null
+  },
+  "inputs": {
+    "/home/conormalone/.openclaw/workspace/BDB27/data/interim/full_run_20261111/bdb27_full_db_turns.parquet": {
+      "sha256": "f2e7cd01db214b7d88ab3f029876fe0fe7ced1530d2f014b9ad55b1b2dfb8e04",
+      "bytes": 9773407
+    },
+    "/home/conormalone/.openclaw/workspace/BDB27/data/raw/player_play.csv": {
+      "sha256": "68926a268c0a49e58616001fb35ea179018d9cbbce1c5c31e7a4095273c35b2a",
+      "bytes": 146879042
+    }
+  },
+  "outputs": {
+    "outputs/ambiguity_attribution/funnel.csv": {
+      "sha256": "102c1f2be9cdde167ec7e415fa9f8138c2ec2dbd998443263abf3936f7c4719f",
+      "bytes": 3392
+    },
+    "outputs/ambiguity_attribution/multi_turns.csv": {
+      "sha256": "6c96d3024fcc9d28cfcb9c1cbb9b6f4ac85076b9743ba6d8411eb0cba9af0a85",
+      "bytes": 190066
+    },
+    "outputs/ambiguity_attribution/bounds.csv": {
+      "sha256": "8130f1acffc10fc46a0bd78a31d97ea927af7b003bdeae0c9777052714bcd0c4",
+      "bytes": 3528
+    },
+    "outputs/ambiguity_attribution/variants.csv": {
+      "sha256": "647be636636210f8e12718c293e7a241440dedc0280f074d0f6985f98eea7f60",
+      "bytes": 4845
+    },
+    "outputs/ambiguity_attribution/composition.csv": {
+      "sha256": "dfb005151ee680e68ccda122de58d37c16308f39053ab68b850ce9f7d9be0032",
+      "bytes": 8078
+    },
+    "outputs/ambiguity_attribution/random_pairings.csv": {
+      "sha256": "b75a7a5e4f904bb4cfaacc1db4332d72dc4e7e3acaefe77f7a75b59d5f44fcf9",
+      "bytes": 21426
+    },
+    "outputs/ambiguity_attribution/geometry.csv": {
+      "sha256": "9e25be222b50ab0560434a01a89cb1ee2b8f4b5aed80e9efa07b6bce1cee0f94",
+      "bytes": 543753
+    },
+    "outputs/ambiguity_attribution/summary.json": {
+      "sha256": "17ce7da3461ee5929ae4444dd53068678a9772f14daefd7ac487e2e6c312d623",
+      "bytes": 15923
+    },
+    "outputs/ambiguity_attribution/verdict.txt": {
+      "sha256": "59450744c2665f7ca001da49955ce82596e95520deceb49a2c4ae37cc5231b31",
+      "bytes": 3302
+    }
+  },
+  "stage": "complete",
+  "provenance": "FULL"
+}

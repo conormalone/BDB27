@@ -1,0 +1,19 @@
+step,n,denominator,denominator_name,share,expected_2026_11_14,matches,grouping,note
+band_turns,7777,7777,band_turns,1.0,7777.0,True,band_row,band rows: valid game DB turns with 30 <= |angle| < 60
+no_opposing_player_play_row,1462,7777,band_turns,0.18799,1462.0,True,band_row,no opposing player_play row at all — the cohort hides the candidates
+opposing_rows_no_route_runner,3306,7777,band_turns,0.4251,3306.0,True,band_row,opposing rows exist but none carries route_ran
+turns_with_opposing_route_runner,3009,7777,band_turns,0.38691,3009.0,True,band_row,at least one visible opposing route-runner
+turns_with_a_candidate_separation,2601,7777,band_turns,0.334448,2601.0,True,band_row,at least one candidate with separation_at_pass_forward
+turns_with_exactly_one_candidate_separation,1731,2601,turns_with_a_candidate_separation,0.665513,1731.0,True,band_row,exactly one candidate with a separation: the D199 sample
+turns_with_two_or_more_candidate_separations,870,2601,turns_with_a_candidate_separation,0.334487,870.0,True,band_row,"two or more: ambiguous under the frozen rule, dropped by it"
+turns_with_0_visible_candidates,4200,7209,turns_with_a_joinable_own_row,0.582605,,,band_row,counted per band row — the unit of the frames
+turns_with_1_visible_candidate,2002,7209,turns_with_a_joinable_own_row,0.277708,,,band_row,counted per band row — the unit of the frames
+turns_with_2_visible_candidates,815,7209,turns_with_a_joinable_own_row,0.113053,,,band_row,counted per band row — the unit of the frames
+turns_with_3_visible_candidates,187,7209,turns_with_a_joinable_own_row,0.02594,,,band_row,counted per band row — the unit of the frames
+turns_with_4_visible_candidates,5,7209,turns_with_a_joinable_own_row,0.000694,,,band_row,counted per band row — the unit of the frames
+turns_with_0_visible_candidates,4198,7206,turns_with_a_joinable_own_row,0.58257,,,turn_key,"counted per (game_id, play_id, nfl_id, frame_start), as the committed feasibility artefact counts: band rows that are second detections sharing a frame_start merge here"
+turns_with_1_visible_candidate,2002,7206,turns_with_a_joinable_own_row,0.277824,2002.0,True,turn_key,"counted per (game_id, play_id, nfl_id, frame_start), as the committed feasibility artefact counts: band rows that are second detections sharing a frame_start merge here"
+turns_with_2_visible_candidates,815,7206,turns_with_a_joinable_own_row,0.1131,815.0,True,turn_key,"counted per (game_id, play_id, nfl_id, frame_start), as the committed feasibility artefact counts: band rows that are second detections sharing a frame_start merge here"
+turns_with_3_visible_candidates,185,7206,turns_with_a_joinable_own_row,0.025673,185.0,True,turn_key,"counted per (game_id, play_id, nfl_id, frame_start), as the committed feasibility artefact counts: band rows that are second detections sharing a frame_start merge here"
+turns_with_4_visible_candidates,5,7206,turns_with_a_joinable_own_row,0.000694,5.0,True,turn_key,"counted per (game_id, play_id, nfl_id, frame_start), as the committed feasibility artefact counts: band rows that are second detections sharing a frame_start merge here"
+turns_with_6_visible_candidates,1,7206,turns_with_a_joinable_own_row,0.000139,1.0,True,turn_key,"counted per (game_id, play_id, nfl_id, frame_start), as the committed feasibility artefact counts: band rows that are second detections sharing a frame_start merge here"
