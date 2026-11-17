@@ -19,4 +19,13 @@ V1 INFERENCE — target: beta +0.120, n=135 — single turns + the ambiguous tur
 V2 INFERENCE — smallest separation: beta -0.343, n=496 — single turns + every ambiguous turn, paired to its smaller separation (no population change)
 V3 INFERENCE — largest separation: beta -0.117, n=496 — single turns + every ambiguous turn, paired to its larger separation (no population change)
 
+N = 2,295 of 7,777 band turns (29.5%): frozen 1,731 + geo_5 0 + geo_8 0 + route_a 564
+  RULE                          1,731 of N (75.4%)
+  INFERENCE — geometry 5 yd         0 of N (0.0%) — NOT EVALUABLE — candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players
+  INFERENCE — geometry 8 yd         0 of N (0.0%) — NOT EVALUABLE — candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players
+  INFERENCE — Route A             564 of N (24.6%)
+  RULE share of N 75.4% · INFERENCE share 24.6%
+  Route A by rule: target 365 · alignment 199
+Cross-check where both routes fired: NOT EVALUABLE — no tracking on this machine, so no turn was paired by both routes.
+
 Every pairing above is an INFERENCE: the dataset records no opponent identifier, so none of them names the man covered. two_candidate_separation_gap_yd is MAX(sep) - MIN(sep), not a distance between two players.

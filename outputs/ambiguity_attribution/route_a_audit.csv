@@ -1,0 +1,13 @@
+route_a_rule,outcome,reason,n,denominator
+target,attributed,,365,1277
+target,unresolved,no_single_target,912,1277
+description,attributed,,0,1277
+description,unresolved,no_name_after_pass_verb,460,1277
+description,unresolved,named_man_not_a_cohort_player,431,1277
+description,unresolved,named_man_not_visible,21,1277
+alignment,attributed,,199,1277
+alignment,unresolved,not_two_candidates,367,1277
+alignment,unresolved,safety_pair,149,1277
+alignment,unresolved,same_class,130,1277
+alignment,unresolved,own_class_unmapped,34,1277
+alignment,unresolved,pair_not_supported,33,1277

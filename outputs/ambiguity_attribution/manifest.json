@@ -1,6 +1,6 @@
 {
-  "written_utc": "2026-11-17T18:03:28.756459+00:00",
-  "git_head": "5a3a8ff17c6cee03011a54392b9d3f9fb640d536",
+  "written_utc": "2026-11-17T18:43:57.990728+00:00",
+  "git_head": "f841ecd67d21ee0acaee13fef8ac9f2d470049b1",
   "spec": "notes/multi-candidate-spec.md",
   "attribution": "INFERENCE \u2014 multi-candidate attribution; the dataset records no opponent identifier, so no pairing here identifies the man covered",
   "config": {
@@ -59,13 +59,25 @@
       "sha256": "9e25be222b50ab0560434a01a89cb1ee2b8f4b5aed80e9efa07b6bce1cee0f94",
       "bytes": 543753
     },
+    "outputs/ambiguity_attribution/route_a_turns.csv": {
+      "sha256": "a1278b37433e3bbdbe2e8e03c552d2b366a5f498dfb5b685ebe5eae1f220d7e5",
+      "bytes": 113508
+    },
+    "outputs/ambiguity_attribution/route_a_audit.csv": {
+      "sha256": "245b12524b69136be75cc84f08f95e417952f9d297eb9a41485718a3a7874a59",
+      "bytes": 575
+    },
+    "outputs/ambiguity_attribution/assembly.csv": {
+      "sha256": "6f0dea815f90d9545235ad017c28636b01625bed1fff7739adc093dfdedc4585",
+      "bytes": 572
+    },
     "outputs/ambiguity_attribution/summary.json": {
-      "sha256": "17ce7da3461ee5929ae4444dd53068678a9772f14daefd7ac487e2e6c312d623",
-      "bytes": 15923
+      "sha256": "ecd76ea0d03e716eabd2a97af873f717243c2bad62b85123de2e8287bd2a4c7d",
+      "bytes": 23095
     },
     "outputs/ambiguity_attribution/verdict.txt": {
-      "sha256": "59450744c2665f7ca001da49955ce82596e95520deceb49a2c4ae37cc5231b31",
-      "bytes": 3302
+      "sha256": "8ba268c12fdaa648406c6846de068ea3373284eb54464f53de20cee7593f10ce",
+      "bytes": 4127
     }
   },
   "stage": "complete",

@@ -1,0 +1,5 @@
+slot,label,n,share_of_N,share_of_band,status
+frozen,RULE,1731,0.7542483660130719,0.22257940079722258,
+geo_5,INFERENCE — geometry 5 yd,0,0.0,0.0,"NOT EVALUABLE — candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players"
+geo_8,INFERENCE — geometry 8 yd,0,0.0,0.0,"NOT EVALUABLE — candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players"
+route_a,INFERENCE — Route A,564,0.2457516339869281,0.07252153786807253,

@@ -344,6 +344,263 @@
     "all_inside_bound": true,
     "max_abs_closed_form_minus_fit": 3.1086244689504383e-15
   },
+  "assembly": {
+    "N": 2295,
+    "slots": {
+      "n_frozen": 1731,
+      "n_geo_5": 0,
+      "n_geo_8": 0,
+      "n_route_a": 564
+    },
+    "composition": [
+      {
+        "slot": "frozen",
+        "label": "RULE",
+        "n": 1731,
+        "share_of_N": 0.7542483660130719,
+        "share_of_band": 0.22257940079722258,
+        "status": ""
+      },
+      {
+        "slot": "geo_5",
+        "label": "INFERENCE \u2014 geometry 5 yd",
+        "n": 0,
+        "share_of_N": 0.0,
+        "share_of_band": 0.0,
+        "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players"
+      },
+      {
+        "slot": "geo_8",
+        "label": "INFERENCE \u2014 geometry 8 yd",
+        "n": 0,
+        "share_of_N": 0.0,
+        "share_of_band": 0.0,
+        "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players"
+      },
+      {
+        "slot": "route_a",
+        "label": "INFERENCE \u2014 Route A",
+        "n": 564,
+        "share_of_N": 0.2457516339869281,
+        "share_of_band": 0.07252153786807253,
+        "status": ""
+      }
+    ],
+    "band_turns": 7777,
+    "share_of_band": 0.2951009386652951,
+    "rule_share_of_N": 0.7542483660130719,
+    "inference_share_of_N": 0.2457516339869281,
+    "route_a_by_rule": {
+      "target": 365,
+      "alignment": 199
+    },
+    "coverage": {
+      "ZONE": 369,
+      "MAN": 119,
+      "MISSING": 76
+    },
+    "status": {
+      "geo_5": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+      "geo_8": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players"
+    }
+  },
+  "route_a": {
+    "eligible_turns": 1277,
+    "attributed_turns": 564,
+    "by_rule": {
+      "target": 365,
+      "alignment": 199
+    },
+    "audit": [
+      {
+        "route_a_rule": "target",
+        "outcome": "attributed",
+        "reason": "",
+        "n": 365,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "target",
+        "outcome": "unresolved",
+        "reason": "no_single_target",
+        "n": 912,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "description",
+        "outcome": "attributed",
+        "reason": "",
+        "n": 0,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "description",
+        "outcome": "unresolved",
+        "reason": "no_name_after_pass_verb",
+        "n": 460,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "description",
+        "outcome": "unresolved",
+        "reason": "named_man_not_a_cohort_player",
+        "n": 431,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "description",
+        "outcome": "unresolved",
+        "reason": "named_man_not_visible",
+        "n": 21,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "attributed",
+        "reason": "",
+        "n": 199,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "unresolved",
+        "reason": "not_two_candidates",
+        "n": 367,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "unresolved",
+        "reason": "safety_pair",
+        "n": 149,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "unresolved",
+        "reason": "same_class",
+        "n": 130,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "unresolved",
+        "reason": "own_class_unmapped",
+        "n": 34,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "unresolved",
+        "reason": "pair_not_supported",
+        "n": 33,
+        "denominator": 1277
+      }
+    ]
+  },
+  "geometry_slots": {
+    "n_geo_5": 0,
+    "n_geo_8": 0,
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "n_turns_considered": 1277,
+    "paths_tried": "/home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2023.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2024.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2025.csv",
+    "per_turn_status": {
+      "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players": 1277
+    }
+  },
+  "agreement": [],
+  "alignment_counts": [
+    {
+      "pair": "SLOT_WR+SLOT_WR",
+      "mixed": false,
+      "n_plays": 836,
+      "two_receiver_plays": 9260,
+      "all_plays": 114954,
+      "share_of_two_receiver_plays": 0.090281,
+      "spec_anchor": NaN,
+      "matches": null
+    },
+    {
+      "pair": "SLOT_WR+TE",
+      "mixed": true,
+      "n_plays": 624,
+      "two_receiver_plays": 9260,
+      "all_plays": 114954,
+      "share_of_two_receiver_plays": 0.067387,
+      "spec_anchor": 609.0,
+      "matches": false
+    },
+    {
+      "pair": "SLOT_WR+WR",
+      "mixed": true,
+      "n_plays": 4605,
+      "two_receiver_plays": 9260,
+      "all_plays": 114954,
+      "share_of_two_receiver_plays": 0.4973,
+      "spec_anchor": 4585.0,
+      "matches": false
+    },
+    {
+      "pair": "TE+TE",
+      "mixed": false,
+      "n_plays": 167,
+      "two_receiver_plays": 9260,
+      "all_plays": 114954,
+      "share_of_two_receiver_plays": 0.018035,
+      "spec_anchor": NaN,
+      "matches": null
+    },
+    {
+      "pair": "TE+WR",
+      "mixed": true,
+      "n_plays": 1681,
+      "two_receiver_plays": 9260,
+      "all_plays": 114954,
+      "share_of_two_receiver_plays": 0.181533,
+      "spec_anchor": 1626.0,
+      "matches": false
+    },
+    {
+      "pair": "WR+WR",
+      "mixed": false,
+      "n_plays": 1347,
+      "two_receiver_plays": 9260,
+      "all_plays": 114954,
+      "share_of_two_receiver_plays": 0.145464,
+      "spec_anchor": NaN,
+      "matches": null
+    },
+    {
+      "pair": "mixed (total)",
+      "mixed": true,
+      "n_plays": 6910,
+      "two_receiver_plays": 9260,
+      "all_plays": 114954,
+      "share_of_two_receiver_plays": 0.74622,
+      "spec_anchor": 7009.0,
+      "matches": false
+    },
+    {
+      "pair": "same_class (total)",
+      "mixed": false,
+      "n_plays": 2350,
+      "two_receiver_plays": 9260,
+      "all_plays": 114954,
+      "share_of_two_receiver_plays": 0.25378,
+      "spec_anchor": 2332.0,
+      "matches": false
+    },
+    {
+      "pair": "two-receiver plays (total)",
+      "mixed": null,
+      "n_plays": 9260,
+      "two_receiver_plays": 9260,
+      "all_plays": 114954,
+      "share_of_two_receiver_plays": 1.0,
+      "spec_anchor": 9341.0,
+      "matches": false
+    }
+  ],
   "geometry": {
     "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
     "rows": 870,
