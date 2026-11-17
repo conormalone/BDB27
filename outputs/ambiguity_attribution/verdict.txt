@@ -28,6 +28,14 @@ N = 2,295 of 7,777 band turns (29.5%): frozen 1,731 + geo_5 0 + geo_8 0 + route_
   Route A by rule: target 365 · alignment 199
 
 Frozen 3-yd check on the 1,731 single-candidate turns: 0 of 0 tracked turns are within 3 yd (NOT EVALUABLE — candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players); D204 reported 471 on the full file. This is a check on N_frozen — it adds nothing to N.
+
+Within 3 yd at the break frame, on the 870 ambiguous turns (NOT EVALUABLE — candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players; 0 evaluable):
+  zero           n/a of 0 evaluated (n/a)
+  exactly one    n/a of 0 evaluated (n/a)
+  exactly two    n/a of 0 evaluated (n/a)
+  three or more  n/a of 0 evaluated (n/a)
+Margin second-nearest − nearest: 0 of 870 evaluable · < 0.25 yd n/a · 0.25–0.5 yd n/a · 0.5–1 yd n/a · > 1 yd n/a; no bucket is a gate.
+V4 INFERENCE — nearest inside 3 yd (TIE-BREAK): beta n/a, n=1,731 (1,731 frozen + 0 nearest-resolved) — NOT EVALUABLE — no frame-level tracking. A TIE-BREAK the frozen rule refuses; it is not a slot of N and N is unchanged.
 Cross-check where both routes fired: NOT EVALUABLE — no tracking on this machine, so no turn was paired by both routes.
 
 Every pairing above is an INFERENCE: the dataset records no opponent identifier, so none of them names the man covered. two_candidate_separation_gap_yd is MAX(sep) - MIN(sep), not a distance between two players.

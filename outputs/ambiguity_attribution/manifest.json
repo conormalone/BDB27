@@ -1,6 +1,6 @@
 {
-  "written_utc": "2026-11-17T19:08:34.645358+00:00",
-  "git_head": "a318d23de68ed5001034a07681745f73481e3428",
+  "written_utc": "2026-11-17T20:13:27.320072+00:00",
+  "git_head": "9e0644362189595c0bf2cfad022f2f8809c0717f",
   "spec": "notes/multi-candidate-spec.md",
   "attribution": "INFERENCE \u2014 multi-candidate attribution; the dataset records no opponent identifier, so no pairing here identifies the man covered",
   "config": {
@@ -56,8 +56,8 @@
       "bytes": 21426
     },
     "outputs/ambiguity_attribution/geometry.csv": {
-      "sha256": "9e25be222b50ab0560434a01a89cb1ee2b8f4b5aed80e9efa07b6bce1cee0f94",
-      "bytes": 543753
+      "sha256": "a853bc80c3be501861e07cd76a52b4f5a04d7f8145dedc167a90439449a48d66",
+      "bytes": 545522
     },
     "outputs/ambiguity_attribution/route_a_turns.csv": {
       "sha256": "a1278b37433e3bbdbe2e8e03c552d2b366a5f498dfb5b685ebe5eae1f220d7e5",
@@ -68,20 +68,32 @@
       "bytes": 575
     },
     "outputs/ambiguity_attribution/single_turn_geometry.csv": {
-      "sha256": "5adc3032efb09a78e153f8fe46c2fe1ba7e87fd0df9e27426a8cbdee263b0e2b",
-      "bytes": 550159
+      "sha256": "a1f3ebd9939ffad617b068565b799d4dbe067f335e0ab94cd586a7434d148547",
+      "bytes": 325129
+    },
+    "outputs/ambiguity_attribution/within_3yd.csv": {
+      "sha256": "91c8b604e7a2e877e18cc1ae9d272add8cc30898a8082a4c65f98075d34fa223",
+      "bytes": 108
+    },
+    "outputs/ambiguity_attribution/margin_buckets.csv": {
+      "sha256": "b0c020f43909b2728dfed2d4900c6a6bd4e399005c6f0e23007e0b70c1b455d0",
+      "bytes": 84
+    },
+    "outputs/ambiguity_attribution/v4_nearest.csv": {
+      "sha256": "de1294287f4289cea2de94003a6fbc1ef0943df849f965828e727c8b57122dc1",
+      "bytes": 927
     },
     "outputs/ambiguity_attribution/assembly.csv": {
       "sha256": "6f0dea815f90d9545235ad017c28636b01625bed1fff7739adc093dfdedc4585",
       "bytes": 572
     },
     "outputs/ambiguity_attribution/summary.json": {
-      "sha256": "4e598cbd056acb600b41c33a9b608e07b90c9e317a0f15cb3dda7f2a5e805ab2",
-      "bytes": 23864
+      "sha256": "bca96481e24340dae6c1a87236a79f650917defc686367fa85b6c2980fdae6e8",
+      "bytes": 27501
     },
     "outputs/ambiguity_attribution/verdict.txt": {
-      "sha256": "49ccd994851900365f80a51bf4fc4b2477b066aff4a18eb268198b21ec1b4e0b",
-      "bytes": 4465
+      "sha256": "6080e763f30a2b6d0a7d188faade7b96d87aaab71a5e04ef4fce74640fb68f66",
+      "bytes": 5237
     }
   },
   "stage": "complete",

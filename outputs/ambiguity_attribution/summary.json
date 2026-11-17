@@ -518,6 +518,101 @@
     "paths_tried": "/home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2023.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2024.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2025.csv",
     "note": "a check on the frozen single-candidate set: these turns are already inside N_frozen, so nothing here is added to N"
   },
+  "within_3yd": {
+    "radius_yd": 3.0,
+    "n_turns": 870,
+    "n_evaluated": 0,
+    "n_not_evaluable": 870,
+    "n_partially_tracked": 0,
+    "complete_rule": "all visible candidates measured at the break frame",
+    "n_candidate_rows_tracked": 0,
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "buckets": [
+      {
+        "bucket": "zero",
+        "n_turns": null,
+        "share_of_evaluated": NaN,
+        "share_of_ambiguous": NaN
+      },
+      {
+        "bucket": "exactly one",
+        "n_turns": null,
+        "share_of_evaluated": NaN,
+        "share_of_ambiguous": NaN
+      },
+      {
+        "bucket": "exactly two",
+        "n_turns": null,
+        "share_of_evaluated": NaN,
+        "share_of_ambiguous": NaN
+      },
+      {
+        "bucket": "three or more",
+        "n_turns": null,
+        "share_of_evaluated": NaN,
+        "share_of_ambiguous": NaN
+      }
+    ],
+    "paths_tried": "/home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2023.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2024.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2025.csv",
+    "attribution": "INFERENCE \u2014 multi-candidate attribution; the dataset records no opponent identifier, so no pairing here identifies the man covered"
+  },
+  "margin": {
+    "n_turns": 870,
+    "n_evaluated": 0,
+    "n_without_two_candidates": 870,
+    "n_partially_tracked": 870,
+    "median_yd": NaN,
+    "mean_yd": NaN,
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "buckets": [
+      {
+        "bucket": "< 0.25 yd",
+        "n_turns": null,
+        "share_of_evaluated": NaN
+      },
+      {
+        "bucket": "0.25\u20130.5 yd",
+        "n_turns": null,
+        "share_of_evaluated": NaN
+      },
+      {
+        "bucket": "0.5\u20131 yd",
+        "n_turns": null,
+        "share_of_evaluated": NaN
+      },
+      {
+        "bucket": "> 1 yd",
+        "n_turns": null,
+        "share_of_evaluated": NaN
+      }
+    ],
+    "attribution": "INFERENCE \u2014 multi-candidate attribution; the dataset records no opponent identifier, so no pairing here identifies the man covered"
+  },
+  "v4_nearest": {
+    "spec": "primary",
+    "rule": "nearest_3yd",
+    "variant": "V4 INFERENCE \u2014 nearest inside 3 yd (TIE-BREAK)",
+    "population": "single turns + the 0 ambiguous turns with >= 2 candidates inside 3 yd at the break frame, paired to the nearest (a TIE-BREAK)",
+    "attribution": "INFERENCE \u2014 V4 nearest-man TIE-BREAK inside 3 yd; the frozen rule explicitly refuses tie-breaks, so this is a variant, not the frozen rule's result",
+    "n": 1731,
+    "beta": null,
+    "se": null,
+    "lo": null,
+    "hi": null,
+    "p": null,
+    "n_clusters": 0,
+    "label": "NOT EVALUABLE \u2014 no frame-level tracking",
+    "note": "no candidate distance is measurable on this machine; the frozen base is carried for its n only and no V4 coefficient is claimed",
+    "tie_break": true,
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "n_ambiguous_turns": 870,
+    "n_nearest_turns": 0,
+    "n_frozen_turns": 1731,
+    "n_turns": 1731,
+    "n_skipped_no_separation": 0,
+    "overlap_route_a": 0,
+    "n_new_if_precedence": 0
+  },
   "agreement": [],
   "alignment_counts": [
     {

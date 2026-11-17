@@ -218,3 +218,4 @@ LINE 4:                    sum(CASE WHEN pp.time_to_pressure IS NULL THEN 1 ELSE
 2026-11-17T18:21:14Z,ambiguity_attribution,full,FULL,OK,110.041,791.5,3642,"single 1,731 · ambiguous 870 · N 2,295 (route A 564) · label BOUND — NOT IDENTIFIED"
 2026-11-17T18:43:58Z,ambiguity_attribution,full,FULL,OK,110.181,849.4,3642,"single 1,731 · ambiguous 870 · N 2,295 (route A 564) · label BOUND — NOT IDENTIFIED"
 2026-11-17T19:08:34Z,ambiguity_attribution,full,FULL,OK,114.426,804.9,3642,"single 1,731 · ambiguous 870 · N 2,295 (route A 564) · label BOUND — NOT IDENTIFIED"
+2026-11-17T20:13:27Z,ambiguity_attribution,full,FULL,OK,111.696,852.3,3642,"single 1,731 · ambiguous 870 · N 2,295 (route A 564) · label BOUND — NOT IDENTIFIED"
