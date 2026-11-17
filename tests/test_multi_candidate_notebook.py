@@ -118,6 +118,41 @@ def test_notebook_runs_end_to_end_with_no_tracking(executed):
     assert executed["geo"]["n_turns_considered"] > 0      # it looked, and said so
 
 
+# -------------------------------- the tracking banner (Conor, 2026-11-17)
+def test_the_top_of_the_output_says_no_tracking_was_found(executed):
+    """A no-tracking run must be impossible to mistake for a tracking run."""
+    out = executed["_stdout"]
+    status = executed["TRACKING_STATUS"]
+    assert status["status"] == "NONE FOUND"
+    assert "TRACKING: NONE FOUND" in out
+    assert "TO EVALUATE GEOMETRY" in out
+    assert "TRACKING = [" in out                  # names what to set in cell 1
+    assert "looked in" in out                     # names the directory searched
+    assert str(ROOT / "data" / "raw") in out      # ... and it is the real one
+    # It is printed before the first table, not buried: the banner precedes the
+    # funnel, so scrolling to the top shows it first.
+    assert out.index("TRACKING: NONE FOUND") < out.index("band_turns")
+
+
+def test_the_heading_status_is_echoed_beside_the_number(executed):
+    """A reader who scrolls to the bottom sees the same status next to N."""
+    out = executed["_stdout"]
+    headline = [ln for ln in out.splitlines() if ln.startswith("N = ")]
+    assert headline, "the headline N line is missing"
+    assert "tracking: NONE FOUND" in headline[0]
+    assert executed["assembled"]["N"] == 2295
+
+
+def test_the_config_comment_describes_the_discovery_code(notebook):
+    """The comment that lied: it must say globbed, by name, sample excluded."""
+    config = [s for s in code_sources(notebook) if CONFIG_MARKER in s][0]
+    assert "data/raw" in config
+    assert "tracking" in config and "recursively" in config
+    assert "sample" in config and "combine" in config
+    # and it must not promise a glob it does not do
+    assert "game_tracking*.csv" not in config
+
+
 def test_the_headline_number_is_the_sum_of_its_slots(executed):
     asm = executed["assembled"]
     slots = asm["slots"]

@@ -170,18 +170,26 @@ SLOT_LABELS: dict[str, str] = {
 #: What the notebook/script must say whenever candidate geometry is requested
 #: without frame-level tracking.
 GEOMETRY_NOT_EVALUABLE = (
-    "NOT EVALUABLE — candidate distances need frame-level tracking, which is not "
-    "on this machine; the separation gap is not a distance between two players"
+    "NOT EVALUABLE — candidate distances need frame-level tracking at the break "
+    "frame, which this run did not have; the separation gap is not a distance "
+    "between two players"
 )
 
-#: Tracking files the geometry step looks for when none is passed explicitly.
-#: A file whose name says it is a sample is never picked up: the truncation on
-#: this machine cannot answer these questions and must not stand in for the full
-#: file (geometric-attribution-spec.md §3).
+#: The documented full-data layout (``config.yaml`` mirrors it). Discovery is by
+#: NAME PATTERN, not by this list (Conor, 2026-11-17): an export named anything
+#: is found, because a hard-coded list is what silently missed his files.
 DEFAULT_TRACKING_NAMES: tuple[str, ...] = (
     "game_tracking.csv", "game_tracking_2023.csv", "game_tracking_2024.csv",
     "game_tracking_2025.csv",
 )
+
+#: How a game-tracking CSV is recognised when a *directory* is searched:
+#: ``*.csv`` whose name contains ``tracking``, case-insensitively. A file whose
+#: name says it is a sample is never picked up — a truncation cannot answer the
+#: distance questions and must not stand in for the full file — and the Combine
+#: tracking export is a different table, not game tracking.
+TRACKING_NAME_HINT = "tracking"
+TRACKING_NAME_EXCLUDE: tuple[str, ...] = ("sample", "combine")
 
 #: The separations are read from ``player_play.csv`` as text then cast, exactly
 #: as ``outcome_test`` does; the raw file is never loaded into pandas.
@@ -1309,21 +1317,297 @@ def funnel(turns_path, player_play_path, *,
     return pd.DataFrame(rows)
 
 # ------------------------------------------------------------------ geometry (O5)
-def _tracking_candidates(explicit: Sequence[str | Path] | None) -> list[Path]:
-    if explicit:
-        out: list[Path] = []
-        for raw in explicit:
+def is_tracking_csv(path: str | Path) -> bool:
+    """Is this file a game-tracking CSV, judged by name alone?
+
+    Case-insensitive, so a Windows export named ``Game_Tracking_2024.CSV`` is
+    found. ``sample`` is excluded (a truncation cannot answer a distance
+    question) and ``combine`` is excluded (that is the Combine table, not game
+    tracking).
+    """
+    name = Path(path).name.lower()
+    return (name.endswith(".csv") and TRACKING_NAME_HINT in name
+            and not any(word in name for word in TRACKING_NAME_EXCLUDE))
+
+
+def _config_raw_dirs() -> list[Path]:
+    """The raw directories ``config.yaml`` names, best-effort and optional.
+
+    A config that cannot be parsed adds nothing and raises nothing: this is a
+    search hint, never a required input.
+    """
+    root = Path(__file__).resolve().parents[2]
+    cfg = root / "config.yaml"
+    if not cfg.is_file():
+        return []
+    try:
+        import yaml
+
+        data = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
+        raw = (((data.get("turn_coverage") or {}).get("paths") or {}).get("raw"))
+        if not raw:
+            return []
+        p = Path(str(raw)).expanduser()
+        return [p if p.is_absolute() else root / p]
+    except Exception:                                     # noqa: BLE001 - optional
+        return []
+
+
+def default_tracking_roots() -> list[Path]:
+    """Every directory ``TRACKING = []`` searches: the repo's raw dir + config's."""
+    root = Path(__file__).resolve().parents[2]
+    roots = [root / "data" / "raw"]
+    for p in _config_raw_dirs():
+        if p not in roots:
+            roots.append(p)
+    return roots
+
+
+def _scan_root(root: Path) -> dict:
+    """What one searched directory holds, and which files in it qualify."""
+    entry: dict = {"path": str(root), "exists": root.is_dir(), "kind": "dir",
+                   "files": [], "entries": []}
+    if not entry["exists"]:
+        return entry
+    try:
+        listing = sorted(root.iterdir(), key=lambda q: q.name.lower())
+    except OSError as exc:                                # unreadable, not fatal
+        entry["error"] = f"{type(exc).__name__}: {exc}"
+        return entry
+    entry["entries"] = [q.name + ("/" if q.is_dir() else "") for q in listing]
+    try:
+        candidates = [q for q in root.rglob("*")
+                      if q.is_file() and is_tracking_csv(q)]
+    except OSError:                                       # no recursion: top level
+        candidates = [q for q in listing if q.is_file() and is_tracking_csv(q)]
+    entry["files"] = sorted(candidates, key=lambda q: str(q).lower())
+    return entry
+
+
+def _dedupe(paths: Iterable[Path]) -> list[Path]:
+    out: list[Path] = []
+    seen: set[str] = set()
+    for p in paths:
+        try:
+            key = p.resolve().as_posix()
+        except OSError:
+            key = p.as_posix()
+        if key not in seen:
+            seen.add(key)
+            out.append(p)
+    return out
+
+
+def discover_tracking(tracking: Sequence[str | Path] | None = None,
+                      *, roots: Sequence[str | Path] | None = None) -> dict:
+    """Find the tracking files, and record everywhere that was searched.
+
+    With ``tracking`` given, a directory is globbed by :func:`is_tracking_csv`
+    (recursively) and a **file is taken as given**, whatever its name — that is
+    how a sample or a private export can be pointed at deliberately. With
+    ``tracking`` empty, :func:`default_tracking_roots` is searched, so a
+    differently-named or per-season export is found without editing code.
+
+    Returns ``{"files": [Path], "roots": [{path, exists, kind, files,
+    entries, error?}]}``. Nothing raises on a missing directory or file.
+    """
+    searched: list[dict] = []
+    files: list[Path] = []
+    if tracking:
+        for raw in tracking:
             p = Path(raw).expanduser()
             if p.is_dir():
-                # Auto-discovery skips sample-named files; a file named
-                # explicitly is taken as given.
-                out.extend(sorted(q for q in p.glob("*.csv")
-                                  if "sample" not in q.name.lower()))
+                entry = _scan_root(p)
+                files.extend(entry["files"])
             else:
-                out.append(p)
-        return out
-    root = Path(__file__).resolve().parents[2]
-    return [root / "data" / "raw" / name for name in DEFAULT_TRACKING_NAMES]
+                entry = {"path": str(p), "exists": p.is_file(), "kind": "file",
+                         "files": [p] if p.is_file() else [], "entries": []}
+                if p.is_file():                           # explicitly named: as given
+                    files.append(p)
+            searched.append(entry)
+    else:
+        for r in (roots if roots is not None else default_tracking_roots()):
+            entry = _scan_root(Path(r).expanduser())
+            searched.append(entry)
+            files.extend(entry["files"])
+    return {"files": _dedupe(files), "roots": searched}
+
+
+def _tracking_candidates(explicit: Sequence[str | Path] | None) -> list[Path]:
+    """The files the geometry step will try — discovery, never a fixed list."""
+    return discover_tracking(explicit)["files"]
+
+
+def _seasons_from_names(files: Iterable[Path]) -> list[str]:
+    """Seasons a filename states (``game_tracking_2024.csv`` -> 2024).
+
+    The tracking table carries no season column, so this is the only honest
+    source; when a name states none, the banner says so rather than guessing.
+    """
+    out: set[str] = set()
+    for f in files:
+        out.update(re.findall(r"(?<!\d)(20\d{2})(?!\d)", Path(f).name))
+    return sorted(out)
+
+
+def _fmt_bytes(value: int | None) -> str:
+    if value is None:
+        return "size unknown"
+    if value >= 1_000_000_000:
+        return f"{value / 1_000_000_000:.2f} GB"
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f} MB"
+    return f"{value:,} bytes"
+
+
+def search_summary(tracking: Sequence[str | Path] | None = None) -> str:
+    """One line naming every place searched and what was actually there.
+
+    Used as ``paths_tried`` when discovery finds nothing, so an empty result
+    still says where to look rather than printing nothing.
+    """
+    found = discover_tracking(tracking)
+    parts: list[str] = []
+    for e in found["roots"]:
+        if e.get("kind") == "file":
+            state = "found" if e["exists"] else "NOT FOUND"
+            parts.append(f"{e['path']} (file, {state})")
+        elif not e["exists"]:
+            parts.append(f"{e['path']} (directory does not exist)")
+        elif e.get("error"):
+            parts.append(f"{e['path']} (unreadable: {e['error']})")
+        else:
+            names = ", ".join(e["entries"]) if e["entries"] else "empty"
+            parts.append(f"{e['path']} [contains: {names}]")
+    return "; ".join(parts)
+
+
+def tracking_status(tracking: Sequence[str | Path] | None = None,
+                    *, roots: Sequence[str | Path] | None = None,
+                    counts: bool = True) -> dict:
+    """FOUND / NONE FOUND, with the evidence a reader needs in one glance.
+
+    ``files`` (absolute path + bytes), ``rows``/``plays``/``players`` read in one
+    DuckDB pass, and the ``seasons`` the file names state. A file that is found
+    but cannot be read is reported in ``read_error`` — it never raises, because
+    the notebook runs on whatever it finds and the geometry step reports its own
+    error if there is one.
+    """
+    found = discover_tracking(tracking, roots=roots)
+    files = found["files"]
+    info: dict = {
+        "status": "FOUND" if files else "NONE FOUND",
+        "files": [],
+        "roots": found["roots"],
+        "rows": None, "plays": None, "players": None, "rows_per_play": None,
+        "seasons": _seasons_from_names(files),
+        "total_bytes": 0,
+        "read_error": None,
+    }
+    for p in files:
+        try:
+            size = p.stat().st_size
+        except OSError:
+            size = None
+        info["files"].append({"path": Path(p).resolve().as_posix(), "bytes": size})
+        info["total_bytes"] += int(size or 0)
+    if files and counts:
+        paths = [f["path"] for f in info["files"]]
+        try:
+            con = duckdb.connect()
+            try:
+                row = con.execute(
+                    "SELECT COUNT(*) AS rows, "
+                    "COUNT(DISTINCT game_id || '-' || play_id) AS plays, "
+                    "COUNT(DISTINCT nfl_id) AS players "
+                    f"FROM read_csv({paths!r}, header=true, all_varchar=true, "
+                    "union_by_name=true)").fetchone()
+            finally:
+                con.close()
+            info["rows"], info["plays"], info["players"] = (int(row[0]), int(row[1]),
+                                                           int(row[2]))
+            info["rows_per_play"] = (info["rows"] / info["plays"]
+                                     if info["plays"] else None)
+        except Exception as exc:                          # noqa: BLE001 - reported
+            info["read_error"] = f"{type(exc).__name__}: {exc}"
+    return info
+
+
+def tracking_banner(info: dict) -> str:
+    """The unmissable block the notebook prints before any geometry runs.
+
+    FOUND names every file, its size, the rows and plays read and the seasons the
+    names state. NONE FOUND names every directory searched, lists what was in it,
+    says what a tracking file is and what to set in the config cell. It is a
+    banner, never an exception.
+    """
+    lines: list[str] = []
+    if info.get("status") == "FOUND":
+        lines.append("=" * 79)
+        lines.append("TRACKING: FOUND — the geometric slots are evaluated on these files")
+        lines.append("=" * 79)
+        n = len(info["files"])
+        lines.append(f"tracking: FOUND — {n} file(s), "
+                     f"{_fmt_bytes(info.get('total_bytes'))} total")
+        for i, f in enumerate(info["files"], start=1):
+            lines.append(f"  {i}. {f['path']}  ({_fmt_bytes(f.get('bytes'))})")
+        if info.get("read_error"):
+            lines.append(f"  rows/plays: UNREADABLE — {info['read_error']}")
+            lines.append("  the geometry step reports its own error; nothing is invented")
+        else:
+            lines.append(f"  rows read {info['rows']:,} · plays {info['plays']:,} · "
+                         f"players {info['players']:,} · "
+                         f"{info['rows_per_play']:.1f} rows/play")
+            seasons = info.get("seasons") or []
+            lines.append("  seasons covered: "
+                         + (", ".join(seasons) + " (read from the file names)"
+                            if seasons else
+                            "not stated in the file names — the paths above are the "
+                            "only season evidence"))
+        lines.append("=" * 79)
+        return "\n".join(lines)
+
+    lines.append("!" * 79)
+    lines.append("TRACKING: NONE FOUND — the geometric slots are NOT evaluated")
+    lines.append("!" * 79)
+    lines.append("tracking: NONE FOUND")
+    for e in info.get("roots") or []:
+        if e.get("kind") == "file":
+            state = "found" if e["exists"] else "NOT FOUND"
+            lines.append(f"  looked for {e['path']} — file {state}")
+        elif not e["exists"]:
+            lines.append(f"  looked in {e['path']} — that directory does not exist")
+        elif e.get("error"):
+            lines.append(f"  looked in {e['path']} — unreadable: {e['error']}")
+        else:
+            entries = e.get("entries") or []
+            lines.append(f"  looked in {e['path']} — {len(entries)} entries, none is "
+                         "a game-tracking CSV:")
+            for name in entries:
+                lines.append(f"    - {name}")
+            if not entries:
+                lines.append("    (empty directory)")
+    lines.append('  a tracking CSV is a *.csv whose name contains "tracking" (any')
+    lines.append('  case) and not "sample" or "combine"; nothing above matched.')
+    lines.append("  every geometric row below prints NOT EVALUABLE and adds 0 to N.")
+    lines.append("  TO EVALUATE GEOMETRY, set TRACKING in cell 1 to the folder that")
+    lines.append("  holds the full game-tracking CSVs, or to the files themselves:")
+    for value, note in (
+            (r"/full/path/to/the/folder", "a folder is globbed"),
+            (r"/full/path/to/game_tracking_2023.csv", "a file is used as given"),
+    ):
+        example = f'      TRACKING = [r"{value}"]'
+        lines.append(f"{example:<61}  # {note}")
+    lines.append("  nothing here is an error: the counts below are the no-tracking counts.")
+    lines.append("!" * 79)
+    return "\n".join(lines)
+
+
+def _paths_tried(tried: Sequence[Path],
+                 tracking: Sequence[str | Path] | None) -> str:
+    """The files tried, or — when discovery found none — where it looked."""
+    text = "; ".join(str(p) for p in tried)
+    return text or search_summary(tracking)
 
 
 def candidate_distance_table(frames: pd.DataFrame, turns, player_play,
@@ -1365,7 +1649,7 @@ def candidate_distance_table(frames: pd.DataFrame, turns, player_play,
         out["nearest_nfl_id"] = np.nan
         out["n_candidates_tracked"] = 0
         out["geometry_status"] = GEOMETRY_NOT_EVALUABLE
-        out["paths_tried"] = "; ".join(str(p) for p in tried)
+        out["paths_tried"] = _paths_tried(tried, tracking)
         out["order_reversed_snap_to_break"] = pd.NA
         return out
 
@@ -1486,7 +1770,7 @@ def geometry_slots(turns_path, player_play_path, frame_all: pd.DataFrame, *,
         rows["n_candidates_tracked"] = 0
         rows["geometry_status"] = GEOMETRY_NOT_EVALUABLE
         return {"n_geo_5": 0, "n_geo_8": 0, "status": GEOMETRY_NOT_EVALUABLE,
-                "rows": rows, "paths_tried": "; ".join(str(p) for p in tried),
+                "rows": rows, "paths_tried": _paths_tried(tried, tracking),
                 "n_turns_considered": int(len(rows))}
 
     info = _distances_for_turns(turns_path, turn_keys,
@@ -1609,7 +1893,7 @@ def single_candidate_geometry(turns_path, frame_single: pd.DataFrame, *,
     # would label a rule-attributed turn as an inference.
     base["attribution"] = LABEL_RULE
     common = {"radius_yd": frozen_radius, "n_turns": int(len(base)),
-              "paths_tried": "; ".join(str(p) for p in tried),
+              "paths_tried": _paths_tried(tried, tracking),
               "d204_reported": 471}
     if not found:
         base["dist_nearest_yd"] = np.nan
