@@ -154,28 +154,29 @@ def test_the_heading_status_is_echoed_beside_the_number(executed):
 
 
 # ------------------------------------- what the run writes (Conor, 2026-11-17)
-#: The fourteen tables one complete run writes. Pinned here independently of
+#: The fifteen tables one complete run writes. Pinned here independently of
 #: the library constant: a run that writes three of them is the defect.
-FOURTEEN = (
+#: ``precedence.csv`` is the Amendment 3 addition (2026-11-18).
+FIFTEEN = (
     "assembly.csv", "bounds.csv", "composition.csv", "funnel.csv",
     "geometry.csv", "margin_buckets.csv", "multi_turns.csv",
-    "random_pairings.csv", "route_a_audit.csv", "route_a_turns.csv",
-    "single_turn_geometry.csv", "v4_nearest.csv", "variants.csv",
-    "within_3yd.csv",
+    "precedence.csv", "random_pairings.csv", "route_a_audit.csv",
+    "route_a_turns.csv", "single_turn_geometry.csv", "v4_nearest.csv",
+    "variants.csv", "within_3yd.csv",
 )
 
 
 def test_every_table_is_written_not_just_three(executed):
     """A table that exists only in memory is how stale files got read as results."""
     out = executed["_out_dir"]
-    assert sorted(p.name for p in out.glob("*.csv")) == sorted(FOURTEEN)
+    assert sorted(p.name for p in out.glob("*.csv")) == sorted(FIFTEEN)
     assert (out / "manifest.json").is_file()
     assert (out / "run_status.txt").is_file()
 
     text = executed["_stdout"]
     assert f"outputs: {out}" in text
-    assert "14 tables + run_status.txt + manifest.json" in text
-    assert "16 files written by this run" in text
+    assert "15 tables + run_status.txt + manifest.json" in text
+    assert "17 files written by this run" in text
 
 
 def test_the_manifest_stamps_the_run_and_says_no_tracking(executed):
@@ -185,7 +186,7 @@ def test_the_manifest_stamps_the_run_and_says_no_tracking(executed):
     assert m["written_utc"].endswith("+00:00")            # a UTC timestamp
     assert m["tracking"] == "none found"                  # this machine, no tracking
     assert m["config"]["mode"] == "notebook"
-    assert len(m["outputs"]) == 14
+    assert len(m["outputs"]) == 15
     assert all(len(v["sha256"]) == 64 for v in m["outputs"].values())
     assert any(k.endswith("bdb27_full_db_turns.parquet") for k in m["inputs"])
     assert all(len(v["sha256"]) == 64 for v in m["inputs"].values())
@@ -197,7 +198,7 @@ def test_the_output_path_is_printed_at_the_top_and_beside_n(executed):
     assert text.index(path) < text.index("band_turns")     # before any table
     line = [ln for ln in text.splitlines() if ln.startswith("N = ")][0]
     following = text.split(line, 1)[1].splitlines()[:3]
-    assert any(path in ln and "16 files written" in ln for ln in following)
+    assert any(path in ln and "17 files written" in ln for ln in following)
 
 
 # ------------------------------- the on-disk run trail (Conor, 2026-11-17)
@@ -209,9 +210,11 @@ def test_run_status_records_every_step_and_the_tracking_answer(executed):
     assert any(ln.startswith("repo") for ln in text.splitlines())
     assert "[exists]" in text                       # each input carries its flag
     for step in ("run started", "tracking searched", "funnel ok", "bounds ok",
-                 "route_a 564", "geometry NOT EVALUABLE", "singles NOT EVALUABLE",
+                 "geometry NOT EVALUABLE", "route_a 564",
+                 "precedence disjoint=True",
+                 "singles NOT EVALUABLE",
                  "within_3yd/margin NOT EVALUABLE", "N = 2,295",
-                 "wrote 16 files", "complete"):
+                 "wrote 17 files", "complete"):
         assert step in text, f"run_status is missing {step!r}"
     assert (text.index("funnel ok") < text.index("N = 2,295")
             < text.index("complete"))
@@ -249,15 +252,15 @@ def test_the_default_output_directory_is_the_scripts(notebook):
     assert "WRITE_ARTEFACTS = True" in config
 
 
-def test_the_notebook_and_the_script_write_the_same_fourteen():
+def test_the_notebook_and_the_script_write_the_same_fifteen():
     """Two surfaces, one output set: neither may drop a table the other writes."""
     from bdb27 import ambiguity_attribution as aa
 
-    assert sorted(aa.ARTEFACT_TABLES) == sorted(FOURTEEN)
-    assert len(aa.ARTEFACT_TABLES) == 14
+    assert sorted(aa.ARTEFACT_TABLES) == sorted(FIFTEEN)
+    assert len(aa.ARTEFACT_TABLES) == 15
     script = (ROOT / "scripts" / "ambiguity_attribution.py").read_text(
         encoding="utf-8")
-    for name in FOURTEEN:
+    for name in FIFTEEN:
         assert f'out / "{name}"' in script, f"the script does not write {name}"
 
 
@@ -365,6 +368,71 @@ def test_v4_is_not_a_slot_of_the_headline_number(executed):
     asm = executed["assembled"]
     assert asm["N"] == 2295
     assert "V4 (INFERENCE — TIE-BREAK, not a slot of N)" in out
-    assert "headline N unchanged" in out
-    assert "2,295 = 1,731 frozen + 564 Route A" in out
+    assert "headline N, its four slots" in out
+    assert ("2,295 = 1,731 frozen + 0 geo(5) + 0 geo(8) + 564 Route A") in out
     assert "overlap with Route A's 564 turns" in out
+
+
+# ------------- the precedence is executed, not hand-assembled (Amendment 3)
+def test_the_slots_are_computed_by_one_pipeline_call_not_by_hand(notebook):
+    """The defect: Route A and geometry were each handed ``exclude=frozen_keys``.
+
+    Both therefore saw the same 1,277-turn pool, Route A ran before geometry, and
+    a turn claimed by both was summed twice (2,884 on the tracked run). The order
+    and the shared pool now live in ``aa.attribution_pipeline``; a notebook cell
+    that calls either route directly can re-introduce the pool split, and a cell
+    that calls ``assemble_attribution`` can re-introduce the unchecked sum.
+    """
+    sources = code_sources(notebook)
+    pipeline_cells = [s for s in sources if "aa.attribution_pipeline" in s]
+    assert len(pipeline_cells) == 1, (
+        f"{len(pipeline_cells)} cells compute the four slots; the precedence must "
+        "have one implementation")
+    for source in sources:
+        assert "aa.assemble_attribution" not in source, (
+            "the notebook assembles N by hand instead of taking the pipeline's")
+        assert "aa.route_a_tables(" not in source, (
+            "a cell runs Route A itself, so its pool is not the pipeline's")
+        assert "aa.geometry_slots(" not in source, (
+            "a cell runs the radii itself, so its pool is not the pipeline's")
+    script = (ROOT / "scripts" / "ambiguity_attribution.py").read_text(
+        encoding="utf-8")
+    assert "aa.attribution_pipeline(" in script
+    assert "aa.route_a_tables(" not in script
+    assert "aa.geometry_slots(" not in script
+
+
+def test_the_four_slots_are_disjoint_and_the_overlap_is_stated(executed):
+    pipe = executed["pipe"]
+    asm = executed["assembled"]
+    assert pipe["disjoint"] is True
+    assert asm["n_double_counted"] == 0
+    assert asm["disjoint"] is True
+    assert asm["N"] == sum(asm["slots"].values())
+    prec = pipe["precedence"]
+    items = list(prec["item"])
+    assert items[0] == "pool_with_visible_route_runner"
+    assert "overlap_reference_with_geo" in items
+    assert "N_if_both_passes_summed" in items
+    assert prec["denominator"].notna().all(), "a count without its denominator"
+    out = executed["_stdout"]
+    assert "slots disjoint: True" in out
+    assert "turns in more than one slot 0 of" in out
+    assert "Route A overlap with the radii:" in out
+    assert "upper bound on N, never N" in out
+
+
+def test_route_a_is_a_slot_on_the_residual_not_a_parallel_pass(executed):
+    pipe = executed["pipe"]
+    asm = executed["assembled"]
+    frozen = asm["slots"]["n_frozen"]
+    geo_taken = len(pipe["geo_taken_keys"])
+    assert pipe["route_eligible"] == pipe["frame_turns"] - frozen - geo_taken
+    assert pipe["route_eligible_reference"] == pipe["frame_turns"] - frozen
+    assert set(executed["route_audit"]["denominator"]) == {pipe["route_eligible"]}
+    assert set(executed["route_reference_audit"]["denominator"]) == {
+        pipe["route_eligible_reference"]}
+    # the reference pass is a counterfactual: it is not the slot and adds nothing
+    assert asm["slots"]["n_route_a"] == len(executed["route_turns"])
+    assert pipe["overlap"] == 0          # no tracking here: nothing to overlap
+    assert pipe["route_eligible"] <= pipe["route_eligible_reference"]

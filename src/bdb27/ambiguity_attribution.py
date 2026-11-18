@@ -167,16 +167,18 @@ SLOT_LABELS: dict[str, str] = {
     "route_a": "INFERENCE — Route A",
 }
 
-#: The fourteen tables one complete run writes. The notebook and
+#: The fifteen tables one complete run writes. The notebook and
 #: ``scripts/ambiguity_attribution.py`` write THIS set into the SAME directory:
 #: when they differed, a reader could open a committed file the run never wrote
-#: and read it as this run's result (Conor, 2026-11-17).
+#: and read it as this run's result (Conor, 2026-11-17). ``precedence.csv`` was
+#: added by spec Amendment 3 (2026-11-18): the slots' disjointness and the
+#: Route A/geometry overlap are a table of their own, not a claim in a comment.
 ARTEFACT_TABLES: tuple[str, ...] = (
     "funnel.csv", "multi_turns.csv", "bounds.csv", "variants.csv",
     "composition.csv", "random_pairings.csv", "geometry.csv",
     "route_a_turns.csv", "route_a_audit.csv", "assembly.csv",
     "single_turn_geometry.csv", "within_3yd.csv", "margin_buckets.csv",
-    "v4_nearest.csv",
+    "v4_nearest.csv", "precedence.csv",
 )
 
 #: What the notebook/script must say whenever candidate geometry is requested
@@ -1181,6 +1183,10 @@ def assemble_attribution(counts: dict) -> dict:
     if negative:
         raise ValueError("counts cannot be negative: " + ", ".join(negative))
     n = sum(slots.values())
+    # AC3 is checked where the counts are assembled, not only in prose: a turn
+    # in two slots is a sum that counts it twice, so the number that carries it
+    # is called out and ``disjoint`` says so (Amendment 3, 2026-11-18).
+    n_double = int(counts.get("n_double_counted") or 0)
     band = counts.get("band_turns")
     band = int(band) if band is not None else None
     status = dict(counts.get("status") or {})
@@ -1207,6 +1213,8 @@ def assemble_attribution(counts: dict) -> dict:
         "route_a_by_rule": by_rule,
         "coverage": coverage,
         "status": status,
+        "n_double_counted": n_double,
+        "disjoint": bool(n_double == 0),
         "attribution": ATTRIBUTION,
     }
 
@@ -2072,6 +2080,174 @@ def single_candidate_geometry(turns_path, frame_single: pd.DataFrame, *,
             "n_tracked": int(len(tracked)),
             "n_within_radius": int(tracked["within_radius"].fillna(False).astype(bool).sum()),
             "rows": out}
+
+
+# --------------------------------------------------- precedence (§0, Amendment 3)
+def _turn_keys_of(frame: pd.DataFrame) -> set[tuple]:
+    """The distinct turn keys of a frame, as a set of tuples."""
+    key = list(ot.TURN_KEY)
+    if frame is None or not len(frame):
+        return set()
+    return set(map(tuple, frame[key].drop_duplicates().to_numpy().tolist()))
+
+
+def geometry_taken_keys(geometry_rows: pd.DataFrame) -> set[tuple]:
+    """The turn keys a radius slot took — ``slot`` is ``"5"``, ``"8"`` or empty."""
+    if geometry_rows is None or not len(geometry_rows):
+        return set()
+    if "slot" not in geometry_rows.columns:
+        return set()
+    taken = geometry_rows.loc[geometry_rows["slot"].astype(str) != ""]
+    return _turn_keys_of(taken)
+
+
+def precedence_table(*, n_frozen: int, n_geo_5: int, n_geo_8: int,
+                     n_geo_taken: int, geo_considered: int,
+                     n_route_a: int, route_pool: int,
+                     n_reference: int, reference_pool: int,
+                     overlap: int, n_double_counted: int,
+                     frame_turns: int, band_turns: int | None) -> pd.DataFrame:
+    """The four slots in order, with each one's own denominator, in one table.
+
+    Amendment 3's artefact: the slots, the overlap between the geometric slots
+    and Route A's reference pass, the double-count check, and the number the
+    defect used to report. Every row carries a denominator; none is a gate.
+    """
+    n = n_frozen + n_geo_5 + n_geo_8 + n_route_a
+    summed = n_frozen + n_geo_taken + n_reference
+
+    def row(item: str, count: int, denominator, note: str) -> dict:
+        d = None if denominator is None else int(denominator)
+        return {"item": item, "n": int(count), "denominator": d,
+                "share": (int(count) / d) if d else np.nan, "note": note}
+
+    rows = [
+        row("pool_with_visible_route_runner", frame_turns, band_turns,
+            "turns carrying at least one visible opposing route-runner"),
+        row("N_frozen", n_frozen, frame_turns,
+            "RULE — the frozen 3-yd rule; never re-picked"),
+        row("N_geo_5", n_geo_5, geo_considered,
+            f"{SLOT_LABELS['geo_5']} — exactly one candidate inside 5 yd"),
+        row("N_geo_8", n_geo_8, geo_considered,
+            f"{SLOT_LABELS['geo_8']} — exactly one inside 8 yd, else stays"),
+        row("geo_5_plus_8", n_geo_taken, geo_considered,
+            "turns a radius took; the pool Route A may not see"),
+        row("pool_for_route_a_slot", route_pool, frame_turns,
+            "what the three earlier slots left for Route A"),
+        row("N_route_a", n_route_a, route_pool,
+            f"{SLOT_LABELS['route_a']} — the slot, on the residual only"),
+        row("route_a_reference", n_reference, reference_pool,
+            "Route A on the frozen-excluded pool: the §4 cross-check pass, "
+            "NOT a slot, added to nothing"),
+        row("overlap_reference_with_geo", overlap, n_reference,
+            "Route A turns a radius also took; the count that was missing. "
+            "N = N_frozen + geo(5) + geo(8) + (reference - this)"),
+        row("n_double_counted", n_double_counted, n,
+            "turns appearing in more than one slot; must be 0 (AC3)"),
+        row("N", n, band_turns,
+            "the four slots, disjoint, summed"),
+        row("N_if_both_passes_summed", summed, band_turns,
+            "the double-counting number the pre-Amendment-3 code reported; "
+            "an upper bound on N, never N"),
+    ]
+    return pd.DataFrame(rows)
+
+
+def attribution_pipeline(turns_path, player_play_path, frame_all: pd.DataFrame, *,
+                         frozen_keys: Iterable[tuple],
+                         tracking: Sequence[str | Path] | None = None,
+                         radii: Sequence[float] = (5.0, 8.0),
+                         players_path: str | Path | None = None,
+                         band_turns: int | None = None,
+                         rules: Sequence[str] = ROUTE_A_RULES,
+                         con: duckdb.DuckDBPyConnection | None = None) -> dict:
+    """The four slots of §0, computed **in the specified precedence** (§0, AC3).
+
+    ``frozen → geo(5) → geo(8) → Route A``, each pass blind to nothing and
+    allowed to see only what the passes before it left. The four sets are then
+    checked for disjointness instead of assumed disjoint — a turn in two slots
+    is counted and reported, not summed as if it were two.
+
+    Route A is also run a second time on the frozen-excluded pool (the
+    ``reference`` pass). That pass is **not a slot and is added to nothing**: it
+    is the counterfactual the pre-Amendment-3 code mistook for the slot, and it
+    is kept because §4's cross-check needs the turns both routes fire on, and
+    because the overlap between it and the geometric slots is what turns
+    "2,884 or thereabouts" into a number with a stated derivation.
+    """
+    key = list(ot.TURN_KEY)
+    frozen = {tuple(k) for k in frozen_keys}
+    frame_turns = int(frame_all[key].drop_duplicates().shape[0])
+
+    # 1-2. the radii, on what the frozen rule left.
+    geo = geometry_slots(turns_path, player_play_path, frame_all,
+                         tracking=tracking, exclude=sorted(frozen),
+                         radii=radii, con=con)
+    geo_taken = geometry_taken_keys(geo["rows"])
+
+    # 3. Route A on the residual — the slot.
+    route_pool = sorted(frozen | geo_taken)
+    route_turns, route_audit = route_a_tables(
+        frame_all, player_play_path, rules=rules, exclude=route_pool,
+        players_path=players_path)
+
+    # 4. Route A on the frozen-excluded pool — the reference pass, never a slot.
+    reference_turns, reference_audit = route_a_tables(
+        frame_all, player_play_path, rules=rules, exclude=sorted(frozen),
+        players_path=players_path)
+    reference_keys = _turn_keys_of(reference_turns)
+    overlap = len(reference_keys & geo_taken)
+
+    # 5. disjointness, computed rather than asserted in prose.
+    slot_of: dict[tuple, int] = {}
+    for name, keys in (("frozen", frozen), ("geo", geo_taken),
+                       ("route_a", _turn_keys_of(route_turns))):
+        for k in keys:
+            slot_of[k] = slot_of.get(k, 0) + 1
+    double_counted = sum(1 for v in slot_of.values() if v > 1)
+
+    counts = {
+        "n_frozen": len(frozen),
+        "n_geo_5": int(geo["n_geo_5"]),
+        "n_geo_8": int(geo["n_geo_8"]),
+        "n_route_a": int(len(route_turns)),
+        "n_double_counted": int(double_counted),
+        "band_turns": band_turns,
+        "status": {"geo_5": geo["status"], "geo_8": geo["status"]},
+        "route_a_by_rule": (route_turns["route_a_rule"].value_counts().to_dict()
+                            if len(route_turns) else {}),
+        "coverage": (route_turns["coverage_family"].fillna("MISSING")
+                     .value_counts().to_dict() if len(route_turns) else {}),
+    }
+    assembled = assemble_attribution(counts)
+    precedence = precedence_table(
+        n_frozen=len(frozen), n_geo_5=int(geo["n_geo_5"]),
+        n_geo_8=int(geo["n_geo_8"]), n_geo_taken=len(geo_taken),
+        geo_considered=int(geo["n_turns_considered"]),
+        n_route_a=int(len(route_turns)), route_pool=frame_turns
+        - len(frozen) - len(geo_taken),
+        n_reference=int(len(reference_turns)),
+        reference_pool=frame_turns - len(frozen), overlap=int(overlap),
+        n_double_counted=int(double_counted), frame_turns=frame_turns,
+        band_turns=band_turns)
+    return {
+        "geo": geo,
+        "route_turns": route_turns, "route_audit": route_audit,
+        "route_reference_turns": reference_turns,
+        "route_reference_audit": reference_audit,
+        "geo_taken_keys": geo_taken,
+        "overlap": int(overlap),
+        "n_double_counted": int(double_counted),
+        "disjoint": bool(double_counted == 0),
+        "route_eligible": int(frame_turns - len(frozen) - len(geo_taken)),
+        "route_eligible_reference": int(frame_turns - len(frozen)),
+        "frame_turns": frame_turns,
+        "assembled": assembled,
+        "precedence": precedence,
+        # kept under its own name so a reader cannot mistake it for N
+        "N_if_both_passes_summed": int(len(frozen) + len(geo_taken)
+                                       + len(reference_turns)),
+    }
 
 
 # ------------------------------------------------------------------ within 3 yd (§ amendment)

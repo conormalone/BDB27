@@ -367,7 +367,7 @@
         "n": 0,
         "share_of_N": 0.0,
         "share_of_band": 0.0,
-        "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players"
+        "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players"
       },
       {
         "slot": "geo_8",
@@ -375,7 +375,7 @@
         "n": 0,
         "share_of_N": 0.0,
         "share_of_band": 0.0,
-        "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players"
+        "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players"
       },
       {
         "slot": "route_a",
@@ -400,13 +400,16 @@
       "MISSING": 76
     },
     "status": {
-      "geo_5": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
-      "geo_8": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players"
+      "geo_5": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players",
+      "geo_8": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players"
     }
   },
   "route_a": {
     "eligible_turns": 1277,
+    "eligible_turns_reference": 1277,
     "attributed_turns": 564,
+    "attributed_turns_reference": 564,
+    "overlap_with_geo_slots": 0,
     "by_rule": {
       "target": 365,
       "alignment": 199
@@ -496,16 +499,202 @@
         "n": 33,
         "denominator": 1277
       }
+    ],
+    "reference_audit": [
+      {
+        "route_a_rule": "target",
+        "outcome": "attributed",
+        "reason": "",
+        "n": 365,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "target",
+        "outcome": "unresolved",
+        "reason": "no_single_target",
+        "n": 912,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "description",
+        "outcome": "attributed",
+        "reason": "",
+        "n": 0,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "description",
+        "outcome": "unresolved",
+        "reason": "no_name_after_pass_verb",
+        "n": 460,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "description",
+        "outcome": "unresolved",
+        "reason": "named_man_not_a_cohort_player",
+        "n": 431,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "description",
+        "outcome": "unresolved",
+        "reason": "named_man_not_visible",
+        "n": 21,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "attributed",
+        "reason": "",
+        "n": 199,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "unresolved",
+        "reason": "not_two_candidates",
+        "n": 367,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "unresolved",
+        "reason": "safety_pair",
+        "n": 149,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "unresolved",
+        "reason": "same_class",
+        "n": 130,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "unresolved",
+        "reason": "own_class_unmapped",
+        "n": 34,
+        "denominator": 1277
+      },
+      {
+        "route_a_rule": "alignment",
+        "outcome": "unresolved",
+        "reason": "pair_not_supported",
+        "n": 33,
+        "denominator": 1277
+      }
     ]
+  },
+  "precedence": {
+    "order": [
+      "frozen",
+      "geo_5",
+      "geo_8",
+      "route_a"
+    ],
+    "disjoint": true,
+    "n_double_counted": 0,
+    "route_a_reference_turns": 564,
+    "overlap_route_a_reference_with_geo": 0,
+    "N_if_both_passes_summed": 2295,
+    "table": [
+      {
+        "item": "pool_with_visible_route_runner",
+        "n": 3008,
+        "denominator": 7777,
+        "share": 0.38678153529638676,
+        "note": "turns carrying at least one visible opposing route-runner"
+      },
+      {
+        "item": "N_frozen",
+        "n": 1731,
+        "denominator": 3008,
+        "share": 0.5754654255319149,
+        "note": "RULE \u2014 the frozen 3-yd rule; never re-picked"
+      },
+      {
+        "item": "N_geo_5",
+        "n": 0,
+        "denominator": 1277,
+        "share": 0.0,
+        "note": "INFERENCE \u2014 geometry 5 yd \u2014 exactly one candidate inside 5 yd"
+      },
+      {
+        "item": "N_geo_8",
+        "n": 0,
+        "denominator": 1277,
+        "share": 0.0,
+        "note": "INFERENCE \u2014 geometry 8 yd \u2014 exactly one inside 8 yd, else stays"
+      },
+      {
+        "item": "geo_5_plus_8",
+        "n": 0,
+        "denominator": 1277,
+        "share": 0.0,
+        "note": "turns a radius took; the pool Route A may not see"
+      },
+      {
+        "item": "pool_for_route_a_slot",
+        "n": 1277,
+        "denominator": 3008,
+        "share": 0.4245345744680851,
+        "note": "what the three earlier slots left for Route A"
+      },
+      {
+        "item": "N_route_a",
+        "n": 564,
+        "denominator": 1277,
+        "share": 0.44166014095536416,
+        "note": "INFERENCE \u2014 Route A \u2014 the slot, on the residual only"
+      },
+      {
+        "item": "route_a_reference",
+        "n": 564,
+        "denominator": 1277,
+        "share": 0.44166014095536416,
+        "note": "Route A on the frozen-excluded pool: the \u00a74 cross-check pass, NOT a slot, added to nothing"
+      },
+      {
+        "item": "overlap_reference_with_geo",
+        "n": 0,
+        "denominator": 564,
+        "share": 0.0,
+        "note": "Route A turns a radius also took; the count that was missing. N = N_frozen + geo(5) + geo(8) + (reference - this)"
+      },
+      {
+        "item": "n_double_counted",
+        "n": 0,
+        "denominator": 2295,
+        "share": 0.0,
+        "note": "turns appearing in more than one slot; must be 0 (AC3)"
+      },
+      {
+        "item": "N",
+        "n": 2295,
+        "denominator": 7777,
+        "share": 0.2951009386652951,
+        "note": "the four slots, disjoint, summed"
+      },
+      {
+        "item": "N_if_both_passes_summed",
+        "n": 2295,
+        "denominator": 7777,
+        "share": 0.2951009386652951,
+        "note": "the double-counting number the pre-Amendment-3 code reported; an upper bound on N, never N"
+      }
+    ],
+    "note": "the four slots are computed in the order frozen -> 5 yd -> 8 yd -> Route A, each on what the previous ones left; the Route A reference pass is a counterfactual kept for the \u00a74 cross-check and is added to nothing"
   },
   "geometry_slots": {
     "n_geo_5": 0,
     "n_geo_8": 0,
-    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players",
     "n_turns_considered": 1277,
-    "paths_tried": "/home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2023.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2024.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2025.csv",
+    "paths_tried": "/home/conormalone/.openclaw/workspace/BDB27/data/raw [contains: combine_results.csv, combine_tracking.csv, external/, game_tracking_2023_sample.csv, games.csv, player_career_successes.csv, player_play.csv, players.csv]",
     "per_turn_status": {
-      "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players": 1277
+      "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players": 1277
     }
   },
   "frozen_3yd_check": {
@@ -513,9 +702,9 @@
     "n_tracked": 0,
     "n_within_radius": 0,
     "radius_yd": 3.0,
-    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players",
     "d204_reported": 471,
-    "paths_tried": "/home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2023.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2024.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2025.csv",
+    "paths_tried": "/home/conormalone/.openclaw/workspace/BDB27/data/raw [contains: combine_results.csv, combine_tracking.csv, external/, game_tracking_2023_sample.csv, games.csv, player_career_successes.csv, player_play.csv, players.csv]",
     "note": "a check on the frozen single-candidate set: these turns are already inside N_frozen, so nothing here is added to N"
   },
   "within_3yd": {
@@ -526,7 +715,7 @@
     "n_partially_tracked": 0,
     "complete_rule": "all visible candidates measured at the break frame",
     "n_candidate_rows_tracked": 0,
-    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players",
     "buckets": [
       {
         "bucket": "zero",
@@ -553,7 +742,7 @@
         "share_of_ambiguous": NaN
       }
     ],
-    "paths_tried": "/home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2023.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2024.csv; /home/conormalone/.openclaw/workspace/BDB27/data/raw/game_tracking_2025.csv",
+    "paths_tried": "/home/conormalone/.openclaw/workspace/BDB27/data/raw [contains: combine_results.csv, combine_tracking.csv, external/, game_tracking_2023_sample.csv, games.csv, player_career_successes.csv, player_play.csv, players.csv]",
     "attribution": "INFERENCE \u2014 multi-candidate attribution; the dataset records no opponent identifier, so no pairing here identifies the man covered"
   },
   "margin": {
@@ -563,7 +752,7 @@
     "n_partially_tracked": 870,
     "median_yd": NaN,
     "mean_yd": NaN,
-    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players",
     "buckets": [
       {
         "bucket": "< 0.25 yd",
@@ -604,7 +793,7 @@
     "label": "NOT EVALUABLE \u2014 no frame-level tracking",
     "note": "no candidate distance is measurable on this machine; the frozen base is carried for its n only and no V4 coefficient is claimed",
     "tie_break": true,
-    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players",
     "n_ambiguous_turns": 870,
     "n_nearest_turns": 0,
     "n_frozen_turns": 1731,
@@ -707,7 +896,7 @@
     }
   ],
   "geometry": {
-    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking, which is not on this machine; the separation gap is not a distance between two players",
+    "status": "NOT EVALUABLE \u2014 candidate distances need frame-level tracking at the break frame, which this run did not have; the separation gap is not a distance between two players",
     "rows": 870,
     "note": "candidate distance, nearest-candidate margin and the gap between the two nearest candidates need frame-level tracking; without it the columns are null and this status is printed"
   },

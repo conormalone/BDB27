@@ -106,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     _log(f"turns      : {turns_path}")
     _log(f"player_play: {pp_path}")
     _log(f"out        : {out}  [{stamp}]")
-    _log(f"spec       : notes/multi-candidate-spec.md (8726120)")
+    _log(f"spec       : notes/multi-candidate-spec.md (8726120 + Amendment 3)")
     _log("")
 
     # ---- O1: the funnel, re-derived --------------------------------------
@@ -126,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         _log(f"  {r['step']:<48s} {int(r['n']):>6,}  of {int(r['denominator']):>6,} "
              f"({_share(r['n'], r['denominator']):>7s}){mark}")
     single, multi = frames["single"], frames["multiple"]
+    band_turns = int(funnel.loc[funnel["step"] == "band_turns", "n"].iloc[0])
     _log(f"  frame(single) rows {len(single):,} · frame(multiple) candidate rows "
          f"{len(multi):,} over {multi[list(outcome_test.TURN_KEY)].drop_duplicates().shape[0]:,} turns")
     _log("")
@@ -219,25 +220,20 @@ def main(argv: list[str] | None = None) -> int:
         _log(f"  paths tried: {geom['paths_tried'].iloc[0]}")
     _log("")
 
-    # ---- Route A (§3) and the geometric slots (§0) ----------------------
+    # ---- the four slots, in the specified precedence (§0, Amendment 3) --
+    # One call, shared with the notebook: frozen -> geo(5) -> geo(8) -> Route A,
+    # each pass seeing only what the one before it left, and the disjointness of
+    # the four sets checked instead of assumed.
     frame_all = aa.all_candidates_frame(turns_path, pp_path)
     frozen_keys = list(map(tuple, single[list(outcome_test.TURN_KEY)]
                            .drop_duplicates().to_numpy().tolist()))
-    route_turns, route_audit = aa.route_a_tables(frame_all, pp_path,
-                                                 exclude=frozen_keys)
-    route_eligible = (frame_all[list(outcome_test.TURN_KEY)].drop_duplicates()
-                      .shape[0] - len(frozen_keys))
-    _log(f"Route A — no-tracking recovery on the {route_eligible:,} turns the "
-         f"frozen rule did not take")
-    for _, r in route_audit.iterrows():
-        _log(f"  {r['route_a_rule']:<12s} {r['outcome']:<11s} "
-             f"{r['reason'] or '-':<32s} {int(r['n']):>5,} of {int(r['denominator']):,}")
-    _log(f"  attributed by Route A: {len(route_turns):,} of {route_eligible:,} "
-         f"({_share(len(route_turns), route_eligible)})")
-    _log("")
+    pipe = aa.attribution_pipeline(
+        turns_path, pp_path, frame_all, frozen_keys=frozen_keys,
+        tracking=args.tracking, band_turns=int(band_turns))
+    geo_slots = pipe["geo"]
+    route_turns, route_audit = pipe["route_turns"], pipe["route_audit"]
+    route_eligible = pipe["route_eligible"]
 
-    geo_slots = aa.geometry_slots(turns_path, pp_path, frame_all,
-                                  tracking=args.tracking, exclude=frozen_keys)
     _log("Geometric slots (5 then 8 yd, on what neither the frozen rule nor the "
          "radius before it took)")
     _log(f"  {geo_slots['status']} · turns considered {geo_slots['n_turns_considered']:,} · "
@@ -246,6 +242,27 @@ def main(argv: list[str] | None = None) -> int:
     if len(geo_slots["rows"]):
         st = geo_slots["rows"]["geometry_status"].value_counts()
         _log("  per-turn status: " + " · ".join(f"{k} {v:,}" for k, v in st.items()))
+    _log("")
+
+    _log(f"Route A — no-tracking recovery on the {route_eligible:,} turns the "
+         f"frozen rule and the radii left (of "
+         f"{pipe['route_eligible_reference']:,} the frozen rule alone left)")
+    for _, r in route_audit.iterrows():
+        _log(f"  {r['route_a_rule']:<12s} {r['outcome']:<11s} "
+             f"{r['reason'] or '-':<32s} {int(r['n']):>5,} of {int(r['denominator']):,}")
+    _log(f"  attributed by Route A: {len(route_turns):,} of {route_eligible:,} "
+         f"({_share(len(route_turns), route_eligible)})")
+    _log("")
+
+    _log("Precedence (Amendment 3) — the slots, each with its own denominator")
+    for _, r in pipe["precedence"].iterrows():
+        den = "n/a" if pd.isna(r["denominator"]) else f"{int(r['denominator']):,}"
+        _log(f"  {r['item']:<32s} {int(r['n']):>6,} of {den:>7s} "
+             f"({_share(r['n'], r['denominator']) if den != 'n/a' else 'n/a':>7s})  "
+             f"{r['note']}")
+    _log(f"  disjoint: {pipe['disjoint']} · turns in more than one slot: "
+         f"{pipe['n_double_counted']:,} of N = {pipe['assembled']['N']:,}")
+    _log("")
     singles_geo = aa.single_candidate_geometry(turns_path, single,
                                                tracking=args.tracking)
     _log("Frozen 3-yd check on the single-candidate set — a check on N_frozen, "
@@ -302,29 +319,23 @@ def main(argv: list[str] | None = None) -> int:
     _log("  the frozen number above is unchanged by this row")
     _log("")
 
-    agree = aa.agreement(route_turns, geo_slots["rows"])
+    # §4's cross-check needs the turns both routes fire on, so it is run on the
+    # reference pass — the slot's turns are by construction disjoint from the
+    # radii's, and pairing the two slots would ask a question with no rows.
+    agree = aa.agreement(pipe["route_reference_turns"], geo_slots["rows"])
     if len(agree) and int(agree.loc[agree["scope"] == "overall", "n_both"].sum()):
         r = agree[agree["scope"] == "overall"].iloc[0]
-        _log(f"  cross-check on turns both routes fired: {int(r['agree']):,} agree / "
-             f"{int(r['disagree']):,} disagree ({_share(r['agree'], r['n_both'])})")
+        _log(f"  cross-check on turns both routes fired ({int(r['n_both']):,} of the "
+             f"{len(pipe['route_reference_turns']):,} reference Route A turns): "
+             f"{int(r['agree']):,} agree / {int(r['disagree']):,} disagree "
+             f"({_share(r['agree'], r['n_both'])})")
     else:
         _log("  cross-check: NOT EVALUABLE — no turn where both routes fired")
     _log("")
 
-    by_rule = (route_turns["route_a_rule"].value_counts().to_dict()
-               if len(route_turns) else {})
-    coverage = (route_turns["coverage_family"].fillna("MISSING").value_counts()
-                .to_dict() if len(route_turns) else {})
-    assembled = aa.assemble_attribution({
-        "n_frozen": int(frozen_primary["n_frozen"]),
-        "n_geo_5": int(geo_slots["n_geo_5"]),
-        "n_geo_8": int(geo_slots["n_geo_8"]),
-        "n_route_a": int(len(route_turns)),
-        "band_turns": int(funnel.loc[funnel["step"] == "band_turns", "n"].iloc[0]),
-        "status": {"geo_5": geo_slots["status"], "geo_8": geo_slots["status"]},
-        "route_a_by_rule": by_rule,
-        "coverage": coverage,
-    })
+    by_rule = pipe["assembled"]["route_a_by_rule"]
+    coverage = pipe["assembled"]["coverage"]
+    assembled = pipe["assembled"]
     _log(f"N = {assembled['N']:,} of {assembled['band_turns']:,} band turns "
          f"({_share(assembled['N'], assembled['band_turns'])})")
     for c in assembled["composition"]:
@@ -338,6 +349,16 @@ def main(argv: list[str] | None = None) -> int:
     if coverage:
         _log("  coverage label of the attributed turns: "
              + " · ".join(f"{k} {v:,}" for k, v in coverage.items()))
+    _log(f"  disjoint: {assembled['disjoint']} ({assembled['n_double_counted']:,} "
+         f"turns of {assembled['N']:,} in more than one slot) · Route A overlap "
+         f"with the radii {pipe['overlap']:,} of "
+         f"{len(pipe['route_reference_turns']):,} reference turns")
+    _log(f"  for reconciliation only, the number the pre-Amendment-3 code reported: "
+         f"{pipe['N_if_both_passes_summed']:,} "
+         f"(= {assembled['slots']['n_frozen']:,} frozen + "
+         f"{pipe['geo']['n_geo_5']:,} geo(5) + {pipe['geo']['n_geo_8']:,} geo(8) + "
+         f"{len(pipe['route_reference_turns']):,} Route A before the radii took "
+         f"their turns) — an upper bound on N, not N")
     _log("")
 
     align = aa.alignment_counts(pp_path)
@@ -370,6 +391,7 @@ def main(argv: list[str] | None = None) -> int:
     pd.DataFrame(margin["buckets"]).to_csv(out / "margin_buckets.csv", index=False,
                                            encoding="utf-8")
     pd.DataFrame([v4]).to_csv(out / "v4_nearest.csv", index=False, encoding="utf-8")
+    pipe["precedence"].to_csv(out / "precedence.csv", index=False, encoding="utf-8")
 
     summary = {
         "provenance": stamp,
@@ -414,9 +436,26 @@ def main(argv: list[str] | None = None) -> int:
         },
         "route_a": {
             "eligible_turns": int(route_eligible),
+            "eligible_turns_reference": int(pipe["route_eligible_reference"]),
             "attributed_turns": int(len(route_turns)),
+            "attributed_turns_reference": int(len(pipe["route_reference_turns"])),
+            "overlap_with_geo_slots": int(pipe["overlap"]),
             "by_rule": by_rule,
             "audit": route_audit.to_dict("records"),
+            "reference_audit": pipe["route_reference_audit"].to_dict("records"),
+        },
+        "precedence": {
+            "order": [c["slot"] for c in assembled["composition"]],
+            "disjoint": assembled["disjoint"],
+            "n_double_counted": assembled["n_double_counted"],
+            "route_a_reference_turns": int(len(pipe["route_reference_turns"])),
+            "overlap_route_a_reference_with_geo": int(pipe["overlap"]),
+            "N_if_both_passes_summed": int(pipe["N_if_both_passes_summed"]),
+            "table": pipe["precedence"].to_dict("records"),
+            "note": ("the four slots are computed in the order frozen -> 5 yd -> "
+                     "8 yd -> Route A, each on what the previous ones left; the "
+                     "Route A reference pass is a counterfactual kept for the §4 "
+                     "cross-check and is added to nothing"),
         },
         "geometry_slots": {
             "n_geo_5": geo_slots["n_geo_5"],
@@ -484,7 +523,8 @@ def main(argv: list[str] | None = None) -> int:
                                  "route_a_turns.csv", "route_a_audit.csv",
                                  "single_turn_geometry.csv", "within_3yd.csv",
                                  "margin_buckets.csv", "v4_nearest.csv",
-                                 "assembly.csv", "summary.json", "verdict.txt")],
+                                 "precedence.csv", "assembly.csv",
+                                 "summary.json", "verdict.txt")],
         config={"mode": args.mode, "reps": args.reps, "seed": args.seed,
                 "specs": list(aa.SPECS), "pairing_rules": list(aa.PAIRING_RULES),
                 "tracking": args.tracking},
@@ -496,7 +536,9 @@ def main(argv: list[str] | None = None) -> int:
     append_run_log("ambiguity_attribution", args.mode, wall, len(frame),
                    "OK", f"single {len(single):,} · ambiguous "
                          f"{frozen_primary['n_ambiguous']:,} · N {assembled['N']:,} "
-                         f"(route A {len(route_turns):,}) · label "
+                         f"(geo {pipe['geo']['n_geo_5']:,}+{pipe['geo']['n_geo_8']:,} · "
+                         f"route A {len(route_turns):,} of "
+                         f"{route_eligible:,} · overlap {pipe['overlap']:,}) · label "
                          f"{frozen_primary['branch']}")
     _log(f"run_log: one row appended ({wall:,.0f}s, {len(frame):,} analysis rows)")
     return 0

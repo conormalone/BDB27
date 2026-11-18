@@ -573,3 +573,80 @@ def test_single_turn_check_keeps_the_rule_label(single):
     """These ARE the frozen matches: RULE, not INFERENCE, on every row."""
     out = aa.single_candidate_geometry(TURNS, single)
     assert set(out["rows"]["attribution"]) == {aa.LABEL_RULE}
+
+
+# ------------------------------------------- the precedence (Amendment 3, §0)
+@pytest.fixture(scope="module")
+def pipeline(route):
+    """The four slots, computed in the specified order, on this machine."""
+    return aa.attribution_pipeline(TURNS, PLAYER_PLAY, route["frame"],
+                                   frozen_keys=route["frozen"], band_turns=7777)
+
+
+def test_the_pipeline_without_tracking_is_the_committed_number(pipeline, tables):
+    """A3-1: no frames, geo slots 0 with a reason, Route A on the same pool."""
+    asm = pipeline["assembled"]
+    assert asm["N"] == 2295 == len(tables["single"]) + len(pipeline["route_turns"])
+    assert asm["slots"]["n_geo_5"] == 0 and asm["slots"]["n_geo_8"] == 0
+    assert pipeline["geo"]["status"] == aa.GEOMETRY_NOT_EVALUABLE
+    assert pipeline["overlap"] == 0
+    assert pipeline["disjoint"] is True and pipeline["n_double_counted"] == 0
+    assert pipeline["route_eligible"] == pipeline["route_eligible_reference"] == 1277
+
+
+def test_the_precedence_table_denominates_every_row_and_names_the_bound(pipeline):
+    prec = pipeline["precedence"].set_index("item")
+    assert prec.loc["N", "n"] == pipeline["assembled"]["N"]
+    assert prec.loc["N_if_both_passes_summed", "n"] == (
+        prec.loc["N_frozen", "n"] + prec.loc["geo_5_plus_8", "n"]
+        + prec.loc["route_a_reference", "n"])
+    assert prec.loc["n_double_counted", "n"] == 0
+    assert prec.loc["overlap_reference_with_geo", "n"] == pipeline["overlap"]
+    assert prec["denominator"].notna().all()
+    assert (prec["n"] >= 0).all()
+    # the reference pass is not a slot: N is the four composition rows, not it
+    slots = [c["n"] for c in pipeline["assembled"]["composition"]]
+    assert prec.loc["N", "n"] == sum(slots)
+    assert prec.loc["route_a_reference", "n"] >= prec.loc["N_route_a", "n"]
+
+
+def test_a_turn_geometry_took_is_not_offered_to_route_a(route, monkeypatch):
+    """A3-2 — the defect, reproduced and refused.
+
+    A stubbed geometry claims the first hundred turns Route A's reference pass
+    would attribute. Under the old code those turns were in both slots and were
+    summed twice; under the pipeline Route A's slot never sees them, the overlap
+    is stated, and ``N`` is the disjoint sum.
+    """
+    taken = route["turns"][KEY].head(100).reset_index(drop=True)
+    stub_rows = taken.copy()
+    stub_rows["slot"] = "5"
+    stub_rows["attributed_nfl_id"] = 999
+    stub_rows["dist_yd"] = 4.0
+    stub_rows["n_candidates_tracked"] = 1
+    stub_rows["geometry_status"] = "tracked"
+
+    def stub_geometry_slots(turns_path, player_play_path, frame_all, **kwargs):
+        return {"n_geo_5": len(stub_rows), "n_geo_8": 0, "status": "tracked",
+                "rows": stub_rows, "paths_tried": "stub",
+                "n_turns_considered": int(len(frame_all[KEY].drop_duplicates()))}
+
+    monkeypatch.setattr(aa, "geometry_slots", stub_geometry_slots)
+    out = aa.attribution_pipeline(TURNS, PLAYER_PLAY, route["frame"],
+                                  frozen_keys=route["frozen"], band_turns=7777)
+    slot_keys = set(map(tuple, out["route_turns"][KEY].to_numpy().tolist()))
+    stub_keys = set(map(tuple, stub_rows[KEY].to_numpy().tolist()))
+    reference = int(len(out["route_reference_turns"]))
+
+    assert reference > 0                              # the fixture pass attributed turns
+    assert slot_keys.isdisjoint(stub_keys)            # the turn is in ONE slot
+    assert out["overlap"] == len(stub_keys)           # ... and the overlap is stated
+    assert len(slot_keys) == reference - len(stub_keys)
+    assert out["n_double_counted"] == 0
+    assert out["assembled"]["N"] == 1731 + len(stub_keys) + len(slot_keys)
+    assert out["assembled"]["slots"]["n_geo_5"] == len(stub_keys)
+    # the number the defect reported: both passes summed, which counts the
+    # overlap twice and is an upper bound on N, never N
+    assert out["N_if_both_passes_summed"] == 1731 + len(stub_keys) + reference
+    assert (out["assembled"]["N"]
+            == out["N_if_both_passes_summed"] - out["overlap"])

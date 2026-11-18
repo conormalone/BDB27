@@ -1,0 +1,13 @@
+item,n,denominator,share,note
+pool_with_visible_route_runner,3008,7777,0.38678153529638676,turns carrying at least one visible opposing route-runner
+N_frozen,1731,3008,0.5754654255319149,RULE — the frozen 3-yd rule; never re-picked
+N_geo_5,0,1277,0.0,INFERENCE — geometry 5 yd — exactly one candidate inside 5 yd
+N_geo_8,0,1277,0.0,"INFERENCE — geometry 8 yd — exactly one inside 8 yd, else stays"
+geo_5_plus_8,0,1277,0.0,turns a radius took; the pool Route A may not see
+pool_for_route_a_slot,1277,3008,0.4245345744680851,what the three earlier slots left for Route A
+N_route_a,564,1277,0.44166014095536416,"INFERENCE — Route A — the slot, on the residual only"
+route_a_reference,564,1277,0.44166014095536416,"Route A on the frozen-excluded pool: the §4 cross-check pass, NOT a slot, added to nothing"
+overlap_reference_with_geo,0,564,0.0,Route A turns a radius also took; the count that was missing. N = N_frozen + geo(5) + geo(8) + (reference - this)
+n_double_counted,0,2295,0.0,turns appearing in more than one slot; must be 0 (AC3)
+N,2295,7777,0.2951009386652951,"the four slots, disjoint, summed"
+N_if_both_passes_summed,2295,7777,0.2951009386652951,"the double-counting number the pre-Amendment-3 code reported; an upper bound on N, never N"
