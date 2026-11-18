@@ -91,3 +91,9 @@ Thumbs.db
 !outputs/turn_context/
 !outputs/turn_context/*.csv
 !outputs/turn_context/*.json
+# Received artefacts (D210): a file that arrived from Conor's laptop, committed
+# byte-for-byte so the record is reproducible-by-diff. NOT a pipeline output --
+# no code writes this directory, and PROVENANCE.md says so in its first line.
+!outputs/ambiguity_attribution_received/
+!outputs/ambiguity_attribution_received/*.csv
+!outputs/ambiguity_attribution_received/*.md

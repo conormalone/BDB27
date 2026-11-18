@@ -9042,3 +9042,89 @@ The six new tests and the notebook module's unchanged assertions are inside that
 **If it ever appears again.** Press **Run All** — the first output line names the exact file and
 checkout it loaded; if that line says the checkout is older than the notebook, pull once more and
 press Run All again.
+
+---
+
+## D210 — The FULL attribution run: N = 2,558 of the 7,777, recorded beside the no-tracking 2,295 · 2026-11-18
+
+**Asked.** Conor re-ran `notebooks/bdb27_multi_candidate.ipynb` on his laptop with the full tracking
+files, on the fixed code (D208/D209), and sent **`precedence.csv`** — the one table Amendment 3 §3.6
+asks for. The tree here was at `49a6b0f` when the file arrived; the paste carries no HEAD, so the
+commit he ran is not recorded. This is the first FULL run of the pipelined precedence: the first
+time the geometric slots are anything but `NOT EVALUABLE`, and so the first time `N` is a complete
+four-slot sum rather than a sum with two unexercised slots. Recorded in
+`notes/multi-candidate-result.md` (the file spec §8 names and D207 recorded as unwritten); this entry
+is the decision.
+
+**The number, as he sent it.**
+
+```
+N = 2,558 of 7,777 band turns (32.89%)
+  N_frozen   RULE                        1,731 of 3,008   67.67% of N
+  N_geo(5)   INFERENCE — geometry 5 yd     411 of 1,277   16.07% of N
+  N_geo(8)   INFERENCE — geometry 8 yd     178 of 1,277    6.96% of N
+  N_routeA   INFERENCE — Route A           238 of   688    9.30% of N
+```
+
+`RULE` 1,731 (67.67%) · `INFERENCE` 827 (32.33%). Of the 1,277 turns the frozen rule left, **827**
+now carry an inference attribution (64.76%) and 450 do not. `n_double_counted` **0 of 2,558**;
+`disjoint` true; the four slots sum to `N`.
+
+**The reconciliation, every line an identity between numbers the paste prints.** `1,731 + 589 + 238
+= 2,558`; `411 + 178 = 589`; `564 − 326 = 238`; `1,277 − 589 = 688`; `589 + 238 = 827` of 1,277;
+`3,008 − 1,731 = 1,277`; `2,558 + 326 = 2,884`. No new count was made to write any of them.
+
+**Two states, neither overwriting the other.** `outputs/ambiguity_attribution/` on this machine is
+**not** the FULL run: it was written here at 08:07 UTC from `git_head` `99df784` with
+`config.tracking = null`, and it reports **N = 2,295** — frozen 1,731, geo(5) 0, geo(8) 0
+(`NOT EVALUABLE`), Route A 564 of 1,277, overlap 0, `n_double_counted` 0, 29.51% of the band. It is
+left exactly as committed, and a reader can see both. The two differ by **263 turns**, every one of
+them `INFERENCE`: `+589` geometric, `−326` Route A (the radii took 326 of the 564 Route A could
+attribute). **The `RULE` slot is 1,731 in both runs** — the frozen rule is never re-picked and no
+tracking file can move it. That it did not move is the check that the FULL run left the primary
+attribution alone.
+
+**The one agreement this machine can make.** The paste's `route_a_reference` is **564 of 1,277**,
+exactly the committed no-tracking Route A slot. Expected shape, not a coincidence: Route A reads
+`player_play.csv` and never reads tracking, so the runs with and without frames must agree on the
+turns it can attribute. It is the only count in the paste with a committed counterpart.
+
+**Provenance, stated plainly.** The FULL figures are **reported** from Conor's laptop as a single
+CSV. No manifest came with it — no hash of the full turns table, none of the tracking file, no git
+HEAD, no run timestamp, no `geometry.csv`, no `route_a_audit.csv`, no `verdict.txt`. The received
+file is committed byte-for-byte at `outputs/ambiguity_attribution_received/precedence.csv` (1,345
+bytes, CRLF, sha256 `896a1f5c…3aaeb8`) with a `PROVENANCE.md` whose first line says it is not a
+pipeline output. **That sha256 identifies the bytes that were sent; it verifies nothing about the
+run.** Nothing on this machine can regenerate 2,558: there is no full tracking file here, so a local
+`--mode full` run reports 2,295 and the geometric slots `NOT EVALUABLE`. The `verdict.txt`
+coefficients and the `BOUND — NOT IDENTIFIED` label belong to the no-tracking run and are not
+attributed to the FULL run here — the paste carries no coefficient, interval or label.
+
+**The pre-fix number, flagged and not resolved.** `N_if_both_passes_summed` now prints **2,884 of
+7,777 (37.08%)**, labelled an upper bound. Before Amendment 3 that was the headline; it survived the
+no-tracking run only because the overlap was zero there, so it equalled `N` (both 2,295). On the FULL
+run it is **326 above `N`** — exactly the overlap. It is not a second total and not a rival
+headline; it is the printed size of the double count. `N` is 2,558. **Unresolved deliberately:** the
+row is left as the code prints it, and nothing here renames it or reconciles it into 2,558.
+
+**A one-turn unit difference, flagged.** The paste's `pool_with_visible_route_runner` is **3,008**,
+matching the committed `precedence.csv` row; the committed `funnel.csv` row and `verdict.txt`'s
+funnel sentence say **3,009**. `funnel.csv` already prints the reason in its own two groupings (band
+rows 7,209, turn keys 7,206 — second detections sharing a `frame_start` merge at turn level). It
+predates this cycle, touches no slot, and `N_frozen`'s 3,008 denominator and the 1,277 pool are the
+same in both states. Recorded, not repaired.
+
+**What is still not here.** The §4 cross-check between the two routes on the 326 overlapping turns —
+a count of turns both took is not an agreement rate, and the per-turn attributed man is not on this
+machine. Nor is the per-turn detail behind 411 / 178 / 326. Nor any funnel, row count or coefficient
+from the FULL run beyond the twelve rows the paste carries. All four are `NOT ON THIS MACHINE` in the
+note, not approximated.
+
+**Unchanged.** `TASK.md`, `notes/report-draft.md`, the band table, the four figures, the notebook,
+`src/` and the tests. The only files touched are this entry, `notes/multi-candidate-result.md`, the
+received copy plus its `PROVENANCE.md`, and one appended `.gitignore` re-include block following the
+file's existing convention.
+
+**Suite.** Green, exit 0: **694 collected, 693 passed, 1 skipped** (`.venv/bin/python -m pytest -q`).
+No test asserts on the received directory, and the one that asserts a notebook runs into its own
+scratch dir is unaffected.
