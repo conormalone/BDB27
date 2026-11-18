@@ -258,3 +258,109 @@ funnel(turns_path, player_play_path) -> pd.DataFrame
 `build_frame` reuses `bdb27.outcome_test`'s SQL rather than re-implementing it, so AC1 is a
 comparison and not a coincidence. Every returned frame carries `attribution = "INFERENCE — …"` except
 the frozen single frame, which carries `RULE`.
+
+---
+
+## Amendment 3 — the precedence in §0 was specified, not executed · 2026-11-18
+
+**Written after the first run that had tracking. Nothing above this line is edited.** §0's
+precedence rule, AC3's disjointness clause and the four slots stand exactly as frozen; this block
+records that the code did not implement them, what the numbers were, and what now enforces them.
+
+### 3.1 What was observed
+
+Conor ran `notebooks/bdb27_multi_candidate.ipynb` with full tracking on 2026-11-18 07:17. His
+`assembly.csv`: frozen **1,731** · geo_5 **411** (`tracked`) · geo_8 **178** (`tracked`) · Route A
+**564** → **N = 2,884** (37.1% of 7,777). The committed no-tracking artefact is unchanged
+(`funnel.csv`, `composition.csv`, `bounds.csv` all reproduce; `bounds.csv` differs at 1e-13).
+
+### 3.2 The defect
+
+Two places, one cause. §0 fixes the order **frozen → geo(5) → geo(8) → Route A** and says a turn is
+attributed **at most once**; AC3 requires the slots to be disjoint and to sum to `N`.
+
+1. **The passes shared one pool.** The notebook's Route A cell called `route_a_tables(...,
+   exclude=frozen_keys)` and its geometry cell called `geometry_slots(..., exclude=frozen_keys)` —
+   the *same* 1,277-turn pool, each blind to the other (`route_a_audit.csv`'s denominator is 1,277,
+   which is 3,008 turns with a visible opposing route-runner minus the 1,731 frozen). Route A also
+   ran **before** geometry, the reverse of the specified order. `scripts/ambiguity_attribution.py`
+   had the identical two lines.
+2. **The assembly did not check.** `assemble_attribution` sums four integers. Given two overlapping
+   sets it reports their sum as `N`, and nothing in the pipeline ever tested that the four slots
+   were a partition, so AC3's invariant was asserted in prose and never computed.
+
+**What that does to the number.** From his tables the two recovering routes claimed 589 + 564 =
+1,153 of a 1,277-turn pool. The overlap is bounded but not measured: 0 ≤ overlap ≤ 564, so
+`2,884` is an upper bound and `N` lies in **[2,320, 2,884]**. `2,884` cannot be quoted as `N`, and
+neither can any other single value, until the overlap is counted on the machine that has the frames.
+
+### 3.3 The fix, and what it is not
+
+One function, `ambiguity_attribution.attribution_pipeline()`, computes the four slots in the
+specified order and both surfaces call it — the notebook's cells and the script's section — so the
+order exists in one place and cannot drift between them:
+
+```
+geo      = geometry_slots(pool = frame_all − frozen)                    # 5 then 8, inside the call
+route_a  = route_a_tables(pool = frame_all − frozen − geo_5 − geo_8)    # the slot
+reference= route_a_tables(pool = frame_all − frozen)                    # §4 cross-check ONLY
+N        = |frozen| + n_geo_5 + n_geo_8 + |route_a|
+overlap  = | turn keys in reference ∩ turn keys geo took |
+```
+
+`reference` is a **counterfactual, never a slot**: it is the pass the defect ran as if it were the
+slot, kept because §4's cross-check ("on the turns where both routes fire, do they name the same
+candidate?") needs exactly those turns, and because it is what makes the overlap a stated count
+instead of an assumption. It is added to nothing and it never enters `N`. With the overlap printed,
+the reconciliation is arithmetic: `2,884 − overlap = N` on his run.
+
+**Corrected formula.**
+
+```
+N = N_frozen + N_geo(5) + N_geo(8) + ( Route A on what the three earlier slots left )
+  = 1,731 + N_geo(5) + N_geo(8) + ( Route A_reference − overlap )
+```
+
+**Not changed.** The 3 yd / 5 yd / 8 yd ladder, the 30–60° band, `outcome_link.PRIMARY_RADIUS_YD`,
+the estimator, the four bounded specifications, the label rule, Route A's three sub-rules and their
+order, the refusal to break a tie inside a radius, and the definition of the break frame. No new
+attribution rule is introduced; the only thing that moved is *which turns each existing rule is
+allowed to see*.
+
+**One clause that cannot be satisfied as written.** AC3 says recomputing the slots in a different
+order gives "the same `N` and the same per-slot counts". For a precedence partition with a non-empty
+overlap that is impossible: Route A reordered before geometry would claim 564 and geometry would
+lose whatever it had taken. What is enforced, and what the tests check, is the rest of AC3 —
+disjointness, one turn in one slot, and `Σ slots = N` — plus the statement of the difference: the
+counterfactual order's `N` is `2,884 − overlap` only if geometry and Route A never attribute
+*different* men to the same turn, which the §4 agreement rate measures. The disagreement is reported,
+not reconciled away.
+
+### 3.4 What the run now prints and writes
+
+- `precedence.csv` — one new artefact, fifteen tables per run instead of fourteen: frozen, geo_5,
+  geo_8, the Route A slot, the Route A reference pass with its own denominator, `overlap`,
+  `route_a_lost_to_geometry`, `n_double_counted` (must be 0) and `N`.
+- The Route A cell states both denominators: the reference pool (1,277 on his run) and the slot pool
+  (1,277 minus the turns geometry took).
+- The notebook's final print names all four slots. The line it replaced — "the headline N unchanged:
+  N = 1,731 frozen + 564 Route A" — was true only while the geometric slots were zero, which is how
+  it survived the no-tracking run and misled the tracked one.
+
+### 3.5 Acceptance
+
+| # | Check |
+|---|---|
+| A3-1 | With no tracking: `N = 2,295`, geo slots `0` with `NOT EVALUABLE`, Route A 564 of 1,277, overlap 0 — the committed artefact reproduces exactly. |
+| A3-2 | With a stubbed geometry claiming turn keys Route A also attributes, Route A's slot excludes every one of them and `N` does not double count. |
+| A3-3 | `n_double_counted == 0` and `Σ slots == N` on every run, printed, in `precedence.csv`. |
+| A3-4 | The notebook computes geometry **before** Route A and passes no slot's `exclude` by hand: source-order and no-hand-assembly tests, so the order cannot silently flip back. |
+| A3-5 | Suite green. |
+
+### 3.6 What Conor runs
+
+Run All on `notebooks/bdb27_multi_candidate.ipynb` with `TRACKING` unchanged (his full files). Send
+back **`precedence.csv`** — it carries the overlap and the corrected `N` in one file — and, if a
+second is wanted, `route_a_audit.csv`, whose denominator now shows the residual pool rather than
+1,277. Nothing else is needed to state the overlap; `geometry.csv` and `route_a_turns.csv` remain
+the detail behind it.
