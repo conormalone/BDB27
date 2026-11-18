@@ -8863,3 +8863,112 @@ with this session's script block and label fix inside it. Suite at that commit: 
 
 **Unchanged.** `TASK.md`, the band table, the four figures, `notes/report-draft.md` and every
 pre-existing artefact under `outputs/`.
+
+## D208 — Precedence is executed, not assumed: Route A runs on what the radii left, and the overlap is a counted number · 2026-11-18
+
+**Asked.** Conor ran `notebooks/bdb27_multi_candidate.ipynb` with full tracking on 2026-11-18 07:17
+and sent back four tables. `assembly.csv` from his run: frozen **1,731** · geo_5 **411**
+(`tracked`) · geo_8 **178** (`tracked`) · Route A **564** → **N = 2,884** (37.1% of 7,777).
+`funnel.csv`, `composition.csv` and `bounds.csv` were unchanged from the committed ones (bounds at
+the 1e-13 level). The committed no-tracking artefact still reads geo **0** / `NOT EVALUABLE`,
+N = 2,295. The binding text is `notes/multi-candidate-spec.md`, now including **Amendment 3**
+(`99df784`), which was written and committed before any line of the fix.
+
+**The defect, confirmed in the code and not inferred from the tables.** §0 fixes the order
+`frozen → geo(5) → geo(8) → Route A` and says a turn is attributed at most once; AC3 requires the
+four slots to be disjoint and to sum to `N`. The code implemented neither:
+
+* the notebook's Route A cell called `route_a_tables(..., exclude=frozen_keys)` and its geometry
+  cell called `geometry_slots(..., exclude=frozen_keys)` — **the same 1,277-turn pool**, each blind
+  to the other (`route_a_audit.csv`'s denominator is 1,277 = 3,008 turns with a visible opposing
+  route-runner − 1,731 frozen), and Route A ran **before** geometry, the reverse of the specified
+  order. `scripts/ambiguity_attribution.py` carried the identical two lines;
+* `assemble_attribution` sums four integers and nothing ever tested that the four sets were a
+  partition. AC3's invariant was asserted in prose and never computed, so an overlap could only
+  ever inflate `N`.
+
+**What 2,884 is.** His two passes claimed 589 + 564 = 1,153 turns of a 1,277-turn pool, so the
+overlap is unmeasured but bounded 0 ≤ overlap ≤ 564: `N` lies in **[2,320, 2,884]**. 2,884 is the
+sum of both passes — an upper bound, not `N`. The tables he sent cannot narrow it, because the
+overlap needs `geometry.csv`'s `slot` column against a Route A turn list; the fix computes it on
+the machine that has the frames.
+
+**The fix.** One function, `ambiguity_attribution.attribution_pipeline()`, computes the four slots in
+the specified order and **both** surfaces call it, so the order exists once:
+
+```
+geo       = geometry_slots(pool = frame_all − frozen)                  # 5 then 8, inside the call
+route_a   = route_a_tables(pool = frame_all − frozen − geo_5 − geo_8)  # the slot
+reference = route_a_tables(pool = frame_all − frozen)                  # §4 cross-check ONLY
+N         = |frozen| + n_geo_5 + n_geo_8 + |route_a|
+overlap   = | reference turns ∩ turns a radius took |
+```
+
+`reference` is the counterfactual the defect reported as if it were the slot. It is **not a slot, it
+is added to nothing**, and it is kept for two reasons: §4's cross-check ("on the turns where both
+routes fire, do they name the same candidate?") needs exactly those turns — pairing the two *slots*
+would ask a question with no rows — and the overlap between it and the radii is what turns
+"2,884 or thereabouts" into arithmetic: **`2,884 − overlap = N`**.
+
+**Corrected formula.**
+
+```
+N = N_frozen + N_geo(5) + N_geo(8) + ( Route A on what the three earlier slots left )
+  = 1,731 + N_geo(5) + N_geo(8) + ( Route A_reference − overlap )
+```
+
+His run, when he re-runs: `N = 1,731 + 589 + (564 − overlap)`, with every term printed.
+
+**Not changed.** The 3 / 5 / 8 yd ladder, the 30–60° band, `outcome_link.PRIMARY_RADIUS_YD`, the
+estimator, the four bounded specifications, the label rule, Route A's three sub-rules and their
+order, and the refusal to break a tie inside a radius. No new attribution rule: what moved is
+*which turns each existing rule was allowed to see*.
+
+**One clause that cannot be met as written, and is recorded rather than repaired.** AC3 says
+recomputing the slots "in a different order gives the same `N` and the same per-slot counts". For a
+precedence partition with a non-empty overlap that is impossible — Route A reordered first would
+claim 564 and geometry would lose whatever it had taken. What is now **computed on every run** is
+the rest of AC3: disjointness, one turn in one slot, `Σ slots = N`, plus the size of the
+counterfactual difference. The disagreement between the two orders is a number (`overlap`), not a
+silence.
+
+**The new artefact.** `precedence.csv`, one table of twelve rows, each with its own denominator:
+frozen, geo_5, geo_8, `geo_5_plus_8`, the Route A slot pool, the Route A slot, the reference pass
+with its own denominator, `overlap_reference_with_geo`, `n_double_counted` (must be 0), `N`, and
+`N_if_both_passes_summed` — the number the pre-Amendment-3 code reported, labelled as an upper
+bound. Fourteen tables per run became fifteen; the notebook, the script and `ARTEFACT_TABLES` agree,
+and a test pins the three-way agreement.
+
+**The tests that would have caught it.**
+
+* `tests/test_ambiguity_attribution.py::test_a_turn_geometry_took_is_not_offered_to_route_a` — a
+  stubbed geometry claims the first hundred turns Route A's reference pass attributes; the test
+  asserts Route A's slot is disjoint from them, the overlap equals 100, `N` is the disjoint sum, and
+  the old sum of both passes equals `N + overlap`. On the pre-fix code this fails at the first
+  assertion, which is the defect itself.
+* `tests/test_multi_candidate_notebook.py::test_the_slots_are_computed_by_one_pipeline_call_not_by_hand`
+  — no cell may call `route_a_tables` or `geometry_slots` directly or assemble `N` by hand, and the
+  script may not either. That is the static guard against the pool split reappearing, and against
+  the order flipping back.
+* `test_route_a_is_a_slot_on_the_residual_not_a_parallel_pass` — the slot's audit denominator is
+  `frame_turns − frozen − geo_taken`, and the reference's is `frame_turns − frozen`; the two are
+  different pools by construction.
+
+**On this machine (no tracking).** `N = 2,295` **exactly as committed**: frozen 1,731, geo_5 0,
+geo_8 0 (`NOT EVALUABLE`), Route A **564 of 1,277**, overlap **0**, `n_double_counted` **0**,
+`disjoint True`. The committed artefacts were regenerated from that run; the only columns that moved
+are `geometry_status` and `paths_tried`, whose committed text predated `afff4ea`'s rewording of
+`GEOMETRY_NOT_EVALUABLE` — every numeric column in `geometry.csv` and `single_turn_geometry.csv` is
+identical, and `assembly.csv`'s numbers are identical, so the drift that was there is now closed
+rather than carried.
+
+**Suite.** Green, exit 0: **688 collected, 687 passed, 1 skipped** (`.venv/bin/python -m pytest -q`, 17m). The four new tests in `tests/test_ambiguity_attribution.py` and the four in `tests/test_multi_candidate_notebook.py` are inside that count.
+
+**Unchanged.** `TASK.md`, the band table, the four figures and `notes/report-draft.md`. The
+frozen sentences of `notes/multi-candidate-spec.md` are untouched: the defect is recorded in
+Amendment 3, appended, and the AC3 clause that cannot hold is named there rather than edited away.
+
+**What Conor runs.** Run All on `notebooks/bdb27_multi_candidate.ipynb`, `TRACKING` unchanged. Send
+back **`precedence.csv`**: it carries the overlap, the Route A slot pool and the corrected `N` in one
+file, so the overlap is stated rather than assumed. `route_a_audit.csv` is the optional second —
+its denominator now reads the residual pool, not 1,277.
