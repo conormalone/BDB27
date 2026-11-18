@@ -9128,3 +9128,109 @@ file's existing convention.
 **Suite.** Green, exit 0: **694 collected, 693 passed, 1 skipped** (`.venv/bin/python -m pytest -q`).
 No test asserts on the received directory, and the one that asserts a notebook runs into its own
 scratch dir is unaffected.
+
+## D211 — Figure 19, "What survives each step": the shrinking pool drawn from four committed counts and one received step · 2026-11-18
+
+**The request.** Conor, 2026-11-18 12:12 GMT, on the prototype: *"No that's perfect, cleaned up
+the plot titles as well"*. The population-shrink chart is approved outright, and it becomes a repo
+figure — "for describing" the shrinking pool in the paper, not an exploratory aside.
+
+**The drawing, as approved.** Five horizontal bars, top to bottom, on one common left origin. Each
+bar is as long as the population that **entered** its step and filled in yellow for what came **out**
+of it; the unfilled remainder is the same colour at a lower tone, so the loss is the visible part.
+Title `What survives each step`, one axis label `DB turns of 30–60° (n)`, five step labels and five
+`survives of entered` pairs at the bar ends, count ticks at 0/2,000/4,000/6,000/8,000. No subtitle,
+no caption, no legend, no annotation block, no third colour, no shading on the last step: at 213 of
+1,731 the filled sliver reads as a sliver, which is the point. DB only; no player name and no
+`nfl_id` anywhere in the figure, the CSV, the drawn-text dump or the manifest entry.
+
+**The ladder, and where each number comes from.** Every bar is read from a file. Nothing on the
+figure is typed into the code.
+
+| step | state (drawn) | entered | survives | lost | source |
+|---|---|---:|---:|---:|---|
+| 1 | All DB turns of 30–60° | 7,777 | 6,315 | 1,462 | `funnel.csv` `band_turns` − `no_opposing_player_play_row` |
+| 2 | A listing opponent ran a route | 6,315 | 3,009 | 3,306 | `funnel.csv` `turns_with_opposing_route_runner` |
+| 3 | That route has a separation | 3,009 | 2,601 | 408 | `funnel.csv` `turns_with_a_candidate_separation` |
+| 4 | Only one candidate on the play | 2,601 | 1,731 | 870 | `funnel.csv` `turns_with_exactly_one_candidate_separation` |
+| 5 | The man is within 3 yd of him | 1,731 | **213** | 1,518 | **received paste**, `within_radius == True` |
+
+The arithmetic is checked on the table, not assumed: `entered − survives = lost` on every row,
+`survives[i] = entered[i+1]` down the chain, the ladder starts at the band total and ends at the
+received count. The four funnel rows each carry `matches == True` in the artefact's own
+`expected_2026_11_14` column, and the run prints each one with its denominator.
+
+**Provenance: four numbers reproducible here, one not.** Steps 1–4 come from
+`outputs/ambiguity_attribution/funnel.csv`, written on this machine from the uploaded full-run turn
+table plus `player_play.csv`. Step 5 cannot be reproduced here: this host holds no game tracking
+file, so its own `outputs/ambiguity_attribution/single_turn_geometry.csv` carries an empty
+`dist_nearest_yd` and an empty `within_radius` on all 1,731 rows and reports `NOT EVALUABLE`. The
+213 comes only from Conor's laptop paste, committed byte-for-byte at
+`outputs/population_shrink_received/single_turn_geometry.csv` (112,744 bytes, CRLF, sha256
+`49e08e21…2b5680`) with a `PROVENANCE.md` whose first line says it is not a pipeline output. **No
+manifest came with that paste** — no hash of the full turn table, none of the tracking file, no git
+HEAD, no run timestamp — so its sha256 identifies the bytes that were sent and verifies nothing about
+the run.
+
+That split is stated in three places, per row rather than in prose: the CSV carries
+`provenance` (`FULL` ×4, `FULL+RECEIVED` on step 5) and `verified_on_this_machine`
+(True ×4, False on step 5); the `.provenance.json` sidecar has a `reproducible_on_this_machine`
+block with `step_5: false` and the reason; the manifest entry repeats it. The figure's own stamp is
+`FULL + RECEIVED` — not `FULL DATA OUTPUT`, and deliberately not the run's mode stamp. The gallery
+prints that stamp as written and does not badge it as sample output.
+
+**The 213 guard, and why it is not a gate.** The received bytes are pinned by sha256 in
+`bdb27/figures.py`; stage 06 refuses to draw if the file's digest differs, printing both digests and
+naming `PROVENANCE.md`. A second identity is checked: the paste's row count must equal the funnel's
+1,731, or the last bar would be filled from the wrong denominator. Both print what they found before
+refusing, neither branches on a threshold, and neither drops a subset — the number itself is computed
+from the file on every run. Nothing here is a "minimum": a smaller final count would draw a shorter
+sliver, not stop.
+
+**One number in the request that the file contradicts.** The request that commissioned this figure
+described the paste as "1,731 rows, **1,713** tracked". The file has **1,720** `geometry_status ==
+tracked`, **11** not evaluable (10 `no_candidate_tracked`, 1 `break_frame_unrecovered`), and
+`1,720 − 1,507 = 213`. 1,713 appears nowhere in the file's own columns. The figure, the CSV, the
+sidecar and `PROVENANCE.md` use the file's numbers and flag the discrepancy in the `PROVENANCE.md`
+itself. Recorded, not silently repaired.
+
+**The 3,008 / 3,009 unit difference is inherited, not introduced.** The funnel's
+`turns_with_opposing_route_runner` is **3,009**; D210 already records that the received
+`precedence.csv` and the committed `verdict.txt` say **3,008** at turn-key level (second detections
+sharing a `frame_start` merge there). The figure draws the funnel's 3,009, because the funnel is the
+population the ladder walks down and mixing units inside one ladder would be the error. The
+difference is one turn and is stated in D210; nothing here repairs it.
+
+**Produced by the figure stage, not by a new script.** Figure 19 is wired into
+`src/06_figures.py` beside figures 1–18, so it appears in the notebook gallery on Run All and needs no
+CLI step from Conor. It is drawn in **both** modes because its inputs are committed artefacts rather
+than `turns.parquet`; its own stamp says what it is. Its drawn text is read back off the figure
+object into `outputs/figures/fig_population_shrink.drawn_text.json` — 17 strings, the title, the one
+axis label, five step labels, five pairs and five tick labels — and the figure-level text layer is
+asserted empty, which is how "no caption, no subtitle, no legend, no annotation block" is enforced
+mechanically. The heading is drawn as axes text rather than `ax.set_title` precisely so the scan and
+the dump can see it: a left-side title is not returned by `ax.get_title()`, and a title the scanner
+cannot read is a title nobody has checked.
+
+**Untouched, and how that was proved.** `TASK.md`, `notes/report-draft.md`, `config.yaml` and the
+other eighteen figures' PNGs and CSVs are unmodified. Proof rather than assertion: stage 06 was run
+in sample mode from a scratch config at `78be754` (unmodified) and again with this change; all
+eighteen existing PNGs are **byte-identical between the two runs**, across every figure. No config
+key was added, so `config_sha` is unchanged and no committed CSV's fingerprint moved. Two committed
+PNGs (`fig_the_hole`, `fig_all_positions`) do differ from any sample-mode run because they were last
+rendered from full data — that predates this cycle, is identical under both code versions, and is why
+the stage was not run into `outputs/figures`: only this figure's four files were written there, by
+the figure functions themselves under the repo's own `config.yaml`.
+
+**Files touched.** `src/bdb27/figures.py` (figure 19: ladder, drawing, drawn-text dump, sidecar),
+`src/06_figures.py` (wire-in, run-log detail, final line), `src/bdb27/figure_text_scan.py` (the new
+renderer joins the banned-token scan), `tests/test_population_shrink.py` (new, 21 tests),
+`tests/test_figures_stage.py` (figure count 18 → 19; the stage renders figure 19 and its files),
+`tests/test_notebook_contract.py` (gallery entry count 21 → 22), `outputs/figures/fig_population_shrink.{png,csv,drawn_text.json,provenance.json}`,
+`outputs/figures/figures_manifest.json` (one entry merged; the other 21 untouched),
+`outputs/population_shrink_received/{single_turn_geometry.csv,PROVENANCE.md}` (new, the received
+artefact and its provenance), `.gitignore` (one re-include block, following the file's existing
+convention), `README.md` and `notebooks/README.md` (the figure count in the stage table), and this
+entry.
+
+**Suite.** Green, exit 0: **716 collected, 715 passed, 1 skipped** (`.venv/bin/python -m pytest -q`, full run). One existing test was adjusted and it is the only one: the working-tree guard `test_the_cycle_did_not_touch_the_task_the_figures_or_the_draft` in `tests/test_fallback_validation.py` asserted that `git status --porcelain` was empty under `outputs/figures/`. Adding an approved figure necessarily adds untracked files there and rewrites `figures_manifest.json`, so the guard now exempts untracked additions and the manifest registry while still failing on a modified or deleted committed figure, on `TASK.md` or on the draft. Its teeth are unchanged for the case it was written for.

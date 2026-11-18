@@ -502,6 +502,29 @@ def main(argv=None) -> int:
         da_payload["stamp"] = figures.stamp_text(args.mode)
         _write_manifest(da_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 19: what survives each step (the population ladder)
+        # Its inputs are committed artefacts, not this run's turns: steps 1-4
+        # from the funnel, step 5 from a received laptop paste. It therefore
+        # carries its OWN provenance (`FULL + RECEIVED`), not the run's mode
+        # stamp — the final step cannot be labelled as measured here.
+        ps_table, ps_context = figures.population_shrink_ladder()
+        ps_png = outdir / f"{figures.FIGURE_KEY_POPULATION_SHRINK}.png"
+        ps_csv_path = outdir / f"{figures.FIGURE_KEY_POPULATION_SHRINK}.csv"
+        ps_text_path = outdir / (
+            f"{figures.FIGURE_KEY_POPULATION_SHRINK}.drawn_text.json")
+        figures.write_population_shrink_csv(ps_table, ps_csv_path, cfg)
+        ps_fig = figures.plot_population_shrink(ps_table, ps_context, cfg)
+        ps_text = figures.population_shrink_drawn_text(ps_fig, cfg)
+        ps_text_path.write_text(
+            json.dumps(ps_text, indent=2), encoding="utf-8")
+        figures.render_population_shrink(ps_fig, cfg, ps_png)
+        ps_payload = figures.population_shrink_manifest_payload(
+            ps_table, ps_context)
+        _write_manifest(ps_payload, manifest_path, args.mode, cfg)
+        figures.write_population_shrink_provenance(
+            ps_context, ps_png, ps_csv_path, ps_text_path, cfg,
+            manifest_path=manifest_path)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -613,7 +636,12 @@ def main(argv=None) -> int:
                         f"{figures.FIGURE_KEY_DRILL_ANGLE}: "
                         f"turns={da_context['n_turns']} "
                         f"drills={da_context['n_drills']} "
-                        f"in_band={da_context['turns_in_band']} ")
+                        f"in_band={da_context['turns_in_band']}; "
+                        f"{figures.FIGURE_KEY_POPULATION_SHRINK}: "
+                        f"steps={ps_context['steps']} "
+                        f"band={ps_context['band_turns']} "
+                        f"final={ps_context['final']} "
+                        f"received_rows={ps_context['geometry_rows']} ")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -631,6 +659,7 @@ def main(argv=None) -> int:
           f"{ees_png.name}, {ees_csv_path.name}, "
           f"{mf_png.name}, {mf_csv_path.name}, "
           f"{da_png.name}, {da_csv_path.name}, "
+          f"{ps_png.name}, {ps_csv_path.name}, {ps_text_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -685,6 +714,10 @@ def main(argv=None) -> int:
           f"; figure 18 every DB Combine turn "
           f"{da_context['n_turns']} across {da_context['n_drills']} drills, "
           f"{da_context['turns_in_band']} in the 30-60 band"
+          f"; figure 19 population ladder {ps_context['band_turns']:,} -> "
+          f"{ps_context['final']:,} through {ps_context['steps']} steps "
+          f"(step 5 from the received paste, "
+          f"{ps_context['geometry_sha256'][:12]})"
           f")")
     return 0
 

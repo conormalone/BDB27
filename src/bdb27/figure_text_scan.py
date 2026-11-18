@@ -52,6 +52,8 @@ RENDER_FUNCTIONS = (
     "render_band_only",
     "render_entry_exit_speed",
     "render_movement_family",
+    "render_drill_angle",
+    "render_population_shrink",
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]

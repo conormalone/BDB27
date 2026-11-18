@@ -97,3 +97,10 @@ Thumbs.db
 !outputs/ambiguity_attribution_received/
 !outputs/ambiguity_attribution_received/*.csv
 !outputs/ambiguity_attribution_received/*.md
+# Received artefact (D211): the laptop paste behind figure 19's final step.
+# Committed byte-for-byte, same convention as the block above: nothing writes
+# this directory, and PROVENANCE.md says so in its first line. Stage 06 reads it
+# read-only when it draws `fig_population_shrink`.
+!outputs/population_shrink_received/
+!outputs/population_shrink_received/*.csv
+!outputs/population_shrink_received/*.md

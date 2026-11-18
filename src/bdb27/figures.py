@@ -23,6 +23,7 @@ Design rules honoured here:
 
 from __future__ import annotations
 
+import hashlib
 import re
 import textwrap
 from pathlib import Path
@@ -73,6 +74,10 @@ from bdb27 import common, stats
 
 STAGE = "06_figures"
 ARTEFACT_VERSION = 1
+#: Repo root, for the two committed artefacts figure 19 reads by path (they are
+#: not config entries: they are evidence files, and the config fingerprint is
+#: pinned by every committed figure CSV).
+REPO_ROOT = Path(__file__).resolve().parents[2]
 FIGURE_KEY = "fig_the_hole"
 #: Figure 1 draws one proportions panel (2026-11-11). This is the ceiling of
 #: its y axis, in percent of that setting's own valid turns; a share above it
@@ -10574,3 +10579,580 @@ def drill_angle_manifest_payload(table: pd.DataFrame, context: dict,
              "entry."),
         ],
     }
+
+
+# --------------------- figure 19: what survives each step
+#: Conor, 2026-11-18 12:12 GMT: "No that's perfect, cleaned up the plot titles
+#: as well" — the population-shrink ladder, approved as the figure that
+#: describes the pool the geometric step leaves. Drawn exactly as approved: one
+#: horizontal bar per step, as long as the population that ENTERED the step and
+#: filled for what came out of it; five bars, one common left origin, one colour
+#: family. Title and one axis label only — no subtitle, no caption, no legend and
+#: no annotation block. It is a count picture: nothing on it is a rate, a test or
+#: a claim about ability.
+#:
+#: PROVENANCE IS SPLIT, AND THE FIGURE SAYS SO. Steps 1-4 are read from the
+#: committed funnel artefact, which this machine produced from the uploaded
+#: full-run turn table plus `player_play.csv`. Step 5 (1,731 -> 213) is NOT
+#: reproducible here: this host has no game tracking file, so its own
+#: `single_candidate_geometry()` run reports `NOT EVALUABLE` and writes a column
+#: of blanks. The 213 comes from the laptop paste committed byte-for-byte at
+#: `outputs/population_shrink_received/single_turn_geometry.csv`, whose
+#: `PROVENANCE.md` records that no manifest came with it. The CSV carries
+#: `verified_on_this_machine` per row, the manifest carries the split in
+#: `provenance_note`, and the `<key>.provenance.json` sidecar states it in a
+#: dedicated block. Nothing here labels the paste as measured on this machine.
+FIGURE_KEY_POPULATION_SHRINK = "fig_population_shrink"
+
+POP_SHRINK_FUNNEL = "outputs/ambiguity_attribution/funnel.csv"
+POP_SHRINK_GEOMETRY = ("outputs/population_shrink_received/"
+                       "single_turn_geometry.csv")
+#: The same quantity as THIS machine writes it, for the sidecar's "why not
+#: here" line: a column of blanks and a NOT EVALUABLE status per turn.
+POP_SHRINK_LOCAL_GEOMETRY = ("outputs/ambiguity_attribution/"
+                             "single_turn_geometry.csv")
+
+POP_SHRINK_TITLE = "What survives each step"
+POP_SHRINK_XLABEL = "DB turns of 30\u201360\u00b0 (n)"
+
+#: The approved palette: `track` is a bar's full length (what entered the step),
+#: `fill` is the part that came out of it. Two tones of one family. The final
+#: step gets no third shade: at 213 of 1,731 the filled sliver is already legible
+#: at this scale, which answers Conor's "if you judge that necessary" — it is not.
+POP_SHRINK_TRACK = "#f0e4bd"
+POP_SHRINK_FILL = "#e8b100"
+POP_SHRINK_INK = "#1a1a1a"
+POP_SHRINK_AXIS_GREY = "#555555"
+POP_SHRINK_RULE_GREY = "#dddddd"
+#: Layout lives in code, not in config: the config fingerprint is pinned by every
+#: committed figure CSV (see FIGURE1_Y_MAX_PCT), so adding a block would move
+#: `config_sha` under artefacts this cycle may not touch.
+POP_SHRINK_FIGSIZE = (13.8, 7.4)
+POP_SHRINK_DPI = 170
+POP_SHRINK_BAR_HEIGHT = 0.58
+POP_SHRINK_X_MAX = 9700
+POP_SHRINK_X_TICKS = (0, 2000, 4000, 6000, 8000)
+POP_SHRINK_X_TICK_LABELS = ("0", "2,000", "4,000", "6,000", "8,000")
+POP_SHRINK_LABEL_FONTSIZE = 13.5
+POP_SHRINK_XLABEL_FONTSIZE = 12.5
+POP_SHRINK_TITLE_FONTSIZE = 18.0
+POP_SHRINK_RADIUS_YD = 3.0
+
+POP_SHRINK_STAMP = "FULL + RECEIVED"
+POP_SHRINK_LABEL = "FULL DATA OUTPUT + RECEIVED STEP"
+POP_SHRINK_PROVENANCE_NOTE = (
+    "Steps 1-4 are read from the committed funnel artefact "
+    f"({POP_SHRINK_FUNNEL}) and are reproducible on this machine. Step 5 "
+    "(1,731 -> 213) is NOT: it comes only from a received laptop paste, "
+    f"committed byte-for-byte at {POP_SHRINK_GEOMETRY} with its own "
+    "PROVENANCE.md. No manifest came with that paste — no hash of the full turn "
+    "table, none of the tracking file, no git HEAD and no run timestamp — so the "
+    "sha256 recorded there identifies the bytes that were sent and verifies "
+    "nothing about the run. This machine cannot regenerate 213: with no game "
+    f"tracking file, its own copy ({POP_SHRINK_LOCAL_GEOMETRY}) carries blanks "
+    "and reports NOT EVALUABLE for all 1,731 turns."
+)
+
+#: The received paste, pinned. Changed bytes are a provenance event and refuse,
+#: so the 213 cannot become a different number without someone editing this pin:
+#: the number is computed from the file, never typed into the drawing code.
+POP_SHRINK_RECEIVED_SHA256 = (
+    "49e08e2186e04227b7625e2296f55e8791a1a99dd3e013027d4ff987fd2b5680"
+)
+POP_SHRINK_RECEIVED_BYTES = 112744
+
+#: The four funnel rows figure 19 reads, in step order: (row, why the rest is
+#: lost at that step). Step 1's surviving count is the band total minus the
+#: "no opposing player" loss.
+POP_SHRINK_FUNNEL_STEPS = (
+    ("no_opposing_player_play_row",
+     "no opposing player is listed on the play"),
+    ("turns_with_opposing_route_runner",
+     "opponents are listed but none of them ran a route"),
+    ("turns_with_a_candidate_separation",
+     "the route carries no separation value"),
+    ("turns_with_exactly_one_candidate_separation",
+     "the turn has two or more candidates"),
+)
+#: The five state labels, verbatim from the approved drawing, top bar first.
+POP_SHRINK_STATES = (
+    "All DB turns of 30\u201360\u00b0",
+    "A listing opponent ran a route",
+    "That route has a separation",
+    "Only one candidate on the play",
+    "The man is within 3 yd of him",
+)
+
+
+def _pop_shrink_sha256(path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def population_shrink_ladder(root=None):
+    """Read the ladder from its two artefacts; print what was found, then check.
+
+    Every number on the figure comes from a file — steps 1-4 from the committed
+    funnel (``grouping == "band_row"``), step 5 from the received paste's
+    ``within_radius == True`` count. Nothing about the ladder is typed in. The
+    checks below are data integrity, not thresholds: each prints the numbers it
+    compared and refuses only on a real contradiction (the paste is not the
+    pinned bytes; the paste's own row count is not the population the funnel
+    says reaches that step; the funnel's own ``matches`` column is False).
+    """
+    root = Path(root) if root is not None else REPO_ROOT
+    funnel_path = Path(root) / POP_SHRINK_FUNNEL
+    geometry_path = Path(root) / POP_SHRINK_GEOMETRY
+    common.require_inputs([funnel_path, geometry_path], stage=STAGE)
+
+    funnel = pd.read_csv(funnel_path)
+    for column in ("step", "n", "grouping", "matches"):
+        if column not in funnel.columns:
+            raise common.StageRefused(
+                f"{STAGE}: {funnel_path} has no '{column}' column "
+                f"(columns: {', '.join(map(str, funnel.columns))})")
+    band = funnel[funnel["grouping"] == "band_row"].set_index("step")
+    if band.empty:
+        raise common.StageRefused(
+            f"{STAGE}: {funnel_path} carries no grouping == 'band_row' rows "
+            f"(groupings found: "
+            f"{', '.join(sorted(map(str, funnel['grouping'].unique())))})")
+
+    def row(step: str) -> int:
+        if step not in band.index:
+            raise common.StageRefused(
+                f"{STAGE}: {funnel_path} has no band_row step {step!r} "
+                f"(steps found: {', '.join(map(str, band.index))})")
+        found = band.loc[step]
+        n = int(found["n"])
+        matches = str(found["matches"]).strip().lower()
+        print(f"[{STAGE}] {funnel_path.name} {step}: n = {n:,} "
+              f"of {int(found['denominator']):,} (matches={matches})")
+        if matches == "false":
+            raise common.StageRefused(
+                f"{STAGE}: {funnel_path} step {step!r} records matches=False "
+                f"against its own expectation (n = {n:,}, expected "
+                f"{found.get('expected_2026_11_14')})")
+        return n
+
+    band_turns = row("band_turns")
+    no_opposing = row(POP_SHRINK_FUNNEL_STEPS[0][0])
+    with_runner = row(POP_SHRINK_FUNNEL_STEPS[1][0])
+    with_separation = row(POP_SHRINK_FUNNEL_STEPS[2][0])
+    one_candidate = row(POP_SHRINK_FUNNEL_STEPS[3][0])
+    survivors_step1 = band_turns - no_opposing
+
+    geometry = pd.read_csv(geometry_path)
+    for column in ("within_radius", "n_candidates_tracked",
+                   "geometry_status", "dist_nearest_yd"):
+        if column not in geometry.columns:
+            raise common.StageRefused(
+                f"{STAGE}: {geometry_path} has no '{column}' column "
+                f"(columns: {', '.join(map(str, geometry.columns))}); the "
+                "received paste is the only source of the final step")
+    within = (geometry["within_radius"].astype(str).str.strip().str.lower()
+              == "true")
+    n_within = int(within.sum())
+    n_rows = int(len(geometry))
+    status = geometry["geometry_status"].astype(str).str.strip().str.lower()
+    n_tracked = int((status == "tracked").sum())
+    n_not_evaluable = n_rows - n_tracked
+    print(f"[{STAGE}] {geometry_path.name}: {n_rows:,} rows, "
+          f"{n_tracked:,} tracked, {n_not_evaluable:,} not evaluable, "
+          f"{n_within:,} within {POP_SHRINK_RADIUS_YD:g} yd")
+
+    received_sha = _pop_shrink_sha256(geometry_path)
+    received_bytes = int(geometry_path.stat().st_size)
+    print(f"[{STAGE}] {geometry_path.name}: sha256 {received_sha} "
+          f"({received_bytes:,} bytes)")
+    if received_sha != POP_SHRINK_RECEIVED_SHA256:
+        raise common.StageRefused(
+            f"{STAGE}: {geometry_path} is not the received paste this figure "
+            f"was built on — found sha256 {received_sha} ({received_bytes:,} "
+            f"bytes), pinned {POP_SHRINK_RECEIVED_SHA256} "
+            f"({POP_SHRINK_RECEIVED_BYTES:,} bytes). Redrawing now would change "
+            f"the final step without saying so; read "
+            f"{geometry_path.parent / 'PROVENANCE.md'} and re-pin in code.")
+    if n_rows != one_candidate:
+        raise common.StageRefused(
+            f"{STAGE}: the received paste carries {n_rows:,} rows but "
+            f"{funnel_path} says {one_candidate:,} turns reach that step — the "
+            "final bar would be filled from the wrong denominator.")
+
+    step_rows = [
+        (POP_SHRINK_STATES[0], band_turns, survivors_step1,
+         POP_SHRINK_FUNNEL_STEPS[0][1], "band_turns",
+         POP_SHRINK_FUNNEL, True, "FULL", "FULL DATA OUTPUT"),
+        (POP_SHRINK_STATES[1], survivors_step1, with_runner,
+         POP_SHRINK_FUNNEL_STEPS[1][1], "turns_with_opposing_route_runner",
+         POP_SHRINK_FUNNEL, True, "FULL", "FULL DATA OUTPUT"),
+        (POP_SHRINK_STATES[2], with_runner, with_separation,
+         POP_SHRINK_FUNNEL_STEPS[2][1], "turns_with_a_candidate_separation",
+         POP_SHRINK_FUNNEL, True, "FULL", "FULL DATA OUTPUT"),
+        (POP_SHRINK_STATES[3], with_separation, one_candidate,
+         POP_SHRINK_FUNNEL_STEPS[3][1],
+         "turns_with_exactly_one_candidate_separation",
+         POP_SHRINK_FUNNEL, True, "FULL", "FULL DATA OUTPUT"),
+        (POP_SHRINK_STATES[4], one_candidate, n_within,
+         f"the man is not within {POP_SHRINK_RADIUS_YD:g} yd of the DB at the "
+         "break frame", "within_radius", POP_SHRINK_GEOMETRY, False,
+         "FULL+RECEIVED", POP_SHRINK_LABEL),
+    ]
+    table = pd.DataFrame([
+        {
+            "step": index,
+            "state": state,
+            "entered": int(entered),
+            "survives": int(survives),
+            "lost": int(entered) - int(survives),
+            "reason": reason,
+            "source_field": source_field,
+            "source_artefact": source_artefact,
+            "verified_on_this_machine": bool(verified),
+            "provenance": provenance,
+            "label": label,
+        }
+        for index, (state, entered, survives, reason, source_field,
+                    source_artefact, verified, provenance, label)
+        in enumerate(step_rows, start=1)
+    ])
+
+    # ---- the arithmetic, checked on the table rather than assumed
+    for record in table.itertuples(index=False):
+        if int(record.lost) != int(record.entered) - int(record.survives):
+            raise ValueError(
+                f"{STAGE}: step {record.step} lost is not entered - survives")
+        if int(record.survives) < 0 or int(record.lost) < 0:
+            raise ValueError(f"{STAGE}: step {record.step} has a negative count")
+    previous_rows = list(table.itertuples(index=False))
+    for previous, following in zip(previous_rows, previous_rows[1:]):
+        if int(previous.survives) != int(following.entered):
+            raise ValueError(
+                f"{STAGE}: step {following.step} enters "
+                f"{int(following.entered):,} but step {previous.step} leaves "
+                f"{int(previous.survives):,}")
+    if int(table["entered"].iloc[0]) != band_turns:
+        raise ValueError(f"{STAGE}: the ladder does not start at the band total")
+    if int(table["survives"].iloc[-1]) != n_within:
+        raise ValueError(
+            f"{STAGE}: the ladder does not end at the received count")
+
+    context = {
+        "title": POP_SHRINK_TITLE,
+        "xlabel": POP_SHRINK_XLABEL,
+        "stamp": POP_SHRINK_STAMP,
+        "steps": int(len(table)),
+        "band_turns": int(band_turns),
+        "final": int(n_within),
+        "radius_yd": POP_SHRINK_RADIUS_YD,
+        "funnel_path": POP_SHRINK_FUNNEL,
+        "geometry_path": POP_SHRINK_GEOMETRY,
+        "local_geometry_path": POP_SHRINK_LOCAL_GEOMETRY,
+        "funnel_sha256": _pop_shrink_sha256(funnel_path),
+        "geometry_sha256": received_sha,
+        "geometry_bytes": received_bytes,
+        "geometry_rows": n_rows,
+        "geometry_tracked": n_tracked,
+        "geometry_not_evaluable": n_not_evaluable,
+        "geometry_beyond_radius": int(n_tracked - n_within),
+        "ladder": table.to_dict(orient="records"),
+    }
+    return table, context
+
+
+def population_shrink_csv_frame(table: pd.DataFrame,
+                                cfg: common.Config) -> pd.DataFrame:
+    """The five drawn steps, with the provenance split as columns, not prose."""
+    columns = [
+        "provenance", "label", "config_sha", "step", "state", "entered",
+        "survives", "lost", "reason", "source_artefact", "source_field",
+        "verified_on_this_machine", "figure", "stamp",
+    ]
+    out = table.copy()
+    out.insert(2, "config_sha", common.config_fingerprint(cfg))
+    out["figure"] = FIGURE_KEY_POPULATION_SHRINK
+    out["stamp"] = POP_SHRINK_STAMP
+    return out[columns]
+
+
+def write_population_shrink_csv(table: pd.DataFrame, path,
+                                cfg: common.Config) -> Path:
+    """Write the CSV with per-row provenance instead of one stage-wide stamp.
+
+    ``common.write_csv`` stamps every row with the run's mode, which would put
+    the received step in the same ``provenance`` column as the measured ones.
+    The split IS this figure's provenance, so each row states its own source and
+    whether it was verified here (the schematic's writer takes the same view).
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    population_shrink_csv_frame(table, cfg).to_csv(path, index=False)
+    return path
+
+
+def plot_population_shrink(table: pd.DataFrame, context: dict,
+                           cfg: common.Config):
+    """Five nested bars, one common left origin, one colour family (approved)."""
+    fig, ax = plt.subplots(figsize=POP_SHRINK_FIGSIZE)
+    ys = list(range(len(table)))[::-1]
+    ax.set_yticks([])
+    ax.set_ylim(-0.70, ys[0] + 0.55)
+    ax.set_xlim(0, POP_SHRINK_X_MAX)
+    for y, record in zip(ys, table.itertuples(index=False)):
+        entered = int(record.entered)
+        survives = int(record.survives)
+        ax.barh(y, entered, height=POP_SHRINK_BAR_HEIGHT,
+                color=POP_SHRINK_TRACK, zorder=1)
+        ax.barh(y, survives, height=POP_SHRINK_BAR_HEIGHT,
+                color=POP_SHRINK_FILL, zorder=2)
+        ax.text(entered + 130, y, f"{survives:,} of {entered:,}", va="center",
+                ha="left", fontsize=POP_SHRINK_LABEL_FONTSIZE,
+                color=POP_SHRINK_INK, zorder=5)
+        ax.annotate(str(record.state), xy=(-0.012, y),
+                    xycoords=("axes fraction", "data"), ha="right",
+                    va="center", fontsize=POP_SHRINK_LABEL_FONTSIZE,
+                    color=POP_SHRINK_INK)
+    ax.set_xlabel(POP_SHRINK_XLABEL, fontsize=POP_SHRINK_XLABEL_FONTSIZE)
+    # The heading is drawn as axes text, not ``ax.set_title``: a left-side title
+    # is not returned by ``ax.get_title()``, so the drawn-text scan (and this
+    # figure's own dump) would not see it. Axes text is read back, and the
+    # figure carries no figure-level text block at all (no caption, no banner).
+    ax.text(0.012, 1.035, POP_SHRINK_TITLE, transform=ax.transAxes,
+            fontsize=POP_SHRINK_TITLE_FONTSIZE, ha="left", va="bottom",
+            color=POP_SHRINK_INK)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.spines["bottom"].set_color(POP_SHRINK_RULE_GREY)
+    ax.tick_params(axis="x", labelsize=10.5, colors=POP_SHRINK_AXIS_GREY)
+    ax.set_xticks(list(POP_SHRINK_X_TICKS))
+    ax.set_xticklabels(list(POP_SHRINK_X_TICK_LABELS))
+    fig.subplots_adjust(left=0.33, right=0.98, top=0.88, bottom=0.12)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+                 fontweight="bold", color=ALERT)
+    return fig
+
+
+def render_population_shrink(fig, cfg: common.Config, out_png) -> Path:
+    """Save figure 19 once with fixed metadata, so two runs are identical."""
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=POP_SHRINK_DPI, facecolor="white",
+                bbox_inches="tight", pad_inches=0.3,
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def population_shrink_drawn_text(fig, cfg: common.Config) -> dict:
+    """The drawn-text record: every string the approved drawing puts on canvas.
+
+    Read back off the figure object, not restated, so the dump cannot drift from
+    what is drawn. There is no subtitle, no caption, no legend and no annotation
+    block: the strings are the title, one axis label, the five step labels, the
+    five ``survives of entered`` pairs and the count axis' five tick labels.
+    """
+    from bdb27.figure_text_scan import BANNED_TOKENS, banned_hits, figure_texts
+
+    strings = figure_texts(fig)
+    # The banned-token scan is `figure_text_scan`'s job; this record reports what
+    # it finds rather than refusing, so that turning the one provenance-banner
+    # switch on cannot break the stage. With the switch off — the committed
+    # configuration — `banned_hits` is empty.
+    hits = banned_hits(strings)
+    if POP_SHRINK_TITLE not in strings:
+        raise ValueError(f"{STAGE}: figure 19 does not draw its own title")
+    # Figure-level text is a caption or a banner. The only one this figure may
+    # ever carry is the provenance banner, and only when the one config switch
+    # draws it; anything else would be the caption the approval removed.
+    extra = [text.get_text() for text in fig.texts
+             if text.get_text() and text.get_text() != STAMP]
+    if extra:
+        raise ValueError(
+            f"{STAGE}: figure 19 draws figure-level text {extra} — the "
+            "approved drawing carries no caption, subtitle or annotation block")
+    scan_strings = [POP_SHRINK_TITLE] + [s for s in strings
+                                         if s != POP_SHRINK_TITLE]
+    return {
+        "provenance": POP_SHRINK_STAMP,
+        "label": POP_SHRINK_LABEL,
+        "config_sha": common.config_fingerprint(cfg),
+        "figure": FIGURE_KEY_POPULATION_SHRINK,
+        "stamp": POP_SHRINK_STAMP,
+        "strings": strings,
+        "scan_strings": scan_strings,
+        "banned_tokens": list(BANNED_TOKENS),
+        "banned_hits": [{"token": token, "text": text} for token, text in hits],
+    }
+
+
+def population_shrink_manifest_payload(table: pd.DataFrame,
+                                       context: dict) -> dict:
+    """Figure 19's manifest entry: the five steps, and where each one came from."""
+    if int(len(table)) != context["steps"]:
+        raise ValueError(f"{STAGE}: manifest row count does not match")
+    if int(table["entered"].iloc[0]) != context["band_turns"]:
+        raise ValueError(
+            f"{STAGE}: the manifest ladder's first bar is not the band total")
+    if int(table["survives"].iloc[-1]) != context["final"]:
+        raise ValueError(
+            f"{STAGE}: the manifest ladder's last fill is not the received count")
+    final = table.iloc[-1]
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_POPULATION_SHRINK,
+        "title": POP_SHRINK_TITLE,
+        "claim": (
+            f"Of {int(table['entered'].iloc[0]):,} valid DB game turns in the "
+            f"30\u201360\u00b0 band, {context['final']:,} reach the last step "
+            "with the one listed candidate within 3 yd of the DB at the break "
+            "frame. Every bar is the population that entered its step; the "
+            "filled part is what that step left."),
+        "stamp": POP_SHRINK_STAMP,
+        "provenance_note": POP_SHRINK_PROVENANCE_NOTE,
+        "reproducible_on_this_machine": {
+            "steps_1_to_4": True,
+            "step_5": False,
+            "why_step_5": (
+                "No full game tracking file is on this host: this machine's own "
+                f"copy ({POP_SHRINK_LOCAL_GEOMETRY}) carries blanks and reports "
+                "NOT EVALUABLE for all 1,731 turns. The 213 is reported from the "
+                "received paste, not recomputed here."),
+        },
+        "bar_encoding": {
+            "length": "the population that entered the step",
+            "fill": "the population that came out of the step",
+            "last_bar_fill": "the received 3-yd count",
+            "common_left_origin": True,
+            "colours": {"track": POP_SHRINK_TRACK, "fill": POP_SHRINK_FILL},
+            "colour_family": "one",
+            "second_shade_on_last_step": False,
+        },
+        "ladder": [
+            {
+                "step": int(record["step"]),
+                "state": record["state"],
+                "entered": int(record["entered"]),
+                "survives": int(record["survives"]),
+                "lost": int(record["lost"]),
+                "reason": record["reason"],
+                "source_artefact": record["source_artefact"],
+                "source_field": record["source_field"],
+                "verified_on_this_machine": bool(
+                    record["verified_on_this_machine"]),
+            }
+            for record in context["ladder"]
+        ],
+        "population": {
+            "setting": "game",
+            "position_group": "DB",
+            "band_deg": [30.0, 60.0],
+            "band_label": "30\u201360\u00b0",
+            "turns": context["band_turns"],
+            "final_turns": context["final"],
+            "radius_yd": context["radius_yd"],
+        },
+        "final_step_detail": {
+            "rows_in_received_paste": context["geometry_rows"],
+            "tracked": context["geometry_tracked"],
+            "not_evaluable": context["geometry_not_evaluable"],
+            "within_radius": context["final"],
+            "beyond_radius": context["geometry_beyond_radius"],
+            "lost_total": int(final["lost"]),
+            "lost_note": (
+                f"{context['geometry_beyond_radius']:,} of the "
+                f"{int(final['lost']):,} measured beyond "
+                f"{context['radius_yd']:g} yd, plus "
+                f"{context['geometry_not_evaluable']:,} with no candidate "
+                "tracked at the break frame."),
+        },
+        "sources": [POP_SHRINK_FUNNEL, POP_SHRINK_GEOMETRY],
+        "source_artefacts": [
+            {
+                "path": POP_SHRINK_FUNNEL,
+                "sha256": context["funnel_sha256"],
+                "provenance": "FULL",
+                "role": "committed funnel: steps 1-4",
+            },
+            {
+                "path": POP_SHRINK_GEOMETRY,
+                "sha256": context["geometry_sha256"],
+                "bytes": context["geometry_bytes"],
+                "provenance": "RECEIVED",
+                "role": "laptop paste: step 5 only; no manifest came with it",
+            },
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_POPULATION_SHRINK}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_POPULATION_SHRINK}.csv",
+        "drawn_text": (f"outputs/figures/"
+                       f"{FIGURE_KEY_POPULATION_SHRINK}.drawn_text.json"),
+        "caveats": [
+            ("Steps 1-4 are committed funnel counts and are reproducible here. "
+             "Step 5 (1,731 -> 213) is a received laptop number: no manifest "
+             "came with it, and this machine cannot regenerate it."),
+            (f"The final step loses {int(final['lost']):,}: "
+             f"{context['geometry_beyond_radius']:,} measured beyond "
+             f"{context['radius_yd']:g} yd and "
+             f"{context['geometry_not_evaluable']:,} with no candidate tracked "
+             "at the break frame."),
+            ("Counts only: the bars are nested populations, not rates, and "
+             "nothing on the figure is a test or an estimate of ability."),
+            ("No player names and no nfl_id appear in the figure, the CSV, the "
+             "drawn-text dump or this entry."),
+        ],
+    }
+
+
+def write_population_shrink_provenance(context: dict, png_path, csv_path,
+                                       text_path, cfg: common.Config,
+                                       manifest_path=None) -> Path:
+    """``<key>.provenance.json`` beside the figure, in the house schema."""
+    png_path, csv_path = Path(png_path), Path(csv_path)
+    text_path = Path(text_path)
+    payload = {
+        "provenance": POP_SHRINK_STAMP,
+        "label": POP_SHRINK_LABEL,
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_POPULATION_SHRINK,
+        "title": POP_SHRINK_TITLE,
+        "claim": (
+            f"Of {context['band_turns']:,} valid DB game turns in the "
+            f"30\u201360\u00b0 band, {context['final']:,} reach the last step "
+            "with the one listed candidate within 3 yd of the DB at the break "
+            "frame."),
+        "stamp": POP_SHRINK_STAMP,
+        "provenance_note": POP_SHRINK_PROVENANCE_NOTE,
+        "reproducible_on_this_machine": {
+            "steps_1_to_4": True,
+            "steps_1_to_4_source": POP_SHRINK_FUNNEL,
+            "step_5": False,
+            "step_5_source": POP_SHRINK_GEOMETRY,
+            "why_step_5": (
+                "No full game tracking file is on this host. This machine's own "
+                f"{POP_SHRINK_LOCAL_GEOMETRY} carries blanks and reports NOT "
+                "EVALUABLE for all 1,731 turns; the received paste is the only "
+                "file in the repo that carries a distance for them, and no "
+                "manifest came with it."),
+        },
+        "ladder": context["ladder"],
+        "source_artefacts": [
+            {"path": POP_SHRINK_FUNNEL, "sha256": context["funnel_sha256"],
+             "provenance": "FULL", "role": "steps 1-4"},
+            {"path": POP_SHRINK_GEOMETRY,
+             "sha256": context["geometry_sha256"],
+             "bytes": context["geometry_bytes"], "provenance": "RECEIVED",
+             "role": "step 5; no manifest behind it"},
+        ],
+        "outputs": {
+            "png": str(png_path),
+            "png_sha256": _pop_shrink_sha256(png_path),
+            "csv": str(csv_path),
+            "csv_sha256": _pop_shrink_sha256(csv_path),
+            "drawn_text": str(text_path),
+            "drawn_text_sha256": _pop_shrink_sha256(text_path),
+            "manifest": str(manifest_path) if manifest_path else None,
+        },
+    }
+    return common.write_json(payload, png_path.with_suffix(".provenance.json"),
+                             "full", cfg)

@@ -1,11 +1,11 @@
 {
   "provenance": "MIXED",
-  "label": "MIXED PROVENANCE \u2014 5 FULL, 15 sample, 1 schematic",
+  "label": "MIXED PROVENANCE \u2014 5 FULL, 15 sample, 1 schematic, 1 FULL + RECEIVED",
   "config_sha": "a76cf3bd9012f085",
   "generated_utc": "2026-11-16T21:43:46Z",
   "stage": "06_figures",
   "artefact_version": 1,
-  "stamp": "MIXED PROVENANCE \u2014 5 FULL, 15 sample, 1 schematic",
+  "stamp": "MIXED PROVENANCE \u2014 5 FULL, 15 sample, 1 schematic, 1 FULL + RECEIVED",
   "figures": {
     "fig_the_hole": {
       "stage": "06_figures",
@@ -6412,6 +6412,138 @@
       ],
       "git_rev": "713ab3e",
       "config_sha": "a76cf3bd9012f085"
+    },
+    "fig_population_shrink": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_population_shrink",
+      "title": "What survives each step",
+      "claim": "Of 7,777 valid DB game turns in the 30\u201360\u00b0 band, 213 reach the last step with the one listed candidate within 3 yd of the DB at the break frame. Every bar is the population that entered its step; the filled part is what that step left.",
+      "stamp": "FULL + RECEIVED",
+      "provenance_note": "Steps 1-4 are read from the committed funnel artefact (outputs/ambiguity_attribution/funnel.csv) and are reproducible on this machine. Step 5 (1,731 -> 213) is NOT: it comes only from a received laptop paste, committed byte-for-byte at outputs/population_shrink_received/single_turn_geometry.csv with its own PROVENANCE.md. No manifest came with that paste \u2014 no hash of the full turn table, none of the tracking file, no git HEAD and no run timestamp \u2014 so the sha256 recorded there identifies the bytes that were sent and verifies nothing about the run. This machine cannot regenerate 213: with no game tracking file, its own copy (outputs/ambiguity_attribution/single_turn_geometry.csv) carries blanks and reports NOT EVALUABLE for all 1,731 turns.",
+      "reproducible_on_this_machine": {
+        "steps_1_to_4": true,
+        "step_5": false,
+        "why_step_5": "No full game tracking file is on this host: this machine's own copy (outputs/ambiguity_attribution/single_turn_geometry.csv) carries blanks and reports NOT EVALUABLE for all 1,731 turns. The 213 is reported from the received paste, not recomputed here."
+      },
+      "bar_encoding": {
+        "length": "the population that entered the step",
+        "fill": "the population that came out of the step",
+        "last_bar_fill": "the received 3-yd count",
+        "common_left_origin": true,
+        "colours": {
+          "track": "#f0e4bd",
+          "fill": "#e8b100"
+        },
+        "colour_family": "one",
+        "second_shade_on_last_step": false
+      },
+      "ladder": [
+        {
+          "step": 1,
+          "state": "All DB turns of 30\u201360\u00b0",
+          "entered": 7777,
+          "survives": 6315,
+          "lost": 1462,
+          "reason": "no opposing player is listed on the play",
+          "source_artefact": "outputs/ambiguity_attribution/funnel.csv",
+          "source_field": "band_turns",
+          "verified_on_this_machine": true
+        },
+        {
+          "step": 2,
+          "state": "A listing opponent ran a route",
+          "entered": 6315,
+          "survives": 3009,
+          "lost": 3306,
+          "reason": "opponents are listed but none of them ran a route",
+          "source_artefact": "outputs/ambiguity_attribution/funnel.csv",
+          "source_field": "turns_with_opposing_route_runner",
+          "verified_on_this_machine": true
+        },
+        {
+          "step": 3,
+          "state": "That route has a separation",
+          "entered": 3009,
+          "survives": 2601,
+          "lost": 408,
+          "reason": "the route carries no separation value",
+          "source_artefact": "outputs/ambiguity_attribution/funnel.csv",
+          "source_field": "turns_with_a_candidate_separation",
+          "verified_on_this_machine": true
+        },
+        {
+          "step": 4,
+          "state": "Only one candidate on the play",
+          "entered": 2601,
+          "survives": 1731,
+          "lost": 870,
+          "reason": "the turn has two or more candidates",
+          "source_artefact": "outputs/ambiguity_attribution/funnel.csv",
+          "source_field": "turns_with_exactly_one_candidate_separation",
+          "verified_on_this_machine": true
+        },
+        {
+          "step": 5,
+          "state": "The man is within 3 yd of him",
+          "entered": 1731,
+          "survives": 213,
+          "lost": 1518,
+          "reason": "the man is not within 3 yd of the DB at the break frame",
+          "source_artefact": "outputs/population_shrink_received/single_turn_geometry.csv",
+          "source_field": "within_radius",
+          "verified_on_this_machine": false
+        }
+      ],
+      "population": {
+        "setting": "game",
+        "position_group": "DB",
+        "band_deg": [
+          30.0,
+          60.0
+        ],
+        "band_label": "30\u201360\u00b0",
+        "turns": 7777,
+        "final_turns": 213,
+        "radius_yd": 3.0
+      },
+      "final_step_detail": {
+        "rows_in_received_paste": 1731,
+        "tracked": 1720,
+        "not_evaluable": 11,
+        "within_radius": 213,
+        "beyond_radius": 1507,
+        "lost_total": 1518,
+        "lost_note": "1,507 of the 1,518 measured beyond 3 yd, plus 11 with no candidate tracked at the break frame."
+      },
+      "sources": [
+        "outputs/ambiguity_attribution/funnel.csv",
+        "outputs/population_shrink_received/single_turn_geometry.csv"
+      ],
+      "source_artefacts": [
+        {
+          "path": "outputs/ambiguity_attribution/funnel.csv",
+          "sha256": "102c1f2be9cdde167ec7e415fa9f8138c2ec2dbd998443263abf3936f7c4719f",
+          "provenance": "FULL",
+          "role": "committed funnel: steps 1-4"
+        },
+        {
+          "path": "outputs/population_shrink_received/single_turn_geometry.csv",
+          "sha256": "49e08e2186e04227b7625e2296f55e8791a1a99dd3e013027d4ff987fd2b5680",
+          "bytes": 112744,
+          "provenance": "RECEIVED",
+          "role": "laptop paste: step 5 only; no manifest came with it"
+        }
+      ],
+      "png": "outputs/figures/fig_population_shrink.png",
+      "csv": "outputs/figures/fig_population_shrink.csv",
+      "drawn_text": "outputs/figures/fig_population_shrink.drawn_text.json",
+      "caveats": [
+        "Steps 1-4 are committed funnel counts and are reproducible here. Step 5 (1,731 -> 213) is a received laptop number: no manifest came with it, and this machine cannot regenerate it.",
+        "The final step loses 1,518: 1,507 measured beyond 3 yd and 11 with no candidate tracked at the break frame.",
+        "Counts only: the bars are nested populations, not rates, and nothing on the figure is a test or an estimate of ability.",
+        "No player names and no nfl_id appear in the figure, the CSV, the drawn-text dump or this entry."
+      ]
     }
   }
 }
