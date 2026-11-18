@@ -8972,3 +8972,73 @@ Amendment 3, appended, and the AC3 clause that cannot hold is named there rather
 back **`precedence.csv`**: it carries the overlap, the Route A slot pool and the corrected `N` in one
 file, so the overlap is stated rather than assumed. `route_a_audit.csv` is the optional second —
 its denominator now reads the residual pool, not 1,277.
+
+---
+
+## D209 — A pull-then-Run-All reloads the package, and prints which file it loaded · 2026-11-18
+
+**Asked.** Conor pulled `a1cdb66` (which added `RUN_STATUS_NAME` to `src/bdb27/ambiguity_attribution.py`)
+and re-ran `notebooks/bdb27_multi_candidate.ipynb` in the **same Jupyter kernel** he had used at
+07:17. He got `AttributeError: module 'bdb27.ambiguity_attribution' has no attribute
+'RUN_STATUS_NAME'`. The file on disk was correct: the kernel was still holding the module object
+imported before the pull. A `sys.path` insert chooses where a *first* import looks; it cannot
+invalidate `sys.modules`. Conor does not use a terminal, so "restart the kernel" is not an
+available instruction, and this was the second pull-then-rerun failure of its kind. The spec is
+`notes/notebook-fresh-import-spec.md`, committed (`de30153`) before the notebook was touched.
+
+**Decision.** Every Run All discards the cached package and imports the files under the resolved
+`src/`. The boot cell:
+
+1. loads `src/bdb27/notebook_boot.py` **by path** (`importlib.util.spec_from_file_location`). The
+   helper is stdlib-only and imports nothing from `bdb27`, so it cannot itself be the stale
+   article it exists to fix;
+2. calls `fresh_import`, which puts the resolved `src/` at the front of `sys.path`, calls
+   `importlib.invalidate_caches()`, deletes every `sys.modules` entry named `bdb27` or `bdb27.*`,
+   and imports `outcome_test`, `geometric_match` and `ambiguity_attribution` fresh (in that order:
+   `ambiguity_attribution` imports `outcome_test` at load and `geometric_match` lazily);
+3. prints each module's resolved `__file__` and mtime, the checkout as `branch @ short HEAD` read
+   from `.git` (loose ref or `packed-refs`; a worktree `gitdir:` file is followed; no subprocess),
+   and how many cached modules it dropped — or that nothing was cached. The provenance is the
+   first thing the run prints, so a wrong-folder run is readable on screen;
+4. calls `require_symbols` against the 30 `aa` names the notebook calls, `ot.TURN_KEY`, and
+   `gm.candidate_frame` / `gm.recover_break_frames`. A missing symbol prints `IMPORT CHECK
+   FAILED`, the files it loaded, the missing name(s), and "This checkout is OLDER THAN THE
+   NOTEBOOK ... press Run All again", then raises `RuntimeError` with the same text — never a bare
+   `AttributeError` and never a silent fallback.
+
+**The test that would have caught it.** `tests/test_notebook_fresh_import.py`:
+
+* `test_a_stale_module_in_sys_modules_is_replaced_by_the_file_on_disk` seeds
+  `sys.modules["bdb27.ambiguity_attribution"]` with a bare `ModuleType` carrying a different
+  `__file__` and no `RUN_STATUS_NAME` — the 07:17 object — runs the same reload the boot cell runs,
+  and asserts the result is a different object, carries `RUN_STATUS_NAME`, and resolves to
+  `src/bdb27/ambiguity_attribution.py`.
+* `test_the_boot_cell_reports_file_and_checkout_and_binds_a_fresh_module` executes the real config
+  and boot cells with that poisoned kernel and asserts the printed file/checkout and the fresh `aa`.
+* `test_the_boot_cell_does_not_import_the_package_the_old_way` is the static guard: the old
+  `from bdb27 import ambiguity_attribution as aa` may not return, and `fresh_import` must precede
+  the first `aa.` use.
+* `test_a_missing_symbol_fails_with_the_file_and_an_older_checkout_message` pins the plain-English
+  failure and asserts it is not an `AttributeError`.
+
+On the pre-fix notebook the second and third fail at their first assertion, which is the defect
+itself.
+
+**Test-session hygiene.** Executing the notebook now drops and re-imports `bdb27` inside pytest.
+`tests/test_multi_candidate_notebook.py` snapshots the original module objects and restores them at
+module teardown, so a later module's `pytest.raises(common.StageRefused)` still compares one class
+identity. Without that, two unrelated tests failed on class identity — found by the full suite and
+fixed in this cycle.
+
+**Numbers.** Unchanged. The no-tracking Run All still reports **N = 2,295** (frozen 1,731 · geo(5) 0
+· geo(8) 0 · Route A 564), writes the same fifteen tables plus `run_status.txt` and
+`manifest.json`, and every existing notebook assertion passes unmodified. No analysis call,
+threshold, label or printed number changed. `TASK.md`, `notes/report-draft.md`, the figures and the
+committed `outputs/ambiguity_attribution/` set are untouched.
+
+**Suite.** Green, exit 0: **694 collected, 693 passed, 1 skipped** (`.venv/bin/python -m pytest -q`).
+The six new tests and the notebook module's unchanged assertions are inside that count.
+
+**If it ever appears again.** Press **Run All** — the first output line names the exact file and
+checkout it loaded; if that line says the checkout is older than the notebook, pull once more and
+press Run All again.

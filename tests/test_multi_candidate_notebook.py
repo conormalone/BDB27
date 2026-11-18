@@ -36,6 +36,27 @@ KNOBS = ("TURNS", "PLAYER_PLAY", "PLAYERS", "TRACKING", "RADII", "SEED",
          "WRITE_ARTEFACTS", "OUT_DIR")
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _restore_package_identity():
+    """The boot cell reloads bdb27 by design; the test session keeps one copy.
+
+    Executing the notebook drops every ``bdb27`` entry from ``sys.modules`` and
+    imports the files afresh. Test modules collected earlier hold the original
+    class objects (e.g. ``common.StageRefused``); leaving the fresh copies in
+    place would make ``pytest.raises(common.StageRefused)`` compare two
+    identities. Restore the original module objects once this module is done.
+    """
+    saved = {k: v for k, v in sys.modules.items()
+             if k == "bdb27" or k.startswith("bdb27.")}
+    try:
+        yield
+    finally:
+        for key in [k for k in sys.modules
+                    if k == "bdb27" or k.startswith("bdb27.")]:
+            del sys.modules[key]
+        sys.modules.update(saved)
+
+
 @pytest.fixture(scope="module")
 def notebook() -> dict:
     assert NOTEBOOK.exists(), f"notebook missing: {NOTEBOOK}"
