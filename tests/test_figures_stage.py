@@ -686,7 +686,8 @@ def _check_drill_csv(csv_df: pd.DataFrame, turns: pd.DataFrame) -> None:
     proposed = csv_df[csv_df["kind"] == "proposed"]
     assert len(proposed) == 1
     p = proposed.iloc[0]
-    assert float(p["median_angle_deg"]) == 40.0
+    # D212: the proposed drill is 45°, the same angle the schematic draws.
+    assert float(p["median_angle_deg"]) == 45.0
     assert float(p["median_entry_speed_yd_s"]) == 4.0
     assert float(p["median_reps_per_player"]) == 6.0
 
@@ -709,7 +710,7 @@ def test_drill_provenance_stamp_in_csv_and_manifest(rendered):
     fig = man["figures"]["fig_drill_coverage"]
     assert fig["stamp"] == STAMP
     assert man["provenance"] == "PLACEHOLDER_SAMPLE"
-    assert float(fig["proposed"]["angle"]) == 40.0
+    assert float(fig["proposed"]["angle"]) == 45.0
     assert fig["target_angle_deg"] == [30.0, 45.0]
     assert fig["target_entry_speed_yd_s"] == [2.0, 6.0]
     assert "players × one session" in fig["caveats"][0]
@@ -916,7 +917,7 @@ def test_on_image_stamp_switch_controls_the_banner(rendered, tmp_path):
 
 
 def test_no_figure_draws_placeholder_text(rendered):
-    """Every one of the 19 figures is scanned for placeholder hedging (D180).
+    """Every one of the 20 figures is scanned for placeholder hedging (D180).
 
     Rebuilds each figure in-process and reads the drawn text back — the PNG
     cannot be searched as text, so the figure objects are the evidence.
@@ -925,7 +926,7 @@ def test_no_figure_draws_placeholder_text(rendered):
 
     report = scan_figures(rendered["cfg"])
     assert report["exit_code"] == 0
-    assert report["figures_scanned"] == 19, report["figures_scanned"]
+    assert report["figures_scanned"] == 20, report["figures_scanned"]
     assert report["total_hits"] == 0, [
         (f["png"], f["hits"]) for f in report["figures"] if f["hits"]]
     assert BANNED_TOKENS == ("PLACEHOLDER", "UNVALIDATED", "SAMPLE OUTPUT",
@@ -1264,7 +1265,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_entry_exit_speed",
                                    "fig_movement_family",
                                    "fig_drill_angle_scatter",
-                                   "fig_population_shrink"}
+                                   "fig_population_shrink",
+                                   "fig_backpedal_route"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1909,8 +1911,9 @@ def test_stage_06_manifest_lists_every_figure(rendered):
         "fig_shallow_sources", "fig_ledger", "fig_bars_of_doubt",
         "fig_supply_composition", "fig_band_only",
         "fig_entry_exit_speed", "fig_movement_family",
-        "fig_drill_angle_scatter", "fig_population_shrink"}
-    assert len(man["figures"]) == 19
+        "fig_drill_angle_scatter", "fig_population_shrink",
+        "fig_backpedal_route"}
+    assert len(man["figures"]) == 20
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -3041,7 +3044,7 @@ def test_both_hips_computes_no_symmetry_or_p_value(rendered):
 def test_both_hips_renders_every_figure(rendered):
     out = rendered["tmp"] / "outputs" / "figures"
     pngs = sorted(p.name for p in out.glob("fig_*.png"))
-    assert len(pngs) == 19, f"stage 06 must render nineteen figures, found {pngs}"
+    assert len(pngs) == 20, f"stage 06 must render twenty figures, found {pngs}"
     assert "fig_both_hips.png" in pngs
 
 

@@ -41,6 +41,15 @@ NOTEBOOK = ROOT / "notebooks" / "bdb27_fallback_validation.ipynb"
 #: any change to TASK.md or the draft, still fail.
 UNTOUCHED = ["TASK.md", "outputs/figures", "notes/report-draft.md"]
 MANIFEST_REGISTRY = "outputs/figures/figures_manifest.json"
+#: Committed figure files a recorded decision moved on purpose. D212
+#: (2026-11-23) moved figure 2's proposed-drill marker 40 -> 45 so it matches
+#: the schematic's `break_angles_deg: [45]`; those two files are the only
+#: committed figures that decision rewrites. Every other figure is still
+#: off-limits to an unrecorded edit.
+DECISION_MOVED_FIGURES = {
+    "outputs/figures/fig_drill_coverage.csv",
+    "outputs/figures/fig_drill_coverage.png",
+}
 
 ENCODED_CALLS = {"to_csv", "read_csv", "read_text", "write_text"}
 SQL_PATH = re.compile(r"(?:read_csv_auto|read_parquet|read_json_auto)\('\{|TO '\{")
@@ -781,7 +790,8 @@ def test_the_cycle_did_not_touch_the_task_the_figures_or_the_draft():
     lines = [line for line in out.stdout.splitlines() if line.strip()]
     modified = [line for line in lines
                 if not line.startswith("??")
-                and line[3:].strip() != MANIFEST_REGISTRY]
+                and line[3:].strip() not in (MANIFEST_REGISTRY,
+                                             *DECISION_MOVED_FIGURES)]
     assert modified == [], (
         "TASK.md, outputs/figures/ or notes/report-draft.md were modified:\n"
         + "\n".join(modified))

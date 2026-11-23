@@ -9234,3 +9234,122 @@ convention), `README.md` and `notebooks/README.md` (the figure count in the stag
 entry.
 
 **Suite.** Green, exit 0: **716 collected, 715 passed, 1 skipped** (`.venv/bin/python -m pytest -q`, full run). One existing test was adjusted and it is the only one: the working-tree guard `test_the_cycle_did_not_touch_the_task_the_figures_or_the_draft` in `tests/test_fallback_validation.py` asserted that `git status --porcelain` was empty under `outputs/figures/`. Adding an approved figure necessarily adds untracked files there and rewrites `figures_manifest.json`, so the guard now exempts untracked additions and the manifest registry while still failing on a modified or deleted committed figure, on `TASK.md` or on the draft. Its teeth are unchanged for the case it was written for.
+
+## D212 — Figure 20, the backpedal drill's route, and the turn it is actually measured as · 2026-11-23
+
+**The request.** Conor, 2026-11-23 14:10, verbatim: *"Ok is there a plot we could do that maybe
+show the route of backpedal 45 and an arrow showing where they were looking for the turn?"* He was
+looking at `BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION` reading a **median 113.1° across 133
+detected turns from 71 players** — a drill with "45" in its name measured at more than twice that —
+and wanted to see the path itself.
+
+**What the figure may not show, and says it may not.** The Combine tracking file carries
+`x, y, s, a, dis, dir` and **no `o`**. `dir` on this drill equals the travel heading derived from
+smoothed `x/y` (median |difference| **0.43°**, p95 0.94°, n = 133), and `turns.py` never computes an
+orientation flag for `setting == "combine"` (TASK.md honesty limit 4). There is therefore **no
+facing channel**, and an arrow drawn from `dir` would just redraw the heading the angle is computed
+from. Panel 2 carries the line `arrows are the direction of travel; the Combine records no facing`,
+and the CSV and manifest repeat it. Nothing in the figure, the CSV, the drawn text or the manifest
+claims to know where a player was looking.
+
+**The series is the measured one, not raw x/y.** Each attempt is rebuilt the way stage 02 builds it:
+DuckDB read with `epoch_ms(time)` (a pandas datetime parse produced NaT and collapsed rows in the
+feasibility probe — it is not equivalent), `entity_type = 'PLAYER'`, the config's duplicate-frame
+drop, `turns.fill_small_gaps` on relative seconds, the primary smoother (`savgol_g9_p3`), and
+`kinematics.derivatives`. The recomputation reproduces the committed `turn_angle` for **133 of 133**
+turns within 0.001° (max |diff| **7.18e-06°**, float32 storage), printed with its denominator and
+carried per row as `reconstruction_agrees`; a mismatch is a labelled row, never a crash and never a
+silent pass. `detector.low_speed_heading_hold` is **read, not assumed** — when it is on, the heading
+is forward-filled below the speed floor and re-unwrapped first, exactly as `detect_turns` does, so
+the drawn series cannot diverge from the series the angle was measured on.
+
+**The drawing.** One PNG, three panels, 16 × 5.6 in at 170 dpi. (1) All 133 smoothed routes,
+translated to the origin and rotated so the **entry travel heading points up**, with the pointwise
+median path in bold ink and an `entry heading` arrow; the count line reads
+`133 turns from 71 of 122 players tracked in this drill`. (2) One exemplar — the turn whose
+`abs_turn_angle` is closest to the median (113.15°) — drawn in yards at equal aspect over faint raw
+tracking dots, its span thick in `ALERT`, the apex marked, entry/exit travel arrows labelled with
+their speeds, the swept angle annotated with the measured `turn_angle`, and the honesty line above.
+(3) Heading change since the turn began, all 133 turns thin with the median bold, a zero line and
+**no 45° reference line**: the drill's *name* carries 45, but nothing in the repo defines what that
+label measures, so drawing it would assert geometry the data do not establish. The drawn title is
+`Route and heading through the backpedal drill` — no digits; no caption, subtitle, legend or
+figure-level text (the dump raises if one appears). Layout is a `BACKPEDAL_*` constant block in code,
+**no new `config.yaml` key**, because a config edit moves `config_sha` and would touch every
+committed figure CSV.
+
+**What the review found and what was fixed.** Two defects, both fixed with red-then-green tests:
+
+1. **The heading-hold flag was assumed, not read** (spec method step 5). The series used
+   `derivatives()["heading_unwrapped"]` unconditionally; if `detector.low_speed_heading_hold` were
+   ever switched on, the figure would have redrawn a heading the detector never measured. It now
+   reads `engine.det.low_speed_heading_hold` and applies `kinematics.hold_heading_below_floor`
+   before unwrapping. Regression: every sub-floor run is seeded by the frame before it, and above
+   the floor the drawn heading is exactly the raw smoothed one.
+2. **A turn table that matched no tracking attempt raised `StageRefused`** — a hard stop on a data
+   contradiction, where the house rule is a printed zero with its denominator. It now prints
+   `0 of N turn rows matched a tracking attempt` and draws an empty population (a missing
+   *tracking file* still refuses through `ensure_parquet`). Regression: three orphan rows render,
+   return `n_turns = 0`, `n_unmatched = 3`, and a manifest claim that says so.
+
+Two smaller things the review changed: the conventional orientation is now pinned by a test (all
+133 routes point within 10° of +y after rotation; max observed 4.78°), and the registry header count
+was corrected from `15 sample` to `16 sample` when the twentieth entry was added.
+
+**Proof no existing measured output moved.** Stage 06 was run in sample mode into scratch
+directories (`paths.figures`/`paths.outputs` overridden), three times: pre-change code at `HEAD`
+with the old config, the same code with the new config, and this change with the new config. The
+code-only comparison (same config, both code versions) leaves every pre-existing PNG byte-identical
+and every pre-existing CSV identical column-for-column once `config_sha` is dropped — the field
+moves only because the two scratch roots differ in their output paths. The config-only comparison
+(old vs new config) leaves every PNG byte-identical except `fig_drill_coverage.png`, and every CSV
+identical except `config_sha` — plus the proposed-drill fields of `fig_drill_coverage.csv`
+(`drill_label`, `median_angle_deg`, `q1_angle_deg`, `q3_angle_deg`), which are the edit itself. No
+measured count moves anywhere. Only figure 20's three files are added. Two consecutive renders of
+figure 20 are byte-identical, and the committed PNG is reproducible from the committed inputs.
+
+**The 45° agreement (second item, promised to Conor).** `figures.drill_coverage.proposed` said
+`"Proposed 40° tempo drill"` / `angle_deg: 40.0` while the schematic and the paper draw 45°
+(`figures.drill_schematic.break_angles_deg: [45]`; D188). It now reads
+`"Proposed 45° tempo drill"` / `45.0`, figure 2's CSV and PNG are re-rendered, its manifest entry
+follows, and the proposed row's synthetic id — previously the literal `PROPOSED_40_TEMPO_BREAK` —
+is derived from the configured angle, so it cannot go stale again. `full_run.verify_run_identity`
+now treats `figures.drill_coverage` as drawing-only drift alongside `figures.drill_schematic`, so a
+FULL run is not falsely refused; anything else still refuses, and a test pins both halves.
+
+**Deliberately not moved: `figures.before_after.projected.angle_deg` (still 40).** D188 left this
+one open beside `drill_coverage`, but it is not the same edit. That block is *placed by its angle*
+into a half-open reporting band (`edges[i] <= angle < edges[i+1]`), so 45 would land the projection
+in **45–60°** rather than the 30–45° hole the figure is titled after — it changes what figure 3
+asserts, not just a drawn number. That is Conor's call, not a silent config edit, so it is reported
+and left.
+
+**Provenance.** The figure carries `figures.stamp_text(mode)`; in this run that is
+`PLACEHOLDER_SAMPLE`, because `outputs/turns/turns.parquet` is the sample-mode turn table. The
+Combine tracking file itself is complete in both modes, so the figure renders in `--mode full`
+without the game tracking file. No FULL stamp is claimed anywhere. This figure is a diagnostic
+Conor commissioned; like figures 5–19 it is **not** one of the claim's four figures (TASK.md), is
+not quoted in the writeup, and contains no per-player content or ranking.
+
+**Suite.** Green, exit 0: **731 collected, 730 passed, 1 skipped** (`.venv/bin/python -m pytest`,
+full run). Four tests are new: two regressions for the defects fixed here, one pin on the rotation
+convention, and the run-identity drift test.
+
+**Files touched.** `notes/backpedal-route-figure-spec.md` (new, the PM spec),
+`src/bdb27/figures.py` (figure 20 section; the proposed-row id; the hold fix),
+`src/06_figures.py` (wire-in beside figure 19, run-log detail and final line),
+`src/bdb27/figure_text_scan.py` (the renderer joins the banned-token scan),
+`src/bdb27/full_run.py` (drawing-only drift prefixes), `config.yaml`
+(`figures.drill_coverage.proposed` 40 -> 45), `tests/test_backpedal_route_figure.py` (new, 14
+tests), `tests/test_figures_stage.py` (figure count 19 -> 20; the proposed angle),
+`tests/test_full_figure5.py` (fingerprint pin repointed; the drift test),
+`tests/test_notebook_contract.py` (gallery 22 -> 23),
+`tests/test_fallback_validation.py` (D212's two figure files named as decision-moved),
+`outputs/figures/fig_backpedal_route.{png,csv,drawn_text.json}` (new),
+`outputs/figures/fig_drill_coverage.{png,csv}` and `figures_manifest.json` (re-rendered entry and
+the new one), `README.md`, `notebooks/README.md` (the stage table's figure count), and this entry.
+
+**Open for Conor.** The only live place still calling the drill 40° is
+`figures.before_after.projected.angle_deg`; moving it to 45 moves figure 3's projected block into
+the 45–60° band, which would require re-wording that figure's title and claim. Say the word and it
+moves in a change of its own.

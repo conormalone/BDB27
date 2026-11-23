@@ -7,6 +7,8 @@ wrote; no count is typed into this file as a fact.
 
 from __future__ import annotations
 
+import copy
+import dataclasses
 import hashlib
 import json
 from pathlib import Path
@@ -272,8 +274,32 @@ def test_sample_path_is_untouched():
     cfg = common.load_config(ROOT / "config.yaml")
     assert [str(p) for p in cfg.get("figures.all_positions.positions")] == [
         "DB", "WR", "TE", "OL", "DL"]
-    # D188 moved ONLY figures.drill_schematic.break_angles_deg (40 -> 45).
-    # ``full_run.verify_run_identity`` proves that is the only drift from the
-    # uploaded run's config; this pin keeps every other key frozen, so an
-    # accidental edit still fails the sample path.
-    assert common.config_fingerprint(cfg) == "a76cf3bd9012f085"
+    # The uploaded run's config hash was a76cf3bd9012f085. Two drawing-only
+    # edits have moved it since: D188 (figures.drill_schematic.break_angles_deg
+    # 40 -> 45) and D212 (figures.drill_coverage.proposed 40 -> 45). Both are
+    # in ``full_run.DRAWING_ONLY_CONFIG_PREFIXES``; this pin keeps every other
+    # key frozen, so an accidental edit still fails the sample path.
+    assert common.config_fingerprint(cfg) == "bed47a853f46c1f7"
+
+
+def test_run_identity_allows_the_drawn_drill_angle_and_nothing_else(cfg):
+    """A FULL run refuses config drift — except the drawn break angle.
+
+    D188 (schematic) and D212 (figure 2's proposed marker) are drawing-only:
+    they change the angle a *drawing* carries, never a measured number. Any
+    other key must still stop the run.
+    """
+    run_rev = "7580853ce7e3e25d98006ea4e1f218967683ab01"  # D211 commit
+    manifest = {"config_sha": "a76cf3bd9012f085", "git_rev": run_rev}
+    identity = full_run.verify_run_identity(manifest, cfg, ROOT)
+    assert identity["run_config_sha"] == "a76cf3bd9012f085"
+    assert set(identity["drawing_only_config_drift"]) == {
+        "figures.drill_coverage.proposed.angle_deg",
+        "figures.drill_coverage.proposed.label",
+    }
+
+    raw = copy.deepcopy(cfg.raw)
+    raw[common.BLOCK]["detector"]["min_turn_angle_deg"] += 1.0
+    drifted = dataclasses.replace(cfg, raw=raw)
+    with pytest.raises(common.StageRefused, match="config keys changed"):
+        full_run.verify_run_identity(manifest, drifted, ROOT)

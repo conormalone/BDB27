@@ -525,6 +525,26 @@ def main(argv=None) -> int:
             ps_context, ps_png, ps_csv_path, ps_text_path, cfg,
             manifest_path=manifest_path)
 
+        # ---- figure 20: the backpedal drill's route, and its measured turn
+        # The Combine tracking file is complete in both modes, so this figure
+        # is renderable in `--mode full` without any game tracking file.
+        bp_table, bp_context = figures.backpedal_route_table(
+            cfg, args.mode, turns_path)
+        bp_png = outdir / f"{figures.FIGURE_KEY_BACKPEDAL}.png"
+        bp_csv_path = outdir / f"{figures.FIGURE_KEY_BACKPEDAL}.csv"
+        bp_text_path = outdir / (
+            f"{figures.FIGURE_KEY_BACKPEDAL}.drawn_text.json")
+        figures.write_backpedal_route_csv(bp_table, bp_csv_path, cfg,
+                                          args.mode)
+        bp_fig = figures.plot_backpedal_route(bp_table, bp_context, cfg)
+        bp_text = figures.backpedal_route_drawn_text(bp_fig, cfg, args.mode)
+        bp_text_path.write_text(json.dumps(bp_text, indent=2),
+                                encoding="utf-8")
+        figures.render_backpedal_route(bp_fig, cfg, bp_png)
+        bp_payload = figures.backpedal_route_manifest_payload(
+            bp_table, bp_context, cfg, args.mode)
+        _write_manifest(bp_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -641,7 +661,16 @@ def main(argv=None) -> int:
                         f"steps={ps_context['steps']} "
                         f"band={ps_context['band_turns']} "
                         f"final={ps_context['final']} "
-                        f"received_rows={ps_context['geometry_rows']} ")
+                        f"received_rows={ps_context['geometry_rows']}; "
+                        f"{figures.FIGURE_KEY_BACKPEDAL}: "
+                        f"turns={bp_context['n_turns']} "
+                        f"players={bp_context['n_players']}/"
+                        f"{bp_context['n_players_tracked']} "
+                        f"median_abs={bp_context['median_abs_turn_angle']:.1f} "
+                        f"recon={bp_context['n_recon_agree']}/"
+                        f"{bp_context['n_turns']} "
+                        f"exemplar="
+                        f"{(bp_context['exemplar'] or {}).get('event_id', 'none')}")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -660,6 +689,7 @@ def main(argv=None) -> int:
           f"{mf_png.name}, {mf_csv_path.name}, "
           f"{da_png.name}, {da_csv_path.name}, "
           f"{ps_png.name}, {ps_csv_path.name}, {ps_text_path.name}, "
+          f"{bp_png.name}, {bp_csv_path.name}, {bp_text_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "
@@ -718,6 +748,12 @@ def main(argv=None) -> int:
           f"{ps_context['final']:,} through {ps_context['steps']} steps "
           f"(step 5 from the received paste, "
           f"{ps_context['geometry_sha256'][:12]})"
+          f"; figure 20 backpedal route {bp_context['n_turns']} turns from "
+          f"{bp_context['n_players']} of "
+          f"{bp_context['n_players_tracked']} players tracked, median "
+          f"|angle| {bp_context['median_abs_turn_angle']:.1f}°, "
+          f"{bp_context['n_recon_agree']} of {bp_context['n_turns']} "
+          f"reconstructions agree"
           f")")
     return 0
 

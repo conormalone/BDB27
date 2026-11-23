@@ -396,16 +396,18 @@ turn_coverage:
       height_in: 7.6
 
     # Stage 06 figure 2 ("What each drill actually asks for"). The target cell
-    # and the proposed drill are the case's settled design (Conor): a 40 degree
-    # tempo break at 2-6 yd/s entry, 6 reps per player. Angles are the same
-    # left-closed absolute turn angles used everywhere else.
+    # and the proposed drill are the case's settled design (Conor): a 45 degree
+    # tempo break at 2-6 yd/s entry, 6 reps per player — the same angle the
+    # schematic draws (`figures.drill_schematic.break_angles_deg: [45]`). Angles
+    # are the same left-closed absolute turn angles used everywhere else, so a
+    # 45 sits on the 30–45 / 45–60 reporting edge (see D188, D212).
     drill_coverage:
       position_group: DB
       target_angle_deg: [30, 45]
       target_entry_speed_yd_s: [2, 6]
       proposed:
-        label: "Proposed 40° tempo drill"
-        angle_deg: 40.0
+        label: "Proposed 45° tempo drill"
+        angle_deg: 45.0
         entry_speed_yd_s: 4.0
         reps_per_player: 6
       x_lim: [30, 200]

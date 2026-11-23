@@ -1,11 +1,11 @@
 {
   "provenance": "MIXED",
-  "label": "MIXED PROVENANCE \u2014 5 FULL, 15 sample, 1 schematic, 1 FULL + RECEIVED",
+  "label": "MIXED PROVENANCE \u2014 5 FULL, 16 sample, 1 schematic, 1 FULL + RECEIVED",
   "config_sha": "a76cf3bd9012f085",
   "generated_utc": "2026-11-16T21:43:46Z",
   "stage": "06_figures",
   "artefact_version": 1,
-  "stamp": "MIXED PROVENANCE \u2014 5 FULL, 15 sample, 1 schematic, 1 FULL + RECEIVED",
+  "stamp": "MIXED PROVENANCE \u2014 5 FULL, 16 sample, 1 schematic, 1 FULL + RECEIVED",
   "figures": {
     "fig_the_hole": {
       "stage": "06_figures",
@@ -240,8 +240,8 @@
         6.0
       ],
       "proposed": {
-        "label": "Proposed 40\u00b0 tempo drill",
-        "angle": 40.0,
+        "label": "Proposed 45\u00b0 tempo drill",
+        "angle": 45.0,
         "speed": 4.0,
         "reps": 6
       },
@@ -408,13 +408,13 @@
         },
         {
           "kind": "proposed",
-          "drill": "PROPOSED_40_TEMPO_BREAK",
-          "drill_label": "Proposed 40\u00b0 tempo drill",
+          "drill": "PROPOSED_45_TEMPO_BREAK",
+          "drill_label": "Proposed 45\u00b0 tempo drill",
           "n_turns": 0,
           "n_players": 0,
-          "median_angle_deg": 40.0,
-          "q1_angle_deg": 40.0,
-          "q3_angle_deg": 40.0,
+          "median_angle_deg": 45.0,
+          "q1_angle_deg": 45.0,
+          "q3_angle_deg": 45.0,
           "median_entry_speed_yd_s": 4.0,
           "q1_entry_speed_yd_s": 4.0,
           "q3_entry_speed_yd_s": 4.0,
@@ -6544,6 +6544,53 @@
         "Counts only: the bars are nested populations, not rates, and nothing on the figure is a test or an estimate of ability.",
         "No player names and no nfl_id appear in the figure, the CSV, the drawn-text dump or this entry."
       ]
+    },
+    "fig_backpedal_route": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_backpedal_route",
+      "title": "Route and heading through the backpedal drill",
+      "claim": "The 133 detected turns of BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION \u2014 the drill whose name carries 45 \u2014 are drawn as routes; measured as the accumulated change in the direction of travel they have a median absolute angle of 113.1\u00b0, and no arrow can show where a player was facing because the Combine records no facing.",
+      "drill_name": "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION",
+      "exemplar_rule": "the turn whose abs_turn_angle is closest to the median of the 133 drawn turns (113.15\u00b0)",
+      "exemplar": {
+        "event_id": "20250228100400_1740783691187_000",
+        "nfl_id": 58419,
+        "attempt": 3,
+        "turn_angle_deg": 113.1486587524414,
+        "abs_turn_angle_deg": 113.1486587524414,
+        "entry_speed_yd_s": 6.541622638702393,
+        "exit_speed_yd_s": 6.167637825012207,
+        "apex_speed_yd_s": 3.8980443477630615
+      },
+      "sources": [
+        "outputs/turns/turns.parquet",
+        "data/raw/combine_tracking.csv"
+      ],
+      "caveats": [
+        "No facing channel exists in the Combine: the tracking file has x, y, s, a, dis and dir and no `o`, and `dir` equals the travel heading derived from smoothed x/y (median |difference| 0.43\u00b0). Every arrow is the direction of travel.",
+        "Combine provenance: the figure is stamped from the run mode; the Combine tracking file is the complete file in both modes.",
+        "Angles are the detector's measured heading change, not the drill's nominal geometry; no 45\u00b0 reference line is drawn because the data do not define what the label measures.",
+        "Reconstruction agreement: 133 of 133 turns reproduce the committed turn_angle within 0.001\u00b0 (max |diff| 7.18e-06\u00b0); the flag is per row in the CSV."
+      ],
+      "n_turns_in_turn_table": 133,
+      "population": {
+        "n_turns": 133,
+        "n_players": 71,
+        "n_players_tracked": 122,
+        "n_attempts": 241,
+        "median_abs_turn_angle": 113.1486587524414
+      },
+      "reconstruction": {
+        "n_agree": 133,
+        "n_turns": 133,
+        "tolerance_deg": 0.001,
+        "max_abs_diff_deg": 7.1829146008894895e-06
+      },
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
+      "png": "outputs/figures/fig_backpedal_route.png",
+      "csv": "outputs/figures/fig_backpedal_route.csv",
+      "drawn_text": "outputs/figures/fig_backpedal_route.drawn_text.json"
     }
   }
 }

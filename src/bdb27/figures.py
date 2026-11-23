@@ -70,7 +70,7 @@ from plotnine import (
     theme_bw,
 )
 
-from bdb27 import common, stats
+from bdb27 import common, kinematics, stats, turns
 
 STAGE = "06_figures"
 ARTEFACT_VERSION = 1
@@ -686,7 +686,9 @@ def drill_table(turns: pd.DataFrame, cfg: common.Config) -> tuple[pd.DataFrame, 
 
     proposed_row = {
         "kind": "proposed",
-        "drill": "PROPOSED_40_TEMPO_BREAK",
+        # The id follows the configured angle, so it cannot keep saying 40
+        # after the drill's angle moves (D212: 40 -> 45).
+        "drill": f"PROPOSED_{float(proposed['angle_deg']):g}_TEMPO_BREAK",
         "drill_label": str(proposed["label"]),
         "n_turns": 0,
         "n_players": 0,
@@ -11156,3 +11158,746 @@ def write_population_shrink_provenance(context: dict, png_path, csv_path,
     }
     return common.write_json(payload, png_path.with_suffix(".provenance.json"),
                              "full", cfg)
+
+
+# ================================================================= figure 20 ==
+#: Figure 20 draws ONE Combine drill's routes and the heading change the detector
+#: measured on them (Conor, 2026-11-23 14:10: "show the route of backpedal 45 and
+#: an arrow showing where they were looking for the turn"). It is a diagnostic,
+#: not part of the claim's four figures.
+#:
+#: WHAT IT MAY NOT SHOW. The Combine tracking file has columns x, y, s, a, dis,
+#: dir and no `o`; `dir` equals the travel heading derived from smoothed x/y on
+#: this drill (median |difference| 0.44 deg), and turns.py never computes an
+#: orientation flag for the Combine. There is therefore no facing channel, and
+#: every arrow in panel 2 is labelled as the direction of travel. The panel says
+#: so in a line of its own rather than implying a facing measurement.
+#:
+#: HOW THE SERIES IS BUILT. Not from raw x/y: the same path stage 02 takes, with
+#: the same library functions — DuckDB read with epoch_ms(time), duplicate-frame
+#: drop, fill_small_gaps on relative seconds, the primary smoother, derivatives.
+#: `pd.to_datetime` is NOT equivalent (it produced NaT and collapsed rows during
+#: the feasibility probe). The recomputed heading change is compared with the
+#: committed turn_angle row by row and the agreement is PRINTED, never gated.
+FIGURE_KEY_BACKPEDAL = "fig_backpedal_route"
+BACKPEDAL_DRILL = "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION"
+BACKPEDAL_TITLE = "Route and heading through the backpedal drill"
+BACKPEDAL_PANEL_TITLES = (
+    "Every route, entry heading up",
+    "One route, annotated",
+    "Heading through the turn",
+)
+BACKPEDAL_ENTRY_LABEL = "entry heading"
+BACKPEDAL_HONESTY = ("arrows are the direction of travel; "
+                     "the Combine records no facing")
+BACKPEDAL_XLABEL = "seconds into the turn"
+BACKPEDAL_YLABEL = "heading change since the turn began (\u00b0)"
+BACKPEDAL_INK = "#1a1a1a"
+BACKPEDAL_AXIS_GREY = "#555555"
+BACKPEDAL_RULE_GREY = "#dddddd"
+BACKPEDAL_FAINT = "#8c8c8c"
+#: Layout lives in code, not config: the config fingerprint is pinned by every
+#: committed figure CSV, so adding a block would move `config_sha`.
+BACKPEDAL_FIGSIZE = (16.0, 5.6)
+BACKPEDAL_DPI = 170
+BACKPEDAL_GRID = 101            # resampling points per route, 0 -> 1 progress
+BACKPEDAL_TITLE_FONTSIZE = 17.0
+BACKPEDAL_PANEL_FONTSIZE = 12.5
+BACKPEDAL_AXIS_FONTSIZE = 10.5
+BACKPEDAL_ANNOT_FONTSIZE = 9.5
+BACKPEDAL_ROUTE_LW = 0.7
+BACKPEDAL_ROUTE_ALPHA = 0.28
+BACKPEDAL_MEDIAN_LW = 2.3
+BACKPEDAL_EXEMPLAR_LW = 2.0
+BACKPEDAL_OTHER_TURN_LW = 1.0
+BACKPEDAL_RAW_DOT_SIZE = 4.0
+BACKPEDAL_ARROW_YD = 2.0        # fixed arrow length: direction, not magnitude
+BACKPEDAL_ARC_RADIUS_YD = 1.8
+#: The reconstruction is compared with the committed turn_angle at this
+#: tolerance. It is PRINTED with its numerator and denominator, never a gate:
+#: a mismatch is a labelled row, not a crash.
+BACKPEDAL_RECON_TOL_DEG = 1e-3
+#: Median |dir - travel heading| is reported per row; this is the value the
+#: figure's honesty statement rests on, and a test pins it below 1 degree.
+BACKPEDAL_DIR_TOL_DEG = 1.0
+
+BACKPEDAL_TABLE_COLUMNS = [
+    "event_id", "nfl_id", "attempt", "drill_name", "frame_start",
+    "frame_centre", "frame_end", "n_points", "attempt_frames",
+    "path_length_yd", "net_displacement_yd", "entry_heading_deg",
+    "exit_heading_deg", "turn_angle_deg", "abs_turn_angle_deg",
+    "apex_speed_yd_s", "entry_speed_yd_s", "exit_speed_yd_s",
+    "recon_angle_deg", "reconstruction_agrees", "dir_vs_heading_deg",
+    "is_exemplar",
+]
+
+BACKPEDAL_CSV_COLUMNS = [
+    "provenance", "stamp", "config_sha", "figure", "event_id", "nfl_id",
+    "attempt", "drill_name", "frame_start", "frame_centre", "frame_end",
+    "n_points", "attempt_frames", "path_length_yd", "net_displacement_yd",
+    "entry_heading_deg", "exit_heading_deg", "turn_angle_deg",
+    "abs_turn_angle_deg", "apex_speed_yd_s", "entry_speed_yd_s",
+    "exit_speed_yd_s", "recon_angle_deg", "reconstruction_agrees",
+    "dir_vs_heading_deg", "is_exemplar",
+]
+
+
+def _backpedal_key(event_id, nfl_id, attempt) -> tuple[str, int, int]:
+    return (str(event_id), int(nfl_id), int(attempt))
+
+
+def backpedal_frames(cfg: common.Config, mode: str,
+                     drill: str = BACKPEDAL_DRILL) -> tuple[pd.DataFrame, dict]:
+    """This drill's Combine tracking rows, read the way stage 02 reads them.
+
+    DuckDB with ``epoch_ms(time)`` (a pandas datetime parse is not equivalent),
+    ``entity_type = 'PLAYER'``, ordered, then the same duplicate-frame drop the
+    config asks for. Prints what it found; refuses only when the tracking file
+    itself is absent or unreadable.
+    """
+    parquet = common.ensure_parquet(cfg, mode, "combine_tracking",
+                                    cfg.get("columns.combine_tracking"))
+    con = common.connect(cfg)
+    try:
+        frame = con.execute(
+            """
+            SELECT drill_name, event_id, nfl_id, attempt,
+                   epoch_ms(time) AS ms, x, y, dir
+            FROM read_parquet(?)
+            WHERE entity_type = 'PLAYER' AND drill_name = ?
+            ORDER BY event_id, nfl_id, attempt, ms
+            """, [str(parquet), drill]).df()
+    finally:
+        con.close()
+    if frame.empty:
+        # Not a contradiction: the file is there and readable, this drill is
+        # simply not in it. The figure then draws nothing and says so — a zero
+        # with its denominator, not a refusal.
+        print(f"[{STAGE}] {parquet}: no PLAYER rows for drill {drill!r} — "
+              "the figure will draw an empty population (0 turns)")
+    duplicate = frame.duplicated(["nfl_id", "event_id", "attempt", "ms"])
+    n_duplicate = int(duplicate.sum())
+    if cfg.get("sampling.drop_duplicate_frames"):
+        frame = frame[~duplicate]
+    n_attempts = int(frame.groupby(["event_id", "nfl_id", "attempt"]).ngroups)
+    n_players = int(frame["nfl_id"].nunique())
+    print(f"[{STAGE}] {drill}: {len(frame):,} rows, {n_attempts:,} "
+          f"player-attempts, {n_players:,} players, "
+          f"{int(frame['attempt'].nunique())} attempt numbers, "
+          f"{n_duplicate:,} duplicate frames dropped")
+    inventory = {
+        "rows": int(len(frame)),
+        "n_attempts": n_attempts,
+        "n_players": n_players,
+        "n_attempt_numbers": int(frame["attempt"].nunique()),
+        "duplicate_frames": n_duplicate,
+        "parquet": str(parquet),
+    }
+    return frame, inventory
+
+
+def backpedal_attempt_series(cfg: common.Config, frame: pd.DataFrame,
+                             drill: str = BACKPEDAL_DRILL) -> dict:
+    """Recompute each player-attempt's smoothed series exactly as stage 02 does.
+
+    Relative seconds (``(ms - ms[0]) / 1000``) are what ``fill_small_gaps`` and
+    ``derivatives`` expect: the gap test is against ``sampling.dt_s`` and
+    ``np.gradient`` divides by the time vector. Raw epoch milliseconds would
+    make every step a "gap" and the speed 1,000x too large.
+    """
+    engine = turns.Engine.from_config(cfg, "combine")
+    spec = engine.smoother_specs[engine.primary]
+    # The detector measures its angle on the heading it actually uses: when
+    # ``detector.low_speed_heading_hold`` is on, `detect_turns` forward-fills
+    # the heading below the speed floor BEFORE unwrapping. The drawn series
+    # must be the same series or the figure would redraw a heading the angle
+    # was never measured on. Read the flag; never assume its value.
+    hold = bool(engine.det.low_speed_heading_hold)
+    series: dict = {}
+    for (event_id, nfl_id, attempt), group in frame.groupby(
+            ["event_id", "nfl_id", "attempt"], sort=True, observed=True):
+        ms = group["ms"].to_numpy(float)
+        x = group["x"].to_numpy(float)
+        y = group["y"].to_numpy(float)
+        direction = group["dir"].to_numpy(float)
+        order = np.argsort(ms, kind="stable")
+        ms, x, y, direction = ms[order], x[order], y[order], direction[order]
+        keep = np.concatenate([[True], np.diff(ms) > 1e-9])
+        ms, x, y, direction = ms[keep], x[keep], y[keep], direction[keep]
+        ot = (ms - ms[0]) / 1000.0
+        ft, fx, fy, _inserted, _gaps = turns.fill_small_gaps(
+            ot, x, y, engine.nominal_dt, engine.max_gap)
+        xs, ys = kinematics.smooth_positions(ft, fx, fy, spec)
+        deriv = kinematics.derivatives(ft, xs, ys)
+        if hold:
+            held = kinematics.hold_heading_below_floor(
+                deriv["heading"], deriv["speed"], engine.det.speed_floor)
+            heading_unwrapped = np.degrees(np.unwrap(np.radians(held)))
+        else:
+            heading_unwrapped = deriv["heading_unwrapped"]
+        series[_backpedal_key(event_id, nfl_id, attempt)] = {
+            "drill": drill,
+            "ft": ft,
+            "xs": xs,
+            "ys": ys,
+            "raw_x": x,
+            "raw_y": y,
+            "dir": np.interp(ft, ot, direction),
+            "heading_unwrapped": heading_unwrapped,
+            "heading": deriv["heading"],
+            "heading_held": hold,
+            "speed": deriv["speed"],
+        }
+    print(f"[{STAGE}] {drill}: smoothed {len(series):,} player-attempts with "
+          f"{engine.primary} ({engine.smoother_specs[engine.primary]['kind']}, "
+          f"window={engine.smoother_specs[engine.primary].get('window')}); "
+          f"detector.low_speed_heading_hold={hold}"
+          + (f" (heading held below {engine.det.speed_floor:g} yd/s)"
+             if hold else " (no hold: raw unwrapped heading)"))
+    return series
+
+
+def load_backpedal_turns(path: Path, drill: str = BACKPEDAL_DRILL) -> pd.DataFrame:
+    """The drill's valid Combine turn rows, sorted deterministically."""
+    table = pd.read_parquet(path)
+    valid = table["valid"].fillna(False).astype(bool)
+    part = table[(table["setting"] == "combine")
+                 & (table["drill_name"] == drill) & valid].copy()
+    part = part.sort_values(["event_id", "nfl_id", "attempt", "frame_start"],
+                            kind="stable").reset_index(drop=True)
+    print(f"[{STAGE}] {Path(path).name}: {len(part):,} valid {drill} turns "
+          f"from {int(part['nfl_id'].nunique()) if len(part) else 0:,} players")
+    return part
+
+
+def backpedal_route_table(cfg: common.Config, mode: str, turns_path,
+                          drill: str = BACKPEDAL_DRILL):
+    """One row per drawn turn, with the series it was measured on in context."""
+    turns_df = load_backpedal_turns(Path(turns_path), drill)
+    n_in_table = int(len(turns_df))
+    if n_in_table:
+        # A turn is located on the tracking series by its frame indices. A row
+        # without them cannot be drawn and is counted, not dropped in silence.
+        required = ["frame_start", "frame_centre", "frame_end"]
+        missing = [c for c in required if c not in turns_df.columns]
+        if missing:
+            print(f"[{STAGE}] {Path(turns_path).name} has no "
+                  f"{', '.join(missing)} column: 0 of {n_in_table:,} turns "
+                  "can be located on a tracking series")
+            located = pd.Series(False, index=turns_df.index)
+        else:
+            located = turns_df[required].notna().all(axis=1)
+        turns_df = turns_df[located].reset_index(drop=True)
+        if len(turns_df) != n_in_table:
+            print(f"[{STAGE}] {drill}: {len(turns_df):,} of {n_in_table:,} "
+                  f"turn rows carry frame indices; "
+                  f"{n_in_table - len(turns_df):,} cannot be located on a "
+                  "tracking series")
+    if turns_df.empty:
+        # Nothing drawable: no route, and no tracking read worth making. An
+        # empty population with its denominators is the honest outcome; a
+        # missing *file* would still refuse through `ensure_parquet`.
+        print(f"[{STAGE}] {drill}: 0 turns drawn of {n_in_table:,} in "
+              f"{Path(turns_path).name} — drawing an empty population")
+        inventory = {"rows": 0, "n_attempts": 0, "n_players": 0,
+                     "n_attempt_numbers": 0, "duplicate_frames": 0,
+                     "parquet": ""}
+        return _backpedal_empty(inventory, drill, n_in_table)
+    frames, inventory = backpedal_frames(cfg, mode, drill)
+    series = backpedal_attempt_series(cfg, frames, drill)
+
+    rows = []
+    for record in turns_df.itertuples(index=False):
+        key = _backpedal_key(record.event_id, record.nfl_id, record.attempt)
+        if key not in series:
+            continue
+        item = series[key]
+        lo = int(record.frame_start)
+        hi = int(record.frame_end)
+        centre = int(record.frame_centre)
+        uw = item["heading_unwrapped"]
+        step = np.hypot(np.diff(item["xs"][lo:hi + 1]),
+                        np.diff(item["ys"][lo:hi + 1]))
+        span_headings = item["dir"][lo:hi + 1]
+        dir_vs = float(np.median(np.abs(
+            kinematics.wrap180(span_headings - item["heading"][lo:hi + 1]))))
+        # The detector DEFINES the turn angle as the unwrapped heading change
+        # over the span, so the exit heading is the entry heading plus that
+        # angle. Using the stored float32 ``turn_angle`` keeps the drawn exit
+        # arrow and the annotated swept angle one and the same number; the
+        # independent full-precision recomputation is ``recon_angle_deg``, which
+        # is what the agreement flag compares.
+        entry_heading = float(uw[lo])
+        turn_angle = float(record.turn_angle)
+        exit_heading = entry_heading + turn_angle
+        recon = float(uw[hi] - uw[lo])
+        rows.append({
+            "event_id": str(record.event_id),
+            "nfl_id": int(record.nfl_id),
+            "attempt": int(record.attempt),
+            "drill_name": drill,
+            "frame_start": lo,
+            "frame_centre": centre,
+            "frame_end": hi,
+            "n_points": int(hi - lo + 1),
+            "attempt_frames": int(len(item["ft"])),
+            "path_length_yd": float(step.sum()),
+            "net_displacement_yd": float(np.hypot(
+                item["xs"][hi] - item["xs"][lo],
+                item["ys"][hi] - item["ys"][lo])),
+            "entry_heading_deg": entry_heading,
+            "exit_heading_deg": exit_heading,
+            "turn_angle_deg": turn_angle,
+            "abs_turn_angle_deg": float(abs(record.turn_angle)),
+            "apex_speed_yd_s": float(record.apex_speed),
+            "entry_speed_yd_s": float(record.entry_speed),
+            "exit_speed_yd_s": float(record.exit_speed),
+            "recon_angle_deg": recon,
+            "reconstruction_agrees": bool(
+                abs(recon - float(record.turn_angle)) <= BACKPEDAL_RECON_TOL_DEG),
+            "dir_vs_heading_deg": dir_vs,
+        })
+    table = pd.DataFrame(rows, columns=BACKPEDAL_TABLE_COLUMNS)
+    print(f"[{STAGE}] {drill}: {len(table):,} of {len(turns_df):,} turn rows "
+          f"matched to a tracking attempt in {inventory['parquet']}")
+    if table.empty:
+        # The two files disagree about this drill. That is reported with its
+        # denominator and drawn as an empty population (a zero), not raised:
+        # a turn table and a tracking file that do not line up must not stop
+        # the notebook. A *missing* tracking file still refuses above, through
+        # `ensure_parquet`.
+        print(f"[{STAGE}] {drill}: 0 of {len(turns_df):,} turn rows matched a "
+              f"tracking attempt — the turn table and {inventory['parquet']} "
+              "disagree; drawing an empty population")
+        return _backpedal_empty(inventory, drill, n_in_table,
+                                unmatched=int(len(turns_df)))
+
+    median_abs = (float(table["abs_turn_angle_deg"].median())
+                  if len(table) else float("nan"))
+    table["is_exemplar"] = False
+    if len(table):
+        exemplar_index = int((table["abs_turn_angle_deg"] - median_abs)
+                             .abs().idxmin())
+        table.loc[exemplar_index, "is_exemplar"] = True
+
+    n_agree = int(table["reconstruction_agrees"].sum())
+    max_diff = (float(np.max(np.abs(table["recon_angle_deg"]
+                                    - table["turn_angle_deg"])))
+                if len(table) else float("nan"))
+    print(f"[{STAGE}] reconstruction: {n_agree:,}/{len(table):,} turns agree "
+          f"within {BACKPEDAL_RECON_TOL_DEG:g} deg "
+          f"(max |diff| {max_diff:.2e} deg)")
+    if len(table):
+        print(f"[{STAGE}] dir vs travel heading: median |diff| "
+              f"{float(table['dir_vs_heading_deg'].median()):.2f} deg "
+              f"(p95 {float(table['dir_vs_heading_deg'].quantile(0.95)):.2f}, "
+              f"n = {len(table):,} turns)")
+
+    exemplar_row = table[table["is_exemplar"]]
+    context = {
+        "drill_name": drill,
+        "n_turns": int(len(table)),
+        "n_turns_in_turn_table": n_in_table,
+        "n_unmatched": 0,
+        "n_players": int(table["nfl_id"].nunique()),
+        "n_players_tracked": int(inventory["n_players"]),
+        "n_attempts": int(inventory["n_attempts"]),
+        "n_attempt_numbers": int(inventory["n_attempt_numbers"]),
+        "median_abs_turn_angle": median_abs,
+        "n_recon_agree": n_agree,
+        "recon_tol_deg": BACKPEDAL_RECON_TOL_DEG,
+        "recon_max_abs_diff_deg": max_diff,
+        "dir_vs_heading_median_deg": float(
+            table["dir_vs_heading_deg"].median()),
+        "series": series,
+        "exemplar": ({
+            "event_id": str(exemplar_row.iloc[0]["event_id"]),
+            "nfl_id": int(exemplar_row.iloc[0]["nfl_id"]),
+            "attempt": int(exemplar_row.iloc[0]["attempt"]),
+            "turn_angle_deg": float(exemplar_row.iloc[0]["turn_angle_deg"]),
+            "abs_turn_angle_deg": float(
+                exemplar_row.iloc[0]["abs_turn_angle_deg"]),
+            "entry_speed_yd_s": float(exemplar_row.iloc[0]["entry_speed_yd_s"]),
+            "exit_speed_yd_s": float(exemplar_row.iloc[0]["exit_speed_yd_s"]),
+            "apex_speed_yd_s": float(exemplar_row.iloc[0]["apex_speed_yd_s"]),
+        } if len(exemplar_row) else None),
+        "inventory": inventory,
+    }
+    return table, context
+
+
+def _backpedal_empty(inventory: dict, drill: str, n_in_table: int,
+                     unmatched: int = 0):
+    """The same shapes with nothing in them: zero turns, zero denominators."""
+    table = pd.DataFrame(columns=BACKPEDAL_TABLE_COLUMNS)
+    table["is_exemplar"] = pd.Series(dtype=bool)
+    context = {
+        "drill_name": drill,
+        "n_turns": 0,
+        "n_turns_in_turn_table": int(n_in_table),
+        "n_unmatched": int(unmatched),
+        "n_players": 0,
+        "n_players_tracked": int(inventory["n_players"]),
+        "n_attempts": int(inventory["n_attempts"]),
+        "n_attempt_numbers": int(inventory["n_attempt_numbers"]),
+        "median_abs_turn_angle": float("nan"),
+        "n_recon_agree": 0,
+        "recon_tol_deg": BACKPEDAL_RECON_TOL_DEG,
+        "recon_max_abs_diff_deg": float("nan"),
+        "dir_vs_heading_median_deg": float("nan"),
+        "series": {},
+        "exemplar": None,
+        "inventory": inventory,
+    }
+    return table, context
+
+
+def backpedal_route_csv_frame(table: pd.DataFrame, context: dict,
+                              cfg: common.Config, mode: str) -> pd.DataFrame:
+    """The drawn turns, one row each, in the spec's exact column order."""
+    out = table.copy()
+    out.insert(0, "figure", FIGURE_KEY_BACKPEDAL)
+    out.insert(0, "config_sha", common.config_fingerprint(cfg))
+    out.insert(0, "stamp", stamp_text(mode))
+    out.insert(0, "provenance", common.provenance(mode))
+    return out[BACKPEDAL_CSV_COLUMNS]
+
+
+def write_backpedal_route_csv(table: pd.DataFrame, path, cfg: common.Config,
+                              mode: str) -> Path:
+    """``common.write_csv`` adds a ``label`` column; this schema is pinned."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    backpedal_route_csv_frame(table, {}, cfg, mode).to_csv(path, index=False)
+    return path
+
+
+def _backpedal_rotated(item: dict, lo: int, hi: int) -> tuple[np.ndarray, np.ndarray]:
+    """Turn path translated to the origin and rotated so entry heading is +y."""
+    dx = item["xs"][lo:hi + 1] - item["xs"][lo]
+    dy = item["ys"][lo:hi + 1] - item["ys"][lo]
+    theta = np.radians(item["heading_unwrapped"][lo])
+    return (dx * np.cos(theta) - dy * np.sin(theta),
+            dx * np.sin(theta) + dy * np.cos(theta))
+
+
+def _backpedal_resample(x: np.ndarray, y: np.ndarray,
+                        grid: int) -> tuple[np.ndarray, np.ndarray]:
+    if len(x) < 2:
+        return np.full(grid, float(x[0]) if len(x) else np.nan), \
+               np.full(grid, float(y[0]) if len(y) else np.nan)
+    progress = np.linspace(0.0, 1.0, len(x))
+    target = np.linspace(0.0, 1.0, grid)
+    return np.interp(target, progress, x), np.interp(target, progress, y)
+
+
+def plot_backpedal_route(table: pd.DataFrame, context: dict,
+                         cfg: common.Config):
+    """Three panels: every route, one annotated route, the heading trace."""
+    series = context["series"]
+    fig, axes = plt.subplots(1, 3, figsize=BACKPEDAL_FIGSIZE)
+    ax1, ax2, ax3 = axes
+
+    # ---- panel 1: every route, entry heading up
+    grid_paths = []
+    for record in table.itertuples(index=False):
+        item = series[_backpedal_key(record.event_id, record.nfl_id,
+                                     record.attempt)]
+        rx, ry = _backpedal_rotated(item, int(record.frame_start),
+                                    int(record.frame_end))
+        gx, gy = _backpedal_resample(rx, ry, BACKPEDAL_GRID)
+        grid_paths.append((gx, gy))
+        ax1.plot(gx, gy, color=BACKPEDAL_FAINT, lw=BACKPEDAL_ROUTE_LW,
+                 alpha=BACKPEDAL_ROUTE_ALPHA, zorder=1)
+    if grid_paths:
+        mx = np.median(np.vstack([g[0] for g in grid_paths]), axis=0)
+        my = np.median(np.vstack([g[1] for g in grid_paths]), axis=0)
+        ax1.plot(mx, my, color=BACKPEDAL_INK, lw=BACKPEDAL_MEDIAN_LW, zorder=3)
+    ax1.annotate("", xy=(0.0, BACKPEDAL_ARROW_YD), xytext=(0.0, 0.0),
+                 arrowprops=dict(arrowstyle="-|>", color=BACKPEDAL_INK,
+                                 lw=1.4), zorder=4)
+    ax1.text(0.12, BACKPEDAL_ARROW_YD * 0.55, BACKPEDAL_ENTRY_LABEL,
+             fontsize=BACKPEDAL_ANNOT_FONTSIZE, color=BACKPEDAL_INK,
+             ha="left", va="center")
+    ax1.text(0.0, 1.10, BACKPEDAL_TITLE, transform=ax1.transAxes,
+             fontsize=BACKPEDAL_TITLE_FONTSIZE, ha="left", va="bottom",
+             color=BACKPEDAL_INK)
+    # Panel headings are AXES TEXT, not ``set_title(loc="left")``: a left title
+    # is not returned by ``ax.get_title()``, so the drawn-text scan would not
+    # see it (figure 19's heading takes the same route for the same reason).
+    ax1.text(0.0, 1.02, BACKPEDAL_PANEL_TITLES[0], transform=ax1.transAxes,
+             fontsize=BACKPEDAL_PANEL_FONTSIZE, ha="left", va="bottom",
+             color=BACKPEDAL_INK)
+    ax1.set_xlabel("yards across the entry heading",
+                   fontsize=BACKPEDAL_AXIS_FONTSIZE,
+                   color=BACKPEDAL_AXIS_GREY)
+    ax1.set_ylabel("yards along the entry heading",
+                   fontsize=BACKPEDAL_AXIS_FONTSIZE,
+                   color=BACKPEDAL_AXIS_GREY)
+    ax1.text(0.02, 0.02,
+             f"{context['n_turns']:,} turns from {context['n_players']:,} of "
+             f"{context['n_players_tracked']:,} players tracked in this drill",
+             transform=ax1.transAxes, fontsize=BACKPEDAL_ANNOT_FONTSIZE,
+             color=BACKPEDAL_INK, ha="left", va="bottom")
+    ax1.set_aspect("equal", adjustable="datalim")
+
+    # ---- panel 2: the exemplar attempt, annotated
+    exemplar = table[table["is_exemplar"]]
+    if len(exemplar):
+        record = exemplar.iloc[0]
+        key = _backpedal_key(record["event_id"], record["nfl_id"],
+                             record["attempt"])
+        item = series.get(key)
+    else:
+        record, item = None, None
+    if item is not None:
+        ax2.plot(item["xs"], item["ys"], color=BACKPEDAL_INK, lw=1.6, zorder=3)
+        ax2.scatter(item["raw_x"], item["raw_y"], s=BACKPEDAL_RAW_DOT_SIZE,
+                    color=BACKPEDAL_FAINT, alpha=0.45, zorder=2,
+                    edgecolors="none")
+        attempt_rows = table[
+            (table["event_id"] == record["event_id"])
+            & (table["nfl_id"] == record["nfl_id"])
+            & (table["attempt"] == record["attempt"])]
+        for other in attempt_rows.itertuples(index=False):
+            if bool(other.is_exemplar):
+                continue
+            ax2.plot(item["xs"][int(other.frame_start):int(other.frame_end) + 1],
+                     item["ys"][int(other.frame_start):int(other.frame_end) + 1],
+                     color=BACKPEDAL_AXIS_GREY, lw=BACKPEDAL_OTHER_TURN_LW,
+                     alpha=0.8, zorder=4)
+        lo, hi = int(record["frame_start"]), int(record["frame_end"])
+        ax2.plot(item["xs"][lo:hi + 1], item["ys"][lo:hi + 1], color=ALERT,
+                 lw=BACKPEDAL_EXEMPLAR_LW, zorder=5)
+        centre = int(record["frame_centre"])
+        ax2.plot([item["xs"][centre]], [item["ys"][centre]], marker="o",
+                 markersize=7.0, markerfacecolor="white",
+                 markeredgecolor=BACKPEDAL_INK, zorder=6)
+        ax2.text(item["xs"][centre] + 0.4, item["ys"][centre] + 0.4, "apex",
+                 fontsize=BACKPEDAL_ANNOT_FONTSIZE, color=BACKPEDAL_INK,
+                 ha="left", va="bottom")
+        # entry / exit arrows: direction of TRAVEL, fixed length
+        entry_theta = np.radians(record["entry_heading_deg"])
+        exit_theta = np.radians(record["exit_heading_deg"])
+        ax2.annotate("", xy=(item["xs"][lo] + BACKPEDAL_ARROW_YD * np.sin(entry_theta),
+                             item["ys"][lo] + BACKPEDAL_ARROW_YD * np.cos(entry_theta)),
+                     xytext=(item["xs"][lo], item["ys"][lo]),
+                     arrowprops=dict(arrowstyle="-|>", color=PALETTE["combine"],
+                                     lw=1.4), zorder=7)
+        ax2.annotate("", xy=(item["xs"][hi] + BACKPEDAL_ARROW_YD * np.sin(exit_theta),
+                             item["ys"][hi] + BACKPEDAL_ARROW_YD * np.cos(exit_theta)),
+                     xytext=(item["xs"][hi], item["ys"][hi]),
+                     arrowprops=dict(arrowstyle="-|>", color=ALERT, lw=1.4),
+                     zorder=7)
+        ax2.text(item["xs"][lo] + 0.5, item["ys"][lo] - 0.7,
+                 f"entry {record['entry_speed_yd_s']:.1f} yd/s",
+                 fontsize=BACKPEDAL_ANNOT_FONTSIZE, color=PALETTE["combine"],
+                 ha="left", va="top")
+        ax2.text(item["xs"][hi] + 0.5, item["ys"][hi] - 0.7,
+                 f"exit {record['exit_speed_yd_s']:.1f} yd/s",
+                 fontsize=BACKPEDAL_ANNOT_FONTSIZE, color=ALERT,
+                 ha="left", va="top")
+        # the swept angle, centred on the apex, between the two heading directions
+        theta_entry = 90.0 - float(record["entry_heading_deg"])
+        theta_exit = 90.0 - float(record["exit_heading_deg"])
+        arc = Arc((item["xs"][centre], item["ys"][centre]),
+                  width=2 * BACKPEDAL_ARC_RADIUS_YD,
+                  height=2 * BACKPEDAL_ARC_RADIUS_YD,
+                  theta1=min(theta_entry, theta_exit),
+                  theta2=max(theta_entry, theta_exit),
+                  color=ALERT, lw=1.2, zorder=6)
+        ax2.add_patch(arc)
+        mid = np.radians(0.5 * (theta_entry + theta_exit))
+        ax2.text(item["xs"][centre] + (BACKPEDAL_ARC_RADIUS_YD + 0.7) * np.cos(mid),
+                 item["ys"][centre] + (BACKPEDAL_ARC_RADIUS_YD + 0.7) * np.sin(mid),
+                 f"turn angle {record['turn_angle_deg']:.1f}\u00b0",
+                 fontsize=BACKPEDAL_ANNOT_FONTSIZE, color=ALERT,
+                 ha="center", va="center")
+        ax2.text(0.02, 0.945, BACKPEDAL_HONESTY, transform=ax2.transAxes,
+                 fontsize=BACKPEDAL_ANNOT_FONTSIZE - 0.5,
+                 color=BACKPEDAL_AXIS_GREY, ha="left", va="top")
+    ax2.text(0.0, 1.02, BACKPEDAL_PANEL_TITLES[1], transform=ax2.transAxes,
+             fontsize=BACKPEDAL_PANEL_FONTSIZE, ha="left", va="bottom",
+             color=BACKPEDAL_INK)
+    ax2.set_xlabel("yards", fontsize=BACKPEDAL_AXIS_FONTSIZE,
+                   color=BACKPEDAL_AXIS_GREY)
+    ax2.set_ylabel("yards", fontsize=BACKPEDAL_AXIS_FONTSIZE,
+                   color=BACKPEDAL_AXIS_GREY)
+    ax2.set_aspect("equal")
+
+    # ---- panel 3: heading change through each turn
+    curves = []
+    durations = []
+    for record in table.itertuples(index=False):
+        item = series[_backpedal_key(record.event_id, record.nfl_id,
+                                     record.attempt)]
+        lo, hi = int(record.frame_start), int(record.frame_end)
+        seconds = item["ft"][lo:hi + 1] - item["ft"][lo]
+        change = item["heading_unwrapped"][lo:hi + 1] - item["heading_unwrapped"][lo]
+        progress = np.linspace(0.0, 1.0, len(seconds)) if len(seconds) > 1 \
+            else np.zeros(1)
+        grid_change = np.interp(np.linspace(0.0, 1.0, BACKPEDAL_GRID),
+                                progress, change) if len(seconds) > 1 \
+            else np.full(BACKPEDAL_GRID, change[0])
+        durations.append(float(seconds[-1]) if len(seconds) else 0.0)
+        curves.append(grid_change)
+        ax3.plot(seconds, change, color=BACKPEDAL_FAINT,
+                 lw=BACKPEDAL_ROUTE_LW, alpha=BACKPEDAL_ROUTE_ALPHA, zorder=1)
+    if curves:
+        median_duration = float(np.median(durations))
+        median_change = np.median(np.vstack(curves), axis=0)
+        ax3.plot(np.linspace(0.0, median_duration, BACKPEDAL_GRID),
+                 median_change, color=BACKPEDAL_INK, lw=BACKPEDAL_MEDIAN_LW,
+                 zorder=3)
+    ax3.axhline(0.0, color=BACKPEDAL_RULE_GREY, lw=1.0, zorder=0)
+    ax3.text(0.0, 1.02, BACKPEDAL_PANEL_TITLES[2], transform=ax3.transAxes,
+             fontsize=BACKPEDAL_PANEL_FONTSIZE, ha="left", va="bottom",
+             color=BACKPEDAL_INK)
+    ax3.set_xlabel(BACKPEDAL_XLABEL, fontsize=BACKPEDAL_AXIS_FONTSIZE,
+                   color=BACKPEDAL_AXIS_GREY)
+    ax3.set_ylabel(BACKPEDAL_YLABEL, fontsize=BACKPEDAL_AXIS_FONTSIZE,
+                   color=BACKPEDAL_AXIS_GREY)
+
+    for ax in axes:
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)
+        ax.spines["left"].set_color(BACKPEDAL_RULE_GREY)
+        ax.spines["bottom"].set_color(BACKPEDAL_RULE_GREY)
+        ax.tick_params(labelsize=8.5, colors=BACKPEDAL_AXIS_GREY)
+
+    fig.subplots_adjust(left=0.045, right=0.985, top=0.845, bottom=0.125,
+                        wspace=0.28)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+                 fontweight="bold", color=ALERT)
+    return fig
+
+
+def render_backpedal_route(fig, cfg: common.Config, out_png) -> Path:
+    """Save figure 20 once with fixed metadata, so two runs are identical."""
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=BACKPEDAL_DPI, facecolor="white",
+                bbox_inches="tight", pad_inches=0.25,
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def backpedal_route_drawn_text(fig, cfg: common.Config, mode: str) -> dict:
+    """Every string the drawing puts on canvas, read back off the figure."""
+    from bdb27.figure_text_scan import BANNED_TOKENS, banned_hits, figure_texts
+
+    strings = figure_texts(fig)
+    hits = banned_hits(strings)
+    if BACKPEDAL_TITLE not in strings:
+        raise ValueError(f"{STAGE}: figure 20 does not draw its own title")
+    extra = [text.get_text() for text in fig.texts
+             if text.get_text() and text.get_text() != STAMP]
+    if extra:
+        raise ValueError(
+            f"{STAGE}: figure 20 draws figure-level text {extra} — the drawing "
+            "carries no caption or annotation block")
+    return {
+        "provenance": common.provenance(mode),
+        "stamp": stamp_text(mode),
+        "config_sha": common.config_fingerprint(cfg),
+        "figure": FIGURE_KEY_BACKPEDAL,
+        "title": BACKPEDAL_TITLE,
+        "strings": strings,
+        "scan_strings": ([BACKPEDAL_TITLE]
+                         + [s for s in strings if s != BACKPEDAL_TITLE]),
+        "banned_tokens": list(BANNED_TOKENS),
+        "banned_hits": [{"token": token, "text": text} for token, text in hits],
+    }
+
+
+def backpedal_route_manifest_payload(table: pd.DataFrame, context: dict,
+                                     cfg: common.Config, mode: str) -> dict:
+    """Figure 20's manifest entry: the population, the exemplar rule, caveats."""
+    if int(len(table)) != context["n_turns"]:
+        raise ValueError(f"{STAGE}: figure 20's row count does not match")
+    if len(table) and int(table["is_exemplar"].sum()) != 1:
+        raise ValueError(f"{STAGE}: figure 20 must mark exactly one exemplar")
+    if len(table) and context["exemplar"] is None:
+        raise ValueError(f"{STAGE}: figure 20 drew turns but named no exemplar")
+    exemplar = context["exemplar"]
+    median = context["median_abs_turn_angle"]
+    if np.isfinite(median):
+        angle_text = f"a median absolute angle of {median:.1f}\u00b0"
+        exemplar_rule = (
+            "the turn whose abs_turn_angle is closest to the median of the "
+            f"{context['n_turns']:,} drawn turns ({median:.2f}\u00b0)")
+    elif int(context.get("n_unmatched", 0)):
+        angle_text = ("no measurable angle, because none of the "
+                      f"{context['n_turns_in_turn_table']:,} turn rows could be "
+                      "matched to a tracking attempt in this run")
+        exemplar_rule = ("no exemplar: none of the turn rows could be matched "
+                         "to a tracking attempt in this run")
+    else:
+        angle_text = ("no measured angle, because no turn of this drill could "
+                      "be located on a tracking series in this run")
+        exemplar_rule = ("no exemplar: no turn of this drill could be located "
+                         "on a tracking series in this run")
+    dir_median = context["dir_vs_heading_median_deg"]
+    dir_text = (f"{dir_median:.2f}\u00b0" if np.isfinite(dir_median)
+                else "not estimable (no turns drawn)")
+    raw = cfg.raw_file(mode, "combine_tracking")
+    try:
+        raw_rel = str(Path(raw).relative_to(REPO_ROOT))
+    except ValueError:
+        raw_rel = str(raw)
+    sources = ["outputs/turns/turns.parquet", raw_rel]
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_BACKPEDAL,
+        "title": BACKPEDAL_TITLE,
+        "claim": (
+            f"The {context['n_turns']:,} detected turns of "
+            f"{context['drill_name']} — the drill whose name carries 45 — are "
+            f"drawn as routes; measured as the accumulated change in the "
+            f"direction of travel they have {angle_text}, and no arrow can "
+            "show where a player was facing because the Combine records no "
+            "facing."),
+        "drill_name": context["drill_name"],
+        "exemplar_rule": exemplar_rule,
+        "exemplar": (dict(exemplar) if exemplar is not None else None),
+        "sources": sources,
+        "caveats": [
+            ("No facing channel exists in the Combine: the tracking file has "
+             "x, y, s, a, dis and dir and no `o`, and `dir` equals the travel "
+             "heading derived from smoothed x/y (median |difference| "
+             f"{dir_text}). Every arrow is the direction of travel."),
+            ("Combine provenance: the figure is stamped from the run mode; the "
+             "Combine tracking file is the complete file in both modes."),
+            ("Angles are the detector's measured heading change, not the "
+             "drill's nominal geometry; no 45\u00b0 reference line is drawn "
+             "because the data do not define what the label measures."),
+            (f"Reconstruction agreement: {context['n_recon_agree']:,} of "
+             f"{context['n_turns']:,} turns reproduce the committed turn_angle "
+             f"within {context['recon_tol_deg']:g}\u00b0"
+             + (f" (max |diff| {context['recon_max_abs_diff_deg']:.2e}\u00b0)"
+                if np.isfinite(context["recon_max_abs_diff_deg"]) else "")
+             + "; the flag is per row in the CSV."),
+        ],
+        "n_turns_in_turn_table": int(context["n_turns_in_turn_table"]),
+        "population": {
+            "n_turns": int(context["n_turns"]),
+            "n_players": int(context["n_players"]),
+            "n_players_tracked": int(context["n_players_tracked"]),
+            "n_attempts": int(context["n_attempts"]),
+            "median_abs_turn_angle": float(context["median_abs_turn_angle"]),
+        },
+        "reconstruction": {
+            "n_agree": int(context["n_recon_agree"]),
+            "n_turns": int(context["n_turns"]),
+            "tolerance_deg": float(context["recon_tol_deg"]),
+            "max_abs_diff_deg": float(context["recon_max_abs_diff_deg"]),
+        },
+        "stamp": stamp_text(mode),
+        "png": f"outputs/figures/{FIGURE_KEY_BACKPEDAL}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_BACKPEDAL}.csv",
+        "drawn_text": (f"outputs/figures/"
+                       f"{FIGURE_KEY_BACKPEDAL}.drawn_text.json"),
+    }
