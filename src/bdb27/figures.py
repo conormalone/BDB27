@@ -11901,3 +11901,395 @@ def backpedal_route_manifest_payload(table: pd.DataFrame, context: dict,
         "drawn_text": (f"outputs/figures/"
                        f"{FIGURE_KEY_BACKPEDAL}.drawn_text.json"),
     }
+
+
+# ================================================================= figure 21 ==
+#: Figure 21 is ONE question asked of the same 133 turns figure 20 drew, in the
+#: form Conor asked for (2026-11-23 19:41): "draw a circle where the line down is
+#: zero and then plot all the angles in the backpedal 45 on it". It is a
+#: diagnostic, not part of the claim's four figures, and is never quoted in the
+#: writeup.
+#:
+#: WHY ZERO AT THE BOTTOM, POSITIVE CLOCKWISE. `turn_angle` is the signed change
+#: in the direction of TRAVEL and heading is 0 = +y with increasing clockwise
+#: (`kinematics.heading_deg`). Because `exit heading = entry heading +
+#: turn_angle`, a point at bearing `turn_angle` from a downward zero IS the exit
+#: travel direction when the entry points straight down — so positive runs
+#: clockwise and nothing about the measured sign is flipped. This is a drawing
+#: convention: the CSV keeps the measured `turn_angle_deg` beside the drawn
+#: bearing, and no measured number changes.
+#:
+#: WHAT IT MAY NOT SAY. The Combine records no facing (no `o`; `dir` equals the
+#: travel heading to a median 0.44 deg on this drill, D212). So the two lobes are
+#: labelled by their rotation sense — clockwise and counter-clockwise — and never
+#: as a player's left or right. The 45 deg marks are protractor scale ticks, the
+#: same as every other tick; no 45 deg line is drawn as this drill's geometry.
+FIGURE_KEY_BACKPEDAL_POLAR = "fig_backpedal_polar"
+BACKPEDAL_POLAR_TITLE = "The backpedal drill's turns, with zero straight down"
+BACKPEDAL_POLAR_HONESTY = (
+    "each point is the exit direction of travel when the entry points "
+    "straight down\n"
+    "positive is clockwise; the Combine records no facing")
+BACKPEDAL_POLAR_SIDE_LABELS = {
+    "positive": "clockwise side",
+    "negative": "counter-clockwise side",
+}
+#: Layout lives in code, not config: the config fingerprint is pinned by every
+#: committed figure CSV, so adding a block would move `config_sha`.
+BACKPEDAL_POLAR_FIGSIZE = (7.4, 7.6)
+BACKPEDAL_POLAR_DPI = 170
+BACKPEDAL_POLAR_SEED = 20261123     # deterministic radial jitter, not a test
+BACKPEDAL_POLAR_JITTER = 0.10       # +/- radial units; no variable rides radius
+BACKPEDAL_POLAR_RADIUS = 1.0
+BACKPEDAL_POLAR_DOT_SIZE = 26.0
+BACKPEDAL_POLAR_DOT_ALPHA = 0.55
+BACKPEDAL_POLAR_TITLE_FONTSIZE = 16.0
+BACKPEDAL_POLAR_AXIS_FONTSIZE = 10.5
+BACKPEDAL_POLAR_ANNOT_FONTSIZE = 9.5
+BACKPEDAL_POLAR_MEDIAN_LW = 2.4
+BACKPEDAL_POLAR_ARC_LW = 2.6
+BACKPEDAL_POLAR_ARC_RADIUS = 1.16
+BACKPEDAL_POLAR_MEDIAN_TOP = 0.80
+BACKPEDAL_POLAR_RING_RADIUS = 1.0
+BACKPEDAL_POLAR_RMAX = 1.34
+BACKPEDAL_POLAR_TICK_STEP = 45
+
+BACKPEDAL_POLAR_CSV_COLUMNS = [
+    "provenance", "stamp", "config_sha", "figure", "event_id", "nfl_id",
+    "attempt", "frame_start", "drill_name", "turn_angle_deg",
+    "abs_turn_angle_deg", "side", "bearing_deg", "bearing_wrapped",
+    "radius_drawn",
+]
+
+
+def _backpedal_polar_bearing(turn_angle_deg) -> np.ndarray:
+    """The drawn bearing: the measured angle wrapped to (-180, 180].
+
+    Nothing measured is altered — this is the display coordinate. An angle of
+    exactly 180 deg stays at 180 (straight up) rather than wrapping to -180.
+    """
+    wrapped = (np.asarray(turn_angle_deg, dtype=float) + 180.0) % 360.0 - 180.0
+    return np.where(np.isclose(wrapped, -180.0), 180.0, wrapped)
+
+
+def _backpedal_polar_lobe_stats(side: str, angles: np.ndarray) -> dict:
+    if len(angles) == 0:
+        return {"n": 0, "median_deg": float("nan"),
+                "q25_deg": float("nan"), "q75_deg": float("nan")}
+    return {
+        "n": int(len(angles)),
+        "median_deg": float(np.median(angles)),
+        "q25_deg": float(np.percentile(angles, 25)),
+        "q75_deg": float(np.percentile(angles, 75)),
+    }
+
+
+def _backpedal_polar_lobe_label(side: str, lobe: dict) -> str:
+    """The drawn label for one lobe, decimals taken from the data."""
+    name = BACKPEDAL_POLAR_SIDE_LABELS[side]
+    if lobe["n"] == 0:
+        return f"{name}: no turns"
+    return (f"{name}: n = {lobe['n']:,}, "
+            f"median {lobe['median_deg']:.1f}\u00b0")
+
+
+def backpedal_position_counts(turns: pd.DataFrame,
+                              drill: str = BACKPEDAL_DRILL) -> dict:
+    """Position composition of the drill's valid turns: printed, never a filter.
+
+    Standing policy is DB only (D183). The drill is a defensive-back drill, so
+    this prints what was drawn against its denominators instead of assuming it,
+    and the manifest entry carries the same counts.
+    """
+    missing = [column for column in ("drill_name", "setting", "position_group")
+               if column not in turns.columns]
+    if missing:
+        print(f"[{STAGE}] {drill}: the turn table carries no "
+              f"{', '.join(missing)} column — position composition not counted")
+        return {}
+    valid = turns["valid"].fillna(False).astype(bool)
+    part = turns[(turns["setting"] == "combine")
+                 & (turns["drill_name"] == drill) & valid]
+    counts = {str(key): int(value)
+              for key, value in part["position_group"].value_counts().items()}
+    print(f"[{STAGE}] {drill}: {len(part):,} valid turns across "
+          + (", ".join(f"{key} {value:,}" for key, value in counts.items())
+             if counts else "no position group")
+          + f" ({len(counts)} group(s))")
+    return counts
+
+
+def backpedal_polar_table(route_table: pd.DataFrame, route_context: dict,
+                          position_groups: dict | None = None
+                          ) -> tuple[pd.DataFrame, dict]:
+    """One row per drawn turn: the measured angle and the bearing it is drawn at.
+
+    Nothing is filtered and nothing is refused: a tiny table draws a tiny
+    figure, and a turn with no measurable angle is counted, not dropped.
+    """
+    rng = np.random.default_rng(BACKPEDAL_POLAR_SEED)
+    n = int(len(route_table))
+    jitter = rng.uniform(-BACKPEDAL_POLAR_JITTER, BACKPEDAL_POLAR_JITTER,
+                         size=n) if n else np.zeros(0)
+    angles = (route_table["turn_angle_deg"].to_numpy(float) if n
+              else np.zeros(0))
+    bearings = _backpedal_polar_bearing(angles)
+    rows = []
+    for index, record in enumerate(route_table.itertuples(index=False)):
+        angle = float(record.turn_angle_deg)
+        rows.append({
+            "event_id": str(record.event_id),
+            "nfl_id": int(record.nfl_id),
+            "attempt": int(record.attempt),
+            "frame_start": int(getattr(record, "frame_start", -1)),
+            "drill_name": str(getattr(record, "drill_name",
+                                      route_context.get(
+                                          "drill_name",
+                                          BACKPEDAL_DRILL))),
+            "turn_angle_deg": angle,
+            "abs_turn_angle_deg": float(abs(angle)),
+            "side": ("positive" if angle > 0
+                     else "negative" if angle < 0 else "none"),
+            "bearing_deg": float(bearings[index]),
+            "bearing_wrapped": bool(abs(angle) > 180.0),
+            "radius_drawn": float(BACKPEDAL_POLAR_RADIUS + jitter[index]),
+        })
+    table = pd.DataFrame(rows, columns=BACKPEDAL_POLAR_CSV_COLUMNS[4:]) \
+        if rows else pd.DataFrame(columns=BACKPEDAL_POLAR_CSV_COLUMNS[4:])
+
+    positive = angles[angles > 0]
+    negative = angles[angles < 0]
+    lobes = {
+        "positive": _backpedal_polar_lobe_stats("positive", positive),
+        "negative": _backpedal_polar_lobe_stats("negative", negative),
+    }
+    n_wrapped = int(table["bearing_wrapped"].sum()) if n else 0
+    n_zero = int((angles == 0).sum())
+    context = {
+        "drill_name": str(route_context.get("drill_name", BACKPEDAL_DRILL)),
+        "n_turns": n,
+        "n_turns_in_turn_table": int(route_context.get(
+            "n_turns_in_turn_table", n)),
+        "n_players": int(table["nfl_id"].nunique()) if n else 0,
+        "n_players_tracked": int(route_context.get("n_players_tracked", 0)),
+        "n_positive": int(len(positive)),
+        "n_negative": int(len(negative)),
+        "n_zero": n_zero,
+        "n_wrapped": n_wrapped,
+        "median_abs_turn_angle": (float(np.median(np.abs(angles)))
+                                  if n else float("nan")),
+        "lobes": lobes,
+        "position_groups": {} if position_groups is None else {
+            str(key): int(value) for key, value in position_groups.items()},
+    }
+    print(f"[{STAGE}] {FIGURE_KEY_BACKPEDAL_POLAR}: {n:,} turns from "
+          f"{context['n_players']:,} of {context['n_players_tracked']:,} "
+          f"players tracked — clockwise n = {context['n_positive']:,}, "
+          f"counter-clockwise n = {context['n_negative']:,}, "
+          f"zero n = {n_zero:,}; median |angle| "
+          f"{context['median_abs_turn_angle']:.1f}\u00b0; "
+          f"{n_wrapped:,} of {n:,} bearings wrapped")
+    for side in ("positive", "negative"):
+        lobe = lobes[side]
+        print(f"[{STAGE}] {FIGURE_KEY_BACKPEDAL_POLAR}: "
+              f"{BACKPEDAL_POLAR_SIDE_LABELS[side]} n = {lobe['n']:,}, "
+              f"median {lobe['median_deg']:.1f}\u00b0 "
+              f"(middle half {lobe['q25_deg']:.1f} to {lobe['q75_deg']:.1f}\u00b0)")
+    return table, context
+
+
+def write_backpedal_polar_csv(table: pd.DataFrame, path, cfg: common.Config,
+                              mode: str) -> Path:
+    """The drawn turns in the spec's exact column order."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out = table.copy()
+    for name, value in (("provenance", common.provenance(mode)),
+                        ("stamp", stamp_text(mode)),
+                        ("config_sha", common.config_fingerprint(cfg)),
+                        ("figure", FIGURE_KEY_BACKPEDAL_POLAR)):
+        out.insert(0, name, value)
+    out[BACKPEDAL_POLAR_CSV_COLUMNS].to_csv(path, index=False)
+    return path
+
+
+def plot_backpedal_polar(table: pd.DataFrame, context: dict,
+                         cfg: common.Config):
+    """One polar axes: one dot per turn, zero at the bottom, clockwise positive."""
+    fig = plt.figure(figsize=BACKPEDAL_POLAR_FIGSIZE)
+    ax = fig.add_subplot(1, 1, 1, projection="polar")
+
+    # zero at South, positive clockwise: the drawn map of the signs
+    ax.set_theta_zero_location("S")
+    ax.set_theta_direction(-1)
+    ax.set_thetagrids(
+        list(range(0, 360, BACKPEDAL_POLAR_TICK_STEP)),
+        labels=[str(min(t, 360 - t))
+                for t in range(0, 360, BACKPEDAL_POLAR_TICK_STEP)])
+    ax.set_ylim(0.0, BACKPEDAL_POLAR_RMAX)
+    ax.set_yticks([])
+    ax.grid(color=BACKPEDAL_RULE_GREY, lw=0.8)
+    ax.spines["polar"].set_color(BACKPEDAL_RULE_GREY)
+
+    # the protractor's body: a faint dotted ring, so a bearing can be read off
+    around = np.linspace(0.0, 2.0 * np.pi, 241)
+    ax.plot(around, np.full_like(around, BACKPEDAL_POLAR_RING_RADIUS),
+            color=BACKPEDAL_RULE_GREY, lw=0.9, ls=":", zorder=1)
+
+    if len(table):
+        theta = np.radians(table["bearing_deg"].to_numpy(float))
+        radius = table["radius_drawn"].to_numpy(float)
+        ax.scatter(theta, radius, s=BACKPEDAL_POLAR_DOT_SIZE,
+                   color=PALETTE["combine"], alpha=BACKPEDAL_POLAR_DOT_ALPHA,
+                   edgecolors="none", zorder=3)
+
+    # each lobe's median spoke and its middle half, drawn only where it exists.
+    # The text goes in the empty lower half of the circle (no turn is drawn
+    # below about 48 deg), so it cannot sit on the dots or the rim labels.
+    label_y = {"positive": 0.300, "negative": 0.245}
+    for side in ("positive", "negative"):
+        lobe = context["lobes"][side]
+        if lobe["n"] == 0 or not np.isfinite(lobe["median_deg"]):
+            continue
+        theta_median = np.radians(lobe["median_deg"])
+        ax.plot([theta_median, theta_median], [0.0, BACKPEDAL_POLAR_MEDIAN_TOP],
+                color=ALERT, lw=BACKPEDAL_POLAR_MEDIAN_LW, zorder=4)
+        span = np.linspace(lobe["q25_deg"], lobe["q75_deg"], 64)
+        ax.plot(np.radians(span),
+                np.full_like(span, BACKPEDAL_POLAR_ARC_RADIUS),
+                color=ALERT, lw=BACKPEDAL_POLAR_ARC_LW, alpha=0.75, zorder=4)
+        ax.text(0.5, label_y[side], _backpedal_polar_lobe_label(side, lobe),
+                transform=ax.transAxes,
+                fontsize=BACKPEDAL_POLAR_ANNOT_FONTSIZE, color=ALERT,
+                ha="center", va="center", zorder=5)
+
+    ax.text(0.02, 1.06, BACKPEDAL_POLAR_TITLE, transform=ax.transAxes,
+            fontsize=BACKPEDAL_POLAR_TITLE_FONTSIZE, ha="left", va="bottom",
+            color=BACKPEDAL_INK)
+    ax.text(0.5, 0.175,
+            f"{context['n_turns']:,} turns from {context['n_players']:,} of "
+            f"{context['n_players_tracked']:,} players tracked in this drill",
+            transform=ax.transAxes, fontsize=BACKPEDAL_POLAR_ANNOT_FONTSIZE,
+            color=BACKPEDAL_INK, ha="center", va="center")
+    ax.text(0.5, -0.048, BACKPEDAL_POLAR_HONESTY, transform=ax.transAxes,
+            fontsize=BACKPEDAL_POLAR_ANNOT_FONTSIZE - 0.5,
+            color=BACKPEDAL_AXIS_GREY, ha="center", va="top")
+    ax.tick_params(axis="x", labelsize=BACKPEDAL_POLAR_AXIS_FONTSIZE,
+                   colors=BACKPEDAL_AXIS_GREY, pad=1.0)
+
+    fig.subplots_adjust(left=0.09, right=0.91, top=0.87, bottom=0.16)
+    if on_image_stamp(cfg):
+        fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
+                 fontweight="bold", color=ALERT)
+    return fig
+
+
+def render_backpedal_polar(fig, cfg: common.Config, out_png) -> Path:
+    """Save figure 21 once with fixed metadata, so two runs are identical."""
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=BACKPEDAL_POLAR_DPI, facecolor="white",
+                bbox_inches="tight", pad_inches=0.25,
+                metadata={"Software": "bdb27-figures"})
+    plt.close(fig)
+    return out_png
+
+
+def backpedal_polar_drawn_text(fig, cfg: common.Config, mode: str) -> dict:
+    """Every string the drawing puts on canvas, read back off the figure."""
+    from bdb27.figure_text_scan import BANNED_TOKENS, banned_hits, figure_texts
+
+    strings = figure_texts(fig)
+    hits = banned_hits(strings)
+    if BACKPEDAL_POLAR_TITLE not in strings:
+        raise ValueError(f"{STAGE}: figure 21 does not draw its own title")
+    extra = [text.get_text() for text in fig.texts
+             if text.get_text() and text.get_text() != STAMP]
+    if extra:
+        raise ValueError(
+            f"{STAGE}: figure 21 draws figure-level text {extra} — the drawing "
+            "carries no caption or annotation block")
+    return {
+        "provenance": common.provenance(mode),
+        "stamp": stamp_text(mode),
+        "config_sha": common.config_fingerprint(cfg),
+        "figure": FIGURE_KEY_BACKPEDAL_POLAR,
+        "title": BACKPEDAL_POLAR_TITLE,
+        "strings": strings,
+        "scan_strings": ([BACKPEDAL_POLAR_TITLE]
+                         + [s for s in strings if s != BACKPEDAL_POLAR_TITLE]),
+        "banned_tokens": list(BANNED_TOKENS),
+        "banned_hits": [{"token": token, "text": text} for token, text in hits],
+    }
+
+
+def backpedal_polar_manifest_payload(table: pd.DataFrame, context: dict,
+                                     cfg: common.Config, mode: str) -> dict:
+    """Figure 21's manifest entry: the population, the two lobes, the caveats."""
+    if int(len(table)) != context["n_turns"]:
+        raise ValueError(f"{STAGE}: figure 21's row count does not match")
+    positive = context["lobes"]["positive"]
+    negative = context["lobes"]["negative"]
+    raw = cfg.raw_file(mode, "combine_tracking")
+    try:
+        raw_rel = str(Path(raw).relative_to(REPO_ROOT))
+    except ValueError:
+        raw_rel = str(raw)
+    if context["n_turns"]:
+        lobe_text = (
+            f"the clockwise side has a median of {positive['median_deg']:.1f}"
+            f"\u00b0 (n = {positive['n']:,}) and the counter-clockwise side "
+            f"{negative['median_deg']:.1f}\u00b0 (n = {negative['n']:,})")
+    else:
+        lobe_text = "no turn of this drill was drawable in this run"
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_BACKPEDAL_POLAR,
+        "title": BACKPEDAL_POLAR_TITLE,
+        "claim": (
+            f"Every detected turn of {context['drill_name']} is placed on one "
+            f"protractor with zero straight down and the sign of the measured "
+            f"turn kept: {context['n_turns']:,} turns from "
+            f"{context['n_players']:,} players, {lobe_text} — not where a "
+            "45\u00b0 break would put them."),
+        "drill_name": context["drill_name"],
+        "sources": ["outputs/turns/turns.parquet", raw_rel],
+        "caveats": [
+            ("No facing channel exists in the Combine: the tracking file has "
+             "x, y, s, a, dis and dir and no `o`. The lobes are labelled by the "
+             "rotation sense of travel, never as a player's left or right."),
+            ("Zero pointing down is a drawing convention: the measured "
+             "turn_angle is unchanged and is in the CSV beside the drawn "
+             "bearing. Positive runs clockwise because heading increases "
+             "clockwise from +y in this pipeline, so a bearing is the exit "
+             "travel direction when the entry points straight down."),
+            ("The 45\u00b0 marks are protractor scale ticks like every other "
+             "tick, not a statement about the drill's geometry; the drill's "
+             "name is not a measurement."),
+            ("Angles are the detector's measured heading change, not the "
+             "drill's nominal geometry; a turn below the 30\u00b0 floor is "
+             "invisible to it, so this is what the detector saw."),
+            ("Combine provenance: the figure is stamped from the run mode; the "
+             "Combine tracking file is the complete file in both modes."),
+        ],
+        "n_turns_in_turn_table": int(context["n_turns_in_turn_table"]),
+        "population": {
+            "n_turns": int(context["n_turns"]),
+            "n_players": int(context["n_players"]),
+            "n_players_tracked": int(context["n_players_tracked"]),
+            "median_abs_turn_angle": float(context["median_abs_turn_angle"]),
+            "n_positive": int(context["n_positive"]),
+            "n_negative": int(context["n_negative"]),
+            "n_zero": int(context["n_zero"]),
+            "n_wrapped": int(context["n_wrapped"]),
+            "position_groups": dict(context["position_groups"]),
+            "lobes": {side: dict(context["lobes"][side])
+                      for side in ("positive", "negative")},
+        },
+        "stamp": stamp_text(mode),
+        "png": f"outputs/figures/{FIGURE_KEY_BACKPEDAL_POLAR}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_BACKPEDAL_POLAR}.csv",
+        "drawn_text": (f"outputs/figures/"
+                       f"{FIGURE_KEY_BACKPEDAL_POLAR}.drawn_text.json"),
+    }

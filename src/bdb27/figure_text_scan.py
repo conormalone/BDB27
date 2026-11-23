@@ -55,6 +55,7 @@ RENDER_FUNCTIONS = (
     "render_drill_angle",
     "render_population_shrink",
     "render_backpedal_route",
+    "render_backpedal_polar",
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]

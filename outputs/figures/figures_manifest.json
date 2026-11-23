@@ -6591,6 +6591,57 @@
       "png": "outputs/figures/fig_backpedal_route.png",
       "csv": "outputs/figures/fig_backpedal_route.csv",
       "drawn_text": "outputs/figures/fig_backpedal_route.drawn_text.json"
+    },
+    "fig_backpedal_polar": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_backpedal_polar",
+      "title": "The backpedal drill's turns, with zero straight down",
+      "claim": "Every detected turn of BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION is placed on one protractor with zero straight down and the sign of the measured turn kept: 133 turns from 71 players, the clockwise side has a median of 111.0\u00b0 (n = 63) and the counter-clockwise side -116.3\u00b0 (n = 70) \u2014 not where a 45\u00b0 break would put them.",
+      "drill_name": "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION",
+      "sources": [
+        "outputs/turns/turns.parquet",
+        "data/raw/combine_tracking.csv"
+      ],
+      "caveats": [
+        "No facing channel exists in the Combine: the tracking file has x, y, s, a, dis and dir and no `o`. The lobes are labelled by the rotation sense of travel, never as a player's left or right.",
+        "Zero pointing down is a drawing convention: the measured turn_angle is unchanged and is in the CSV beside the drawn bearing. Positive runs clockwise because heading increases clockwise from +y in this pipeline, so a bearing is the exit travel direction when the entry points straight down.",
+        "The 45\u00b0 marks are protractor scale ticks like every other tick, not a statement about the drill's geometry; the drill's name is not a measurement.",
+        "Angles are the detector's measured heading change, not the drill's nominal geometry; a turn below the 30\u00b0 floor is invisible to it, so this is what the detector saw.",
+        "Combine provenance: the figure is stamped from the run mode; the Combine tracking file is the complete file in both modes."
+      ],
+      "n_turns_in_turn_table": 133,
+      "population": {
+        "n_turns": 133,
+        "n_players": 71,
+        "n_players_tracked": 122,
+        "median_abs_turn_angle": 113.1486587524414,
+        "n_positive": 63,
+        "n_negative": 70,
+        "n_zero": 0,
+        "n_wrapped": 0,
+        "position_groups": {
+          "DB": 133
+        },
+        "lobes": {
+          "positive": {
+            "n": 63,
+            "median_deg": 110.95587921142578,
+            "q25_deg": 100.72697448730469,
+            "q75_deg": 119.22604751586914
+          },
+          "negative": {
+            "n": 70,
+            "median_deg": -116.25019073486328,
+            "q25_deg": -123.6674690246582,
+            "q75_deg": -106.71696662902832
+          }
+        }
+      },
+      "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
+      "png": "outputs/figures/fig_backpedal_polar.png",
+      "csv": "outputs/figures/fig_backpedal_polar.csv",
+      "drawn_text": "outputs/figures/fig_backpedal_polar.drawn_text.json"
     }
   }
 }

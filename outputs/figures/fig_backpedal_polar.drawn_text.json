@@ -1,0 +1,44 @@
+{
+  "provenance": "PLACEHOLDER_SAMPLE",
+  "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
+  "config_sha": "bed47a853f46c1f7",
+  "figure": "fig_backpedal_polar",
+  "title": "The backpedal drill's turns, with zero straight down",
+  "strings": [
+    "clockwise side: n = 63, median 111.0\u00b0",
+    "counter-clockwise side: n = 70, median -116.3\u00b0",
+    "The backpedal drill's turns, with zero straight down",
+    "133 turns from 71 of 122 players tracked in this drill",
+    "each point is the exit direction of travel when the entry points straight down\npositive is clockwise; the Combine records no facing",
+    "0",
+    "45",
+    "90",
+    "135",
+    "180",
+    "135",
+    "90",
+    "45"
+  ],
+  "scan_strings": [
+    "The backpedal drill's turns, with zero straight down",
+    "clockwise side: n = 63, median 111.0\u00b0",
+    "counter-clockwise side: n = 70, median -116.3\u00b0",
+    "133 turns from 71 of 122 players tracked in this drill",
+    "each point is the exit direction of travel when the entry points straight down\npositive is clockwise; the Combine records no facing",
+    "0",
+    "45",
+    "90",
+    "135",
+    "180",
+    "135",
+    "90",
+    "45"
+  ],
+  "banned_tokens": [
+    "PLACEHOLDER",
+    "UNVALIDATED",
+    "SAMPLE OUTPUT",
+    "PENDING FULL RUN"
+  ],
+  "banned_hits": []
+}

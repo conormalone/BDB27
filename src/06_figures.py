@@ -545,6 +545,27 @@ def main(argv=None) -> int:
             bp_table, bp_context, cfg, args.mode)
         _write_manifest(bp_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 21: the same turns on one protractor, zero straight down
+        # Conor, 2026-11-23 19:41. A diagnostic; it reuses figure 20's table, so
+        # no second tracking read and no second reconstruction.
+        bpp_table, bpp_context = figures.backpedal_polar_table(
+            bp_table, bp_context,
+            position_groups=figures.backpedal_position_counts(turns))
+        bpp_png = outdir / f"{figures.FIGURE_KEY_BACKPEDAL_POLAR}.png"
+        bpp_csv_path = outdir / f"{figures.FIGURE_KEY_BACKPEDAL_POLAR}.csv"
+        bpp_text_path = outdir / (
+            f"{figures.FIGURE_KEY_BACKPEDAL_POLAR}.drawn_text.json")
+        figures.write_backpedal_polar_csv(bpp_table, bpp_csv_path, cfg,
+                                          args.mode)
+        bpp_fig = figures.plot_backpedal_polar(bpp_table, bpp_context, cfg)
+        bpp_text = figures.backpedal_polar_drawn_text(bpp_fig, cfg, args.mode)
+        bpp_text_path.write_text(json.dumps(bpp_text, indent=2),
+                                 encoding="utf-8")
+        figures.render_backpedal_polar(bpp_fig, cfg, bpp_png)
+        bpp_payload = figures.backpedal_polar_manifest_payload(
+            bpp_table, bpp_context, cfg, args.mode)
+        _write_manifest(bpp_payload, manifest_path, args.mode, cfg)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -670,7 +691,14 @@ def main(argv=None) -> int:
                         f"recon={bp_context['n_recon_agree']}/"
                         f"{bp_context['n_turns']} "
                         f"exemplar="
-                        f"{(bp_context['exemplar'] or {}).get('event_id', 'none')}")
+                        f"{(bp_context['exemplar'] or {}).get('event_id', 'none')}; "
+                        f"{figures.FIGURE_KEY_BACKPEDAL_POLAR}: "
+                        f"clockwise={bpp_context['n_positive']} "
+                        f"counter={bpp_context['n_negative']} "
+                        f"median+="
+                        f"{bpp_context['lobes']['positive']['median_deg']:.1f} "
+                        f"median-="
+                        f"{bpp_context['lobes']['negative']['median_deg']:.1f}")
     print(f"{STAGE}: wrote {png_path.name}, {csv_path.name}, "
           f"{drill_png.name}, {drill_csv_path.name}, {ba_png.name}, "
           f"{ba_csv_path.name}, {ds_png.name}, {ds_csv_path.name}, "
@@ -690,6 +718,7 @@ def main(argv=None) -> int:
           f"{da_png.name}, {da_csv_path.name}, "
           f"{ps_png.name}, {ps_csv_path.name}, {ps_text_path.name}, "
           f"{bp_png.name}, {bp_csv_path.name}, {bp_text_path.name}, "
+          f"{bpp_png.name}, {bpp_csv_path.name}, {bpp_text_path.name}, "
           f"{manifest_path.name} "
           f"({context['n_valid']} valid {position} turns; "
           f"{ba_context['n_turns']} valid {ba_position} Combine turns on a "

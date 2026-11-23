@@ -9353,3 +9353,96 @@ the new one), `README.md`, `notebooks/README.md` (the stage table's figure count
 `figures.before_after.projected.angle_deg`; moving it to 45 moves figure 3's projected block into
 the 45–60° band, which would require re-wording that figure's title and claim. Say the word and it
 moves in a change of its own.
+
+## D213 — Figure 21, the backpedal drill's turns on one protractor, zero straight down · 2026-11-23
+
+**The request.** Conor, 2026-11-23 19:41, verbatim: *"Ok maybe draw a circle where the line down is
+zero and then plot all the angles in the backpedal 45 on it"*, confirmed with *"That ok"* when it
+was read back as: a polar plot, zero at straight down, one point per detected turn of
+`BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION`, placed at that turn's signed angle.
+
+**What it shows.** 133 detected turns from 71 of the 122 players tracked in this drill (all
+`position_group == "DB"`), one dot each. The two lobes sit nowhere near a 45° break:
+
+| side (rotation sense of travel) | n | median | middle half |
+|---|---:|---:|---|
+| clockwise (positive) | 63 | **111.0°** | 100.7° to 119.2° |
+| counter-clockwise (negative) | 70 | **−116.3°** | −123.7° to −106.7° |
+
+Median |angle| 113.1°. **No turn is drawn within 48.4° of zero** — the shallowest detected turn is
+48.4° and the deepest 146.4° — so the protractor's ±45 marks are empty. That is the diagnostic
+Conor asked for: the drill does not measure a 45° break, it measures a forward reversal-and-lean,
+and the two sides are near-symmetric in count and in median.
+
+**The geometry, and why positive runs clockwise.** `turn_angle` is the signed change in the
+direction of travel, and this pipeline's heading is 0 = +y with increasing clockwise
+(`kinematics.heading_deg`). Since `exit heading = entry heading + turn_angle`, a point at bearing
+`turn_angle` from a downward zero **is** the exit travel direction when the entry points straight
+down. Zero at the bottom is drawn with `set_theta_zero_location("S")` and `set_theta_direction(-1)`,
+and both are pinned to the axes object **and to display pixels** in the tests (theta 0 below the
+centre; +90 to the left). Nothing measured moved: this is a drawing convention, the CSV carries the
+measured `turn_angle_deg` beside the drawn `bearing_deg`, and `bearing_wrapped` flags any |angle| >
+180° (0 of 133 here).
+
+**What the figure may not say.** The Combine records no facing (no `o`; `dir` equals the travel
+heading to a median 0.43° on this drill, D212). The lobes are therefore labelled by their rotation
+sense — clockwise and counter-clockwise — never as a player's left or his right, and a test rejects
+the words "left" and "right" anywhere in the drawn text. The 45° marks are protractor **scale
+ticks** like every other tick; no 45° line is drawn as this drill's geometry, and the manifest says
+so. Nothing here is a per-prospect statement and nothing is quoted in the writeup: this is a
+diagnostic commissioned on 2026-11-23, not one of TASK.md's four claim figures.
+
+**Artefacts.** `outputs/figures/fig_backpedal_polar.png`,
+`outputs/figures/fig_backpedal_polar.csv` (one row per drawn turn: `event_id, nfl_id, attempt,
+frame_start, drill_name, turn_angle_deg, abs_turn_angle_deg, side, bearing_deg, bearing_wrapped,
+radius_drawn`, plus `provenance, stamp, config_sha, figure`),
+`outputs/figures/fig_backpedal_polar.drawn_text.json`, and one added entry in
+`figures_manifest.json` (the entry's `claim`, five `caveats`, and `population` with both lobes'
+`n`/`median_deg`/`q25_deg`/`q75_deg`). The radius dimension carries no variable — dots sit at
+1.0 ± deterministic jitter from a fixed seed — so the radial axis is hidden and no reader can
+mistake radius for a measurement. Drawn text: the title (no digits), the count line, the two lobe
+lines, the protractor ticks and one two-line honesty line; no caption block, no subtitle, no
+legend.
+
+**DB only (D183).** `backpedal_position_counts` counts the drill's valid turns by `position_group`
+and prints the composition with its denominator rather than assuming it: **DB 133 of 133, one
+group**. That count is carried in the manifest entry's `population.position_groups`, and a test
+fails if the drawn population ever stops being all-DB. Nothing is filtered by position — the
+figure draws the drill's own valid turns, and they are all DB.
+
+**Suite.** Green, exit 0: **745 collected, 744 passed, 1 skipped** (`.venv/bin/python -m pytest`,
+full run). Before the change, the same suite on the stashed pre-change tree: **731 collected, 730
+passed, 1 skipped**. Fourteen tests are new — the polar figure's own 14, including the drawn-axes
+pixel check, the wrap case, the one-row and two-row no-gate cases, and the all-DB pin.
+
+**Wiring.** `src/bdb27/figures.py` (a figure-21 section after figure 20; it reuses figure 20's
+already-reconstructed route table, so there is no second tracking read and no second
+reconstruction), `src/06_figures.py` (wire-in beside figure 20, run-log `detail` and final line),
+`src/bdb27/figure_text_scan.py` (the renderer joins the banned-token scan). No new `config.yaml`
+key: a key would move `config_sha` and every committed figure CSV with it.
+
+**Proof no existing measured output moved.** Stage 06 was run in sample mode against this tree
+after the change, then every file it touched under `outputs/figures/` was `git checkout`-ed back
+except figure 21's three new files, and figure 21's manifest entry was merged into the committed
+manifest by key. `git status` therefore shows **no modified existing figure**: the only change
+under `outputs/figures/` is the 48-line addition of figure 21's manifest entry plus its three new
+files. This matters here: the committed figures 1–19 are a **MIXED-provenance** set rendered in a
+FULL run on another machine (`5 FULL, 16 sample, 1 schematic, 1 FULL + RECEIVED`, `config_sha`
+`a76cf3bd9012f085`), and re-rendering them in sample mode on this host changes their numbers
+(sample game file: 326 DB turns, not 7,777). Those re-renders were discarded deliberately — they
+are a different population, not a movement caused by this change. Figure 20 and figure 21 both
+re-render byte-identically from this host's inputs, and two consecutive renders of figure 21 are
+byte-identical.
+
+**Files touched.** `notes/backpedal-polar-figure-spec.md` (new, the PM spec),
+`src/bdb27/figures.py`, `src/06_figures.py`, `src/bdb27/figure_text_scan.py`,
+`tests/test_backpedal_polar_figure.py` (new, 13 tests), `tests/test_figures_stage.py` (figure
+count 20 -> 21 in three places: the manifest set, the PNG count and the drawn-text scan), 
+`tests/test_notebook_contract.py` (gallery 23 -> 24), `outputs/figures/fig_backpedal_polar.{png,
+csv,drawn_text.json}` (new), `outputs/figures/figures_manifest.json` (one entry added),
+`outputs/run_log.csv` (this render's row), `README.md`, `notebooks/README.md` (the stage table's
+figure count), and this entry.
+
+**Deliberately not done.** No change to `config.yaml`, stage 02, any existing figure, the draft or
+`TASK.md`; no facing or left/right inference; no 45° reference geometry asserted; no band table, no
+new claim, no per-player content; the figure is not named in the writeup.

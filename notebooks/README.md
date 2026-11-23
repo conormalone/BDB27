@@ -5,7 +5,7 @@ open the notebook, set `MODE` in §1, press **Run All**.
 
 Six of the seven stages are implemented; `05_validate` is still a loud stub and is reported
 as `NOT IMPLEMENTED (stub, exit 2)`. In `MODE="sample"` every artefact is
-`PLACEHOLDER_SAMPLE` / `UNVALIDATED SAMPLE OUTPUT`, and stage `06_figures` writes twenty
+`PLACEHOLDER_SAMPLE` / `UNVALIDATED SAMPLE OUTPUT`, and stage `06_figures` writes twenty-one
 figures plus `outputs/figures/figures_manifest.json`, which is what the gallery (§5) reads.
 
 ## What it does
