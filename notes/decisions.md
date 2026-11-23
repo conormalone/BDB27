@@ -9446,3 +9446,70 @@ figure count), and this entry.
 **Deliberately not done.** No change to `config.yaml`, stage 02, any existing figure, the draft or
 `TASK.md`; no facing or left/right inference; no 45° reference geometry asserted; no band table, no
 new claim, no per-player content; the figure is not named in the writeup.
+
+---
+
+## D214 — Figure 21's protractor moves onto the 0-360 scale the other plots use · 2026-11-23
+
+**The request.** Conor, 2026-11-23 22:06, verbatim: *"The other plots have it on a 360 scale so
+please do the same."* The first cut of figure 21 labelled the circle on a mirrored half scale — the
+drawn ticks read 0, 45, 90, 135, 180, 135, 90, 45 — so the right half of the protractor repeated the
+left half instead of continuing to 360. No other figure in the set does that.
+
+**Decision.** The protractor is labelled on one full circle: **0, 45, 90, 135, 180, 225, 270, 315,
+360**, zero straight down, positive clockwise (unchanged). "0" and "360" sit on the same bottom
+spoke, so the two labels are nudged apart in points (`BACKPEDAL_POLAR_WRAP_LABEL_NUDGE_PT = 9.0`)
+and print side by side; a test fails if they overprint.
+
+**The lobe summaries become bearings, not signed angles.** Same turns, same counts, read on the
+drawn scale:
+
+| side (rotation sense of travel) | n | median bearing |
+|---|---:|---:|
+| clockwise | 63 | **111.0°** (unchanged) |
+| counter-clockwise | 70 | **243.7°** (was −116.3°) |
+
+243.7° is the same direction as −116.3°; the middle half moves with it (236.3° to 253.3°). The
+`claim` and the lobe labels in the manifest carry the bearings; the CSV keeps both readings.
+
+**What changed, exactly.** `bearing_deg` in `fig_backpedal_polar.csv` is now `turn_angle_deg mod
+360` (range 0–360; it previously duplicated the signed value, range −146.4 to 140.1).
+`turn_angle_deg`, `abs_turn_angle_deg`, `side`, `bearing_wrapped`, `radius_drawn`, every count and
+every measured value are unchanged — this is a display scale only. `_backpedal_polar_bearing` is the
+one function that defines it; the lobe stats are computed on its output. The no-facing caveat and
+the DB-only population (DB 133 of 133) are untouched, and the manifest's zero-is-down caveat gained
+one sentence stating that the bearing is the 0-360 reading and that no measured value changes.
+
+**Tests.** Red first: three new tests and the four updated assertions failed on the pre-change tree
+for the reasons they name — the labels came back `[0, 45, 90, 135, 180, 135, 90, 45]`, `bearing_deg`
+equalled the signed angle, and the manifest's counter-clockwise median was −116.25. New:
+`test_protractor_is_labelled_on_a_full_zero_to_360_circle` (label list, tick positions in degrees,
+and the drawn "0"/"360" bounding boxes must not overlap),
+`test_bearings_are_a_zero_to_360_reading_and_turns_stay_signed`,
+`test_lobe_medians_are_stated_as_bearings` (the drawn label prints 243.7°, not −116.3°, and keeps
+n = 70). The wide-angle case now expects a 200° turn at bearing 200°.
+
+**Artefacts.** `outputs/figures/fig_backpedal_polar.png`, `.csv` and `.drawn_text.json` regenerated;
+`figures_manifest.json`'s one figure-21 entry replaced (claim, lobe caveat, population lobes, same
+`generated_utc`-style rewrite). Drawn ticks as printed: `0, 45, 90, 135, 180, 225, 270, 315, 360`.
+The two lobe lines as drawn: `clockwise side: n = 63, median 111.0°`, `counter-clockwise side: n =
+70, median 243.7°`.
+
+**No other figure re-rendered.** Only figure 21's three files and the manifest changed in
+`outputs/figures/`; the committed figures 1–19 are a MIXED/FULL-provenance set from another machine
+and re-rendering them here in sample mode would change their numbers (D213). Figure 21 is
+regenerated through the same functions stage 06 calls, in `--mode sample`, into the committed
+directory; the before-change render reproduced the committed PNG byte-for-byte first, which is what
+makes the targeted regeneration safe.
+
+**Files touched.** `src/bdb27/figures.py` (bearing function, lobe stats, tick labels and their
+de-overprint shift, manifest claim and caveat), `tests/test_backpedal_polar_figure.py` (three new
+tests, four updated), `tests/test_fallback_validation.py` (the guard rail's
+`DECISION_MOVED_FIGURES` gains figure 21's three files, as D212 did for figure 2),
+`notes/backpedal-polar-figure-spec.md` (scale section and a revision note),
+`outputs/figures/fig_backpedal_polar.{png,csv,drawn_text.json}`,
+`outputs/figures/figures_manifest.json`, and this entry.
+
+**Deliberately not done.** No other figure re-rendered; no new `config.yaml` key; no change to any
+measured value, count, population, band table, claim or `TASK.md`; no facing/left-right inference;
+the figure is still a diagnostic and is not quoted in the writeup.

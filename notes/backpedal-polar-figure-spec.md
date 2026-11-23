@@ -41,9 +41,11 @@ heading increases **clockwise** on screen (`kinematics.heading_deg`). Therefore:
   pointing down, the point's bearing from the down line **is the exit travel
   direction**. Plotting positive counter-clockwise would flip the handedness of a
   quantity whose sign is already defined.
-- Display bearing = `wrap180(turn_angle)`; a |turn_angle| > 180° plots at its
-  wrapped bearing and is flagged `bearing_wrapped` in the CSV (count printed; 0 at
-  spec time).
+- Display bearing = `turn_angle mod 360`, read clockwise from the down line on
+  the same 0-360 scale the other plots use (revised at D214; the first cut used
+  `wrap180`, which put the right half of the circle on a mirrored 135…0 scale).
+  A |turn_angle| > 180° plots at its `mod 360` bearing and is flagged
+  `bearing_wrapped` in the CSV (count printed; 0 at spec time).
 - This is a **drawing convention only**. No measured angle changes; the CSV carries
   the measured `turn_angle_deg` alongside the drawn `bearing_deg`.
 
@@ -70,8 +72,10 @@ and touch every committed figure CSV).
 Drawn title (axes text, **no digits**):
 `The backpedal drill's turns, with zero straight down`
 
-- Protractor: theta grid every 45°, labels the absolute value (0, 45, 90, 135, 180,
-  135, 90, 45), faint grey spokes; radial axis hidden (radius carries no variable).
+- Protractor: theta grid every 45°, one full circle labelled 0, 45, 90, 135, 180,
+  225, 270, 315, 360 (D214); the "0" and "360" labels sit on the one bottom spoke
+  and are nudged apart in points so they print side by side. Faint grey spokes;
+  radial axis hidden (radius carries no variable).
 - One dot per turn at `bearing_deg`, radius `1.0 + deterministic jitter` (fixed
   seed, ±0.10) so overlapping points are countable; single Combine colour, alpha.
 - Each lobe's median drawn as a bold spoke from the centre to the rim; each lobe's
@@ -80,7 +84,8 @@ Drawn title (axes text, **no digits**):
 - Axis-text annotations, digits allowed here:
   - `133 turns from 71 of 122 players tracked in this drill` (from the data);
   - per lobe: `clockwise side: n = 63, median 111.0°`, `counter-clockwise side:
-    n = 70, median 116.3°` — sign and decimals taken from the table, not typed;
+    n = 70, median 243.7°` — decimals taken from the table, not typed, and the
+    counter-clockwise median is a bearing on the 0-360 scale (D214), not −116.3°;
   - one honesty line: `each point is the exit direction of travel when the entry
     points straight down; positive is clockwise; the Combine records no facing`.
 - No legend box, no caption, no subtitle, no figure-level text except `STAMP` when
@@ -95,8 +100,9 @@ Under `outputs/figures/`:
   `provenance, stamp, config_sha, figure, event_id, nfl_id, attempt,
   frame_start, drill_name, turn_angle_deg, abs_turn_angle_deg, side,
   bearing_deg, bearing_wrapped, radius_drawn`
-  (`side` ∈ {`positive`, `negative`, `none`}; `bearing_deg` is the wrapped drawn
-  bearing, positive clockwise from the down line).
+  (`side` ∈ {`positive`, `negative`, `none`}; `bearing_deg` is the drawn bearing
+  on a 0-360 scale, clockwise from the down line; `turn_angle_deg` keeps the
+  signed measurement).
 - `fig_backpedal_polar.drawn_text.json` — same shape as
   `fig_backpedal_route.drawn_text.json`.
 - one merged entry in `figures_manifest.json`: `title`, `claim`, `sources`,
@@ -122,7 +128,9 @@ Copy the shape of `tests/test_backpedal_route_figure.py`; recompute from the
 committed turn table rather than trusting the figure code.
 
 1. one row per valid turn, count == the turn table's, players == 71;
-2. `side` partition sums to the total; `bearing_deg == wrap180(turn_angle_deg)`;
+2. `side` partition sums to the total; `bearing_deg == turn_angle_deg mod 360`;
+   the signed `turn_angle_deg` is still present and still negative for the
+   counter-clockwise lobe;
 3. the polar axes actually puts zero at the bottom and increases clockwise:
    read the axis object's zero offset and direction **and** transform a probe
    point through `ax.transData` to check screen position (theta 0 below centre,
@@ -161,3 +169,17 @@ figure-name set, the PNG count, `figures_scanned`) and
   overridden:** figures 5–20 are diagnostics added since D191; this is figure 21,
   commissioned by Conor on 2026-11-23, and like them it is not one of the claim's
   four and must not be quoted in the writeup. Main reports this to Conor.
+
+## Revision — the 0-360 scale (D214, 2026-11-23)
+
+Conor, 2026-11-23 22:06: *"The other plots have it on a 360 scale so please do
+the same."* The first cut labelled the circle on a mirrored half scale (0, 45,
+90, 135, 180, 135, 90, 45), which matched no other plot in the set. The display
+scale only changed:
+
+- ticks: one full circle, 0 … 360;
+- `bearing_deg`: `turn_angle mod 360` (range 0–360), so the counter-clockwise
+  lobe's median reads 243.7° instead of −116.3°;
+- `turn_angle_deg`, `abs_turn_angle_deg`, `side`, every count and every measured
+  value are unchanged, and the signed angle stays in the CSV;
+- the no-facing caveat and the DB-only population are untouched.

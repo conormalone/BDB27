@@ -44,11 +44,16 @@ MANIFEST_REGISTRY = "outputs/figures/figures_manifest.json"
 #: Committed figure files a recorded decision moved on purpose. D212
 #: (2026-11-23) moved figure 2's proposed-drill marker 40 -> 45 so it matches
 #: the schematic's `break_angles_deg: [45]`; those two files are the only
-#: committed figures that decision rewrites. Every other figure is still
-#: off-limits to an unrecorded edit.
+#: committed figures that decision rewrites. D214 (2026-11-23) moved figure 21's
+#: protractor onto the 0-360 scale the other plots use; the display scale only,
+#: no measured value. Every other figure is still off-limits to an unrecorded
+#: edit.
 DECISION_MOVED_FIGURES = {
     "outputs/figures/fig_drill_coverage.csv",
     "outputs/figures/fig_drill_coverage.png",
+    "outputs/figures/fig_backpedal_polar.csv",
+    "outputs/figures/fig_backpedal_polar.png",
+    "outputs/figures/fig_backpedal_polar.drawn_text.json",
 }
 
 ENCODED_CALLS = {"to_csv", "read_csv", "read_text", "write_text"}

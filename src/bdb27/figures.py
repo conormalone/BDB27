@@ -33,6 +33,7 @@ import matplotlib
 matplotlib.use("Agg")  # deterministic, headless
 
 import matplotlib.pyplot as plt
+import matplotlib.transforms as mtransforms
 import numpy as np
 import pandas as pd
 from matplotlib.patches import Arc, Patch
@@ -11953,6 +11954,9 @@ BACKPEDAL_POLAR_MEDIAN_TOP = 0.80
 BACKPEDAL_POLAR_RING_RADIUS = 1.0
 BACKPEDAL_POLAR_RMAX = 1.34
 BACKPEDAL_POLAR_TICK_STEP = 45
+#: "0" and "360" sit on the same bottom spoke; each is nudged outwards so the
+#: full-circle labels print side by side instead of on top of each other.
+BACKPEDAL_POLAR_WRAP_LABEL_NUDGE_PT = 9.0
 
 BACKPEDAL_POLAR_CSV_COLUMNS = [
     "provenance", "stamp", "config_sha", "figure", "event_id", "nfl_id",
@@ -11963,13 +11967,14 @@ BACKPEDAL_POLAR_CSV_COLUMNS = [
 
 
 def _backpedal_polar_bearing(turn_angle_deg) -> np.ndarray:
-    """The drawn bearing: the measured angle wrapped to (-180, 180].
+    """The drawn bearing: the measured angle read clockwise on a 0-360 scale.
 
-    Nothing measured is altered — this is the display coordinate. An angle of
-    exactly 180 deg stays at 180 (straight up) rather than wrapping to -180.
+    Nothing measured is altered — this is the display coordinate, the same
+    convention every other plot in the set uses (D214). A counter-clockwise
+    turn of -116.3 deg is drawn at bearing 243.7 deg; the signed measurement
+    stays in ``turn_angle_deg`` beside it in the CSV.
     """
-    wrapped = (np.asarray(turn_angle_deg, dtype=float) + 180.0) % 360.0 - 180.0
-    return np.where(np.isclose(wrapped, -180.0), 180.0, wrapped)
+    return np.mod(np.asarray(turn_angle_deg, dtype=float), 360.0)
 
 
 def _backpedal_polar_lobe_stats(side: str, angles: np.ndarray) -> dict:
@@ -11991,6 +11996,23 @@ def _backpedal_polar_lobe_label(side: str, lobe: dict) -> str:
         return f"{name}: no turns"
     return (f"{name}: n = {lobe['n']:,}, "
             f"median {lobe['median_deg']:.1f}\u00b0")
+
+
+def _backpedal_polar_separate_wrap_labels(fig, ax) -> None:
+    """Print "0" and "360" side by side on the one spoke they share.
+
+    Matplotlib draws both labels at the same point, where they overprint. A
+    small outward shift in points keeps them legible without moving the tick
+    itself: the scale still starts and ends at the bottom.
+    """
+    labels = list(ax.get_xticklabels())
+    if len(labels) < 2:
+        return
+    shift = BACKPEDAL_POLAR_WRAP_LABEL_NUDGE_PT / 72.0
+    for label, dx in ((labels[0], -shift), (labels[-1], shift)):
+        label.set_transform(label.get_transform()
+                            + mtransforms.ScaledTranslation(
+                                dx, 0.0, fig.dpi_scale_trans))
 
 
 def backpedal_position_counts(turns: pd.DataFrame,
@@ -12059,9 +12081,13 @@ def backpedal_polar_table(route_table: pd.DataFrame, route_context: dict,
 
     positive = angles[angles > 0]
     negative = angles[angles < 0]
+    # The lobe summaries are bearings on the 0-360 scale the circle is drawn
+    # on, not signed angles: -116.3 deg is reported as 243.7 deg (D214).
     lobes = {
-        "positive": _backpedal_polar_lobe_stats("positive", positive),
-        "negative": _backpedal_polar_lobe_stats("negative", negative),
+        "positive": _backpedal_polar_lobe_stats(
+            "positive", _backpedal_polar_bearing(positive)),
+        "negative": _backpedal_polar_lobe_stats(
+            "negative", _backpedal_polar_bearing(negative)),
     }
     n_wrapped = int(table["bearing_wrapped"].sum()) if n else 0
     n_zero = int((angles == 0).sum())
@@ -12093,7 +12119,7 @@ def backpedal_polar_table(route_table: pd.DataFrame, route_context: dict,
         lobe = lobes[side]
         print(f"[{STAGE}] {FIGURE_KEY_BACKPEDAL_POLAR}: "
               f"{BACKPEDAL_POLAR_SIDE_LABELS[side]} n = {lobe['n']:,}, "
-              f"median {lobe['median_deg']:.1f}\u00b0 "
+              f"median bearing {lobe['median_deg']:.1f}\u00b0 "
               f"(middle half {lobe['q25_deg']:.1f} to {lobe['q75_deg']:.1f}\u00b0)")
     return table, context
 
@@ -12115,17 +12141,22 @@ def write_backpedal_polar_csv(table: pd.DataFrame, path, cfg: common.Config,
 
 def plot_backpedal_polar(table: pd.DataFrame, context: dict,
                          cfg: common.Config):
-    """One polar axes: one dot per turn, zero at the bottom, clockwise positive."""
+    """One polar axes: one dot per turn, zero at the bottom, clockwise positive.
+
+    The protractor is labelled on the full 0-360 scale every other plot in the
+    set uses (D214): 0 at the bottom, 45, ... 315 clockwise around, and 360
+    printed beside the 0 it coincides with.
+    """
     fig = plt.figure(figsize=BACKPEDAL_POLAR_FIGSIZE)
     ax = fig.add_subplot(1, 1, 1, projection="polar")
 
     # zero at South, positive clockwise: the drawn map of the signs
     ax.set_theta_zero_location("S")
     ax.set_theta_direction(-1)
+    tick_degrees = list(range(0, 360 + BACKPEDAL_POLAR_TICK_STEP,
+                              BACKPEDAL_POLAR_TICK_STEP))
     ax.set_thetagrids(
-        list(range(0, 360, BACKPEDAL_POLAR_TICK_STEP)),
-        labels=[str(min(t, 360 - t))
-                for t in range(0, 360, BACKPEDAL_POLAR_TICK_STEP)])
+        tick_degrees, labels=[str(degrees) for degrees in tick_degrees])
     ax.set_ylim(0.0, BACKPEDAL_POLAR_RMAX)
     ax.set_yticks([])
     ax.grid(color=BACKPEDAL_RULE_GREY, lw=0.8)
@@ -12176,6 +12207,9 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
             color=BACKPEDAL_AXIS_GREY, ha="center", va="top")
     ax.tick_params(axis="x", labelsize=BACKPEDAL_POLAR_AXIS_FONTSIZE,
                    colors=BACKPEDAL_AXIS_GREY, pad=1.0)
+    # 0 and 360 are the same spoke; nudge the two labels apart so both read.
+    # Last, after every call that could rebuild the tick labels.
+    _backpedal_polar_separate_wrap_labels(fig, ax)
 
     fig.subplots_adjust(left=0.09, right=0.91, top=0.87, bottom=0.16)
     if on_image_stamp(cfg):
@@ -12237,9 +12271,10 @@ def backpedal_polar_manifest_payload(table: pd.DataFrame, context: dict,
         raw_rel = str(raw)
     if context["n_turns"]:
         lobe_text = (
-            f"the clockwise side has a median of {positive['median_deg']:.1f}"
-            f"\u00b0 (n = {positive['n']:,}) and the counter-clockwise side "
-            f"{negative['median_deg']:.1f}\u00b0 (n = {negative['n']:,})")
+            f"the clockwise side has a median bearing of "
+            f"{positive['median_deg']:.1f}\u00b0 (n = {positive['n']:,}) and "
+            f"the counter-clockwise side {negative['median_deg']:.1f}\u00b0 "
+            f"(n = {negative['n']:,})")
     else:
         lobe_text = "no turn of this drill was drawable in this run"
     return {
@@ -12249,8 +12284,8 @@ def backpedal_polar_manifest_payload(table: pd.DataFrame, context: dict,
         "title": BACKPEDAL_POLAR_TITLE,
         "claim": (
             f"Every detected turn of {context['drill_name']} is placed on one "
-            f"protractor with zero straight down and the sign of the measured "
-            f"turn kept: {context['n_turns']:,} turns from "
+            f"protractor with zero straight down, read on the same 0-360 scale "
+            f"as the other plots: {context['n_turns']:,} turns from "
             f"{context['n_players']:,} players, {lobe_text} — not where a "
             "45\u00b0 break would put them."),
         "drill_name": context["drill_name"],
@@ -12263,7 +12298,10 @@ def backpedal_polar_manifest_payload(table: pd.DataFrame, context: dict,
              "turn_angle is unchanged and is in the CSV beside the drawn "
              "bearing. Positive runs clockwise because heading increases "
              "clockwise from +y in this pipeline, so a bearing is the exit "
-             "travel direction when the entry points straight down."),
+             "travel direction when the entry points straight down. The "
+             "bearing is that direction read on a 0-360 scale (D214), so the "
+             "signed turn_angle_deg of -116.3\u00b0 is drawn at bearing "
+             "243.7\u00b0; no measured value changes."),
             ("The 45\u00b0 marks are protractor scale ticks like every other "
              "tick, not a statement about the drill's geometry; the drill's "
              "name is not a measurement."),

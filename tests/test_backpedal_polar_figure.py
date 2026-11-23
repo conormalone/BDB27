@@ -12,7 +12,11 @@ What is tested here, and why:
   not by trusting prose. A positive turn angle is the clockwise rotation of the
   travel direction (heading 0 = +y, increasing clockwise), so a point's bearing
   from the down line is the exit travel direction when the entry points down;
-* the lobes: counts and medians recomputed from the committed turn table;
+* the scale: one full circle labelled 0, 45, ... 360 — not the mirrored half
+  scale the first cut drew (Conor, 2026-11-23 22:06: "The other plots have it on
+  a 360 scale so please do the same", D214);
+* the lobes: counts and medians recomputed from the committed turn table, with
+  each median a bearing on that 0-360 scale (243.7°, not -116.3°);
 * the drawn text: the title (no digits), the count line, both lobe labels, the
   honesty line — no caption, no subtitle, no legend, no banned token;
 * no gate: a two-row input still renders, and a 200° angle is drawn at its
@@ -148,11 +152,13 @@ def test_side_partition_and_bearing_mapping(polar, valid_turns):
     assert int(counts.get("negative", 0)) == int((valid_turns["turn_angle"]
                                                  < 0).sum())
     assert int(counts.sum()) == len(table)
-    # the drawn bearing IS the measured angle here (none exceeds 180°)
+    # the drawn bearing is the measured angle read clockwise from zero-down on
+    # a 0-360 scale; the signed measurement stays beside it in the CSV
     assert not bool(table["bearing_wrapped"].any())
-    assert np.allclose(table["bearing_deg"], table["turn_angle_deg"],
-                       atol=1e-9)
-    assert table["bearing_deg"].abs().max() <= 180.0
+    assert np.allclose(table["bearing_deg"],
+                       np.mod(table["turn_angle_deg"], 360.0), atol=1e-9)
+    assert table["bearing_deg"].ge(0.0).all()
+    assert table["bearing_deg"].lt(360.0).all()
 
 
 # ------------------------------------------------------ 2. the drawn geometry
@@ -182,6 +188,66 @@ def test_zero_is_at_the_bottom_and_positive_runs_clockwise(polar, cfg):
         plt.close(fig)
 
 
+# -------------------------------------------- 2b. the scale is 0-360 (D214)
+def test_protractor_is_labelled_on_a_full_zero_to_360_circle(polar, cfg):
+    """Conor, 2026-11-23 22:06: one full circle, not the mirrored half.
+
+    The first cut labelled the left half 0..180 and mirrored it back down the
+    right (0, 45, 90, 135, 180, 135, 90, 45). Every other plot in the set reads
+    on 0-360, so this one does too. Checked on the DRAWN tick labels, and the
+    two labels that share the bottom spoke (0 and 360) must not overprint.
+    """
+    table, context = polar
+    fig = figures.plot_backpedal_polar(table, context, cfg)
+    try:
+        ax = fig.axes[0]
+        fig.canvas.draw()
+        labels = [t.get_text() for t in ax.get_xticklabels()]
+        expected = [str(tick) for tick in range(0, 361, 45)]
+        assert labels == expected, labels
+        # no value printed twice: the mirrored half is gone
+        assert len(set(labels)) == len(labels) == 9
+        ticks = np.degrees(np.asarray(ax.get_xticks(), dtype=float))
+        assert np.allclose(ticks, np.arange(0.0, 361.0, 45.0))
+        renderer = fig.canvas.get_renderer()
+        zero = ax.get_xticklabels()[0].get_window_extent(renderer)
+        full = ax.get_xticklabels()[-1].get_window_extent(renderer)
+        assert not zero.overlaps(full), (
+            "0 and 360 are printed on top of each other at the bottom spoke")
+    finally:
+        plt.close(fig)
+
+
+def test_bearings_are_a_zero_to_360_reading_and_turns_stay_signed(
+        polar, valid_turns):
+    """The display scale moved; the measurement did not."""
+    table, _ = polar
+    measured = valid_turns["turn_angle"].to_numpy(float)
+    assert np.allclose(np.sort(table["turn_angle_deg"].to_numpy(float)),
+                       np.sort(measured), atol=1e-9)
+    assert table["turn_angle_deg"].min() < 0.0 < table["turn_angle_deg"].max()
+    assert np.allclose(np.sort(table["bearing_deg"].to_numpy(float)),
+                       np.sort(np.mod(measured, 360.0)), atol=1e-9)
+    assert table["bearing_deg"].ge(0.0).all()
+    assert table["bearing_deg"].lt(360.0).all()
+
+
+def test_lobe_medians_are_stated_as_bearings(polar, drawn, valid_turns):
+    """Counter-clockwise -116.3 deg is drawn and reported as 243.7 deg."""
+    _, context = polar
+    negative = valid_turns.loc[valid_turns["turn_angle"] < 0, "turn_angle"]
+    bearing = float(np.median(np.mod(negative.to_numpy(float), 360.0)))
+    assert context["lobes"]["negative"]["median_deg"] == pytest.approx(
+        bearing, abs=1e-6)
+    assert context["lobes"]["negative"]["n"] == len(negative)
+    label = figures._backpedal_polar_lobe_label(
+        "negative", context["lobes"]["negative"])
+    assert "243.7" in label, label
+    assert "-116" not in label, label
+    assert label in drawn["strings"], label
+    assert f"n = {len(negative):,}" in label, label
+
+
 def test_every_turn_is_drawn_at_its_bearing(polar, cfg):
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
@@ -206,15 +272,18 @@ def test_lobe_stats_are_recomputed_from_the_turn_table(polar, valid_turns):
     negative = valid_turns.loc[valid_turns["turn_angle"] < 0, "turn_angle"]
     for side, series in (("positive", positive), ("negative", negative)):
         lobe = context["lobes"][side]
+        bearing = np.mod(series.to_numpy(float), 360.0)
         assert lobe["n"] == len(series)
-        assert lobe["median_deg"] == pytest.approx(float(series.median()),
+        assert lobe["median_deg"] == pytest.approx(float(np.median(bearing)),
                                                    abs=1e-6)
-        assert lobe["q25_deg"] == pytest.approx(float(series.quantile(0.25)),
-                                                abs=1e-6)
-        assert lobe["q75_deg"] == pytest.approx(float(series.quantile(0.75)),
-                                                abs=1e-6)
-    assert context["lobes"]["positive"]["median_deg"] > 45.0
-    assert context["lobes"]["negative"]["median_deg"] < -45.0
+        assert lobe["q25_deg"] == pytest.approx(
+            float(np.percentile(bearing, 25)), abs=1e-6)
+        assert lobe["q75_deg"] == pytest.approx(
+            float(np.percentile(bearing, 75)), abs=1e-6)
+    # both medians are bearings: the clockwise lobe sits in the right half of
+    # the circle, the counter-clockwise lobe past straight up (180 deg)
+    assert 45.0 < context["lobes"]["positive"]["median_deg"] < 180.0
+    assert 180.0 < context["lobes"]["negative"]["median_deg"] < 360.0
     assert context["n_wrapped"] == 0
 
 
@@ -235,8 +304,9 @@ def test_drawn_text_is_the_title_annotations_and_honesty_line(drawn, polar):
     for side in ("positive", "negative"):
         label = figures._backpedal_polar_lobe_label(side, context["lobes"][side])
         assert label in strings, label
-    # the protractor is labelled on scale only
-    assert "0" in strings and "45" in strings and "180" in strings
+    # the protractor is labelled on scale only, and on the full circle
+    for tick in range(0, 361, 45):
+        assert str(tick) in strings, tick
     assert "left" not in " ".join(strings).lower()
     assert "right" not in " ".join(strings).lower()
 
@@ -258,7 +328,8 @@ def test_two_rows_still_render_and_a_wide_angle_wraps(cfg, tmp_path):
     assert len(table) == 2
     assert context["n_wrapped"] == 1
     wide = table[table["turn_angle_deg"] == 200.0].iloc[0]
-    assert wide["bearing_deg"] == pytest.approx(-160.0)
+    # a 200 deg turn is drawn where -160 deg lands on the 0-360 scale (D214)
+    assert wide["bearing_deg"] == pytest.approx(200.0)
     assert bool(wide["bearing_wrapped"]) is True
     fig = figures.plot_backpedal_polar(table, context, cfg)
     try:
@@ -315,7 +386,8 @@ def test_manifest_entry_and_its_population(valid_turns):
         float(valid_turns["abs_turn_angle"].median()))
     positive = valid_turns.loc[valid_turns["turn_angle"] > 0, "turn_angle"]
     assert population["lobes"]["positive"]["median_deg"] == pytest.approx(
-        float(positive.median()), abs=1e-6)
+        float(np.median(np.mod(positive.to_numpy(float), 360.0))), abs=1e-6)
+    assert population["lobes"]["negative"]["median_deg"] > 180.0
 
 
 # ------------------------------------------------------------- determinism
