@@ -12001,7 +12001,9 @@ BACKPEDAL_POLAR_MARKER_ALPHA = 1.0      # full strength inside the masked subjec
 BACKPEDAL_POLAR_MARKER_COLOUR_MODE = "original"
 BACKPEDAL_POLAR_MARKER_ZORDER = 2.5     # above the lobe spokes, under the turns
 #: D220: the nudge Conor asked for. Conor, 2026-11-24 16:25, verbatim:
-#: "Could you move him 10 pixels to the left". The units are the SAVED PNG's
+#: "Could you move him 10 pixels to the left", then 2026-11-24 17:46, verbatim:
+#: "10 more pixels" — so the total is 20 px left (D221 amends D220; the
+#: constant is the total, not an increment). The units are the SAVED PNG's
 #: pixels at ``BACKPEDAL_POLAR_DPI`` — the file he looks at — not figure-canvas
 #: pixels: `render_backpedal_polar` saves with ``bbox_inches="tight"``, so a
 #: canvas offset only survives as a file offset while the crop is unchanged.
@@ -12010,7 +12012,7 @@ BACKPEDAL_POLAR_MARKER_ZORDER = 2.5     # above the lobe spokes, under the turns
 #: measures the shift in the PNG rather than trusting this constant. Negative x
 #: is left. Nothing else about the marker changes: same image, colours,
 #: rotation, size, masking, strings and CSV.
-BACKPEDAL_POLAR_MARKER_OFFSET_PX_X = -10.0
+BACKPEDAL_POLAR_MARKER_OFFSET_PX_X = -20.0
 #: The pre-shift reference the sidecar measures against: the red-footprint
 #: centroid and PNG size of the f830ac0 render (D219's PNG), measured off that
 #: file, not estimated. The sidecar reports "measured_shift_px" = this render's
@@ -12241,7 +12243,7 @@ def _backpedal_polar_marker_metadata() -> dict:
 
 
 def backpedal_polar_marker_offset_metadata(fig) -> dict:
-    """D220's nudge in saved pixels, axes fraction and radial units.
+    """D220/D221's nudge in saved pixels, axes fraction and radial units.
 
     Printed so the sidecar states the constant that was applied and the
     conversion it went through, in the same units the figure is drawn in. The
@@ -12277,7 +12279,8 @@ def backpedal_polar_marker_offset_metadata(fig) -> dict:
         "deliberate_off_centre": (
             f"the marker is {abs(BACKPEDAL_POLAR_MARKER_OFFSET_PX_X):g} saved "
             "px left of the polar origin because Conor asked for it "
-            "(2026-11-24 16:25); nothing else is centred on it"),
+            "(2026-11-24 16:25, then 17:46: '10 more pixels'); nothing else "
+            "is centred on it"),
     }
 
 
@@ -12446,9 +12449,10 @@ def _draw_backpedal_polar_player(ax, fig, table: pd.DataFrame):
     half_height = BACKPEDAL_POLAR_MARKER_HALF_HEIGHT
     half_width = half_height * pixels_wide / pixels_high
     fraction_x, fraction_y = _polar_axes_fraction_per_unit(ax, fig)
-    # D220: the nudge, converted from saved PNG pixels to axes fraction. Both
-    # corners on the left move outward by the shift, so the clearance check is
-    # run on the left corner's real reach, not on the unshifted one.
+    # D220/D221: the nudge, converted from saved PNG pixels to axes fraction
+    # (the constant is the total: 10 px at D220, ten more at D221 = 20 px).
+    # Both corners on the left move outward by the shift, so the clearance
+    # check is run on the left corner's real reach, not on the unshifted one.
     offset_fraction_x = (
         BACKPEDAL_POLAR_MARKER_OFFSET_PX_X
         / _backpedal_polar_axes_px(ax, fig)[0])

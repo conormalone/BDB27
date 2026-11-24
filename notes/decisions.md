@@ -9937,3 +9937,72 @@ and `git status` lists no other PNG as changed.
 
 **Deliberately not done.** No change to the image, mask, rotation, size, zorder, colour path, CSV,
 strings, manifest payload, `TASK.md`, or any other figure.
+
+## D221 — Figure 21: the marker ten more pixels to the left (total −20) · 2026-11-24
+
+**Amends D220.** Conor, 2026-11-24 17:46, verbatim: *"10 more pixels"*. Read as: another 10 px to
+the left on top of D220's 10, i.e. 20 px total. Nothing else changes — same image, same colours,
+same −90° rotation, same size, same masking, same strings, same CSV.
+
+**The constant holds the total.** `BACKPEDAL_POLAR_MARKER_OFFSET_PX_X` is `-20.0`, not an
+increment — it is one number describing where the marker sits, and its comment records both requests
+(16:25 and 17:46) so the second does not look like a rounding change. The placement logic is
+untouched: the same conversion of saved-PNG pixels through the 917.32 px square axes box
+(`_backpedal_polar_axes_px`) gives `axes_fraction_x = -0.0218026` and `radial_x = -0.0584311`
+(was `-0.0109013` / `-0.0292155`).
+
+**The crop still does not move.** The PNG is **1096 × 1134**, exactly D220's canvas, so one canvas
+pixel is still one saved pixel and the constant's units still hold. That is confirmed by the
+measurement below, not inferred from the constant.
+
+**Measured in the saved file.** Red-footprint centroid (`R > 0.35`, `R − max(G, B) > 0.10`, the
+same predicate as the no-red-outside test) against the committed f830ac0 baseline
+(`fixtures/fig_backpedal_polar_shift_baseline.json`, centroid x `576.431`): **before x =
+576.431 px, after x = 556.438 px, dx = −19.994 px, dy = +0.007 px**; the footprint's left edge
+moves 428 → 408 px, exactly the 20 asked for. Red pixel count 24,379, unchanged from D220 (an
+integer 10 px nudge resamples nothing new — both offsets are whole saved pixels).
+
+**Test target moved with the request, and is pinned.** `test_the_marker_moves_twenty_pixels_left_in_the_saved_png`
+renders the figure twice through the real save path — at the committed constant and with it
+monkeypatched to 0 — requires both canvases the same size and **|dx + 20| < 1 px**, and now asserts
+the constant is `-20.0` outright, so the paired pixel test cannot pass against a silently changed
+constant. The sidecar test pins `px_x == -20.0` and `measured_shift_px[0] ≈ -20.0` against the
+baseline.
+
+**Clearance re-asserted on the side that moved, and there is plenty.** The left corners now reach
+**0.6323 radial units** (was 0.6127), so with the 0.05 margin they sit at **0.6823** against
+`min(radius_drawn) = 0.9017` — **0.2194 radial units of air**, no clipping of the leftmost dots and
+no shrinking of the marker. The right corners are at 0.5587. The in-drawing clearance check uses
+the shifted corner and would have raised had the marker approached a dot;
+`test_the_marker_stays_clear_of_every_drawn_turn` still measures the transform chain and names the
+left side.
+
+**Sidecar.** `fig_backpedal_polar.drawn_text.json`'s `marker_offset` block moves to `px_x: -20.0`,
+`axes_fraction_x: -0.021802642…`, `radial_x: -0.058431082…`,
+`left_corner_radial_from_origin: 0.632340…`, `marker_centre_axes_xy[0]: 0.478197…`, and
+`measured_shift_px: [-19.9936, 0.0074]`. Every other block (marker identity, mask threshold, strings,
+provenance, stamp, `config_sha`) is unchanged.
+
+**Pixel evidence.** New PNG sha256 `3d244edb2d8d1307f807ca11b7a91d6dbb753769c0e05a4e8b4694d18604533e`;
+two independent stage renders are byte-identical to it. **34,661 of 1,242,864 pixels differ** from
+D220's PNG, all inside rows 438–747 × cols 406–667 — the marker's own box. No tick label, title,
+ring, dot, spoke or arc pixel moved.
+
+**The data did not move.** `fig_backpedal_polar.csv` is **byte-identical**
+(`f186ebbc9d928c0f298d8be17548bbac3ac6418b69a6b4a0f046bdb472e95cd2`, 133 rows; clockwise 111.0°
+n = 63, counter-clockwise 243.7° n = 70). On-canvas strings unchanged: `Every turn in the
+backpedal`, `0`, `45`, `90`, `135`, `180`, `225`, `270`, `315`. The manifest entry is untouched (the
+offset block lives in the drawn-text sidecar), and every other figure's PNG is byte-identical
+(sha256 comparison across the whole committed figure set).
+
+**How the artefacts were regenerated.** Same procedure as D220 and the same known gap: the
+committed figure set is a mixed-provenance set from the 2026-11-16 full run, and
+`06_figures.py --mode sample` on this host does not reproduce it (the full-run intermediates are
+gitignored and absent), so a stage run rewrites other figures as PLACEHOLDER_SAMPLE. The stage was
+run for figure 21's three artefacts only and everything else was reverted; figure 21's outputs are
+sample-mode by design, like D218/D219/D220.
+
+**Tests.** `tests/test_backpedal_polar_figure.py`: **27/27 green**. Full suite: **758 collected, 757 passed, 1 skipped, 0 failed** in 18 m 15 s (the skip is the pre-existing `tests/test_turn_context.py` local-artefact skip: the per-turn parquet is gitignored and not on this machine).
+
+**Deliberately not done.** No change to the image, mask, rotation, size, zorder, colour path, CSV,
+strings, manifest payload, `TASK.md`, placement logic, or any other figure.

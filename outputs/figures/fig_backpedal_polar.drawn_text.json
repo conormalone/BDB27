@@ -57,20 +57,20 @@
     "corner_radial": 0.5937709904430503
   },
   "marker_offset": {
-    "px_x": -10.0,
+    "px_x": -20.0,
     "px_units": "saved PNG pixels at 170 dpi; negative x is left",
     "axes_px": [
       917.3199999999998,
       917.3199999999999
     ],
-    "axes_fraction_x": -0.010901321240134307,
-    "radial_x": -0.029215540923559945,
-    "left_corner_radial_from_origin": 0.6126627022418119,
+    "axes_fraction_x": -0.021802642480268614,
+    "radial_x": -0.05843108184711989,
+    "left_corner_radial_from_origin": 0.6323403197706671,
     "marker_centre_axes_xy": [
-      0.4890986787598657,
+      0.47819735751973136,
       0.5
     ],
-    "deliberate_off_centre": "the marker is 10 saved px left of the polar origin because Conor asked for it (2026-11-24 16:25); nothing else is centred on it",
+    "deliberate_off_centre": "the marker is 20 saved px left of the polar origin because Conor asked for it (2026-11-24 16:25, then 17:46: '10 more pixels'); nothing else is centred on it",
     "rendered": {
       "png_size_px": [
         1096,
@@ -78,13 +78,13 @@
       ],
       "red_pixels": 24379,
       "centroid_px": [
-        566.4375076910455,
+        556.4375076910455,
         626.4813158866237
       ],
       "bbox_px_xyxy": [
-        418,
+        408,
         441,
-        665,
+        655,
         745
       ]
     },
@@ -113,7 +113,7 @@
       "how": "a fresh f830ac0 render (byte-identical to the committed PNG: sha256 7eed0cbd...) measured with figures.backpedal_polar_red_footprint and the same redness predicate the tests use"
     },
     "measured_shift_px": [
-      -9.993606701309204,
+      -19.993606701309204,
       0.00742228094713937
     ],
     "measured_shift_units": "saved PNG pixels, this render minus baseline"

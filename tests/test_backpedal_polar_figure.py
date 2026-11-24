@@ -350,8 +350,9 @@ def test_the_overhead_player_is_the_supplied_image_at_the_centre(polar, cfg):
     origin, drawn above the lobe spokes and below the turns, with its own
     aspect ratio preserved — so the subject is not stretched into the circle.
     D220 then moved him 10 saved px left on Conor's instruction (2026-11-24
-    16:25), so the centre is deliberately off the exact origin; the test now
-    asserts the offset he should have instead of a centred glyph.
+    16:25) and D221 another 10 (17:46, "10 more pixels"), so the centre is
+    deliberately 20 px off the exact origin; the test now asserts the offset
+    he should have instead of a centred glyph.
     """
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
@@ -490,9 +491,9 @@ def test_the_player_marker_is_a_schematic_not_data(cfg, tmp_path):
         plt.close("all")
 
 
-def test_the_marker_moves_ten_pixels_left_in_the_saved_png(
+def test_the_marker_moves_twenty_pixels_left_in_the_saved_png(
         polar, cfg, tmp_path, monkeypatch):
-    """D220: Conor, 2026-11-24 16:25: "Could you move him 10 pixels to the left".
+    """D220 + D221: "Could you move him 10 pixels to the left", then "10 more".
 
     Measured in the SAVED file, not read off the constant. The save uses
     ``bbox_inches="tight"``, so the honest proof is a paired render: the same
@@ -500,10 +501,14 @@ def test_the_marker_moves_ten_pixels_left_in_the_saved_png(
     rendered through the real save path, then the jersey's red footprint
     centroid compared in PNG pixels. If the tight crop absorbed the nudge the
     difference would be smaller than the constant; if it exaggerated it,
-    larger. It must be 10 px, within a pixel, in x only.
+    larger. It must be 20 px in total (D221 adds 10 to D220's 10), within a
+    pixel, in x only.
     """
     table, context = polar
     offset_px = figures.BACKPEDAL_POLAR_MARKER_OFFSET_PX_X
+    # pinned, so the pixel pair below cannot pass against a silently changed
+    # constant: it must be -20, not merely "whatever the constant says"
+    assert offset_px == pytest.approx(-20.0), offset_px
     centroids = {}
     sizes = {}
     for name in ("shifted.png", "unshifted.png"):
@@ -515,7 +520,7 @@ def test_the_marker_moves_ten_pixels_left_in_the_saved_png(
         footprint = figures.backpedal_polar_red_footprint(out)
         centroids[name] = footprint["centroid_px"]
         sizes[name] = footprint["png_size_px"]
-    # the crop itself must not move, or "10 px in the file" is not measurable
+    # the crop itself must not move, or "20 px in the file" is not measurable
     assert sizes["shifted.png"] == sizes["unshifted.png"]
     dx = centroids["shifted.png"][0] - centroids["unshifted.png"][0]
     dy = centroids["shifted.png"][1] - centroids["unshifted.png"][1]
@@ -523,7 +528,7 @@ def test_the_marker_moves_ten_pixels_left_in_the_saved_png(
           f"{centroids['unshifted.png'][0]:.3f}, shifted x = "
           f"{centroids['shifted.png'][0]:.3f}, dx = {dx:.3f} px, "
           f"dy = {dy:.3f} px")
-    assert dx == pytest.approx(offset_px, abs=1.0)
+    assert dx == pytest.approx(-20.0, abs=1.0), dx
     assert abs(dy) < 1.0, dy
 
 
@@ -786,7 +791,7 @@ def test_committed_drawn_text_dump_matches_the_spec():
 
 
 def test_sidecar_records_the_offset_and_the_measured_displacement():
-    """D220: the sidecar states the constant AND the shift it actually caused.
+    """D220 + D221: the sidecar states the constant AND the shift it caused.
 
     The displacement is re-measured here from the committed PNG against the
     committed pre-shift baseline, so the number in the sidecar is checked
@@ -796,17 +801,17 @@ def test_sidecar_records_the_offset_and_the_measured_displacement():
         (FIGS / f"{FIGURE}.drawn_text.json").read_text(encoding="utf-8"))
     offset = payload["marker_offset"]
     assert offset["px_x"] == figures.BACKPEDAL_POLAR_MARKER_OFFSET_PX_X
-    assert offset["px_x"] == pytest.approx(-10.0)
+    assert offset["px_x"] == pytest.approx(-20.0)
     assert offset["axes_fraction_x"] < 0.0
     assert offset["radial_x"] < 0.0
     assert offset["marker_centre_axes_xy"][0] == pytest.approx(
         0.5 + offset["axes_fraction_x"])
     measured = offset["measured_shift_px"]
-    assert measured[0] == pytest.approx(-10.0, abs=1.0), measured
+    assert measured[0] == pytest.approx(-20.0, abs=1.0), measured
     assert abs(measured[1]) < 1.0, measured
     # the reach the clearance test measures, stated in the sidecar too
     assert offset["left_corner_radial_from_origin"] == pytest.approx(
-        0.6127, abs=5e-4)
+        0.6323, abs=5e-4)
     again = figures.backpedal_polar_measured_shift(
         FIGS / f"{FIGURE}.png")["measured_shift_px"]
     assert measured == pytest.approx(again, abs=1e-9)

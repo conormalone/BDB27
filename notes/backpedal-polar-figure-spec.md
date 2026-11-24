@@ -352,3 +352,25 @@ colours, same −90° rotation, same size, same masking, same strings, same CSV.
 - **Unchanged.** On-canvas strings (`Every turn in the backpedal`, `0` … `315`), the mask and its
   threshold, crop, rotation, half-extents, zorder, CSV (byte-identical `f186ebbc…`,
   111.0° n = 63 / 243.7° n = 70), the manifest entry, and every other committed artefact.
+
+## Revision — twenty pixels to the left (D221, 2026-11-24)
+
+Amends D220. Conor: *"10 more pixels"* — another 10 px left on top of D220's 10, so the total is
+**20 px**. Same image, colours, −90° rotation, size, masking, strings, CSV; nothing else changes.
+The constant holds the **total**, not an increment: `BACKPEDAL_POLAR_MARKER_OFFSET_PX_X = -20.0`.
+
+- **Conversion.** Saved-PNG pixels at 170 dpi through the same square 917.32 px axes box:
+  `axes_fraction_x = -0.0218026`, `radial_x = -0.0584311`.
+- **The crop still does not move.** Canvas 1096 × 1134, exactly the D220/f830ac0 size, so one
+  canvas pixel is still one file pixel.
+- **Measured, not asserted.** Red-footprint centroid in the saved PNG: **576.431 → 556.438 px,
+  dx = −19.994 px, dy = +0.007 px** against the f830ac0 baseline (`fixtures/…_shift_baseline.json`);
+  bbox left edge 428 → 408 px. The paired test renders at offset 0 and at the committed constant
+  through the real save path and requires |dx + 20| < 1 px, with the constant pinned to −20.0 so a
+  silent change cannot pass.
+- **Clearance re-asserted on the left.** Left corners now reach **0.6323 radial units**
+  (+ 0.05 margin = 0.6823) against `min(radius_drawn) = 0.9017`: **0.2194 radial units of air** —
+  no clipping, no crowding of the leftmost dots. Right corners reach 0.5587.
+- **Unchanged.** `fig_backpedal_polar.csv` byte-identical (`f186ebbc…`), strings unchanged
+  (`Every turn in the backpedal`, `0` … `315`), manifest entry untouched, every other figure's PNG
+  byte-identical, two renders byte-identical (PNG `3d244edb…`).
