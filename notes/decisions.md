@@ -9856,3 +9856,84 @@ claims nothing measured, so the blue turns still read first, but the eye does la
 
 **Deliberately not done.** No change to the image file, the mask, the rotation, the placement, the
 CSV, any measured value, the strings, the manifest payload, `TASK.md`, or any other figure.
+
+## D220 — Figure 21: the marker ten pixels to the left · 2026-11-24
+
+**Amends D219.** Conor, 2026-11-24 16:25, verbatim: *"Could you move him 10 pixels to the left"*.
+Read as: shift the supplied-image player (the centre marker) 10 px to the left in figure 21. Nothing
+else changes — same image, same colours, same −90° rotation, same size, same masking, same strings,
+same CSV.
+
+**The trap, and how it is handled.** `render_backpedal_polar` saves with `bbox_inches="tight"`, so
+an offset applied in figure-canvas coordinates is not an offset in the saved file: the crop can
+absorb it or exaggerate it. The nudge therefore lives in **one constant, in saved-PNG pixels** at
+the save's own dpi — `BACKPEDAL_POLAR_MARKER_OFFSET_PX_X = -10.0` (negative x is left) — and is
+converted to axes fraction through the axes box the save measures in
+(`_backpedal_polar_axes_px`: 917.32 px square at 170 dpi), giving
+`axes_fraction_x = -0.0109013` and `radial_x = -0.0292155`. `fig.subplots_adjust` now runs before
+anything is drawn, so the conversion uses the final box; with the constant forced to 0 the render is
+**byte-identical to f830ac0** (`7eed0cbd…`), which proves the reordering moved no other pixel.
+
+**The crop did not move.** The tight bbox is set by the protractor circle (left edge) and the stamp
+(top-right), not by the marker in the middle: the PNG stays 1096 × 1134 px, so one canvas pixel is
+one file pixel here — and rather than assume that, the displacement is measured.
+
+**Measured in the saved file, not declared from the constant.** Red-footprint centroid
+(`R > 0.35`, `R − max(G, B) > 0.10` — the same predicate as the no-red-outside test):
+**before x = 576.431 px, after x = 566.438 px, dx = −9.994 px, dy = +0.007 px**; the footprint's
+left edge moves 428 → 418 px, exactly the 10 asked for. The baseline is the f830ac0 PNG, which was
+re-rendered first and confirmed byte-identical to the committed file; it is committed as
+`fixtures/fig_backpedal_polar_shift_baseline.json` so the number can be re-measured by anyone. A new
+test does the honest version of the same check: it renders the figure twice through the real save
+path — once at the committed constant, once with the constant monkeypatched to 0 — and requires
+|dx + 10| < 1 px in the PNG, with both canvases the same size. That test would catch tight cropping
+eating or amplifying the shift; the constant alone would not.
+
+**Clearance re-asserted on the side that moved.** The shift is horizontal, so the left corners are
+the ones that reach outward: they now sit at **0.6127 radial units** (was 0.5938), i.e.
+0.6627 with the 0.05 margin, against `min(radius_drawn) = 0.9017` — 0.239 radial units of air. The
+right corners are at 0.5757. The in-drawing clearance check uses the shifted corner, and
+`test_the_marker_stays_clear_of_every_drawn_turn` now names the left side and pins the nearest dot
+at 0.9017. `test_the_overhead_player_is_the_supplied_image_at_the_centre` no longer asserts a
+glyph centred on the origin — it asserts the deliberate offset (centre on the 180° spoke at
+|radial_x|, i.e. `axes_fraction_x` left of 0.5), because **he is 10 px off the exact centre on
+purpose: Conor asked for it.**
+
+**Sidecar.** `fig_backpedal_polar.drawn_text.json` gains a `"marker_offset"` block: the constant and
+its units, the axes-pixel conversion, `axes_fraction_x`, `radial_x`, `marker_centre_axes_xy`, a note
+saying the off-centre placement is deliberate, and — written after the render —
+`measured_shift_px: [-9.9936, 0.0074]` against the committed baseline, together with the measured
+centroid and canvas size. A test re-measures the committed PNG and requires the sidecar to agree.
+
+**The data did not move.** `fig_backpedal_polar.csv` is **byte-identical** (sha256
+`f186ebbc9d928c0f298d8be17548bbac3ac6418b69a6b4a0f046bdb472e95cd2`, 133 rows; clockwise 111.0°
+n = 63, counter-clockwise 243.7° n = 70). On-canvas strings are unchanged: `Every turn in the
+backpedal`, `0`, `45`, `90`, `135`, `180`, `225`, `270`, `315`. The manifest entry is untouched (the
+offset block lives in the drawn-text sidecar), so `figures_manifest.json` did not change, and no
+other committed artefact changed (`git status` lists only figure 21's PNG and sidecar plus code and
+tests).
+
+**How the artefacts were regenerated, and one thing worth knowing.** The committed figure set is a
+MIXED-provenance set from the 2026-11-16 full run (`figures_manifest.json` says so), and
+`06_figures.py --mode sample` on this host does **not** reproduce it — the full-run intermediates
+are gitignored and absent, so a sample-mode stage run rewrites 16 figures as PLACEHOLDER_SAMPLE
+(e.g. `fig_the_hole` game total 58,664 → 2,262). That run was used only to regenerate figure 21's
+three artefacts (which are sample-mode by design, like D218/D219) and then reverted; the stage's own
+sample-mode output for figure 21 was kept: PNG `c35ca4240cb685085e97df77eb1413b6380ceafb798148e96909d92dc974d1c9`
+(two independent processes, byte-identical), CSV `f186ebbc…`, sidecar as above. This is a
+reproducibility gap in the committed artefact set, not something this change introduced, and it is
+recorded here rather than papered over.
+
+**Tests.** `tests/test_backpedal_polar_figure.py`: **27/27 green** (25 before; +1 for the
+saved-PNG displacement, +1 for the sidecar's offset block). Full suite: **758 collected, 757
+passed, 1 skipped, 0 failed** in 19 m 50 s (the skip is the pre-existing
+`tests/test_turn_context.py:184` local-artefact skip, unrelated to this change).
+
+**Pixel evidence.** **24,379 reddish pixels inside the marker footprint, 0 outside**; 24379 vs
+24381 before (2 edge pixels lost to bilinear resampling at the non-integer fractional offset). The
+shifted and unshifted renders differ in **34,658 of 1,242,864 pixels, all inside rows 438–747 ×
+cols 416–677** — the marker's own box. No tick label, title, ring, dot, spoke or arc pixel moves,
+and `git status` lists no other PNG as changed.
+
+**Deliberately not done.** No change to the image, mask, rotation, size, zorder, colour path, CSV,
+strings, manifest payload, `TASK.md`, or any other figure.

@@ -560,9 +560,14 @@ def main(argv=None) -> int:
                                           args.mode)
         bpp_fig = figures.plot_backpedal_polar(bpp_table, bpp_context, cfg)
         bpp_text = figures.backpedal_polar_drawn_text(bpp_fig, cfg, args.mode)
+        figures.render_backpedal_polar(bpp_fig, cfg, bpp_png)
+        # D220: the nudge is proven in the saved file, not in the constant —
+        # measure the rendered PNG against the pre-shift baseline and record
+        # the displacement in the sidecar next to the offset that caused it.
+        bpp_text["marker_offset"].update(
+            figures.backpedal_polar_measured_shift(bpp_png))
         bpp_text_path.write_text(json.dumps(bpp_text, indent=2),
                                  encoding="utf-8")
-        figures.render_backpedal_polar(bpp_fig, cfg, bpp_png)
         bpp_payload = figures.backpedal_polar_manifest_payload(
             bpp_table, bpp_context, cfg, args.mode)
         _write_manifest(bpp_payload, manifest_path, args.mode, cfg)

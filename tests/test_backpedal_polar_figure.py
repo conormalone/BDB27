@@ -318,17 +318,29 @@ def test_lobe_stats_are_recomputed_from_the_turn_table(polar, valid_turns):
 
 
 # ------------------------------- 3b. the overhead player image at the centre
-def _marker_extent_radius(ax, image) -> tuple[float, float, float]:
-    """Corner and centre radii of the drawn image, in polar data units."""
+def _marker_radii(ax, image) -> dict:
+    """Corner and centre radii of the drawn image, in polar data units.
+
+    D220's nudge is horizontal, so the image's LEFT corners are the ones that
+    reach furthest from the origin and the ones the clearance check must name;
+    both sides are reported so the test asserts the side it means.
+    """
     fig = ax.figure
     fig.canvas.draw()
     x0, x1, y0, y1 = image.get_extent()
-    corners = [(x0, y0), (x1, y0), (x0, y1), (x1, y1)]
     inverse = ax.transData.inverted()
-    radii = [float(inverse.transform(
-        ax.transAxes.transform(corner))[1]) for corner in corners]
-    centre = inverse.transform(ax.transAxes.transform((0.5, 0.5)))
-    return max(radii), float(centre[0]), float(centre[1])
+
+    def radius(x, y):
+        return float(inverse.transform(ax.transAxes.transform((x, y)))[1])
+
+    left = max(radius(x0, y0), radius(x0, y1))
+    right = max(radius(x1, y0), radius(x1, y1))
+    # the image's own centre: D220 moved it, so (0.5, 0.5) is no longer it
+    centre = inverse.transform(
+        ax.transAxes.transform(((x0 + x1) / 2.0, (y0 + y1) / 2.0)))
+    return {"left": left, "right": right, "corner": max(left, right),
+            "centre_theta": float(centre[0]),
+            "centre_radius": float(centre[1])}
 
 
 def test_the_overhead_player_is_the_supplied_image_at_the_centre(polar, cfg):
@@ -337,6 +349,9 @@ def test_the_overhead_player_is_the_supplied_image_at_the_centre(polar, cfg):
     The marker is one drawn image (not vector patches), centred on the polar
     origin, drawn above the lobe spokes and below the turns, with its own
     aspect ratio preserved — so the subject is not stretched into the circle.
+    D220 then moved him 10 saved px left on Conor's instruction (2026-11-24
+    16:25), so the centre is deliberately off the exact origin; the test now
+    asserts the offset he should have instead of a centred glyph.
     """
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
@@ -346,9 +361,19 @@ def test_the_overhead_player_is_the_supplied_image_at_the_centre(polar, cfg):
         assert len(ax.images) == 1, "the centre marker is not one drawn image"
         image = ax.images[0]
         assert not ax.patches, "the removed vector glyph is still drawn"
-        corner, centre_x, centre_y = _marker_extent_radius(ax, image)
-        assert abs(centre_x) < 1e-9 and abs(centre_y) < 1e-9
-        assert corner > 0.2, corner
+        radii = _marker_radii(ax, image)
+        assert radii["corner"] > 0.2, radii["corner"]
+        # D220: he sits off the exact origin by design — the nudge, and only
+        # in x: |radial_x| out along the screen-left (270 deg) direction.
+        offset = figures.backpedal_polar_marker_offset_metadata(fig)
+        assert radii["centre_radius"] == pytest.approx(
+            abs(offset["radial_x"]), rel=1e-9), radii
+        x0, x1, _, _ = image.get_extent()
+        centre_axes_x = (x0 + x1) / 2.0
+        assert centre_axes_x - 0.5 == pytest.approx(
+            offset["axes_fraction_x"], rel=1e-9), centre_axes_x
+        assert centre_axes_x < 0.5, "D220: he sits LEFT of the dial centre"
+        assert offset["radial_x"] < 0.0
 
         # aspect preserved: drawn pixels / source pixels, both dimensions
         rgba = np.asarray(image.get_array(), dtype=float)
@@ -434,16 +459,20 @@ def test_the_marker_stays_clear_of_every_drawn_turn(polar, cfg):
     The clearance is asserted against the actual smallest ``radius_drawn`` in
     the drawn table plus the code's own margin, not a guessed threshold, and
     the radius is measured through the transform chain — not trusted from the
-    constants.
+    constants. D220 moved the marker LEFT, so the left corners are the ones
+    that reach furthest out; the assertion names that side, and the nearest
+    drawn dot on this data is at 0.9017 radial units.
     """
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
     try:
         ax = fig.axes[0]
-        corner, _, _ = _marker_extent_radius(ax, ax.images[0])
+        radii = _marker_radii(ax, ax.images[0])
         nearest_dot = float(table["radius_drawn"].min())
-        assert corner + figures.BACKPEDAL_POLAR_MARKER_MARGIN <= nearest_dot, (
-            corner, nearest_dot)
+        assert radii["left"] >= radii["right"], radii
+        assert radii["left"] + figures.BACKPEDAL_POLAR_MARKER_MARGIN <= \
+            nearest_dot, (radii, nearest_dot)
+        assert nearest_dot == pytest.approx(0.9017, abs=5e-4)
     finally:
         plt.close(fig)
 
@@ -459,6 +488,43 @@ def test_the_player_marker_is_a_schematic_not_data(cfg, tmp_path):
         assert Path(out).stat().st_size > 0
     finally:
         plt.close("all")
+
+
+def test_the_marker_moves_ten_pixels_left_in_the_saved_png(
+        polar, cfg, tmp_path, monkeypatch):
+    """D220: Conor, 2026-11-24 16:25: "Could you move him 10 pixels to the left".
+
+    Measured in the SAVED file, not read off the constant. The save uses
+    ``bbox_inches="tight"``, so the honest proof is a paired render: the same
+    figure drawn with the committed offset and with it forced to zero, both
+    rendered through the real save path, then the jersey's red footprint
+    centroid compared in PNG pixels. If the tight crop absorbed the nudge the
+    difference would be smaller than the constant; if it exaggerated it,
+    larger. It must be 10 px, within a pixel, in x only.
+    """
+    table, context = polar
+    offset_px = figures.BACKPEDAL_POLAR_MARKER_OFFSET_PX_X
+    centroids = {}
+    sizes = {}
+    for name in ("shifted.png", "unshifted.png"):
+        if name == "unshifted.png":
+            monkeypatch.setattr(
+                figures, "BACKPEDAL_POLAR_MARKER_OFFSET_PX_X", 0.0)
+        fig = figures.plot_backpedal_polar(table, context, cfg)
+        out = figures.render_backpedal_polar(fig, cfg, tmp_path / name)
+        footprint = figures.backpedal_polar_red_footprint(out)
+        centroids[name] = footprint["centroid_px"]
+        sizes[name] = footprint["png_size_px"]
+    # the crop itself must not move, or "10 px in the file" is not measurable
+    assert sizes["shifted.png"] == sizes["unshifted.png"]
+    dx = centroids["shifted.png"][0] - centroids["unshifted.png"][0]
+    dy = centroids["shifted.png"][1] - centroids["unshifted.png"][1]
+    print(f"marker red-centroid: unshifted x = "
+          f"{centroids['unshifted.png'][0]:.3f}, shifted x = "
+          f"{centroids['shifted.png'][0]:.3f}, dx = {dx:.3f} px, "
+          f"dy = {dy:.3f} px")
+    assert dx == pytest.approx(offset_px, abs=1.0)
+    assert abs(dy) < 1.0, dy
 
 
 # ------------------------------------------------------------- 4. drawn text
@@ -717,6 +783,34 @@ def test_committed_drawn_text_dump_matches_the_spec():
     assert payload["strings"] == ([figures.BACKPEDAL_POLAR_TITLE]
                                   + [str(tick) for tick in range(0, 360, 45)])
     assert payload["scan_strings"][0] == figures.BACKPEDAL_POLAR_TITLE
+
+
+def test_sidecar_records_the_offset_and_the_measured_displacement():
+    """D220: the sidecar states the constant AND the shift it actually caused.
+
+    The displacement is re-measured here from the committed PNG against the
+    committed pre-shift baseline, so the number in the sidecar is checked
+    against the file rather than believed.
+    """
+    payload = json.loads(
+        (FIGS / f"{FIGURE}.drawn_text.json").read_text(encoding="utf-8"))
+    offset = payload["marker_offset"]
+    assert offset["px_x"] == figures.BACKPEDAL_POLAR_MARKER_OFFSET_PX_X
+    assert offset["px_x"] == pytest.approx(-10.0)
+    assert offset["axes_fraction_x"] < 0.0
+    assert offset["radial_x"] < 0.0
+    assert offset["marker_centre_axes_xy"][0] == pytest.approx(
+        0.5 + offset["axes_fraction_x"])
+    measured = offset["measured_shift_px"]
+    assert measured[0] == pytest.approx(-10.0, abs=1.0), measured
+    assert abs(measured[1]) < 1.0, measured
+    # the reach the clearance test measures, stated in the sidecar too
+    assert offset["left_corner_radial_from_origin"] == pytest.approx(
+        0.6127, abs=5e-4)
+    again = figures.backpedal_polar_measured_shift(
+        FIGS / f"{FIGURE}.png")["measured_shift_px"]
+    assert measured == pytest.approx(again, abs=1e-9)
+    assert payload["marker"]["colour_mode"] == "original"
     marker = payload["marker"]
     assert marker["colour_mode"] == "original"
     assert marker["rotation_deg"] == figures.BACKPEDAL_POLAR_MARKER_ROTATION_DEG

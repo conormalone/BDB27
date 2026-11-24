@@ -1,0 +1,24 @@
+{
+  "what": "Figure 21's marker before D220's nudge, measured off the committed f830ac0 PNG so the saved-pixel displacement can be stated, not assumed.",
+  "commit": "f830ac0",
+  "png": "outputs/figures/fig_backpedal_polar.png",
+  "png_sha256": "7eed0cbda569d5914b74b4f27a36e2ba9bec58d2010adeb329492b646af8607b",
+  "marker_offset_px_x": 0.0,
+  "png_size_px": [
+    1096,
+    1134
+  ],
+  "red_pixels": 24381,
+  "centroid_px": [
+    576.4311143923547,
+    626.4738936056766
+  ],
+  "bbox_px_xyxy": [
+    428,
+    441,
+    675,
+    745
+  ],
+  "red_predicate": "R > 0.35 and R - max(G, B) > 0.10 on the saved PNG, the same predicate as the no-red-outside-the-footprint test",
+  "how": "a fresh f830ac0 render (byte-identical to the committed PNG: sha256 7eed0cbd...) measured with figures.backpedal_polar_red_footprint and the same redness predicate the tests use"
+}

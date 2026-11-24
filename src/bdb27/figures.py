@@ -24,6 +24,7 @@ Design rules honoured here:
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import textwrap
 from pathlib import Path
@@ -11999,6 +12000,25 @@ BACKPEDAL_POLAR_MARKER_ALPHA = 1.0      # full strength inside the masked subjec
 #: contract produced the pixels.
 BACKPEDAL_POLAR_MARKER_COLOUR_MODE = "original"
 BACKPEDAL_POLAR_MARKER_ZORDER = 2.5     # above the lobe spokes, under the turns
+#: D220: the nudge Conor asked for. Conor, 2026-11-24 16:25, verbatim:
+#: "Could you move him 10 pixels to the left". The units are the SAVED PNG's
+#: pixels at ``BACKPEDAL_POLAR_DPI`` — the file he looks at — not figure-canvas
+#: pixels: `render_backpedal_polar` saves with ``bbox_inches="tight"``, so a
+#: canvas offset only survives as a file offset while the crop is unchanged.
+#: The crop here is set by the protractor circle (left) and the stamp (top,
+#: right), not by the marker in the middle, so it does not move — and the test
+#: measures the shift in the PNG rather than trusting this constant. Negative x
+#: is left. Nothing else about the marker changes: same image, colours,
+#: rotation, size, masking, strings and CSV.
+BACKPEDAL_POLAR_MARKER_OFFSET_PX_X = -10.0
+#: The pre-shift reference the sidecar measures against: the red-footprint
+#: centroid and PNG size of the f830ac0 render (D219's PNG), measured off that
+#: file, not estimated. The sidecar reports "measured_shift_px" = this render's
+#: red centroid minus the baseline's, so the displacement Conor asked for is
+#: stated in saved pixels next to the constant that produced it.
+BACKPEDAL_POLAR_SHIFT_BASELINE_REL = (
+    "fixtures/fig_backpedal_polar_shift_baseline.json")
+BACKPEDAL_POLAR_SHIFT_BASELINE = REPO_ROOT / BACKPEDAL_POLAR_SHIFT_BASELINE_REL
 #: The median spokes start at the origin, so they are drawn under the marker;
 #: they still run to 0.80 radial units, clear of every turn.
 BACKPEDAL_POLAR_MEDIAN_ZORDER = 2.0
@@ -12164,6 +12184,19 @@ def write_backpedal_polar_csv(table: pd.DataFrame, path, cfg: common.Config,
     return path
 
 
+def _backpedal_polar_axes_px(ax, fig) -> tuple[float, float]:
+    """The axes box in saved-PNG pixels, at the dpi the save uses.
+
+    ``bbox_inches="tight"`` translates the canvas but does not rescale it, so
+    one pixel here is one pixel in the saved file; this is the conversion
+    D220's ``BACKPEDAL_POLAR_MARKER_OFFSET_PX_X`` is expressed in. The box is
+    square (polar axes keep an equal aspect), 917.32 px on a side here.
+    """
+    box = ax.get_position()
+    return (box.width * fig.get_figwidth() * BACKPEDAL_POLAR_DPI,
+            box.height * fig.get_figheight() * BACKPEDAL_POLAR_DPI)
+
+
 def _polar_axes_fraction_per_unit(ax, fig) -> tuple[float, float]:
     """Axes-fraction size of one radial unit, for drawing in axes coordinates.
 
@@ -12205,6 +12238,117 @@ def _backpedal_polar_marker_metadata() -> dict:
     meta["corner_radial"] = float(np.hypot(
         meta["half_height_radial"], meta["half_width_radial"]))
     return meta
+
+
+def backpedal_polar_marker_offset_metadata(fig) -> dict:
+    """D220's nudge in saved pixels, axes fraction and radial units.
+
+    Printed so the sidecar states the constant that was applied and the
+    conversion it went through, in the same units the figure is drawn in. The
+    displacement itself is measured off the saved PNG afterwards
+    (``backpedal_polar_measured_shift``) — this block alone is not evidence
+    that the shift survived the tight crop.
+    """
+    ax = fig.axes[0]
+    if not ax.images:
+        raise ValueError(
+            f"{STAGE}: figure 21 draws no centre marker, so D220's offset has "
+            "nothing to move")
+    width_px, height_px = _backpedal_polar_axes_px(ax, fig)
+    fraction_x, _ = _polar_axes_fraction_per_unit(ax, fig)
+    offset_fraction_x = BACKPEDAL_POLAR_MARKER_OFFSET_PX_X / width_px
+    offset_radial_x = offset_fraction_x / fraction_x
+    # the marker's own half-width, from the image that was actually drawn
+    drawn = np.asarray(ax.images[0].get_array(), dtype=float)
+    half_width = (BACKPEDAL_POLAR_MARKER_HALF_HEIGHT
+                  * drawn.shape[1] / drawn.shape[0])
+    return {
+        "px_x": BACKPEDAL_POLAR_MARKER_OFFSET_PX_X,
+        "px_units": (f"saved PNG pixels at {BACKPEDAL_POLAR_DPI} dpi; "
+                     "negative x is left"),
+        "axes_px": [float(width_px), float(height_px)],
+        "axes_fraction_x": float(offset_fraction_x),
+        "radial_x": float(offset_radial_x),
+        # the reach that matters now that he is off-centre: the left corners
+        "left_corner_radial_from_origin": float(np.hypot(
+            half_width + abs(offset_radial_x),
+            BACKPEDAL_POLAR_MARKER_HALF_HEIGHT)),
+        "marker_centre_axes_xy": [float(0.5 + offset_fraction_x), 0.5],
+        "deliberate_off_centre": (
+            f"the marker is {abs(BACKPEDAL_POLAR_MARKER_OFFSET_PX_X):g} saved "
+            "px left of the polar origin because Conor asked for it "
+            "(2026-11-24 16:25); nothing else is centred on it"),
+    }
+
+
+def backpedal_polar_red_footprint(png_path) -> dict:
+    """The jersey's red pixels in a saved figure-21 PNG, and where they sit.
+
+    Uses the same predicate as the "no red outside the marker" test, so the
+    measurement and the invariant cannot drift apart. The plot furniture is
+    neutral ink (D218), so every reddish pixel in the PNG is the marker.
+    """
+    from PIL import Image
+
+    png_path = Path(png_path)
+    if not png_path.exists():
+        raise FileNotFoundError(
+            f"{STAGE}: cannot measure figure 21's marker shift: {png_path} "
+            "does not exist (render_backpedal_polar must write it first)")
+    with Image.open(png_path) as handle:
+        pixels = np.asarray(handle.convert("RGB"), dtype=float) / 255.0
+    red = pixels[:, :, 0]
+    reddish = (red > 0.35) & (
+        red - np.maximum(pixels[:, :, 1], pixels[:, :, 2]) > 0.10)
+    rows, cols = np.nonzero(reddish)
+    if not len(rows):
+        raise ValueError(
+            f"{STAGE}: no reddish pixels in {png_path} — the marker is not "
+            "drawn in the player's own colours (D219)")
+    return {
+        "png_size_px": [int(pixels.shape[1]), int(pixels.shape[0])],
+        "red_pixels": int(len(rows)),
+        "centroid_px": [float(cols.mean()), float(rows.mean())],
+        "bbox_px_xyxy": [int(cols.min()), int(rows.min()),
+                         int(cols.max()), int(rows.max())],
+    }
+
+
+def backpedal_polar_measured_shift(png_path) -> dict:
+    """The marker's displacement in the SAVED file, measured, not assumed.
+
+    The tight crop translates the canvas, so a shift applied in figure
+    coordinates only reaches the file unchanged if the crop did not move. The
+    only honest proof is to compare the rendered PNG with the pre-shift one:
+    this measures this render's red-footprint centroid against the committed
+    f830ac0 baseline (``BACKPEDAL_POLAR_SHIFT_BASELINE_REL``) and reports the
+    difference in saved pixels. Both renders differ by a pure translation of
+    the marker, so the centroid difference IS the shift. If the PNG canvas
+    changed size the crop moved and the comparison is refused rather than
+    reported as a shift.
+    """
+    baseline_path = BACKPEDAL_POLAR_SHIFT_BASELINE
+    if not baseline_path.exists():
+        raise FileNotFoundError(
+            f"{STAGE}: figure 21's shift baseline is missing: {baseline_path} "
+            f"(expected at {BACKPEDAL_POLAR_SHIFT_BASELINE_REL})")
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    now = backpedal_polar_red_footprint(png_path)
+    for axis, index in (("width", 0), ("height", 1)):
+        if abs(now["png_size_px"][index] - baseline["png_size_px"][index]) > 1:
+            raise ValueError(
+                f"{STAGE}: figure 21's saved canvas moved ({axis} "
+                f"{baseline['png_size_px'][index]} -> "
+                f"{now['png_size_px'][index]} px): the tight crop changed, so "
+                "the saved-pixel shift cannot be compared with the baseline")
+    shift_x = now["centroid_px"][0] - baseline["centroid_px"][0]
+    shift_y = now["centroid_px"][1] - baseline["centroid_px"][1]
+    return {
+        "rendered": now,
+        "baseline": baseline,
+        "measured_shift_px": [float(shift_x), float(shift_y)],
+        "measured_shift_units": "saved PNG pixels, this render minus baseline",
+    }
 
 
 def _backpedal_polar_marker_rgba(image_path=None):
@@ -12301,7 +12445,16 @@ def _draw_backpedal_polar_player(ax, fig, table: pd.DataFrame):
     pixels_high, pixels_wide = rgba.shape[:2]
     half_height = BACKPEDAL_POLAR_MARKER_HALF_HEIGHT
     half_width = half_height * pixels_wide / pixels_high
-    corner = float(np.hypot(half_height, half_width))
+    fraction_x, fraction_y = _polar_axes_fraction_per_unit(ax, fig)
+    # D220: the nudge, converted from saved PNG pixels to axes fraction. Both
+    # corners on the left move outward by the shift, so the clearance check is
+    # run on the left corner's real reach, not on the unshifted one.
+    offset_fraction_x = (
+        BACKPEDAL_POLAR_MARKER_OFFSET_PX_X
+        / _backpedal_polar_axes_px(ax, fig)[0])
+    offset_radial_x = offset_fraction_x / fraction_x
+    corner = float(np.hypot(max(half_width + offset_radial_x,
+                                half_width - offset_radial_x), half_height))
     nearest = (float(table["radius_drawn"].min()) if len(table)
                else float(BACKPEDAL_POLAR_RING_RADIUS))
     if corner + BACKPEDAL_POLAR_MARKER_MARGIN > nearest:
@@ -12309,9 +12462,10 @@ def _draw_backpedal_polar_player(ax, fig, table: pd.DataFrame):
             f"{STAGE}: figure 21's centre marker reaches {corner:.4f} radial "
             f"units but the nearest drawn turn is at {nearest:.4f} "
             f"(margin {BACKPEDAL_POLAR_MARKER_MARGIN:.4f})")
-    fraction_x, fraction_y = _polar_axes_fraction_per_unit(ax, fig)
-    extent = (0.5 - half_width * fraction_x, 0.5 + half_width * fraction_x,
-              0.5 - half_height * fraction_y, 0.5 + half_height * fraction_y)
+    extent = (0.5 - half_width * fraction_x + offset_fraction_x,
+              0.5 + half_width * fraction_x + offset_fraction_x,
+              0.5 - half_height * fraction_y,
+              0.5 + half_height * fraction_y)
     image = ax.imshow(
         rgba, extent=extent, transform=ax.transAxes, origin="upper",
         interpolation="bilinear", aspect="equal",
@@ -12339,6 +12493,10 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
     """
     fig = plt.figure(figsize=BACKPEDAL_POLAR_FIGSIZE)
     ax = fig.add_subplot(1, 1, 1, projection="polar")
+    # The final axes box is set before anything is drawn, because D220's pixel
+    # offset is converted against it: a polar axes keeps an equal aspect, so
+    # this call fixes the square 917.32 px box the save measures in.
+    fig.subplots_adjust(left=0.09, right=0.91, top=0.87, bottom=0.16)
 
     # zero at North, positive clockwise: a compass bearing scale
     ax.set_theta_zero_location("N")
@@ -12396,7 +12554,6 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
     ax.tick_params(axis="x", labelsize=BACKPEDAL_POLAR_AXIS_FONTSIZE,
                    colors=BACKPEDAL_AXIS_GREY, pad=1.0)
 
-    fig.subplots_adjust(left=0.09, right=0.91, top=0.87, bottom=0.16)
     if on_image_stamp(cfg):
         fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
                  fontweight="bold", color=BACKPEDAL_POLAR_STAMP_INK)
@@ -12457,6 +12614,10 @@ def backpedal_polar_drawn_text(fig, cfg: common.Config, mode: str) -> dict:
         # D218: the marker is a committed image, so its identity and the exact
         # masking threshold that produced it travel with the drawing.
         "marker": _backpedal_polar_marker_metadata(),
+        # D220: the nudge Conor asked for, with the conversion that applied it;
+        # the measured displacement is added from the saved PNG after the
+        # render (``backpedal_polar_measured_shift``).
+        "marker_offset": backpedal_polar_marker_offset_metadata(fig),
     }
 
 

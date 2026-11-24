@@ -322,3 +322,33 @@ ramp.
   asserted positive.
 - CSV byte-identical (`f186ebbc…`); manifest entry identical; strings unchanged; no other figure's
   PNG or CSV changed; two renders byte-identical (`7eed0cbd…`).
+
+## Revision — ten pixels to the left (D220, 2026-11-24)
+
+Conor: *"Could you move him 10 pixels to the left"*. The centre marker only: same image, same
+colours, same −90° rotation, same size, same masking, same strings, same CSV.
+
+- **Units.** The nudge is in **saved-PNG pixels at `BACKPEDAL_POLAR_DPI` (170)** — the file he looks
+  at — held in one constant, `BACKPEDAL_POLAR_MARKER_OFFSET_PX_X = -10.0`. `render_backpedal_polar`
+  saves with `bbox_inches="tight"`, so a figure-canvas offset is not a file offset: the conversion
+  goes through the square 917.32 px axes box (`_backpedal_polar_axes_px`), giving
+  `axes_fraction_x = -0.0109013` and `radial_x = -0.0292155`.
+- **The crop does not move.** The tight bbox is set by the protractor circle and the stamp, not by
+  the marker in the middle: the canvas stays 1096 × 1134. `fig.subplots_adjust` now runs before
+  anything is drawn so the offset is converted against the final box; with the constant set to 0
+  the render is **byte-identical** to f830ac0 (`7eed0cbd…`), so nothing else moved.
+- **Measured, not asserted from the constant.** Red-footprint centroid in the saved PNG:
+  **576.431 → 566.438 px, dx = −9.994 px, dy = +0.007 px**; bbox left edge 428 → 418. The paired
+  test renders the same figure at offset 0 and at the committed constant through the real save
+  path and requires |dx + 10| < 1 px.
+- **Clearance re-asserted on the left.** The left corners now reach 0.6127 radial units
+  (+ 0.05 margin = 0.6627) against `min(radius_drawn) = 0.9017`: 0.239 radial units of air. The
+  right corners reach 0.5757. He is deliberately 10 px off the exact centre because Conor asked
+  for it; `test_the_overhead_player_is_the_supplied_image_at_the_centre` now asserts that offset
+  instead of a centred glyph.
+- **Sidecar.** `marker_offset` records the constant, the conversion, and `measured_shift_px`
+  measured against the committed pre-shift baseline (`fixtures/fig_backpedal_polar_shift_baseline.json`,
+  f830ac0).
+- **Unchanged.** On-canvas strings (`Every turn in the backpedal`, `0` … `315`), the mask and its
+  threshold, crop, rotation, half-extents, zorder, CSV (byte-identical `f186ebbc…`,
+  111.0° n = 63 / 243.7° n = 70), the manifest entry, and every other committed artefact.
