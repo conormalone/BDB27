@@ -9720,3 +9720,75 @@ and not on this machine), unrelated to this change.
 
 **Deliberately not done.** No change to the CSV, any measured value, the lobe arcs' radius/colour,
 the tick scale, the title, the manifest payload, `TASK.md`, or any other figure.
+
+## D218 — Figure 21: the supplied image replaces the vector player, and every red element goes neutral · 2026-11-24
+
+**The request.** Conor, 2026-11-24 13:35, with an image attached, verbatim: *"Use this image instead
+of whatever that is and drop all the red"*. Read as: replace the D217 vector glyph at the origin
+with this image, and remove every red element from figure 21 — keeping the lobes' geometry and the
+information they carry. Main's reading, accepted: the red is the lobe colour, not the dots (the dots
+are `PALETTE["combine"]` blue).
+
+**The image is committed.** The source is a 612 × 408 RGB JPEG that arrived through the transient
+`media/inbound` staging path. It is committed byte-for-byte as
+`assets/fig_backpedal_polar_marker.jpg`, sha256
+`0d8ea50689259d554bb72648f96a20fb2062d358f2ec89f297b131f91162e38d`; the digest, path, rotation and
+every masking number are in `outputs/figures/fig_backpedal_polar.drawn_text.json` under `"marker"`.
+
+**Masking: threshold estimated from the border, not hard-coded.** The background is a light grey
+gradient. Red dominance is `R − (G+B)/2`; on the 6 px border ring its p99 is **−0.01176**, and the
+subject threshold is `border p99 + 0.05` = **0.03824** (printed in the sidecar). A 5 × 5 binary
+close, hole fill and 3 × 3 open produce a silhouette of **29,261 px** (crop 321 × 262, bbox
+x 146–467, y 109–371 including a 4 px pad) — the close and fill recover the subject's white and dark
+interior detail, which is why the mask is a silhouette rather than a ring. Subject luminance is
+mapped linearly onto neutral grey **0.12–0.72**, so every painted pixel has R = G = B; the alpha
+channel is the mask, so the marker keeps the subject's shape instead of pasting a grey rectangle.
+
+**Placement, measured.** `imshow` at the polar origin, extent in axes fractions, aspect preserved
+(262 : 321 after rotation — asserted from the drawn extent) and `aspect="equal"` so the polar
+projection stays circular (`aspect="auto"` would have let the polar box go rectangular — caught
+during the first render, when the canvas widened from 1096 to 1210 px). The marker's half-height is
+**0.46** radial units and its half-width **0.37545**, so its bounding-box corner reaches **0.59377**
+radial units; the nearest drawn turn on the committed data is at **0.9017**, and the clearance is
+**0.3079** radial units against the code's 0.05 margin — asserted through `transAxes → transData`,
+against `min(radius_drawn)` recomputed from the drawn table. It is clipped to the polar patch and
+drawn at zorder 2.5: above the median spokes (2.0), below the turns (3), so no dot can ever be
+covered.
+
+**Orientation: 270° → 0°, a quarter turn clockwise.** Conor, 2026-11-24 13:41, after the first
+render: *"The player is facing 270 degrees so rotate him"*. On this dial 0 is up, 90 East, 180 down,
+270 West, so the source player faces screen-left; a quarter turn clockwise on screen (+90° in the
+dial's clockwise-positive sense) turns 270 into 0. The constant is fed to `PIL.Image.rotate`, which
+is counter-clockwise-positive, so it is `BACKPEDAL_POLAR_MARKER_ROTATION_DEG = -90.0` — the sign
+convention is in the comment beside it. The image is re-cropped after rotation (source crop
+321 × 262 → rotated 262 × 321) and the clearance assertions are measured, so they still hold.
+
+**No red anywhere.** The two lobe median spokes and their middle-half IQR arcs keep their lengths
+and angular positions but are drawn in neutral ink: `BACKPEDAL_POLAR_MEDIAN_INK = #555555` and
+`BACKPEDAL_POLAR_ARC_INK = #6b6b6b` instead of `ALERT = #B00020`; the provenance stamp, when enabled,
+is neutral grey too. A test renders the figure and counts reddish pixels (`R > 0.35` and
+`R − max(G, B) > 0.10`): **4,521 → 0** on the committed artefact. A second test pins the lobe radius,
+the arc count and the neutral colours, so the de-reddening cannot quietly delete the lobes.
+
+**The data did not move.** `outputs/figures/fig_backpedal_polar.csv` is **byte-identical**
+(sha256 `f186ebbc9d928c0f298d8be17548bbac3ac6418b69a6b4a0f046bdb472e95cd2`, 133 rows, 15 columns):
+clockwise lobe 111.0° n = 63, counter-clockwise 243.7° n = 70, 133 turns from 71 of 122 players. The
+manifest entry is unchanged (no new claim, caveat or string), so `figures_manifest.json` is
+untouched. The drawn-text dump gains only the `"marker"` block described above.
+
+**Drawn strings, unchanged:** `Every turn in the backpedal`, `0`, `45`, `90`, `135`, `180`, `225`,
+`270`, `315`.
+
+**Pixel evidence.** Canvas 1096 × 1134, unchanged. **44,500 of 1,242,864 pixels differ**; every
+changed pixel is either inside the marker's footprint (x 426–677, y 401–747) or within 3 px of a
+pixel that was red in the previous render (the recoloured spokes and arcs) — checked as an exact
+set, 0 changed pixels elsewhere. No tick label, title, ring, dot or axis moved. No other figure's
+PNG or CSV changed (sha256 check across all committed artefacts).
+
+**Tests.** `tests/test_backpedal_polar_figure.py`: 25/25 green. Two independent regenerations and
+the committed PNG are byte-identical (`775e1988…`). Full suite: **756 collected, 755 passed, 1 skipped, 0 failed** (1096 s); the skip is the
+pre-existing local-artefact skip `tests/test_turn_context.py:184` (the per-turn parquet is gitignored
+and not on this machine), unrelated to this change.
+
+**Deliberately not done.** No change to any measured value, the CSV, the tick scale, the title, the
+marker's rotation (unconfirmed), the manifest payload, `TASK.md`, or any other figure.

@@ -32,5 +32,31 @@
     "SAMPLE OUTPUT",
     "PENDING FULL RUN"
   ],
-  "banned_hits": []
+  "banned_hits": [],
+  "marker": {
+    "border_red_p99": -0.0117647058823529,
+    "red_threshold": 0.0382352941176471,
+    "subject_pixels": 29261,
+    "source_crop_bbox_xyxy": [
+      146,
+      109,
+      467,
+      371
+    ],
+    "luminance_range": [
+      0.14529411764705882,
+      0.869312156862745
+    ],
+    "alpha_peak": 0.95,
+    "path": "assets/fig_backpedal_polar_marker.jpg",
+    "sha256": "0d8ea50689259d554bb72648f96a20fb2062d358f2ec89f297b131f91162e38d",
+    "pixels": [
+      262,
+      321
+    ],
+    "rotation_deg": -90.0,
+    "half_height_radial": 0.46,
+    "half_width_radial": 0.37545171339563865,
+    "corner_radial": 0.5937709904430503
+  }
 }

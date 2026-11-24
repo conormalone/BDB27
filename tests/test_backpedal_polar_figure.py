@@ -26,10 +26,15 @@ What is tested here, and why:
   the lobe labels, the count line and the honesty line Conor asked off the plot
   must stay off it (D215), with no caption, no subtitle, no legend, no banned
   token;
-* the overhead player at the centre (D217, Conor 2026-11-24 11:24): three
-  vector patches — shoulders, chest wedge, head — centred on the origin, facing
-  the 0° spoke at the top, drawn under the turns and clear of the nearest dot
-  by the real ``min(radius_drawn)``, with no text of its own;
+* the overhead player at the centre (D217), replaced by the image Conor
+  supplied (D218, 2026-11-24 13:35: "Use this image instead of whatever that is
+  and drop all the red"): the committed image, its light grey background masked
+  from a threshold estimated off the border, the subject desaturated to neutral
+  ink, centred on the origin, aspect preserved, drawn under the turns and clear
+  of the nearest dot by the real ``min(radius_drawn)``, with no text of its own;
+* no red anywhere in the figure: the lobe medians, the middle-half arcs and the
+  provenance stamp are neutral ink, and a scan of the rendered PNG counts the
+  reddish pixels and requires zero;
 * no gate: a two-row input still renders, and a 200° angle is drawn at its
   wrapped bearing and flagged;
 * the artefacts: CSV schema, manifest entry, byte-identical renders.
@@ -308,133 +313,136 @@ def test_lobe_stats_are_recomputed_from_the_turn_table(polar, valid_turns):
     assert context["n_wrapped"] == 0
 
 
-# ------------------------------------ 3b. the overhead player at the centre
-def _glyph(fig):
-    """The drawn player glyph: patches, plus their geometry through the axes.
-
-    Measured from the transform chain (``transAxes`` -> display -> polar data),
-    never from the constants: whatever is actually on the canvas is what is
-    asserted below.
-    """
-    ax = fig.axes[0]
+# ------------------------------- 3b. the overhead player image at the centre
+def _marker_extent_radius(ax, image) -> tuple[float, float, float]:
+    """Corner and centre radii of the drawn image, in polar data units."""
+    fig = ax.figure
     fig.canvas.draw()
-    centre = ax.transData.transform((0.0, 0.0))
-    measured = []
-    for patch in ax.patches:
-        display = patch.get_transform().transform(patch.get_path().vertices)
-        theta, radius = ax.transData.inverted().transform(display).T
-        measured.append({"patch": patch, "display": np.asarray(display),
-                         "theta": np.asarray(theta),
-                         "radius": np.asarray(radius)})
-    return ax, centre, measured
+    x0, x1, y0, y1 = image.get_extent()
+    corners = [(x0, y0), (x1, y0), (x0, y1), (x1, y1)]
+    inverse = ax.transData.inverted()
+    radii = [float(inverse.transform(
+        ax.transAxes.transform(corner))[1]) for corner in corners]
+    centre = inverse.transform(ax.transAxes.transform((0.5, 0.5)))
+    return max(radii), float(centre[0]), float(centre[1])
 
 
-def test_the_overhead_player_sits_at_the_centre_facing_the_zero_spoke(
-        polar, cfg):
-    """Conor, 2026-11-24 11:24: an overhead player, facing the way 0 reads.
+def test_the_overhead_player_is_the_supplied_image_at_the_centre(polar, cfg):
+    """Conor, 2026-11-24 13:35: "Use this image instead of whatever that is".
 
-    Three vector patches: shoulders, chest wedge, head. The chest points up the
-    0 spoke; the shoulders are drawn across it, so the facing is read from the
-    body, not from a label or an arrow annotation.
+    The marker is one drawn image (not vector patches), centred on the polar
+    origin, drawn above the lobe spokes and below the turns, with its own
+    aspect ratio preserved — so the subject is not stretched into the circle.
     """
-    from matplotlib.patches import Ellipse, Polygon
-
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
     try:
-        ax, centre, glyph = _glyph(fig)
-        assert len(glyph) == 3, [type(g["patch"]).__name__ for g in glyph]
-        assert sorted(type(g["patch"]).__name__ for g in glyph) == [
-            "Ellipse", "Ellipse", "Polygon"]
-        assert all(isinstance(g["patch"], (Ellipse, Polygon)) for g in glyph)
+        ax = fig.axes[0]
+        fig.canvas.draw()
+        assert len(ax.images) == 1, "the centre marker is not one drawn image"
+        image = ax.images[0]
+        assert not ax.patches, "the removed vector glyph is still drawn"
+        corner, centre_x, centre_y = _marker_extent_radius(ax, image)
+        assert abs(centre_x) < 1e-9 and abs(centre_y) < 1e-9
+        assert corner > 0.2, corner
 
-        # the widest patch is the shoulders: wider across than deep, horizontal
-        shoulders = max(glyph, key=lambda g: np.ptp(g["display"][:, 0]))
-        width = np.ptp(shoulders["display"][:, 0])
-        depth = np.ptp(shoulders["display"][:, 1])
-        assert width > 1.5 * depth, (width, depth)
-        shoulders_mid = 0.5 * (shoulders["display"].min(axis=0)
-                               + shoulders["display"].max(axis=0))
-        assert abs(shoulders_mid[0] - centre[0]) < 1.0
-        assert abs(shoulders_mid[1] - centre[1]) < 1.0
+        # aspect preserved: drawn pixels / source pixels, both dimensions
+        rgba = np.asarray(image.get_array(), dtype=float)
+        x0, x1, y0, y1 = image.get_extent()
+        fraction_x, fraction_y = figures._polar_axes_fraction_per_unit(ax, fig)
+        drawn_w = (x1 - x0) / fraction_x
+        drawn_h = (y1 - y0) / fraction_y
+        source_w, source_h = rgba.shape[1], rgba.shape[0]
+        assert drawn_w / drawn_h == pytest.approx(source_w / source_h,
+                                                  rel=1e-9)
 
-        # the chest wedge: its furthest vertex is on the 0 spoke, above centre
-        px_per_unit = abs(centre[1] - ax.transData.transform(
-            (0.0, figures.BACKPEDAL_POLAR_RMAX))[1]) / figures.BACKPEDAL_POLAR_RMAX
-        apex_radius, apex = max((float(g["radius"].max()), g) for g in glyph)
-        assert apex_radius == pytest.approx(
-            figures.BACKPEDAL_POLAR_MARKER_EXTENT, abs=1e-6)
-        top = apex["display"][np.argmax(apex["radius"])]
-        assert abs(top[0] - centre[0]) < 0.5, "the front must be on the 0 spoke"
-        assert top[1] - centre[1] == pytest.approx(
-            apex_radius * px_per_unit, abs=0.5), (
-            "the front must point up the page, where 0 is drawn")
+        # under the turns, above the median spokes
+        scatter = [c for c in ax.collections if len(c.get_offsets()) == len(table)]
+        assert scatter
+        assert image.get_zorder() < min(c.get_zorder() for c in scatter)
+        spokes = [line for line in ax.lines
+                  if np.ptp(np.asarray(line.get_xdata(), dtype=float)) == 0.0
+                  and np.asarray(line.get_ydata(), dtype=float).max() > 0.5]
+        assert spokes, "the lobe medians are not drawn as radial spokes"
+        assert image.get_zorder() > max(line.get_zorder() for line in spokes)
 
-        # the head: a round circle, not a stretched ellipse
-        head = min((g for g in glyph if isinstance(g["patch"], Ellipse)),
-                   key=lambda g: np.ptp(g["display"][:, 0]))
-        head_w = np.ptp(head["display"][:, 0])
-        head_h = np.ptp(head["display"][:, 1])
-        assert abs(head_w - head_h) / head_w < 0.01, (head_w, head_h)
-        head_mid = 0.5 * (head["display"].min(axis=0)
-                          + head["display"].max(axis=0))
-        assert abs(head_mid[0] - centre[0]) < 1.0
-        assert abs(head_mid[1] - centre[1]) < 1.0
-
-        # vector only: the glyph carries no text of its own
+        # clipped to the polar axes, and it carries no text of its own
+        assert image.get_clip_path() is not None
         assert [t.get_text() for t in ax.texts] == [
             figures.BACKPEDAL_POLAR_TITLE]
-        assert all((patch.get_label() or "") in ("", "_nolegend_") or
-                   patch.get_label().startswith("_")
-                   for patch in ax.patches)
     finally:
         plt.close(fig)
 
 
-def test_the_player_glyph_stays_clear_of_every_drawn_turn(polar, cfg):
-    """It is drawn under the turns and never reaches one (D217).
+def test_the_marker_is_masked_desaturated_and_neutral(polar, cfg):
+    """No red in the marker: the subject is grey ink, the background is clear.
 
-    The clearance is asserted against the actual smallest ``radius_drawn`` in
-    the drawn table, not a guessed threshold, and against the 0.80 x RMAX
-    canvas budget: a marker that grew into the dots would cover data.
+    The alpha channel is the mask, so the subject's internal shape (not a grey
+    rectangle) is what gets painted; and every rgba pixel has equal R, G and B.
     """
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
     try:
-        ax, _, glyph = _glyph(fig)
-        drawn_max = max(float(g["radius"].max()) for g in glyph)
-        nearest_dot = float(table["radius_drawn"].min())
-        margin = 0.05
-        assert drawn_max <= nearest_dot - margin, (drawn_max, nearest_dot)
-        assert drawn_max < 0.80 * figures.BACKPEDAL_POLAR_RMAX, drawn_max
-        assert len(table) > 0
-        # and it is below the scatter in z-order, so a dot always wins
-        scatter = [c for c in ax.collections
-                   if len(c.get_offsets()) == len(table)]
-        assert scatter
-        assert max(p.get_zorder() for p in ax.patches) < min(
-            c.get_zorder() for c in scatter)
-        # the median spokes start at the origin, so they run under the glyph:
-        # the bearing lines emerge from the player instead of crossing his head
-        spokes = [line for line in ax.lines
-                  if line.get_color() == figures.ALERT
-                  and np.ptp(np.asarray(line.get_xdata(), dtype=float)) == 0.0]
-        assert spokes, "the lobe medians are not drawn as radial spokes"
-        assert max(line.get_zorder() for line in spokes) < min(
-            p.get_zorder() for p in ax.patches)
+        image = fig.axes[0].images[0]
+        rgba = np.asarray(image.get_array(), dtype=float)
+        assert rgba.shape[2] == 4
+        # the mask is a subject silhouette, not a full rectangle
+        alpha = rgba[:, :, 3]
+        assert alpha.min() == 0.0 and 0.5 < alpha.max() <= 1.0
+        opaque = alpha > 0.5 * alpha.max()
+        assert 0.05 < opaque.mean() < 0.95, opaque.mean()
+        # neutral ink: no channel carries more colour than another
+        rgb = rgba[:, :, :3]
+        assert np.array_equal(rgb[:, :, 0], rgb[:, :, 1])
+        assert np.array_equal(rgb[:, :, 0], rgb[:, :, 2])
+        assert float(rgb.min()) >= figures.BACKPEDAL_POLAR_MARKER_INK_DARK - 1e-9
+        assert float(rgb.max()) <= figures.BACKPEDAL_POLAR_MARKER_INK_LIGHT + 1e-9
     finally:
         plt.close(fig)
 
 
-def test_the_player_glyph_is_a_schematic_not_data(cfg, tmp_path):
+def test_marker_threshold_is_estimated_from_the_image_border():
+    """The masking threshold is measured and printed, never a magic number."""
+    meta = figures._backpedal_polar_marker_metadata()
+    assert meta["red_threshold"] == pytest.approx(
+        meta["border_red_p99"] + figures.BACKPEDAL_POLAR_MARKER_RED_MARGIN)
+    assert meta["subject_pixels"] > 0
+    left, top, right, bottom = meta["source_crop_bbox_xyxy"]
+    assert right > left and bottom > top
+    assert meta["alpha_peak"] > 0.5
+    source = ROOT / meta["path"]
+    assert source.exists()
+    assert meta["sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
+    assert meta["rotation_deg"] == figures.BACKPEDAL_POLAR_MARKER_ROTATION_DEG
+
+
+def test_the_marker_stays_clear_of_every_drawn_turn(polar, cfg):
+    """It is drawn under the turns and never reaches one.
+
+    The clearance is asserted against the actual smallest ``radius_drawn`` in
+    the drawn table plus the code's own margin, not a guessed threshold, and
+    the radius is measured through the transform chain — not trusted from the
+    constants.
+    """
+    table, context = polar
+    fig = figures.plot_backpedal_polar(table, context, cfg)
+    try:
+        ax = fig.axes[0]
+        corner, _, _ = _marker_extent_radius(ax, ax.images[0])
+        nearest_dot = float(table["radius_drawn"].min())
+        assert corner + figures.BACKPEDAL_POLAR_MARKER_MARGIN <= nearest_dot, (
+            corner, nearest_dot)
+    finally:
+        plt.close(fig)
+
+
+def test_the_player_marker_is_a_schematic_not_data(cfg, tmp_path):
     """No gate: it is drawn even when the table is empty."""
     table, context = _synthetic([])
     fig = figures.plot_backpedal_polar(table, context, cfg)
     try:
-        ax, centre, glyph = _glyph(fig)
-        assert len(glyph) == 3
-        assert max(float(g["radius"].max()) for g in glyph) == pytest.approx(
-            figures.BACKPEDAL_POLAR_MARKER_EXTENT, abs=1e-6)
+        ax = fig.axes[0]
+        assert len(ax.images) == 1
         out = figures.render_backpedal_polar(fig, cfg, tmp_path / "empty.png")
         assert Path(out).stat().st_size > 0
     finally:
@@ -442,6 +450,56 @@ def test_the_player_glyph_is_a_schematic_not_data(cfg, tmp_path):
 
 
 # ------------------------------------------------------------- 4. drawn text
+def _reddish_pixels(png) -> int:
+    """Pixels that read red on the canvas: R clearly above both G and B."""
+    from PIL import Image
+
+    pixels = np.asarray(Image.open(png).convert("RGB"), dtype=float) / 255.0
+    red = pixels[:, :, 0]
+    green = pixels[:, :, 1]
+    blue = pixels[:, :, 2]
+    return int(((red > 0.35) & (red - np.maximum(green, blue) > 0.10)).sum())
+
+
+def test_the_lobes_keep_their_geometry_in_neutral_ink(polar, cfg):
+    """D218: the medians and arcs stay, in grey — nothing is deleted."""
+    table, context = polar
+    fig = figures.plot_backpedal_polar(table, context, cfg)
+    try:
+        ax = fig.axes[0]
+        colours = [line.get_color() for line in ax.lines]
+        assert figures.ALERT not in colours
+        spokes = [line for line in ax.lines
+                  if np.ptp(np.asarray(line.get_xdata(), dtype=float)) == 0.0
+                  and np.asarray(line.get_ydata(), dtype=float).max() > 0.5]
+        arcs = [line for line in ax.lines
+                if len(np.asarray(line.get_xdata())) == 64]
+        assert len(spokes) == sum(
+            1 for side in ("positive", "negative")
+            if context["lobes"][side]["n"] > 0)
+        assert len(arcs) == len(spokes)
+        assert all(line.get_color() == figures.BACKPEDAL_POLAR_MEDIAN_INK
+                   for line in spokes)
+        assert all(line.get_color() == figures.BACKPEDAL_POLAR_ARC_INK
+                   for line in arcs)
+        # the spokes still run to the documented radial extent
+        for line in spokes:
+            assert np.asarray(line.get_ydata(), dtype=float).max() == \
+                pytest.approx(figures.BACKPEDAL_POLAR_MEDIAN_TOP)
+    finally:
+        plt.close(fig)
+
+
+def test_the_rendered_png_carries_no_red_pixels(polar, cfg, tmp_path):
+    """Conor, 2026-11-24 13:35: "drop all the red" — measured on the canvas."""
+    table, context = polar
+    fig = figures.plot_backpedal_polar(table, context, cfg)
+    out = figures.render_backpedal_polar(fig, cfg, tmp_path / "nored.png")
+    before = _reddish_pixels(FIGS / f"{FIGURE}.png")
+    count = _reddish_pixels(out)
+    assert count == 0, f"{count} reddish pixels remain (committed PNG: {before})"
+
+
 def test_drawn_text_is_only_the_title_and_the_scale(drawn):
     """D215: the canvas carries the title and the tick scale, nothing else.
 

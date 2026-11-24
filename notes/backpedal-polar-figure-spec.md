@@ -257,3 +257,46 @@ changes.
 CSV is byte-identical (`f186ebbc…`), lobes 111.0° n = 63 and 243.7° n = 70; the
 drawn-text dump and the manifest entry are byte-identical; no other figure's PNG
 changes. Grey ink only — red stays the lobes' colour.
+
+## Revision — the supplied image replaces the vector player, and no red (D218, 2026-11-24 13:35)
+
+Conor, with an image attached: *"Use this image instead of whatever that is and drop all the red."*
+The three vector patches D217 drew are gone, and so is every red element of figure 21.
+
+**The marker is the committed image.** The source (612 × 408 JPEG) is committed byte-for-byte at
+`assets/fig_backpedal_polar_marker.jpg` (sha256 `0d8ea506…`), because the inbound media path is
+transient; the digest, path and every masking number travel in
+`outputs/figures/fig_backpedal_polar.drawn_text.json` under `"marker"`.
+
+**Masking, estimated not guessed.** The background is the light grey studio gradient. Its red
+dominance (`R − (G+B)/2`) is measured on a 6 px border ring — p99 = **−0.0118** on this image — and
+the subject threshold is that value plus 0.05 = **0.0382**, printed in the sidecar. A 5 × 5 close,
+hole fill and 3 × 3 open turn the red-dominant pixels into a silhouette of **29,261 px** (crop
+321 × 262, bbox x 146–467, y 109–371 with a 4 px pad), keeping the subject's white and dark interior
+detail as holes in the mask. Luminance inside the silhouette is then mapped linearly onto a neutral
+grey ramp (0.12–0.72); every painted pixel has R = G = B, so the marker carries no red at all, and
+its alpha channel is the mask, so it is a silhouette, not a grey rectangle.
+
+**Placement.** The image is drawn at the polar origin with `imshow`, extent in axes fractions,
+`aspect="equal"` so the polar axes stay circular and the image keeps its own 262 : 321 aspect after
+rotation (asserted from the drawn extent). `BACKPEDAL_POLAR_MARKER_HALF_HEIGHT = 0.46` radial units
+gives a half-width of 0.37545 and a corner reach of **0.59377**; the nearest drawn turn is at
+**0.9017**, so the clearance is **0.3079 radial units** against a 0.05 margin, asserted through the
+transform chain against `min(radius_drawn)`, never a constant. It is clipped to the polar patch and
+drawn at zorder 2.5 — above the median spokes (2.0), below the turns (3).
+
+**Orientation: 270° → 0°.** Conor, 2026-11-24 13:41, after the first render: *"The player is facing
+270 degrees so rotate him"*. On this dial 0 is up, 90 East, 180 down, 270 West, so the source
+player faces screen-left; a quarter turn clockwise on screen (+90° in the dial's clockwise-positive
+sense) turns 270 into 0. `PIL.Image.rotate` is counter-clockwise-positive, so the constant is
+`BACKPEDAL_POLAR_MARKER_ROTATION_DEG = -90.0`. The image is re-cropped after rotation and the
+clearance assertions still hold.
+
+**No red anywhere.** The lobe median spokes and the middle-half IQR arcs keep their geometry and
+length but are drawn in neutral ink (`#555555` spokes, `#6b6b6b` arcs) instead of `ALERT`; the
+provenance stamp, when enabled, is neutral too. A test scans a freshly rendered PNG and counts
+reddish pixels (R > 0.35 and R − max(G, B) > 0.10): **0** remain, against **4,521** before.
+
+**Unchanged.** On-canvas strings are exactly `Every turn in the backpedal`, `0`, `45`, `90`, `135`,
+`180`, `225`, `270`, `315`. The CSV is byte-identical (`f186ebbc…`, lobes 111.0° n = 63, 243.7°
+n = 70); no other figure's PNG or CSV changed; two renders are byte-identical (`775e1988…`).

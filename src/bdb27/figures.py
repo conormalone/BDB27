@@ -35,7 +35,7 @@ matplotlib.use("Agg")  # deterministic, headless
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.patches import Arc, Ellipse, Patch, Polygon
+from matplotlib.patches import Arc, Patch
 from matplotlib.ticker import LogLocator, NullFormatter
 from plotnine import (
     aes,
@@ -11964,22 +11964,44 @@ BACKPEDAL_POLAR_RMAX = 1.34
 BACKPEDAL_POLAR_TICK_STEP = 45
 #: Ticks run 0 ... 315: 360 is the 0 spoke, printed once as "0" (D215).
 
-#: The overhead player at the centre (D217). Conor, 2026-11-24 11:24: "Could
-#: you also put an overhead view of a player at the centre to show that it's
-#: the way they are facing". A schematic seen from above — head, shoulders,
-#: and a chest/nose wedge at the front — with the front on the 0 deg spoke at
-#: the top, so the dial reads as bearings relative to the direction the player
-#: faces. Vector only (three patches, no image, no font glyph), neutral grey
-#: ink (red stays reserved for the lobes), drawn under the turns.
-BACKPEDAL_POLAR_MARKER_EXTENT = 0.56   # radial units, apex of the chest wedge
-BACKPEDAL_POLAR_MARKER_INK = BACKPEDAL_AXIS_GREY  # same neutral grey ink
-BACKPEDAL_POLAR_MARKER_FILL = "#ececec"
-BACKPEDAL_POLAR_MARKER_CHEST = "#8a8a8a"
-BACKPEDAL_POLAR_MARKER_LW = 1.1
+#: The overhead player at the centre (D217), now the supplied image (D218).
+#: Conor, 2026-11-24 11:24: "Could you also put an overhead view of a player at
+#: the centre to show that it's the way they are facing"; then 2026-11-24
+#: 13:35, with an image attached: "Use this image instead of whatever that is
+#: and drop all the red". The image is committed byte-for-byte under assets/,
+#: its light grey background is masked out from a threshold estimated off the
+#: image border, and the subject is desaturated to neutral ink, so the marker
+#: carries no red and still keeps the subject's internal shape in its alpha.
+BACKPEDAL_POLAR_MARKER_IMAGE = REPO_ROOT / "assets" / "fig_backpedal_polar_marker.jpg"
+BACKPEDAL_POLAR_MARKER_IMAGE_REL = "assets/fig_backpedal_polar_marker.jpg"
+#: Orientation (Conor, 2026-11-24 13:41: "The player is facing 270 degrees so
+#: rotate him"). On figure 21's dial 0 is up, 90 East, 180 down, 270 West: the
+#: source player faces screen-left, so a quarter turn CLOCKWISE on screen
+#: (+90 deg in the dial's clockwise-positive sense) puts his facing on the 0
+#: spoke. This constant is fed to ``PIL.Image.rotate``, which is
+#: counter-clockwise-positive, so screen-clockwise = ``-90``. Changing the
+#: facing is a one-number change; the marker is re-cropped after rotation and
+#: the drawn-extent tests still measure it.
+BACKPEDAL_POLAR_MARKER_ROTATION_DEG = -90.0
+#: Half-extents in radial units of the protractor. The image's aspect ratio
+#: sets the width from the height, so the subject is never stretched.
+BACKPEDAL_POLAR_MARKER_HALF_HEIGHT = 0.46
+BACKPEDAL_POLAR_MARKER_MARGIN = 0.05    # radial units of clear air to the dots
+BACKPEDAL_POLAR_MARKER_RING_PX = 6      # border ring used to estimate the bg
+BACKPEDAL_POLAR_MARKER_RED_MARGIN = 0.05  # added to the border's red p99
+BACKPEDAL_POLAR_MARKER_INK_DARK = 0.12  # neutral grey for the darkest pixel
+BACKPEDAL_POLAR_MARKER_INK_LIGHT = 0.72  # neutral grey for the lightest pixel
+BACKPEDAL_POLAR_MARKER_ALPHA = 0.95
 BACKPEDAL_POLAR_MARKER_ZORDER = 2.5     # above the lobe spokes, under the turns
-#: The median spokes start at the origin, so they are drawn under the player
-#: glyph (D217); they still run to 0.80 radial units, clear of every turn.
+#: The median spokes start at the origin, so they are drawn under the marker;
+#: they still run to 0.80 radial units, clear of every turn.
 BACKPEDAL_POLAR_MEDIAN_ZORDER = 2.0
+#: Red is gone from this figure entirely (Conor, 2026-11-24 13:35: "drop all
+#: the red"): the lobe medians, the middle-half arcs and the provenance stamp
+#: all use neutral ink now. The geometry and the information are unchanged.
+BACKPEDAL_POLAR_MEDIAN_INK = BACKPEDAL_AXIS_GREY
+BACKPEDAL_POLAR_ARC_INK = "#6b6b6b"
+BACKPEDAL_POLAR_STAMP_INK = BACKPEDAL_AXIS_GREY
 
 BACKPEDAL_POLAR_CSV_COLUMNS = [
     "provenance", "stamp", "config_sha", "figure", "event_id", "nfl_id",
@@ -12142,10 +12164,11 @@ def _polar_axes_fraction_per_unit(ax, fig) -> tuple[float, float]:
     A polar axes inscribes its ``r = RMAX`` circle in the square box it was
     given, so one radial unit is ``0.5 * min(box width, box height) / RMAX``
     inches; in axes fraction that is divided by the box width for x and by its
-    height for y. A patch in polar DATA coordinates would be sheared by the
-    projection, so the player glyph is built in axes fraction and converted
-    back through this function. The figure tests measure the drawn glyph
-    through ``transAxes`` -> ``transData`` rather than trusting the derivation.
+    height for y. A patch or image in polar DATA coordinates would be sheared by
+    the projection, so the centre marker's extent is built in axes fraction and
+    converted back through this function. The figure tests measure the drawn
+    image through ``transAxes`` -> ``transData`` rather than trusting the
+    derivation.
     """
     box = ax.get_position()
     width_in = box.width * fig.get_figwidth()
@@ -12154,55 +12177,137 @@ def _polar_axes_fraction_per_unit(ax, fig) -> tuple[float, float]:
     return unit_in / width_in, unit_in / height_in
 
 
-def _draw_backpedal_polar_player(ax, fig) -> list:
+def _backpedal_polar_marker_metadata() -> dict:
+    """The committed marker image's identity and the masking threshold, printed.
+
+    Returns the same numbers the drawing uses, so the sidecar can be checked
+    against what was actually painted rather than against prose.
+    """
+    path = Path(BACKPEDAL_POLAR_MARKER_IMAGE)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{STAGE}: figure 21's marker image is missing: {path} "
+            f"(expected at {BACKPEDAL_POLAR_MARKER_IMAGE_REL})")
+    rgba, meta = _backpedal_polar_marker_rgba(path)
+    meta["path"] = BACKPEDAL_POLAR_MARKER_IMAGE_REL
+    meta["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    meta["pixels"] = [int(rgba.shape[1]), int(rgba.shape[0])]
+    meta["rotation_deg"] = BACKPEDAL_POLAR_MARKER_ROTATION_DEG
+    meta["half_height_radial"] = BACKPEDAL_POLAR_MARKER_HALF_HEIGHT
+    meta["half_width_radial"] = (
+        BACKPEDAL_POLAR_MARKER_HALF_HEIGHT * rgba.shape[1] / rgba.shape[0])
+    meta["corner_radial"] = float(np.hypot(
+        meta["half_height_radial"], meta["half_width_radial"]))
+    return meta
+
+
+def _backpedal_polar_marker_rgba(image_path=None):
+    """Load the marker image as neutral-ink RGBA with the background masked out.
+
+    The background is the light grey studio gradient. Its redness is estimated
+    from a 6 px ring on the image border — never hard-coded — and the subject is
+    every pixel whose red dominance exceeds that border's 99th percentile by
+    ``BACKPEDAL_POLAR_MARKER_RED_MARGIN``. A close + hole-fill + open pass turns
+    the red-dominant pixels into the subject's silhouette (including its white
+    and dark interior detail), and the luminance inside that silhouette is
+    mapped to a grey ramp, so no pixel keeps its red.
+    """
+    from PIL import Image
+    from scipy import ndimage
+
+    path = Path(image_path or BACKPEDAL_POLAR_MARKER_IMAGE)
+    with Image.open(path) as handle:
+        rgb = np.asarray(handle.convert("RGB"), dtype=float) / 255.0
+    height, width = rgb.shape[:2]
+    red_dominance = rgb[:, :, 0] - 0.5 * (rgb[:, :, 1] + rgb[:, :, 2])
+    ring = BACKPEDAL_POLAR_MARKER_RING_PX
+    border = np.concatenate([
+        red_dominance[:ring].ravel(), red_dominance[-ring:].ravel(),
+        red_dominance[:, :ring].ravel(), red_dominance[:, -ring:].ravel()])
+    border_p99 = float(np.percentile(border, 99))
+    threshold = border_p99 + BACKPEDAL_POLAR_MARKER_RED_MARGIN
+    subject = red_dominance > threshold
+    subject = ndimage.binary_closing(subject, structure=np.ones((5, 5)))
+    subject = ndimage.binary_fill_holes(subject)
+    subject = ndimage.binary_opening(subject, structure=np.ones((3, 3)))
+    if not subject.any():
+        raise ValueError(
+            f"{STAGE}: figure 21's marker image has no subject above the "
+            f"estimated threshold {threshold:.4f} — check "
+            f"{BACKPEDAL_POLAR_MARKER_IMAGE_REL}")
+
+    rows = np.flatnonzero(subject.any(axis=1))
+    cols = np.flatnonzero(subject.any(axis=0))
+    pad = 4
+    top, bottom = max(int(rows[0]) - pad, 0), min(int(rows[-1]) + pad + 1, height)
+    left, right = max(int(cols[0]) - pad, 0), min(int(cols[-1]) + pad + 1, width)
+
+    luminance = rgb @ np.array([0.299, 0.587, 0.114])
+    dark, light = np.percentile(luminance[subject], [2.0, 98.0])
+    scaled = np.clip((luminance - dark) / max(light - dark, 1e-6), 0.0, 1.0)
+    grey = (BACKPEDAL_POLAR_MARKER_INK_DARK
+            + (BACKPEDAL_POLAR_MARKER_INK_LIGHT
+               - BACKPEDAL_POLAR_MARKER_INK_DARK) * scaled)
+    alpha = ndimage.gaussian_filter(
+        subject.astype(float), 0.6) * BACKPEDAL_POLAR_MARKER_ALPHA
+    rgba = np.dstack([grey, grey, grey, alpha])[top:bottom, left:right]
+
+    if BACKPEDAL_POLAR_MARKER_ROTATION_DEG:
+        rotated = Image.fromarray(
+            np.round(rgba * 255.0).astype(np.uint8), mode="RGBA").rotate(
+                BACKPEDAL_POLAR_MARKER_ROTATION_DEG, expand=True,
+                resample=Image.BICUBIC)
+        rgba = np.asarray(rotated, dtype=float) / 255.0
+        # bicubic ringing can overshoot the neutral ramp by a fraction of a
+        # level; keep the "grey ink between INK_DARK and INK_LIGHT" guarantee
+        rgba[:, :, :3] = np.clip(rgba[:, :, :3],
+                                 BACKPEDAL_POLAR_MARKER_INK_DARK,
+                                 BACKPEDAL_POLAR_MARKER_INK_LIGHT)
+
+    meta = {
+        "border_red_p99": border_p99,
+        "red_threshold": threshold,
+        "subject_pixels": int(subject.sum()),
+        "source_crop_bbox_xyxy": [left, top, right, bottom],
+        "luminance_range": [float(dark), float(light)],
+        "alpha_peak": float(alpha.max()),
+    }
+    return rgba, meta
+
+
+def _draw_backpedal_polar_player(ax, fig, table: pd.DataFrame):
     """The overhead player at the centre, facing the top (0 deg) spoke.
 
-    Three patches, all sized in radial units of the protractor and drawn in
-    axes fraction (D217):
-
-    * shoulders — an ellipse wider across than deep, so the shoulder line runs
-      left-right, perpendicular to the facing;
-    * the chest — a grey wedge rising out of the shoulder line to a point on the
-      0 deg spoke, so which way is forward is unambiguous without an arrow
-      head, a label or a legend;
-    * head — a white circle on the shoulder line, drawn last, over the wedge.
-
-    The whole glyph reaches ``BACKPEDAL_POLAR_MARKER_EXTENT`` radial units,
-    well short of the nearest drawn turn (r = 0.90 on the committed data), and
-    sits under the scatter, so it can never cover a point.
+    D218: the marker is the committed image Conor supplied, with its light grey
+    background masked off and the subject desaturated to neutral ink, painted at
+    the polar origin in axes coordinates with its own aspect ratio preserved.
+    Its corner reach plus a margin is asserted against the nearest drawn turn,
+    recomputed from ``table`` — not a guessed radius — so it can never cover a
+    dot; it is drawn under the scatter as well, so a dot would win anyway.
     """
+    rgba, _ = _backpedal_polar_marker_rgba()
+    pixels_high, pixels_wide = rgba.shape[:2]
+    half_height = BACKPEDAL_POLAR_MARKER_HALF_HEIGHT
+    half_width = half_height * pixels_wide / pixels_high
+    corner = float(np.hypot(half_height, half_width))
+    nearest = (float(table["radius_drawn"].min()) if len(table)
+               else float(BACKPEDAL_POLAR_RING_RADIUS))
+    if corner + BACKPEDAL_POLAR_MARKER_MARGIN > nearest:
+        raise ValueError(
+            f"{STAGE}: figure 21's centre marker reaches {corner:.4f} radial "
+            f"units but the nearest drawn turn is at {nearest:.4f} "
+            f"(margin {BACKPEDAL_POLAR_MARKER_MARGIN:.4f})")
     fraction_x, fraction_y = _polar_axes_fraction_per_unit(ax, fig)
-    extent = BACKPEDAL_POLAR_MARKER_EXTENT
-    zorder = BACKPEDAL_POLAR_MARKER_ZORDER
-
-    def point(dx: float, dy: float) -> tuple[float, float]:
-        """Radial-unit offset (dx, dy), dy positive towards the 0 spoke."""
-        return (0.5 + dx * extent * fraction_x,
-                0.5 + dy * extent * fraction_y)
-
-    shoulders = Ellipse(
-        point(0.0, 0.0),
-        width=0.62 * extent * fraction_x, height=0.38 * extent * fraction_y,
-        facecolor=BACKPEDAL_POLAR_MARKER_FILL,
-        edgecolor=BACKPEDAL_POLAR_MARKER_INK,
-        lw=BACKPEDAL_POLAR_MARKER_LW, transform=ax.transAxes, zorder=zorder)
-    chest = Polygon(
-        [point(0.0, 1.00), point(-0.30, 0.03), point(0.30, 0.03)],
-        closed=True, facecolor=BACKPEDAL_POLAR_MARKER_CHEST,
-        edgecolor=BACKPEDAL_POLAR_MARKER_INK, lw=1.0,
-        transform=ax.transAxes, zorder=zorder + 0.1)
-    head = Ellipse(
-        point(0.0, 0.0),
-        width=0.30 * extent * fraction_x, height=0.30 * extent * fraction_y,
-        facecolor="white",
-        edgecolor=BACKPEDAL_POLAR_MARKER_INK,
-        lw=BACKPEDAL_POLAR_MARKER_LW, transform=ax.transAxes,
-        zorder=zorder + 0.2)
-    patches = [shoulders, chest, head]
-    for patch in patches:
-        patch.set_clip_on(True)
-        ax.add_patch(patch)
-    return patches
+    extent = (0.5 - half_width * fraction_x, 0.5 + half_width * fraction_x,
+              0.5 - half_height * fraction_y, 0.5 + half_height * fraction_y)
+    image = ax.imshow(
+        rgba, extent=extent, transform=ax.transAxes, origin="upper",
+        interpolation="bilinear", aspect="equal",
+        zorder=BACKPEDAL_POLAR_MARKER_ZORDER)
+    # imshow autoscales the data limits; put the protractor back exactly.
+    ax.set_ylim(0.0, BACKPEDAL_POLAR_RMAX)
+    image.set_clip_path(ax.patch)
+    return image
 
 
 def plot_backpedal_polar(table: pd.DataFrame, context: dict,
@@ -12240,8 +12345,9 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
     ax.plot(around, np.full_like(around, BACKPEDAL_POLAR_RING_RADIUS),
             color=BACKPEDAL_RULE_GREY, lw=0.9, ls=":", zorder=1)
 
-    # the overhead player at the centre, facing the top spoke, under the turns
-    _draw_backpedal_polar_player(ax, fig)
+    # the overhead player image at the centre, facing the top spoke, under the
+    # turns (D217, replaced by the supplied image and de-reddened in D218)
+    _draw_backpedal_polar_player(ax, fig, table)
 
     if len(table):
         theta = np.radians(table["bearing_deg"].to_numpy(float))
@@ -12263,12 +12369,14 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
         # the spoke stops at 0.80 radial units and the turns start at 0.90, so
         # the dots never meet it either way.
         ax.plot([theta_median, theta_median], [0.0, BACKPEDAL_POLAR_MEDIAN_TOP],
-                color=ALERT, lw=BACKPEDAL_POLAR_MEDIAN_LW,
+                color=BACKPEDAL_POLAR_MEDIAN_INK,
+                lw=BACKPEDAL_POLAR_MEDIAN_LW,
                 zorder=BACKPEDAL_POLAR_MEDIAN_ZORDER)
         span = np.linspace(lobe["q25_deg"], lobe["q75_deg"], 64)
         ax.plot(np.radians(span),
                 np.full_like(span, BACKPEDAL_POLAR_ARC_RADIUS),
-                color=ALERT, lw=BACKPEDAL_POLAR_ARC_LW, alpha=0.75, zorder=4)
+                color=BACKPEDAL_POLAR_ARC_INK, lw=BACKPEDAL_POLAR_ARC_LW,
+                alpha=0.85, zorder=4)
 
     ax.text(0.02, 1.06, BACKPEDAL_POLAR_TITLE, transform=ax.transAxes,
             fontsize=BACKPEDAL_POLAR_TITLE_FONTSIZE, ha="left", va="bottom",
@@ -12279,7 +12387,7 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
     fig.subplots_adjust(left=0.09, right=0.91, top=0.87, bottom=0.16)
     if on_image_stamp(cfg):
         fig.text(0.995, 0.992, STAMP, ha="right", va="top", fontsize=8.0,
-                 fontweight="bold", color=ALERT)
+                 fontweight="bold", color=BACKPEDAL_POLAR_STAMP_INK)
     return fig
 
 
@@ -12334,6 +12442,9 @@ def backpedal_polar_drawn_text(fig, cfg: common.Config, mode: str) -> dict:
                          + [s for s in strings if s != BACKPEDAL_POLAR_TITLE]),
         "banned_tokens": list(BANNED_TOKENS),
         "banned_hits": [{"token": token, "text": text} for token, text in hits],
+        # D218: the marker is a committed image, so its identity and the exact
+        # masking threshold that produced it travel with the drawing.
+        "marker": _backpedal_polar_marker_metadata(),
     }
 
 
