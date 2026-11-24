@@ -9791,4 +9791,5 @@ pre-existing local-artefact skip `tests/test_turn_context.py:184` (the per-turn 
 and not on this machine), unrelated to this change.
 
 **Deliberately not done.** No change to any measured value, the CSV, the tick scale, the title, the
-marker's rotation (unconfirmed), the manifest payload, `TASK.md`, or any other figure.
+manifest payload, `TASK.md`, or any other figure. The marker's rotation is exactly the 270° → 0°
+quarter turn Conor specified, and nothing else about the image was altered.
