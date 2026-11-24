@@ -183,3 +183,25 @@ scale only changed:
 - `turn_angle_deg`, `abs_turn_angle_deg`, `side`, every count and every measured
   value are unchanged, and the signed angle stays in the CSV;
 - the no-facing caveat and the DB-only population are untouched.
+
+## Revision — zero at the top, no text on the plot (D215, 2026-11-24)
+
+Conor, 2026-11-24 09:09: *"Could you reverse the X axis so zero is up and remove
+the text on the plot."* Two changes, and only these two:
+
+- **Zero moves from South to North** (`set_theta_zero_location("N")`); the sweep
+  sense is unchanged, positive still clockwise, so the scale now reads like a
+  compass rose: 0 at the top, 90 East, 180 South, 270 West. "0" and "360" share
+  the top spoke and are still nudged apart in points.
+- **The canvas carries the title and the 0-360 scale and nothing else.** The two
+  lobe labels, the count line (`133 turns from 71 of 122 players…`) and the
+  honesty note are no longer drawn. The counts, the lobe medians and the honesty
+  statements stay in the manifest entry and the CSV, and
+  `backpedal_polar_drawn_text` now raises if any string other than the title and
+  the nine tick labels appears on the canvas.
+
+`bearing_deg`, `turn_angle_deg`, `abs_turn_angle_deg`, `side`, `bearing_wrapped`,
+`radius_drawn` and every count are unchanged; the CSV is byte-identical to the
+one D214 committed. This is a drawing change only. The title wording follows the
+drawing ("with zero at the top") because "zero straight down" would now be false
+— that wording change is the PM's, flagged to Conor.

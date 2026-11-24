@@ -45,9 +45,10 @@ MANIFEST_REGISTRY = "outputs/figures/figures_manifest.json"
 #: (2026-11-23) moved figure 2's proposed-drill marker 40 -> 45 so it matches
 #: the schematic's `break_angles_deg: [45]`; those two files are the only
 #: committed figures that decision rewrites. D214 (2026-11-23) moved figure 21's
-#: protractor onto the 0-360 scale the other plots use; the display scale only,
-#: no measured value. Every other figure is still off-limits to an unrecorded
-#: edit.
+#: protractor onto the 0-360 scale the other plots use, and D215 (2026-11-24)
+#: put its zero at the top and took the on-plot text off it; both are drawing
+#: changes, no measured value. Every other figure is still off-limits to an
+#: unrecorded edit.
 DECISION_MOVED_FIGURES = {
     "outputs/figures/fig_drill_coverage.csv",
     "outputs/figures/fig_drill_coverage.png",

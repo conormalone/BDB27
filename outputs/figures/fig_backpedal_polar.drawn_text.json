@@ -3,13 +3,9 @@
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
   "config_sha": "bed47a853f46c1f7",
   "figure": "fig_backpedal_polar",
-  "title": "The backpedal drill's turns, with zero straight down",
+  "title": "The backpedal drill's turns, with zero at the top",
   "strings": [
-    "clockwise side: n = 63, median 111.0\u00b0",
-    "counter-clockwise side: n = 70, median 243.7\u00b0",
-    "The backpedal drill's turns, with zero straight down",
-    "133 turns from 71 of 122 players tracked in this drill",
-    "each point is the exit direction of travel when the entry points straight down\npositive is clockwise; the Combine records no facing",
+    "The backpedal drill's turns, with zero at the top",
     "0",
     "45",
     "90",
@@ -21,11 +17,7 @@
     "360"
   ],
   "scan_strings": [
-    "The backpedal drill's turns, with zero straight down",
-    "clockwise side: n = 63, median 111.0\u00b0",
-    "counter-clockwise side: n = 70, median 243.7\u00b0",
-    "133 turns from 71 of 122 players tracked in this drill",
-    "each point is the exit direction of travel when the entry points straight down\npositive is clockwise; the Combine records no facing",
+    "The backpedal drill's turns, with zero at the top",
     "0",
     "45",
     "90",

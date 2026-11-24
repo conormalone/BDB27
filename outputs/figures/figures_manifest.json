@@ -6596,16 +6596,16 @@
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_backpedal_polar",
-      "title": "The backpedal drill's turns, with zero straight down",
-      "claim": "Every detected turn of BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION is placed on one protractor with zero straight down, read on the same 0-360 scale as the other plots: 133 turns from 71 players, the clockwise side has a median bearing of 111.0\u00b0 (n = 63) and the counter-clockwise side 243.7\u00b0 (n = 70) \u2014 not where a 45\u00b0 break would put them.",
+      "title": "The backpedal drill's turns, with zero at the top",
+      "claim": "Every detected turn of BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION is placed on one protractor with zero at the top and the scale running clockwise like a compass bearing, read on the same 0-360 scale as the other plots: 133 turns from 71 players, the clockwise side has a median bearing of 111.0\u00b0 (n = 63) and the counter-clockwise side 243.7\u00b0 (n = 70) \u2014 not where a 45\u00b0 break would put them.",
       "drill_name": "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION",
       "sources": [
         "outputs/turns/turns.parquet",
         "data/raw/combine_tracking.csv"
       ],
       "caveats": [
-        "No facing channel exists in the Combine: the tracking file has x, y, s, a, dis and dir and no `o`. The lobes are labelled by the rotation sense of travel, never as a player's left or right.",
-        "Zero pointing down is a drawing convention: the measured turn_angle is unchanged and is in the CSV beside the drawn bearing. Positive runs clockwise because heading increases clockwise from +y in this pipeline, so a bearing is the exit travel direction when the entry points straight down. The bearing is that direction read on a 0-360 scale (D214), so the signed turn_angle_deg of -116.3\u00b0 is drawn at bearing 243.7\u00b0; no measured value changes.",
+        "No facing channel exists in the Combine: the tracking file has x, y, s, a, dis and dir and no `o`. The lobes are reported by the rotation sense of travel, never as a player's left or right.",
+        "Zero at the top is a drawing convention: the measured turn_angle is unchanged and is in the CSV beside the drawn bearing. Positive runs clockwise because heading increases clockwise from +y in this pipeline, so a point at bearing \u03b8 is the exit travel direction when the entry points straight up, read as an ordinary compass bearing on a 0-360 scale (D214, D215). The signed turn_angle_deg of -116.3\u00b0 is drawn at bearing 243.7\u00b0; no measured value changes. The drawing carries no text but its title and its scale: the counts, the lobe medians and these caveats are in this entry and the CSV.",
         "The 45\u00b0 marks are protractor scale ticks like every other tick, not a statement about the drill's geometry; the drill's name is not a measurement.",
         "Angles are the detector's measured heading change, not the drill's nominal geometry; a turn below the 30\u00b0 floor is invisible to it, so this is what the detector saw.",
         "Combine provenance: the figure is stamped from the run mode; the Combine tracking file is the complete file in both modes."

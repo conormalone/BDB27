@@ -11911,14 +11911,24 @@ def backpedal_route_manifest_payload(table: pd.DataFrame, context: dict,
 #: diagnostic, not part of the claim's four figures, and is never quoted in the
 #: writeup.
 #:
-#: WHY ZERO AT THE BOTTOM, POSITIVE CLOCKWISE. `turn_angle` is the signed change
-#: in the direction of TRAVEL and heading is 0 = +y with increasing clockwise
-#: (`kinematics.heading_deg`). Because `exit heading = entry heading +
-#: turn_angle`, a point at bearing `turn_angle` from a downward zero IS the exit
-#: travel direction when the entry points straight down — so positive runs
-#: clockwise and nothing about the measured sign is flipped. This is a drawing
-#: convention: the CSV keeps the measured `turn_angle_deg` beside the drawn
-#: bearing, and no measured number changes.
+#: WHY ZERO AT THE TOP, POSITIVE CLOCKWISE (D215). The first cut put zero at the
+#: bottom (D213/D214); Conor, 2026-11-24 09:09: "reverse the X axis so zero is up
+#: and remove the text on the plot". The protractor is now a compass rose: zero
+#: at North, the scale running clockwise, so 90 sits East and 180 South. The
+#: sweep sense is unchanged — `turn_angle` is the signed change in the direction
+#: of TRAVEL and heading is 0 = +y with increasing clockwise
+#: (`kinematics.heading_deg`), so a positive turn still reads clockwise.
+#:
+#: A point at bearing `turn_angle` from an upward zero is the exit travel
+#: direction when the entry points straight up — the ordinary compass reading of
+#: that direction. This is a drawing convention: the CSV keeps the measured
+#: `turn_angle_deg` beside the drawn bearing, and no measured number changes.
+#:
+#: NO TEXT ON THE PLOT. Same message: "remove the text on the plot". The canvas
+#: carries the title and the 0-360 scale and nothing else; the counts, the two
+#: lobe medians and the honesty notes live in the manifest and the CSV, where
+#: they are still checked. `backpedal_polar_drawn_text` raises if any other
+#: string appears on the canvas.
 #:
 #: WHAT IT MAY NOT SAY. The Combine records no facing (no `o`; `dir` equals the
 #: travel heading to a median 0.44 deg on this drill, D212). So the two lobes are
@@ -11926,11 +11936,9 @@ def backpedal_route_manifest_payload(table: pd.DataFrame, context: dict,
 #: as a player's left or right. The 45 deg marks are protractor scale ticks, the
 #: same as every other tick; no 45 deg line is drawn as this drill's geometry.
 FIGURE_KEY_BACKPEDAL_POLAR = "fig_backpedal_polar"
-BACKPEDAL_POLAR_TITLE = "The backpedal drill's turns, with zero straight down"
-BACKPEDAL_POLAR_HONESTY = (
-    "each point is the exit direction of travel when the entry points "
-    "straight down\n"
-    "positive is clockwise; the Combine records no facing")
+#: The title stays drawn (Conor asked for the text OFF the plot, not for a
+#: title-less figure); its wording follows the drawing, zero up (D215).
+BACKPEDAL_POLAR_TITLE = "The backpedal drill's turns, with zero at the top"
 BACKPEDAL_POLAR_SIDE_LABELS = {
     "positive": "clockwise side",
     "negative": "counter-clockwise side",
@@ -11946,7 +11954,6 @@ BACKPEDAL_POLAR_DOT_SIZE = 26.0
 BACKPEDAL_POLAR_DOT_ALPHA = 0.55
 BACKPEDAL_POLAR_TITLE_FONTSIZE = 16.0
 BACKPEDAL_POLAR_AXIS_FONTSIZE = 10.5
-BACKPEDAL_POLAR_ANNOT_FONTSIZE = 9.5
 BACKPEDAL_POLAR_MEDIAN_LW = 2.4
 BACKPEDAL_POLAR_ARC_LW = 2.6
 BACKPEDAL_POLAR_ARC_RADIUS = 1.16
@@ -11954,7 +11961,7 @@ BACKPEDAL_POLAR_MEDIAN_TOP = 0.80
 BACKPEDAL_POLAR_RING_RADIUS = 1.0
 BACKPEDAL_POLAR_RMAX = 1.34
 BACKPEDAL_POLAR_TICK_STEP = 45
-#: "0" and "360" sit on the same bottom spoke; each is nudged outwards so the
+#: "0" and "360" sit on the same top spoke; each is nudged outwards so the
 #: full-circle labels print side by side instead of on top of each other.
 BACKPEDAL_POLAR_WRAP_LABEL_NUDGE_PT = 9.0
 
@@ -11989,21 +11996,12 @@ def _backpedal_polar_lobe_stats(side: str, angles: np.ndarray) -> dict:
     }
 
 
-def _backpedal_polar_lobe_label(side: str, lobe: dict) -> str:
-    """The drawn label for one lobe, decimals taken from the data."""
-    name = BACKPEDAL_POLAR_SIDE_LABELS[side]
-    if lobe["n"] == 0:
-        return f"{name}: no turns"
-    return (f"{name}: n = {lobe['n']:,}, "
-            f"median {lobe['median_deg']:.1f}\u00b0")
-
-
 def _backpedal_polar_separate_wrap_labels(fig, ax) -> None:
     """Print "0" and "360" side by side on the one spoke they share.
 
     Matplotlib draws both labels at the same point, where they overprint. A
     small outward shift in points keeps them legible without moving the tick
-    itself: the scale still starts and ends at the bottom.
+    itself: the scale still starts and ends at the top (D215).
     """
     labels = list(ax.get_xticklabels())
     if len(labels) < 2:
@@ -12141,17 +12139,21 @@ def write_backpedal_polar_csv(table: pd.DataFrame, path, cfg: common.Config,
 
 def plot_backpedal_polar(table: pd.DataFrame, context: dict,
                          cfg: common.Config):
-    """One polar axes: one dot per turn, zero at the bottom, clockwise positive.
+    """One polar axes: one dot per turn, zero at the top, clockwise positive.
 
     The protractor is labelled on the full 0-360 scale every other plot in the
-    set uses (D214): 0 at the bottom, 45, ... 315 clockwise around, and 360
-    printed beside the 0 it coincides with.
+    set uses (D214), read like a compass rose (D215): 0 at the top, 45, ... 315
+    clockwise around, and 360 printed beside the 0 it coincides with.
+
+    The canvas carries the title and the scale and nothing else (D215, Conor
+    2026-11-24: "remove the text on the plot"): no lobe labels, no count line, no
+    honesty note. Those numbers are still in the manifest and the CSV.
     """
     fig = plt.figure(figsize=BACKPEDAL_POLAR_FIGSIZE)
     ax = fig.add_subplot(1, 1, 1, projection="polar")
 
-    # zero at South, positive clockwise: the drawn map of the signs
-    ax.set_theta_zero_location("S")
+    # zero at North, positive clockwise: a compass bearing scale
+    ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
     tick_degrees = list(range(0, 360 + BACKPEDAL_POLAR_TICK_STEP,
                               BACKPEDAL_POLAR_TICK_STEP))
@@ -12175,9 +12177,7 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
                    edgecolors="none", zorder=3)
 
     # each lobe's median spoke and its middle half, drawn only where it exists.
-    # The text goes in the empty lower half of the circle (no turn is drawn
-    # below about 48 deg), so it cannot sit on the dots or the rim labels.
-    label_y = {"positive": 0.300, "negative": 0.245}
+    # No label: the drawn text is the title and the scale only (D215).
     for side in ("positive", "negative"):
         lobe = context["lobes"][side]
         if lobe["n"] == 0 or not np.isfinite(lobe["median_deg"]):
@@ -12189,22 +12189,10 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
         ax.plot(np.radians(span),
                 np.full_like(span, BACKPEDAL_POLAR_ARC_RADIUS),
                 color=ALERT, lw=BACKPEDAL_POLAR_ARC_LW, alpha=0.75, zorder=4)
-        ax.text(0.5, label_y[side], _backpedal_polar_lobe_label(side, lobe),
-                transform=ax.transAxes,
-                fontsize=BACKPEDAL_POLAR_ANNOT_FONTSIZE, color=ALERT,
-                ha="center", va="center", zorder=5)
 
     ax.text(0.02, 1.06, BACKPEDAL_POLAR_TITLE, transform=ax.transAxes,
             fontsize=BACKPEDAL_POLAR_TITLE_FONTSIZE, ha="left", va="bottom",
             color=BACKPEDAL_INK)
-    ax.text(0.5, 0.175,
-            f"{context['n_turns']:,} turns from {context['n_players']:,} of "
-            f"{context['n_players_tracked']:,} players tracked in this drill",
-            transform=ax.transAxes, fontsize=BACKPEDAL_POLAR_ANNOT_FONTSIZE,
-            color=BACKPEDAL_INK, ha="center", va="center")
-    ax.text(0.5, -0.048, BACKPEDAL_POLAR_HONESTY, transform=ax.transAxes,
-            fontsize=BACKPEDAL_POLAR_ANNOT_FONTSIZE - 0.5,
-            color=BACKPEDAL_AXIS_GREY, ha="center", va="top")
     ax.tick_params(axis="x", labelsize=BACKPEDAL_POLAR_AXIS_FONTSIZE,
                    colors=BACKPEDAL_AXIS_GREY, pad=1.0)
     # 0 and 360 are the same spoke; nudge the two labels apart so both read.
@@ -12230,11 +12218,25 @@ def render_backpedal_polar(fig, cfg: common.Config, out_png) -> Path:
 
 
 def backpedal_polar_drawn_text(fig, cfg: common.Config, mode: str) -> dict:
-    """Every string the drawing puts on canvas, read back off the figure."""
+    """Every string the drawing puts on canvas, read back off the figure.
+
+    The drawing carries its title and its 0-360 scale, and nothing else (D215,
+    Conor 2026-11-24: "remove the text on the plot"). A lobe label, a count line
+    or an honesty note that comes back raises here instead of being accepted
+    quietly.
+    """
     from bdb27.figure_text_scan import BANNED_TOKENS, banned_hits, figure_texts
 
     strings = figure_texts(fig)
     hits = banned_hits(strings)
+    allowed = [BACKPEDAL_POLAR_TITLE] + [
+        str(degrees) for degrees in range(0, 360 + BACKPEDAL_POLAR_TICK_STEP,
+                                          BACKPEDAL_POLAR_TICK_STEP)]
+    unexpected = [text for text in strings if text not in allowed]
+    if unexpected:
+        raise ValueError(
+            f"{STAGE}: figure 21 draws text the drawing does not carry: "
+            f"{unexpected} — the canvas is the title and the 0-360 scale only")
     if BACKPEDAL_POLAR_TITLE not in strings:
         raise ValueError(f"{STAGE}: figure 21 does not draw its own title")
     extra = [text.get_text() for text in fig.texts
@@ -12284,24 +12286,27 @@ def backpedal_polar_manifest_payload(table: pd.DataFrame, context: dict,
         "title": BACKPEDAL_POLAR_TITLE,
         "claim": (
             f"Every detected turn of {context['drill_name']} is placed on one "
-            f"protractor with zero straight down, read on the same 0-360 scale "
-            f"as the other plots: {context['n_turns']:,} turns from "
+            f"protractor with zero at the top and the scale running clockwise "
+            f"like a compass bearing, read on the same 0-360 scale as the other "
+            f"plots: {context['n_turns']:,} turns from "
             f"{context['n_players']:,} players, {lobe_text} — not where a "
             "45\u00b0 break would put them."),
         "drill_name": context["drill_name"],
         "sources": ["outputs/turns/turns.parquet", raw_rel],
         "caveats": [
             ("No facing channel exists in the Combine: the tracking file has "
-             "x, y, s, a, dis and dir and no `o`. The lobes are labelled by the "
+             "x, y, s, a, dis and dir and no `o`. The lobes are reported by the "
              "rotation sense of travel, never as a player's left or right."),
-            ("Zero pointing down is a drawing convention: the measured "
-             "turn_angle is unchanged and is in the CSV beside the drawn "
-             "bearing. Positive runs clockwise because heading increases "
-             "clockwise from +y in this pipeline, so a bearing is the exit "
-             "travel direction when the entry points straight down. The "
-             "bearing is that direction read on a 0-360 scale (D214), so the "
-             "signed turn_angle_deg of -116.3\u00b0 is drawn at bearing "
-             "243.7\u00b0; no measured value changes."),
+            ("Zero at the top is a drawing convention: the measured turn_angle "
+             "is unchanged and is in the CSV beside the drawn bearing. Positive "
+             "runs clockwise because heading increases clockwise from +y in "
+             "this pipeline, so a point at bearing \u03b8 is the exit travel "
+             "direction when the entry points straight up, read as an ordinary "
+             "compass bearing on a 0-360 scale (D214, D215). The signed "
+             "turn_angle_deg of -116.3\u00b0 is drawn at bearing 243.7\u00b0; "
+             "no measured value changes. The drawing carries no text but its "
+             "title and its scale: the counts, the lobe medians and these "
+             "caveats are in this entry and the CSV."),
             ("The 45\u00b0 marks are protractor scale ticks like every other "
              "tick, not a statement about the drill's geometry; the drill's "
              "name is not a measurement."),

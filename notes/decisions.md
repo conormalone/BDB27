@@ -9513,3 +9513,81 @@ tests, four updated), `tests/test_fallback_validation.py` (the guard rail's
 **Deliberately not done.** No other figure re-rendered; no new `config.yaml` key; no change to any
 measured value, count, population, band table, claim or `TASK.md`; no facing/left-right inference;
 the figure is still a diagnostic and is not quoted in the writeup.
+
+## D215 — Figure 21: zero at the top, and the text off the plot · 2026-11-24
+
+**The request.** Conor, 2026-11-24 09:09, verbatim: *"Could you reverse the X axis so zero is up and
+remove the text on the plot."* Two changes to figure 21 and nothing else.
+
+**The zero.** The protractor was a dial read clockwise from straight down (D213/D214). It is now read
+like a compass rose: `set_theta_zero_location("N")` with `set_theta_direction(-1)` unchanged, so 0 is
+at the top, 90 East, 180 South, 270 West, and the tick labels still run 0, 45, … 315, 360. Because
+the zero moved and the sweep did not, every number changes sides: 90 used to be drawn West and is now
+drawn East. That is what "reverse the X axis so zero is up" was taken to mean; if Conor meant the
+numbers to keep their left-right placement and only rotate the dial, that is `set_theta_direction(1)`
+— one line, no data change. Flagged to him, not silently chosen a second time. "0" and "360" now
+share the **top** spoke, and the same point-nudge keeps the two labels from overprinting there; a
+test asserts their drawn bounding boxes do not overlap.
+
+**The text.** The canvas now carries the title and the 0–360 scale and nothing else. Removed: the two
+red lobe labels (`clockwise side: n = 63, median 111.0°`, `counter-clockwise side: n = 70, median
+243.7°`), the count line (`133 turns from 71 of 122 players tracked in this drill`), and the
+two-line honesty note. Kept: the title and the nine tick labels. The title stays but its wording
+follows the drawing — `The backpedal drill's turns, with zero at the top`, because "zero straight
+down" would now be false on the canvas; if Conor wanted the title gone too, that is a one-line
+deletion and he can say so.
+
+**Where those numbers still are.** Nothing was dropped from the record. The counts and the two lobe
+medians stay in the figure's manifest `claim`, its `population` block and the CSV; the no-facing and
+drawing-convention statements stay in the manifest `caveats`, extended with one sentence saying the
+drawing carries no text but its title and its scale. `backpedal_polar_drawn_text` is not weakened: it
+now raises if any string other than the title and the nine tick labels appears on the canvas, as well
+as the existing title-present and no-figure-level-text checks. The two retired constants
+(`BACKPEDAL_POLAR_HONESTY`, `BACKPEDAL_POLAR_ANNOT_FONTSIZE`) and the retired lobe-label helper went
+with the text.
+
+**The data did not move.** `fig_backpedal_polar.csv` is **byte-identical** to D214's
+(sha256 `f186ebbc…69a6b4a0f046bdb472e95cd2`, 133 rows, 15 columns), so `config_sha` did not move
+either: the CSV is written from the same table, and only the drawing changed. `bearing_deg`,
+`turn_angle_deg`, `abs_turn_angle_deg`, `side`, `bearing_wrapped`, `radius_drawn` and every count are
+the same numbers. Clockwise lobe 111.0° (n = 63), counter-clockwise 243.7° (n = 70), 133 turns from
+71 of 122 players, DB 133 of 133 — unchanged.
+
+**Tests.** Red first on the pre-change tree (six failures, for the reasons they name), then green:
+`test_zero_is_at_the_top_and_positive_runs_clockwise` (theta offset +90°, theta 0 above the centre,
++90 to the right of it, in pixels — it read 1.5π / below / left before),
+`test_protractor_is_labelled_on_a_full_zero_to_360_circle` (the nine labels and the 0/360
+non-overprint, now at the top), `test_drawn_text_is_only_the_title_and_the_scale` (the canvas string
+list, exactly), `test_the_lobe_labels_count_line_and_honesty_line_stay_off_the_plot` (the regression
+Conor asked for: the axes carries one text object, the title, and none of the five removed strings
+comes back), and the manifest/drawn-text artefact checks. `test_lobe_medians_are_stated_as_bearings`
+moved its assertion from the drawn label to the manifest claim, since there is no drawn label.
+Full suite: **749 collected, 748 passed, 1 skipped, 0 failed** (was 748/747/1 at D214); the one
+skip is the pre-existing `test_reliability_pairs.py::test_full_run_pins_the_committed_numbers`, skipped
+because the FULL-run parquet is not on this machine.
+
+**Artefacts.** `outputs/figures/fig_backpedal_polar.png` and `.drawn_text.json` regenerated through
+the same functions stage 06 calls, in `--mode sample`, into the committed directory (the pre-change
+render reproduced D214's PNG byte-for-byte first, which is what makes the targeted regeneration safe);
+`figures_manifest.json`'s one figure-21 entry replaced, its top-level `MIXED PROVENANCE` header left
+exactly as committed. The CSV was rewritten by the same run and came out byte-identical, which is the
+invariance proof. Drawn strings now, in order: `The backpedal drill's turns, with zero at the top`,
+`0`, `45`, `90`, `135`, `180`, `225`, `270`, `315`, `360`.
+
+**No other figure re-rendered.** Only figure 21's files changed under `outputs/figures/`; every other
+PNG is untouched in the working tree and in the commit (figures 1–19 are a MIXED/FULL-provenance set
+from another machine, and re-rendering them here in sample mode would change their numbers, D213).
+
+**Files touched.** `src/bdb27/figures.py` (theta zero, the three removed `ax.text` calls and their
+constants, the strict drawn-text contract, the manifest claim and two caveats),
+`src/06_figures.py` (the wiring comment), `tests/test_backpedal_polar_figure.py` (six updated, one
+new), `tests/test_fallback_validation.py` (the guard rail's comment; figure 21's three files were
+already on the D212/D214 `DECISION_MOVED_FIGURES` list),
+`notes/backpedal-polar-figure-spec.md` (a revision section),
+`outputs/figures/fig_backpedal_polar.{png,drawn_text.json}`,
+`outputs/figures/figures_manifest.json`, and this entry.
+
+**Deliberately not done.** No other figure re-rendered; no new `config.yaml` key; no change to any
+measured value, count, population, claim or `TASK.md`; no facing/left-right inference; no change to
+the median spokes or the IQR arcs (markers, not text); the title is kept, not deleted; the figure is
+still a diagnostic and is not quoted in the writeup.

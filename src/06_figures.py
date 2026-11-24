@@ -545,9 +545,10 @@ def main(argv=None) -> int:
             bp_table, bp_context, cfg, args.mode)
         _write_manifest(bp_payload, manifest_path, args.mode, cfg)
 
-        # ---- figure 21: the same turns on one protractor, zero straight down
-        # Conor, 2026-11-23 19:41. A diagnostic; it reuses figure 20's table, so
-        # no second tracking read and no second reconstruction.
+        # ---- figure 21: the same turns on one protractor, zero at the top
+        # Conor, 2026-11-23 19:41; zero moved to the top and the on-plot text
+        # removed at D215 (2026-11-24). A diagnostic; it reuses figure 20's
+        # table, so no second tracking read and no second reconstruction.
         bpp_table, bpp_context = figures.backpedal_polar_table(
             bp_table, bp_context,
             position_groups=figures.backpedal_position_counts(turns))

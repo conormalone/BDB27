@@ -1,24 +1,29 @@
-"""Figure 21 — "every backpedal turn on one protractor, zero down".
+"""Figure 21 — "every backpedal turn on one protractor, zero up".
 
 Conor, 2026-11-23 19:41: "Ok maybe draw a circle where the line down is zero and
-then plot all the angles in the backpedal 45 on it" (confirmed: "That ok").
+then plot all the angles in the backpedal 45 on it" (confirmed: "That ok"),
+revised 2026-11-24 09:09: "Could you reverse the X axis so zero is up and remove
+the text on the plot" (D215).
 
 What is tested here, and why:
 
 * the population: one point per valid turn of the drill, the count and the
   players recomputed from ``turns.parquet`` rather than trusted from the figure;
-* the geometry: zero at the bottom and positive running clockwise are properties
-  of the DRAWN AXES, checked by transforming probe points to display pixels —
-  not by trusting prose. A positive turn angle is the clockwise rotation of the
-  travel direction (heading 0 = +y, increasing clockwise), so a point's bearing
-  from the down line is the exit travel direction when the entry points down;
+* the geometry: zero at the top and positive running clockwise are properties of
+  the DRAWN AXES, checked by transforming probe points to display pixels — not by
+  trusting prose. A positive turn angle is the clockwise rotation of the travel
+  direction (heading 0 = +y, increasing clockwise), so a point's bearing from the
+  top line is the exit travel direction when the entry points up, read as an
+  ordinary compass bearing;
 * the scale: one full circle labelled 0, 45, ... 360 — not the mirrored half
   scale the first cut drew (Conor, 2026-11-23 22:06: "The other plots have it on
   a 360 scale so please do the same", D214);
 * the lobes: counts and medians recomputed from the committed turn table, with
   each median a bearing on that 0-360 scale (243.7°, not -116.3°);
-* the drawn text: the title (no digits), the count line, both lobe labels, the
-  honesty line — no caption, no subtitle, no legend, no banned token;
+* the drawn text: the title (no digits) and the 0-360 scale, and NOTHING else —
+  the lobe labels, the count line and the honesty line Conor asked off the plot
+  must stay off it (D215), with no caption, no subtitle, no legend, no banned
+  token;
 * no gate: a two-row input still renders, and a 200° angle is drawn at its
   wrapped bearing and flagged;
 * the artefacts: CSV schema, manifest entry, byte-identical renders.
@@ -162,8 +167,8 @@ def test_side_partition_and_bearing_mapping(polar, valid_turns):
 
 
 # ------------------------------------------------------ 2. the drawn geometry
-def test_zero_is_at_the_bottom_and_positive_runs_clockwise(polar, cfg):
-    """Pinned to the drawn axes, in pixels, not to prose."""
+def test_zero_is_at_the_top_and_positive_runs_clockwise(polar, cfg):
+    """Pinned to the drawn axes, in pixels, not to prose (D215)."""
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
     try:
@@ -171,16 +176,17 @@ def test_zero_is_at_the_bottom_and_positive_runs_clockwise(polar, cfg):
         ax = fig.axes[0]
         assert ax.name == "polar"
         fig.canvas.draw()
-        # zero at South and clockwise: the two settings that make the map
+        # zero at North and clockwise: the two settings that make a compass rose
         assert ax.get_theta_direction() == -1
-        assert ax.get_theta_offset() == pytest.approx(1.5 * np.pi)
+        # matplotlib measures theta from East, so North is +90 deg of offset
+        assert ax.get_theta_offset() == pytest.approx(0.5 * np.pi)
         centre = ax.transData.transform((0.0, 0.0))
-        down = ax.transData.transform((0.0, 1.0))
+        top = ax.transData.transform((0.0, 1.0))
         right_turn = ax.transData.transform((0.5 * np.pi, 1.0))
-        assert abs(down[0] - centre[0]) < 1e-6
-        assert down[1] < centre[1], "theta 0 must be drawn below the centre"
-        assert right_turn[0] < centre[0], (
-            "a positive angle must be drawn clockwise, i.e. to the left")
+        assert abs(top[0] - centre[0]) < 1e-6
+        assert top[1] > centre[1], "theta 0 must be drawn above the centre"
+        assert right_turn[0] > centre[0], (
+            "a positive angle must be drawn clockwise, i.e. to the right")
         assert abs(right_turn[1] - centre[1]) < 1e-6
         # radial axis carries no variable: no radial tick labels drawn
         assert [t.get_text() for t in ax.get_yticklabels() if t.get_text()] == []
@@ -195,7 +201,7 @@ def test_protractor_is_labelled_on_a_full_zero_to_360_circle(polar, cfg):
     The first cut labelled the left half 0..180 and mirrored it back down the
     right (0, 45, 90, 135, 180, 135, 90, 45). Every other plot in the set reads
     on 0-360, so this one does too. Checked on the DRAWN tick labels, and the
-    two labels that share the bottom spoke (0 and 360) must not overprint.
+    two labels that share the top spoke (0 and 360) must not overprint.
     """
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
@@ -209,11 +215,14 @@ def test_protractor_is_labelled_on_a_full_zero_to_360_circle(polar, cfg):
         assert len(set(labels)) == len(labels) == 9
         ticks = np.degrees(np.asarray(ax.get_xticks(), dtype=float))
         assert np.allclose(ticks, np.arange(0.0, 361.0, 45.0))
+        # and the scale now starts at the top (D215)
+        centre = ax.transData.transform((0.0, 0.0))
+        assert ax.transData.transform((0.0, 1.0))[1] > centre[1]
         renderer = fig.canvas.get_renderer()
         zero = ax.get_xticklabels()[0].get_window_extent(renderer)
         full = ax.get_xticklabels()[-1].get_window_extent(renderer)
         assert not zero.overlaps(full), (
-            "0 and 360 are printed on top of each other at the bottom spoke")
+            "0 and 360 are printed on top of each other at the top spoke")
     finally:
         plt.close(fig)
 
@@ -232,20 +241,26 @@ def test_bearings_are_a_zero_to_360_reading_and_turns_stay_signed(
     assert table["bearing_deg"].lt(360.0).all()
 
 
-def test_lobe_medians_are_stated_as_bearings(polar, drawn, valid_turns):
-    """Counter-clockwise -116.3 deg is drawn and reported as 243.7 deg."""
-    _, context = polar
+def test_lobe_medians_are_stated_as_bearings(polar, cfg, valid_turns):
+    """Counter-clockwise -116.3 deg is reported as 243.7 deg.
+
+    The median is a bearing on the drawn 0-360 scale (D214). It used to be
+    printed inside the circle; since D215 the plot carries no text, so the
+    manifest claim is where the reading has to hold.
+    """
+    table, context = polar
     negative = valid_turns.loc[valid_turns["turn_angle"] < 0, "turn_angle"]
     bearing = float(np.median(np.mod(negative.to_numpy(float), 360.0)))
     assert context["lobes"]["negative"]["median_deg"] == pytest.approx(
         bearing, abs=1e-6)
     assert context["lobes"]["negative"]["n"] == len(negative)
-    label = figures._backpedal_polar_lobe_label(
-        "negative", context["lobes"]["negative"])
-    assert "243.7" in label, label
-    assert "-116" not in label, label
-    assert label in drawn["strings"], label
-    assert f"n = {len(negative):,}" in label, label
+    claim = figures.backpedal_polar_manifest_payload(
+        table, context, cfg, "sample")["claim"]
+    assert "243.7" in claim, claim
+    assert "111.0" in claim, claim
+    assert "-116" not in claim, claim
+    assert f"n = {len(negative):,}" in claim, claim
+    assert "0-360" in claim, claim
 
 
 def test_every_turn_is_drawn_at_its_bearing(polar, cfg):
@@ -288,27 +303,43 @@ def test_lobe_stats_are_recomputed_from_the_turn_table(polar, valid_turns):
 
 
 # ------------------------------------------------------------- 4. drawn text
-def test_drawn_text_is_the_title_annotations_and_honesty_line(drawn, polar):
-    table, context = polar
-    strings = drawn["strings"]
-    assert figures.BACKPEDAL_POLAR_TITLE in strings
+def test_drawn_text_is_only_the_title_and_the_scale(drawn):
+    """D215: the canvas carries the title and the 0-360 scale, nothing else."""
+    expected = ([figures.BACKPEDAL_POLAR_TITLE]
+                + [str(tick) for tick in range(0, 361, 45)])
+    assert drawn["strings"] == expected, drawn["strings"]
+    assert drawn["scan_strings"] == expected, drawn["scan_strings"]
     assert not any(ch.isdigit() for ch in figures.BACKPEDAL_POLAR_TITLE)
     assert drawn["banned_hits"] == []
     assert drawn["title"] == figures.BACKPEDAL_POLAR_TITLE
-    assert figures.BACKPEDAL_POLAR_HONESTY in strings
-    count_line = (f"{context['n_turns']:,} turns from "
-                  f"{context['n_players']:,} of "
-                  f"{context['n_players_tracked']:,} players tracked in this "
-                  "drill")
-    assert count_line in strings, count_line
-    for side in ("positive", "negative"):
-        label = figures._backpedal_polar_lobe_label(side, context["lobes"][side])
-        assert label in strings, label
-    # the protractor is labelled on scale only, and on the full circle
-    for tick in range(0, 361, 45):
-        assert str(tick) in strings, tick
-    assert "left" not in " ".join(strings).lower()
-    assert "right" not in " ".join(strings).lower()
+    assert "left" not in " ".join(expected).lower()
+    assert "right" not in " ".join(expected).lower()
+
+
+def test_the_lobe_labels_count_line_and_honesty_line_stay_off_the_plot(
+        polar, cfg):
+    """The text Conor asked off the plot does not come back (D215).
+
+    On canvas until 2026-11-24: "clockwise side: n = 63, median 111.0°",
+    "counter-clockwise side: n = 70, median 243.7°", "133 turns from 71 of 122
+    players tracked in this drill", and the two-line honesty note. If any of
+    them returns, this fails.
+    """
+    table, context = polar
+    fig = figures.plot_backpedal_polar(table, context, cfg)
+    try:
+        ax = fig.axes[0]
+        assert [t.get_text() for t in ax.texts] == [
+            figures.BACKPEDAL_POLAR_TITLE], "the axes draws more than its title"
+        assert [t.get_text() for t in fig.texts if t.get_text()] == []
+        drawn = " | ".join(t.get_text() for t in ax.texts)
+        for gone in ("clockwise side", "counter-clockwise side", "median ",
+                     "turns from", "players tracked",
+                     "exit direction of travel", "records no facing",
+                     "each point is"):
+            assert gone not in drawn, gone
+    finally:
+        plt.close(fig)
 
 
 def test_no_caption_and_no_legend(polar, cfg):
@@ -408,6 +439,6 @@ def test_committed_drawn_text_dump_matches_the_spec():
     assert payload["figure"] == FIGURE
     assert payload["title"] == figures.BACKPEDAL_POLAR_TITLE
     assert payload["banned_hits"] == []
-    assert payload["strings"].count(figures.BACKPEDAL_POLAR_TITLE) == 1
-    assert figures.BACKPEDAL_POLAR_HONESTY in payload["strings"]
+    assert payload["strings"] == ([figures.BACKPEDAL_POLAR_TITLE]
+                                  + [str(tick) for tick in range(0, 361, 45)])
     assert payload["scan_strings"][0] == figures.BACKPEDAL_POLAR_TITLE
