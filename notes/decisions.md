@@ -9793,3 +9793,66 @@ and not on this machine), unrelated to this change.
 **Deliberately not done.** No change to any measured value, the CSV, the tick scale, the title, the
 manifest payload, `TASK.md`, or any other figure. The marker's rotation is exactly the 270° → 0°
 quarter turn Conor specified, and nothing else about the image was altered.
+
+## D219 — Figure 21: the marker in the player's own colours · 2026-11-24
+
+**Amends D218.** Conor, 2026-11-24 15:29, verbatim: *"Ok, try it again, use the original colours of
+the player this time"*. Read as: the centre marker keeps the image he supplied, but paints it in
+that image's own colours instead of D218's neutral-grey ramp. Nothing else about figure 21 moves:
+same image, same background masking, same −90° rotation (270° → 0°), same size, aspect, zorder,
+clearance, strings and CSV.
+
+**What was removed.** `BACKPEDAL_POLAR_MARKER_INK_DARK` and `BACKPEDAL_POLAR_MARKER_INK_LIGHT` and
+the luminance → grey ramp they fed; the `luminance_range` field in the sidecar; and the 0.95 alpha
+scaling. There is no colour transform left in the marker path: no desaturation, no tint, no tone
+curve.
+
+**How colour and alpha now flow.** The background mask is D218's, unchanged: red dominance
+`R − (G+B)/2`, threshold = 6 px border-ring p99 (−0.01176) + 0.05 = 0.03824, then 5 × 5 close, hole
+fill, 3 × 3 open → a 29,261 px silhouette (crop 321 × 262, bbox x 146–467, y 109–371 including the
+4 px pad). Inside that silhouette each pixel keeps its **source RGB**; the alpha channel is the mask,
+lightly Gaussian-antialiased at the edge and at full strength inside it
+(`BACKPEDAL_POLAR_MARKER_ALPHA = 1.0`). RGB outside the silhouette is extended from the nearest
+subject pixel *before* resampling so the edge blends jersey into the canvas rather than pulling the
+light grey background into it — those pixels are fully transparent and never painted. The same −90°
+bicubic rotation follows, with the RGB result clamped to [0, 1] so ringing invents no colour.
+
+**One invariant moved with the request, deliberately.** D218's test required zero reddish pixels on
+the whole PNG. That was right only while the subject was forced to neutral ink; the image now
+legitimately carries red. The test is replaced, not weakened: it renders the PNG, maps the marker's
+drawn extent through the same tight crop the save used into the PNG's pixel grid, and counts
+reddish pixels (`R > 0.35` and `R − max(G, B) > 0.10`) inside versus outside that footprint. On the
+committed artefact: **24,381 inside, 0 outside**. The inside count is asserted > 0 as well, so the
+test fails if the jersey's colour disappears again.
+
+**"Drop all the red" still governs the plot furniture.** The two lobe median spokes, the middle-half
+IQR arcs and the provenance stamp remain neutral ink (`#555555`, `#6b6b6b`, `#555555`). D218's
+request was about the plot elements Conor controls; D219's is about his image. The two are not in
+contradiction, and `test_the_lobes_keep_their_geometry_in_neutral_ink` still pins them.
+
+**Sidecar.** `outputs/figures/fig_backpedal_polar.drawn_text.json`'s `"marker"` block now carries
+`"colour_mode": "original"`; `alpha_peak` is 1.0 (was 0.95); `luminance_range` is gone. `sha256`
+(`0d8ea506…`), `rotation_deg` (−90.0), the border p99, threshold, `subject_pixels`, crop bbox,
+pixels, half-extents and corner reach are unchanged. On-canvas strings are exactly `Every turn in
+the backpedal`, `0`, `45`, `90`, `135`, `180`, `225`, `270`, `315` — the marker draws no text.
+
+**The data did not move.** `outputs/figures/fig_backpedal_polar.csv` is **byte-identical**
+(sha256 `f186ebbc9d928c0f298d8be17548bbac3ac6418b69a6b4a0f046bdb472e95cd2`, 133 rows, 15 columns;
+clockwise lobe 111.0° n = 63, counter-clockwise 243.7° n = 70). The manifest entry is identical to
+the committed one (the marker block lives in the drawn-text sidecar, not the manifest), so
+`figures_manifest.json` is untouched; every other figure's PNG and CSV is byte-identical (sha256
+check across the committed artefact set).
+
+**Pixel evidence.** New PNG sha256 `7eed0cbda569d5914b74b4f27a36e2ba9bec58d2010adeb329492b646af8607b`;
+two independent regenerations are byte-identical to it. Canvas 1096 × 1134, unchanged. **29,955 of
+1,242,864 pixels differ** from D218's PNG, all inside rows 438–747 × cols 426–677 — the marker's
+footprint. No tick label, title, ring, dot, spoke or arc pixel moved.
+
+**How it reads.** The centre is now a red-jersey player rather than a grey silhouette, so the
+marker is the most saturated thing on an otherwise grey-and-blue canvas; it sits below the dots and
+claims nothing measured, so the blue turns still read first, but the eye does land on him.
+
+**Tests.** `tests/test_backpedal_polar_figure.py`: **25/25 green**. Full suite: **756 collected, 755 passed, 1 skipped, 0 failed**; the skip is the pre-existing local-artefact skip `tests/test_turn_context.py:184` (the per-turn parquet is gitignored and not on this machine), unrelated to this change.
+
+**Deliberately not done.** No change to the image file, the mask, the rotation, the placement, the
+CSV, any measured value, the strings, the manifest payload, `TASK.md`, or any other figure.

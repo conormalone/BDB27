@@ -300,3 +300,25 @@ reddish pixels (R > 0.35 and R − max(G, B) > 0.10): **0** remain, against **4,
 **Unchanged.** On-canvas strings are exactly `Every turn in the backpedal`, `0`, `45`, `90`, `135`,
 `180`, `225`, `270`, `315`. The CSV is byte-identical (`f186ebbc…`, lobes 111.0° n = 63, 243.7°
 n = 70); no other figure's PNG or CSV changed; two renders are byte-identical (`775e1988…`).
+
+## Revision — the marker in the player's own colours (D219, 2026-11-24)
+
+Conor: *"Ok, try it again, use the original colours of the player this time"*. Amends D218 in one
+respect: the masked subject is painted from its **source RGB** instead of a neutral-grey luminance
+ramp.
+
+- Removed: `BACKPEDAL_POLAR_MARKER_INK_DARK/_LIGHT` and the ramp they fed; the sidecar's
+  `luminance_range`; the 0.95 alpha multiplier (`BACKPEDAL_POLAR_MARKER_ALPHA = 1.0`).
+- Unchanged: the border-estimated background threshold, close/fill/open morphology, crop,
+  `BACKPEDAL_POLAR_MARKER_ROTATION_DEG = -90.0`, half-height 0.46, aspect, zorder 2.5, clip and the
+  measured clearance against `min(radius_drawn)`.
+- Alpha is still the mask (Gaussian-antialiased at the edge); RGB is carried through, with the
+  transparent surround filled from the nearest subject pixel so resampling does not pull grey into
+  the silhouette edge. The sidecar's `"marker"` block gains `"colour_mode": "original"`.
+- The neutral-ink lobe medians, IQR arcs and stamp stay: "drop all the red" (D218) governs the plot
+  furniture, not Conor's image.
+- The D218 "zero reddish pixels on the PNG" test is replaced by "red only inside the marker's drawn
+  footprint": **24,381 inside, 0 outside** on the committed artefact, with the inside count
+  asserted positive.
+- CSV byte-identical (`f186ebbc…`); manifest entry identical; strings unchanged; no other figure's
+  PNG or CSV changed; two renders byte-identical (`7eed0cbd…`).

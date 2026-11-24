@@ -34,6 +34,7 @@
   ],
   "banned_hits": [],
   "marker": {
+    "colour_mode": "original",
     "border_red_p99": -0.0117647058823529,
     "red_threshold": 0.0382352941176471,
     "subject_pixels": 29261,
@@ -43,11 +44,7 @@
       467,
       371
     ],
-    "luminance_range": [
-      0.14529411764705882,
-      0.869312156862745
-    ],
-    "alpha_peak": 0.95,
+    "alpha_peak": 1.0,
     "path": "assets/fig_backpedal_polar_marker.jpg",
     "sha256": "0d8ea50689259d554bb72648f96a20fb2062d358f2ec89f297b131f91162e38d",
     "pixels": [

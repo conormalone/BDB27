@@ -28,13 +28,17 @@ What is tested here, and why:
   token;
 * the overhead player at the centre (D217), replaced by the image Conor
   supplied (D218, 2026-11-24 13:35: "Use this image instead of whatever that is
-  and drop all the red"): the committed image, its light grey background masked
-  from a threshold estimated off the border, the subject desaturated to neutral
-  ink, centred on the origin, aspect preserved, drawn under the turns and clear
-  of the nearest dot by the real ``min(radius_drawn)``, with no text of its own;
-* no red anywhere in the figure: the lobe medians, the middle-half arcs and the
+  and drop all the red") and drawn in his own colours (D219, 2026-11-24 15:29:
+  "Ok, try it again, use the original colours of the player this time"): the
+  committed image, its light grey background masked from a threshold estimated
+  off the border, the subject's source RGB carried through the mask, centred on
+  the origin, aspect preserved, drawn under the turns and clear of the nearest
+  dot by the real ``min(radius_drawn)``, with no text of its own;
+* red is confined to that marker: the lobe medians, the middle-half arcs and the
   provenance stamp are neutral ink, and a scan of the rendered PNG counts the
-  reddish pixels and requires zero;
+  reddish pixels inside and outside the marker's drawn footprint — inside may be
+  the jersey, outside must be zero (D218's "drop all the red" still governs the
+  plot furniture; D219 restores Conor's image colours);
 * no gate: a two-row input still renders, and a 200° angle is drawn at its
   wrapped bearing and flagged;
 * the artefacts: CSV schema, manifest entry, byte-identical renders.
@@ -374,11 +378,13 @@ def test_the_overhead_player_is_the_supplied_image_at_the_centre(polar, cfg):
         plt.close(fig)
 
 
-def test_the_marker_is_masked_desaturated_and_neutral(polar, cfg):
-    """No red in the marker: the subject is grey ink, the background is clear.
+def test_the_marker_keeps_the_players_own_colours(polar, cfg):
+    """D219: the source RGB survives the mask; only the alpha is the mask.
 
-    The alpha channel is the mask, so the subject's internal shape (not a grey
-    rectangle) is what gets painted; and every rgba pixel has equal R, G and B.
+    Conor, 2026-11-24 15:29: "Ok, try it again, use the original colours of the
+    player this time". The alpha channel is still the mask, so the subject's
+    internal shape (not a rectangle) is what gets painted — but the painted
+    pixels are the jersey and kit in their own colours, not a grey ramp.
     """
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
@@ -388,15 +394,20 @@ def test_the_marker_is_masked_desaturated_and_neutral(polar, cfg):
         assert rgba.shape[2] == 4
         # the mask is a subject silhouette, not a full rectangle
         alpha = rgba[:, :, 3]
-        assert alpha.min() == 0.0 and 0.5 < alpha.max() <= 1.0
+        assert alpha.min() == 0.0
+        assert alpha.max() == pytest.approx(1.0, abs=1e-6)
         opaque = alpha > 0.5 * alpha.max()
         assert 0.05 < opaque.mean() < 0.95, opaque.mean()
-        # neutral ink: no channel carries more colour than another
+        # original colours: the jersey's channel spread is carried through, not
+        # flattened to grey (D218's neutral ramp is gone)
         rgb = rgba[:, :, :3]
-        assert np.array_equal(rgb[:, :, 0], rgb[:, :, 1])
-        assert np.array_equal(rgb[:, :, 0], rgb[:, :, 2])
-        assert float(rgb.min()) >= figures.BACKPEDAL_POLAR_MARKER_INK_DARK - 1e-9
-        assert float(rgb.max()) <= figures.BACKPEDAL_POLAR_MARKER_INK_LIGHT + 1e-9
+        assert not np.array_equal(rgb[:, :, 0], rgb[:, :, 1])
+        assert not np.array_equal(rgb[:, :, 0], rgb[:, :, 2])
+        mean = rgb[opaque].mean(axis=0)
+        assert mean[0] > mean[1] + 0.05, mean
+        assert mean[0] > mean[2] + 0.05, mean
+        dominance = rgb[:, :, 0] - 0.5 * (rgb[:, :, 1] + rgb[:, :, 2])
+        assert dominance[opaque].max() > 0.3, dominance[opaque].max()
     finally:
         plt.close(fig)
 
@@ -409,7 +420,8 @@ def test_marker_threshold_is_estimated_from_the_image_border():
     assert meta["subject_pixels"] > 0
     left, top, right, bottom = meta["source_crop_bbox_xyxy"]
     assert right > left and bottom > top
-    assert meta["alpha_peak"] > 0.5
+    assert meta["alpha_peak"] == pytest.approx(1.0, abs=1e-6)
+    assert meta["colour_mode"] == "original"
     source = ROOT / meta["path"]
     assert source.exists()
     assert meta["sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
@@ -450,17 +462,6 @@ def test_the_player_marker_is_a_schematic_not_data(cfg, tmp_path):
 
 
 # ------------------------------------------------------------- 4. drawn text
-def _reddish_pixels(png) -> int:
-    """Pixels that read red on the canvas: R clearly above both G and B."""
-    from PIL import Image
-
-    pixels = np.asarray(Image.open(png).convert("RGB"), dtype=float) / 255.0
-    red = pixels[:, :, 0]
-    green = pixels[:, :, 1]
-    blue = pixels[:, :, 2]
-    return int(((red > 0.35) & (red - np.maximum(green, blue) > 0.10)).sum())
-
-
 def test_the_lobes_keep_their_geometry_in_neutral_ink(polar, cfg):
     """D218: the medians and arcs stay, in grey — nothing is deleted."""
     table, context = polar
@@ -490,14 +491,86 @@ def test_the_lobes_keep_their_geometry_in_neutral_ink(polar, cfg):
         plt.close(fig)
 
 
-def test_the_rendered_png_carries_no_red_pixels(polar, cfg, tmp_path):
-    """Conor, 2026-11-24 13:35: "drop all the red" — measured on the canvas."""
+def _marker_footprint(png, fig, image, pad_px=2) -> np.ndarray:
+    """The marker's drawn extent mapped onto the saved PNG's pixel grid.
+
+    ``render_backpedal_polar`` saves with ``bbox_inches="tight"`` and
+    ``pad_inches=0.25``, so the canvas and the PNG do not share an origin. The
+    crop is rebuilt from the same tight bbox the save used, and the image's
+    display-space extent is mapped into the cropped grid; ``pad_px`` absorbs the
+    one-pixel rounding in that crop and the antialiased edge.
+    """
+    from PIL import Image
+
+    fig.canvas.draw()
+    # the save is at the figure's own dpi, not the on-screen canvas dpi, so
+    # measure the crop with a renderer at that dpi
+    dpi = figures.BACKPEDAL_POLAR_DPI
+    fig.set_dpi(dpi)
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    tight = fig.get_tightbbox(renderer)          # inches
+    pad = 0.25
+    x0 = (tight.x0 - pad) * dpi                  # crop origin, display px
+    y0 = (tight.y0 - pad) * dpi
+    with Image.open(png) as handle:
+        width, height = handle.size
+    # the tight crop we rebuild must be the PNG we are scanning
+    assert abs((tight.width + 2.0 * pad) * dpi - width) <= 1.0, (
+        (tight.width + 2.0 * pad) * dpi, width)
+    assert abs((tight.height + 2.0 * pad) * dpi - height) <= 1.0, (
+        (tight.height + 2.0 * pad) * dpi, height)
+
+    extent = image.get_window_extent(renderer)   # display px, origin bottom-left
+    left = extent.x0 - x0
+    right = extent.x1 - x0
+    # PNG rows run top-down; display y runs bottom-up
+    bottom = height - (extent.y1 - y0)
+    top = height - (extent.y0 - y0)
+    footprint = np.zeros((height, width), dtype=bool)
+    footprint[max(int(np.floor(bottom)) - pad_px, 0):
+              min(int(np.ceil(top)) + pad_px, height),
+              max(int(np.floor(left)) - pad_px, 0):
+              min(int(np.ceil(right)) + pad_px, width)] = True
+    return footprint
+
+
+def test_red_is_confined_to_the_marker_footprint(polar, cfg, tmp_path):
+    """D219: the jersey's red is allowed inside the marker, nowhere else.
+
+    D218 required zero reddish pixels on the whole PNG, which was right while
+    the subject was forced to neutral ink. Conor, 2026-11-24 15:29: "use the
+    original colours of the player this time" — his image legitimately carries
+    red, so the invariant moves with the request: red inside the marker's drawn
+    footprint may be the jersey (and must be present, or the colours are not
+    original), red outside it must be zero. The plot furniture stays neutral.
+    """
+    from PIL import Image
+
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
-    out = figures.render_backpedal_polar(fig, cfg, tmp_path / "nored.png")
-    before = _reddish_pixels(FIGS / f"{FIGURE}.png")
-    count = _reddish_pixels(out)
-    assert count == 0, f"{count} reddish pixels remain (committed PNG: {before})"
+    out = figures.render_backpedal_polar(fig, cfg, tmp_path / "colours.png")
+    # render_* closed that figure; rebuild it for the footprint mapping — the
+    # drawing is deterministic, so the geometry is the same
+    fig = figures.plot_backpedal_polar(table, context, cfg)
+    try:
+        footprint = _marker_footprint(out, fig, fig.axes[0].images[0])
+    finally:
+        plt.close(fig)
+    # the footprint must be the marker's box, not the whole canvas: otherwise
+    # "zero outside" would be vacuous
+    assert 0.01 < footprint.mean() < 0.25, footprint.mean()
+    pixels = np.asarray(Image.open(out).convert("RGB"), dtype=float) / 255.0
+    red = pixels[:, :, 0]
+    green = pixels[:, :, 1]
+    blue = pixels[:, :, 2]
+    reddish = (red > 0.35) & (red - np.maximum(green, blue) > 0.10)
+    inside = int((reddish & footprint).sum())
+    outside = int((reddish & ~footprint).sum())
+    print(f"red pixels: inside the marker footprint = {inside:,}, "
+          f"outside = {outside:,}")
+    assert inside > 0, "the jersey's own red did not reach the canvas"
+    assert outside == 0, f"{outside:,} reddish pixels outside the marker"
 
 
 def test_drawn_text_is_only_the_title_and_the_scale(drawn):
@@ -644,3 +717,11 @@ def test_committed_drawn_text_dump_matches_the_spec():
     assert payload["strings"] == ([figures.BACKPEDAL_POLAR_TITLE]
                                   + [str(tick) for tick in range(0, 360, 45)])
     assert payload["scan_strings"][0] == figures.BACKPEDAL_POLAR_TITLE
+    marker = payload["marker"]
+    assert marker["colour_mode"] == "original"
+    assert marker["rotation_deg"] == figures.BACKPEDAL_POLAR_MARKER_ROTATION_DEG
+    assert marker["sha256"] == hashlib.sha256(
+        (ROOT / marker["path"]).read_bytes()).hexdigest()
+    for key in ("border_red_p99", "red_threshold", "subject_pixels",
+                "source_crop_bbox_xyxy", "alpha_peak"):
+        assert key in marker, key

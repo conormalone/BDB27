@@ -11964,14 +11964,17 @@ BACKPEDAL_POLAR_RMAX = 1.34
 BACKPEDAL_POLAR_TICK_STEP = 45
 #: Ticks run 0 ... 315: 360 is the 0 spoke, printed once as "0" (D215).
 
-#: The overhead player at the centre (D217), now the supplied image (D218).
-#: Conor, 2026-11-24 11:24: "Could you also put an overhead view of a player at
-#: the centre to show that it's the way they are facing"; then 2026-11-24
-#: 13:35, with an image attached: "Use this image instead of whatever that is
-#: and drop all the red". The image is committed byte-for-byte under assets/,
-#: its light grey background is masked out from a threshold estimated off the
-#: image border, and the subject is desaturated to neutral ink, so the marker
-#: carries no red and still keeps the subject's internal shape in its alpha.
+#: The overhead player at the centre (D217), now the supplied image (D218),
+#: in the player's own colours (D219). Conor, 2026-11-24 11:24: "Could you also
+#: put an overhead view of a player at the centre to show that it's the way they
+#: are facing"; then 2026-11-24 13:35, with an image attached: "Use this image
+#: instead of whatever that is and drop all the red"; then 2026-11-24 15:29:
+#: "Ok, try it again, use the original colours of the player this time". The
+#: image is committed byte-for-byte under assets/, its light grey background is
+#: masked out from a threshold estimated off the image border, and the subject
+#: is carried through in its source RGB with the mask as alpha — the jersey
+#: keeps its own colours. "Drop all the red" (D218) still governs the plot
+#: furniture: the lobes, arcs and stamp stay neutral ink.
 BACKPEDAL_POLAR_MARKER_IMAGE = REPO_ROOT / "assets" / "fig_backpedal_polar_marker.jpg"
 BACKPEDAL_POLAR_MARKER_IMAGE_REL = "assets/fig_backpedal_polar_marker.jpg"
 #: Orientation (Conor, 2026-11-24 13:41: "The player is facing 270 degrees so
@@ -11989,9 +11992,12 @@ BACKPEDAL_POLAR_MARKER_HALF_HEIGHT = 0.46
 BACKPEDAL_POLAR_MARKER_MARGIN = 0.05    # radial units of clear air to the dots
 BACKPEDAL_POLAR_MARKER_RING_PX = 6      # border ring used to estimate the bg
 BACKPEDAL_POLAR_MARKER_RED_MARGIN = 0.05  # added to the border's red p99
-BACKPEDAL_POLAR_MARKER_INK_DARK = 0.12  # neutral grey for the darkest pixel
-BACKPEDAL_POLAR_MARKER_INK_LIGHT = 0.72  # neutral grey for the lightest pixel
-BACKPEDAL_POLAR_MARKER_ALPHA = 0.95
+BACKPEDAL_POLAR_MARKER_ALPHA = 1.0      # full strength inside the masked subject
+#: D219: the marker carries the source RGB through the mask. No desaturation,
+#: tint, luminance ramp or grey ink — the jersey comes through as itself. The
+#: colour mode travels in the drawn-text marker block so the sidecar says which
+#: contract produced the pixels.
+BACKPEDAL_POLAR_MARKER_COLOUR_MODE = "original"
 BACKPEDAL_POLAR_MARKER_ZORDER = 2.5     # above the lobe spokes, under the turns
 #: The median spokes start at the origin, so they are drawn under the marker;
 #: they still run to 0.80 radial units, clear of every turn.
@@ -12202,15 +12208,22 @@ def _backpedal_polar_marker_metadata() -> dict:
 
 
 def _backpedal_polar_marker_rgba(image_path=None):
-    """Load the marker image as neutral-ink RGBA with the background masked out.
+    """Load the marker image as an RGBA cut-out in the player's own colours.
 
     The background is the light grey studio gradient. Its redness is estimated
     from a 6 px ring on the image border — never hard-coded — and the subject is
     every pixel whose red dominance exceeds that border's 99th percentile by
     ``BACKPEDAL_POLAR_MARKER_RED_MARGIN``. A close + hole-fill + open pass turns
     the red-dominant pixels into the subject's silhouette (including its white
-    and dark interior detail), and the luminance inside that silhouette is
-    mapped to a grey ramp, so no pixel keeps its red.
+    and dark interior detail).
+
+    D219: the silhouette keeps the source RGB. The alpha channel is the mask —
+    lightly antialiased at the edge, at full strength inside the subject — so
+    the jersey comes through in its own colours. Nothing is desaturated, tinted
+    or luminance-mapped. RGB outside the silhouette is extended from the nearest
+    subject pixel before resampling, so the edge blends jersey into the canvas
+    instead of pulling in the light grey background; those pixels are fully
+    transparent and never painted.
     """
     from PIL import Image
     from scipy import ndimage
@@ -12242,15 +12255,15 @@ def _backpedal_polar_marker_rgba(image_path=None):
     top, bottom = max(int(rows[0]) - pad, 0), min(int(rows[-1]) + pad + 1, height)
     left, right = max(int(cols[0]) - pad, 0), min(int(cols[-1]) + pad + 1, width)
 
-    luminance = rgb @ np.array([0.299, 0.587, 0.114])
-    dark, light = np.percentile(luminance[subject], [2.0, 98.0])
-    scaled = np.clip((luminance - dark) / max(light - dark, 1e-6), 0.0, 1.0)
-    grey = (BACKPEDAL_POLAR_MARKER_INK_DARK
-            + (BACKPEDAL_POLAR_MARKER_INK_LIGHT
-               - BACKPEDAL_POLAR_MARKER_INK_DARK) * scaled)
+    # D219: carry the source colours. Each background pixel takes the RGB of
+    # its nearest subject pixel, so the resampler has no grey to blend in at
+    # the silhouette edge; alpha keeps those pixels invisible.
+    _, nearest = ndimage.distance_transform_edt(~subject, return_indices=True)
+    rgb = rgb[nearest[0], nearest[1]]
+
     alpha = ndimage.gaussian_filter(
         subject.astype(float), 0.6) * BACKPEDAL_POLAR_MARKER_ALPHA
-    rgba = np.dstack([grey, grey, grey, alpha])[top:bottom, left:right]
+    rgba = np.dstack([rgb, alpha])[top:bottom, left:right]
 
     if BACKPEDAL_POLAR_MARKER_ROTATION_DEG:
         rotated = Image.fromarray(
@@ -12258,18 +12271,16 @@ def _backpedal_polar_marker_rgba(image_path=None):
                 BACKPEDAL_POLAR_MARKER_ROTATION_DEG, expand=True,
                 resample=Image.BICUBIC)
         rgba = np.asarray(rotated, dtype=float) / 255.0
-        # bicubic ringing can overshoot the neutral ramp by a fraction of a
-        # level; keep the "grey ink between INK_DARK and INK_LIGHT" guarantee
-        rgba[:, :, :3] = np.clip(rgba[:, :, :3],
-                                 BACKPEDAL_POLAR_MARKER_INK_DARK,
-                                 BACKPEDAL_POLAR_MARKER_INK_LIGHT)
+        # bicubic ringing can overshoot a channel by a fraction of a level;
+        # clamp to the valid 0..1 range, inventing no colour
+        rgba[:, :, :3] = np.clip(rgba[:, :, :3], 0.0, 1.0)
 
     meta = {
+        "colour_mode": BACKPEDAL_POLAR_MARKER_COLOUR_MODE,
         "border_red_p99": border_p99,
         "red_threshold": threshold,
         "subject_pixels": int(subject.sum()),
         "source_crop_bbox_xyxy": [left, top, right, bottom],
-        "luminance_range": [float(dark), float(light)],
         "alpha_peak": float(alpha.max()),
     }
     return rgba, meta
@@ -12278,9 +12289,10 @@ def _backpedal_polar_marker_rgba(image_path=None):
 def _draw_backpedal_polar_player(ax, fig, table: pd.DataFrame):
     """The overhead player at the centre, facing the top (0 deg) spoke.
 
-    D218: the marker is the committed image Conor supplied, with its light grey
-    background masked off and the subject desaturated to neutral ink, painted at
-    the polar origin in axes coordinates with its own aspect ratio preserved.
+    D218/D219: the marker is the committed image Conor supplied, with its light
+    grey background masked off and the subject painted in its own colours,
+    placed at the polar origin in axes coordinates with its own aspect ratio
+    preserved.
     Its corner reach plus a margin is asserted against the nearest drawn turn,
     recomputed from ``table`` — not a guessed radius — so it can never cover a
     dot; it is drawn under the scatter as well, so a dot would win anyway.
@@ -12346,7 +12358,7 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
             color=BACKPEDAL_RULE_GREY, lw=0.9, ls=":", zorder=1)
 
     # the overhead player image at the centre, facing the top spoke, under the
-    # turns (D217, replaced by the supplied image and de-reddened in D218)
+    # turns (D217, the supplied image in D218, his own colours in D219)
     _draw_backpedal_polar_player(ax, fig, table)
 
     if len(table):
