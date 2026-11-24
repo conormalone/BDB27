@@ -9591,3 +9591,31 @@ already on the D212/D214 `DECISION_MOVED_FIGURES` list),
 measured value, count, population, claim or `TASK.md`; no facing/left-right inference; no change to
 the median spokes or the IQR arcs (markers, not text); the title is kept, not deleted; the figure is
 still a diagnostic and is not quoted in the writeup.
+
+### Amendment, same cycle — "And just zero, remove the 360" (2026-11-24 09:12)
+
+Conor, three minutes later, verbatim: *"And just zero, remove the 360."* On the new compass rose
+"0" and "360" are the same spoke at the top, and two labels on one spoke was only ever a workaround.
+The tick set is now **0, 45, 90, 135, 180, 225, 270, 315** — eight labels, one per spoke, the scale
+ending where it began. Nothing else moved:
+
+- `ax.set_thetagrids(range(0, 360, 45))`: no tick and no label at 360, so there is no duplicate spoke
+  to de-overprint. `_backpedal_polar_separate_wrap_labels`, its `BACKPEDAL_POLAR_WRAP_LABEL_NUDGE_PT`
+  constant and the now-unused `matplotlib.transforms` import are deleted, not left inert — a
+  separation hack for a label that is no longer drawn would be a lie about the drawing.
+- `backpedal_polar_drawn_text`'s allow-list is the title plus the eight tick labels; a "360" coming
+  back now raises.
+- The CSV is still **byte-identical** (same sha256, 133 rows), so `config_sha`, every measured value
+  and every count are unchanged: 111.0° (n = 63), 243.7° (n = 70), 133 turns from 71 of 122 players.
+- `figures_manifest.json` did not change for this amendment: its `claim` and `caveats` describe the
+  0-360 reading scale, which is still what the dots are read on, and they never promised a printed
+  360.
+
+Tests: red first against `0f22801` (the tick test read `[0, 45, …, 315, 360]` and the drawn-text set
+had nine labels), then green — full suite **749 collected, 748 passed, 1 skipped, 0 failed**, the same
+pre-existing `test_full_run_pins_the_committed_numbers` skip. The tick test is now
+`test_protractor_is_labelled_zero_to_315_with_no_duplicate_360` and asserts the eight labels, the
+eight tick positions in degrees, that "360" is nowhere on the canvas, and that zero is still at the
+top; the overlap assertion it replaced is gone because no two labels share a spoke. Drawn strings now,
+in order: `The backpedal drill's turns, with zero at the top`, `0`, `45`, `90`, `135`, `180`, `225`,
+`270`, `315`.

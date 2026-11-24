@@ -205,3 +205,11 @@ the text on the plot."* Two changes, and only these two:
 one D214 committed. This is a drawing change only. The title wording follows the
 drawing ("with zero at the top") because "zero straight down" would now be false
 — that wording change is the PM's, flagged to Conor.
+
+### Amendment to the revision — no 360 label (D215, 2026-11-24 09:12)
+
+Conor: *"And just zero, remove the 360."* On the zero-up compass rose "0" and "360" are the same
+top spoke, so the duplicate label is gone: ticks are 0, 45, 90, 135, 180, 225, 270, 315 (eight
+labels, one per spoke). The nudge that used to separate the two labels and its constant are deleted
+along with the label; `backpedal_polar_drawn_text` treats a returned "360" as a contract failure. No
+data, count or CSV column changed — the CSV remains byte-identical to D214's.

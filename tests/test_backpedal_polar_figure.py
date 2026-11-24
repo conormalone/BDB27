@@ -15,12 +15,13 @@ What is tested here, and why:
   direction (heading 0 = +y, increasing clockwise), so a point's bearing from the
   top line is the exit travel direction when the entry points up, read as an
   ordinary compass bearing;
-* the scale: one full circle labelled 0, 45, ... 360 — not the mirrored half
+* the scale: one full circle labelled 0, 45, ... 315 — not the mirrored half
   scale the first cut drew (Conor, 2026-11-23 22:06: "The other plots have it on
-  a 360 scale so please do the same", D214);
+  a 360 scale so please do the same", D214), and no duplicate 360 on the 0 spoke
+  (Conor, 2026-11-24 09:12: "And just zero, remove the 360", D215);
 * the lobes: counts and medians recomputed from the committed turn table, with
   each median a bearing on that 0-360 scale (243.7°, not -116.3°);
-* the drawn text: the title (no digits) and the 0-360 scale, and NOTHING else —
+* the drawn text: the title (no digits) and the tick scale, and NOTHING else —
   the lobe labels, the count line and the honesty line Conor asked off the plot
   must stay off it (D215), with no caption, no subtitle, no legend, no banned
   token;
@@ -194,14 +195,15 @@ def test_zero_is_at_the_top_and_positive_runs_clockwise(polar, cfg):
         plt.close(fig)
 
 
-# -------------------------------------------- 2b. the scale is 0-360 (D214)
-def test_protractor_is_labelled_on_a_full_zero_to_360_circle(polar, cfg):
-    """Conor, 2026-11-23 22:06: one full circle, not the mirrored half.
+# ------------------------------------------- 2b. the scale is a full circle
+def test_protractor_is_labelled_zero_to_315_with_no_duplicate_360(polar, cfg):
+    """One full circle, and the 0 spoke carries "0" only (D214, D215).
 
     The first cut labelled the left half 0..180 and mirrored it back down the
-    right (0, 45, 90, 135, 180, 135, 90, 45). Every other plot in the set reads
-    on 0-360, so this one does too. Checked on the DRAWN tick labels, and the
-    two labels that share the top spoke (0 and 360) must not overprint.
+    right (0, 45, 90, 135, 180, 135, 90, 45). D214 made it one full circle
+    0..360; the "360" shared the 0 spoke and was nudged aside to stay legible.
+    Conor, 2026-11-24 09:12: "And just zero, remove the 360" — the scale now
+    ends at 315 and prints no duplicate.
     """
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
@@ -209,20 +211,19 @@ def test_protractor_is_labelled_on_a_full_zero_to_360_circle(polar, cfg):
         ax = fig.axes[0]
         fig.canvas.draw()
         labels = [t.get_text() for t in ax.get_xticklabels()]
-        expected = [str(tick) for tick in range(0, 361, 45)]
+        expected = [str(tick) for tick in range(0, 360, 45)]
         assert labels == expected, labels
         # no value printed twice: the mirrored half is gone
-        assert len(set(labels)) == len(labels) == 9
+        assert len(set(labels)) == len(labels) == 8
+        # and the duplicate 360 is off the canvas entirely
+        assert "360" not in labels
+        assert "360" not in figures.backpedal_polar_drawn_text(
+            fig, cfg, "sample")["strings"]
         ticks = np.degrees(np.asarray(ax.get_xticks(), dtype=float))
-        assert np.allclose(ticks, np.arange(0.0, 361.0, 45.0))
+        assert np.allclose(ticks, np.arange(0.0, 360.0, 45.0))
         # and the scale now starts at the top (D215)
         centre = ax.transData.transform((0.0, 0.0))
         assert ax.transData.transform((0.0, 1.0))[1] > centre[1]
-        renderer = fig.canvas.get_renderer()
-        zero = ax.get_xticklabels()[0].get_window_extent(renderer)
-        full = ax.get_xticklabels()[-1].get_window_extent(renderer)
-        assert not zero.overlaps(full), (
-            "0 and 360 are printed on top of each other at the top spoke")
     finally:
         plt.close(fig)
 
@@ -304,11 +305,16 @@ def test_lobe_stats_are_recomputed_from_the_turn_table(polar, valid_turns):
 
 # ------------------------------------------------------------- 4. drawn text
 def test_drawn_text_is_only_the_title_and_the_scale(drawn):
-    """D215: the canvas carries the title and the 0-360 scale, nothing else."""
+    """D215: the canvas carries the title and the tick scale, nothing else.
+
+    Ticks run 0 ... 315; the 360 that used to share the 0 spoke is gone
+    (Conor, 2026-11-24 09:12: "And just zero, remove the 360").
+    """
     expected = ([figures.BACKPEDAL_POLAR_TITLE]
-                + [str(tick) for tick in range(0, 361, 45)])
+                + [str(tick) for tick in range(0, 360, 45)])
     assert drawn["strings"] == expected, drawn["strings"]
     assert drawn["scan_strings"] == expected, drawn["scan_strings"]
+    assert "360" not in drawn["strings"]
     assert not any(ch.isdigit() for ch in figures.BACKPEDAL_POLAR_TITLE)
     assert drawn["banned_hits"] == []
     assert drawn["title"] == figures.BACKPEDAL_POLAR_TITLE
@@ -440,5 +446,5 @@ def test_committed_drawn_text_dump_matches_the_spec():
     assert payload["title"] == figures.BACKPEDAL_POLAR_TITLE
     assert payload["banned_hits"] == []
     assert payload["strings"] == ([figures.BACKPEDAL_POLAR_TITLE]
-                                  + [str(tick) for tick in range(0, 361, 45)])
+                                  + [str(tick) for tick in range(0, 360, 45)])
     assert payload["scan_strings"][0] == figures.BACKPEDAL_POLAR_TITLE

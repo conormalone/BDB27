@@ -13,8 +13,7 @@
     "180",
     "225",
     "270",
-    "315",
-    "360"
+    "315"
   ],
   "scan_strings": [
     "The backpedal drill's turns, with zero at the top",
@@ -25,8 +24,7 @@
     "180",
     "225",
     "270",
-    "315",
-    "360"
+    "315"
   ],
   "banned_tokens": [
     "PLACEHOLDER",

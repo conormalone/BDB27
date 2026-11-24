@@ -33,7 +33,6 @@ import matplotlib
 matplotlib.use("Agg")  # deterministic, headless
 
 import matplotlib.pyplot as plt
-import matplotlib.transforms as mtransforms
 import numpy as np
 import pandas as pd
 from matplotlib.patches import Arc, Patch
@@ -11961,9 +11960,7 @@ BACKPEDAL_POLAR_MEDIAN_TOP = 0.80
 BACKPEDAL_POLAR_RING_RADIUS = 1.0
 BACKPEDAL_POLAR_RMAX = 1.34
 BACKPEDAL_POLAR_TICK_STEP = 45
-#: "0" and "360" sit on the same top spoke; each is nudged outwards so the
-#: full-circle labels print side by side instead of on top of each other.
-BACKPEDAL_POLAR_WRAP_LABEL_NUDGE_PT = 9.0
+#: Ticks run 0 ... 315: 360 is the 0 spoke, printed once as "0" (D215).
 
 BACKPEDAL_POLAR_CSV_COLUMNS = [
     "provenance", "stamp", "config_sha", "figure", "event_id", "nfl_id",
@@ -11994,23 +11991,6 @@ def _backpedal_polar_lobe_stats(side: str, angles: np.ndarray) -> dict:
         "q25_deg": float(np.percentile(angles, 25)),
         "q75_deg": float(np.percentile(angles, 75)),
     }
-
-
-def _backpedal_polar_separate_wrap_labels(fig, ax) -> None:
-    """Print "0" and "360" side by side on the one spoke they share.
-
-    Matplotlib draws both labels at the same point, where they overprint. A
-    small outward shift in points keeps them legible without moving the tick
-    itself: the scale still starts and ends at the top (D215).
-    """
-    labels = list(ax.get_xticklabels())
-    if len(labels) < 2:
-        return
-    shift = BACKPEDAL_POLAR_WRAP_LABEL_NUDGE_PT / 72.0
-    for label, dx in ((labels[0], -shift), (labels[-1], shift)):
-        label.set_transform(label.get_transform()
-                            + mtransforms.ScaledTranslation(
-                                dx, 0.0, fig.dpi_scale_trans))
 
 
 def backpedal_position_counts(turns: pd.DataFrame,
@@ -12141,9 +12121,10 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
                          cfg: common.Config):
     """One polar axes: one dot per turn, zero at the top, clockwise positive.
 
-    The protractor is labelled on the full 0-360 scale every other plot in the
-    set uses (D214), read like a compass rose (D215): 0 at the top, 45, ... 315
-    clockwise around, and 360 printed beside the 0 it coincides with.
+    The protractor is labelled on the full-circle scale every other plot in the
+    set uses (D214), read like a compass rose (D215): 0 at the top, then 45, ...
+    315 clockwise around. 360 is the 0 spoke, so it is not printed a second time
+    (Conor, 2026-11-24 09:12: "And just zero, remove the 360").
 
     The canvas carries the title and the scale and nothing else (D215, Conor
     2026-11-24: "remove the text on the plot"): no lobe labels, no count line, no
@@ -12155,8 +12136,8 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
     # zero at North, positive clockwise: a compass bearing scale
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
-    tick_degrees = list(range(0, 360 + BACKPEDAL_POLAR_TICK_STEP,
-                              BACKPEDAL_POLAR_TICK_STEP))
+    # 0 ... 315: the 360 spoke IS the 0 spoke, so 0 is printed once, at the top.
+    tick_degrees = list(range(0, 360, BACKPEDAL_POLAR_TICK_STEP))
     ax.set_thetagrids(
         tick_degrees, labels=[str(degrees) for degrees in tick_degrees])
     ax.set_ylim(0.0, BACKPEDAL_POLAR_RMAX)
@@ -12195,9 +12176,6 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
             color=BACKPEDAL_INK)
     ax.tick_params(axis="x", labelsize=BACKPEDAL_POLAR_AXIS_FONTSIZE,
                    colors=BACKPEDAL_AXIS_GREY, pad=1.0)
-    # 0 and 360 are the same spoke; nudge the two labels apart so both read.
-    # Last, after every call that could rebuild the tick labels.
-    _backpedal_polar_separate_wrap_labels(fig, ax)
 
     fig.subplots_adjust(left=0.09, right=0.91, top=0.87, bottom=0.16)
     if on_image_stamp(cfg):
@@ -12220,23 +12198,24 @@ def render_backpedal_polar(fig, cfg: common.Config, out_png) -> Path:
 def backpedal_polar_drawn_text(fig, cfg: common.Config, mode: str) -> dict:
     """Every string the drawing puts on canvas, read back off the figure.
 
-    The drawing carries its title and its 0-360 scale, and nothing else (D215,
-    Conor 2026-11-24: "remove the text on the plot"). A lobe label, a count line
-    or an honesty note that comes back raises here instead of being accepted
+    The drawing carries its title and its tick scale (0 ... 315), and nothing
+    else (D215, Conor 2026-11-24: "remove the text on the plot", then "And just
+    zero, remove the 360"). A lobe label, a count line, an honesty note or a
+    duplicate 360 label that comes back raises here instead of being accepted
     quietly.
     """
     from bdb27.figure_text_scan import BANNED_TOKENS, banned_hits, figure_texts
 
     strings = figure_texts(fig)
     hits = banned_hits(strings)
+    # 0 ... 315: 360 is the 0 spoke and is not printed a second time.
     allowed = [BACKPEDAL_POLAR_TITLE] + [
-        str(degrees) for degrees in range(0, 360 + BACKPEDAL_POLAR_TICK_STEP,
-                                          BACKPEDAL_POLAR_TICK_STEP)]
+        str(degrees) for degrees in range(0, 360, BACKPEDAL_POLAR_TICK_STEP)]
     unexpected = [text for text in strings if text not in allowed]
     if unexpected:
         raise ValueError(
             f"{STAGE}: figure 21 draws text the drawing does not carry: "
-            f"{unexpected} — the canvas is the title and the 0-360 scale only")
+            f"{unexpected} — the canvas is the title and the tick scale only")
     if BACKPEDAL_POLAR_TITLE not in strings:
         raise ValueError(f"{STAGE}: figure 21 does not draw its own title")
     extra = [text.get_text() for text in fig.texts
