@@ -10006,3 +10006,69 @@ sample-mode by design, like D218/D219/D220.
 
 **Deliberately not done.** No change to the image, mask, rotation, size, zorder, colour path, CSV,
 strings, manifest payload, `TASK.md`, placement logic, or any other figure.
+
+## D222 — Figure 21: the lobe marks come off the canvas (spokes and arcs) · 2026-11-24
+
+**Amends D221.** Conor, 2026-11-24 19:47, verbatim: *"No remove the black like at about halfway
+between 90 and 135 and 225 and 270, and behind the dots as well, leave everything else"*. This
+corrects a narrower reading of "remove the black": **both** parts of each lobe mark come off, not
+just the radial line.
+
+**What was removed.** Two things per lobe, both deleted from the code path in
+`plot_backpedal_polar` (`src/bdb27/figures.py`):
+
+1. the **median spokes** — straight radial lines from the origin to `BACKPEDAL_POLAR_MEDIAN_TOP`
+   (0.80 radial), drawn at the lobe medians 111.0° and 243.7° ("halfway between 90 and 135" and
+   "between 225 and 270");
+2. the **middle-half arcs** — 64-point arcs at `BACKPEDAL_POLAR_ARC_RADIUS` (1.16 radial), sitting
+   in/behind the dot band ("behind the dots as well").
+
+The artists are gone, not recoloured: there is no white or alpha-0 line left on the axes. The
+constants that only sized them (`BACKPEDAL_POLAR_MEDIAN_LW`, `BACKPEDAL_POLAR_ARC_LW`,
+`BACKPEDAL_POLAR_ARC_RADIUS`, `BACKPEDAL_POLAR_MEDIAN_TOP`, `BACKPEDAL_POLAR_MEDIAN_ZORDER`,
+`BACKPEDAL_POLAR_MEDIAN_INK`, `BACKPEDAL_POLAR_ARC_INK`) were deleted with the drawing loop, so no
+dormant knob invites the marks back. The title, the dial and its 0–315 ticks, the grid, the dotted
+1.0 ring, the supplied player marker (same image, colours, −90° rotation and −20 px offset) and the
+stamp are untouched.
+
+**The numbers stop being drawn; they do not leave the record.** The lobe medians and quintiles are
+unchanged in the CSV (recomputable from `bearing_deg`) and in `figures_manifest.json`
+(`population.lobes`: clockwise n = 63, median 110.9559°, q25 100.7270°, q75 119.2261°;
+counter-clockwise n = 70, median 243.7498°, q25 236.3325°, q75 253.2830°). They are now also written
+into `fig_backpedal_polar.drawn_text.json` as a `lobes` block plus `"lobe_marks_drawn": false`, so the
+sidecar next to the drawing records exactly what the drawing no longer shows. `drawn_text` takes the
+polar context as an optional argument for this; the text-scan contract (title + 0…315 only, no
+banned token) is unchanged.
+
+**CSV is byte-identical.** `fig_backpedal_polar.csv` still hashes
+`f186ebbc9d928c0f298d8be17548bbac3ac6418b69a6b4a0f046bdb472e95cd2` (133 rows). On-canvas strings are
+exactly `Every turn in the backpedal`, `0`, `45`, `90`, `135`, `180`, `225`, `270`, `315` — no new
+text, no replacement mark, no legend entry. The manifest entry is untouched.
+
+**Pixel evidence.** Canvas **1096 × 1134**, exactly D221's. New PNG sha256
+`839dbb669fe86c00aea7e1b73955af635950ffb0c99ec3b43ed745d13694871a`; **4,337 of 1,242,864 pixels**
+differ from D221's PNG, confined to rows 601–817 × cols 168–946 (the two lower-half lobes and the
+dots/arc band). **4,277 of those 4,337** carried a grey (spoke/arc-ink) colour in the old file; the
+rest are the dot and marker edges the removed arcs/spokes had antialiased against. The marker's own
+measured block is unchanged — red pixels **24,379**, centroid **x = 556.438 px** — so the marker did
+not move or change. No title, tick label, ring or grid pixel changed (no diff above row 601).
+Every other figure's PNG is byte-identical (sha256 comparison across the committed figure set).
+
+**How the artefacts were regenerated.** Same procedure as D220/D221 and the same known gap: the
+committed figure set is a mixed-provenance set from the 2026-11-16 full run, and
+`06_figures.py --mode sample` on this host does not reproduce it (full-run intermediates are
+gitignored and absent), so a stage run would rewrite other figures as PLACEHOLDER_SAMPLE. Only
+figure 21's three artefacts were regenerated; the manifest's top-level provenance block was restored
+to HEAD (the figure entry is unchanged), and everything else was verified untouched. Figure 21's
+outputs remain sample-mode by design.
+
+**Tests.** `tests/test_backpedal_polar_figure.py`: **28/28 green** — `test_no_lobe_spokes_or_arcs_are_drawn`
+asserts the axes carry no radial line and no 64-point constant-radius arc, and that the only line
+artist left is the dotted 1.0 ring; the marker test now asserts no radial line is drawn beneath the
+glyph; `test_the_lobe_numbers_survive_removal_in_csv_and_sidecar` re-derives the medians and quintiles
+from the committed CSV and requires the sidecar and manifest to agree. Full suite:
+**759 collected, 758 passed, 1 skipped, 0 failed** in 18 m 18 s (the skip is the pre-existing
+`tests/test_turn_context.py` local-artefact skip).
+
+**Deliberately not done.** No change to the image, mask, rotation, size, placement, dots, title,
+ticks, ring, grid, stamp, CSV, on-canvas strings, manifest payload, `TASK.md` or any other figure.

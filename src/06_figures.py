@@ -559,7 +559,8 @@ def main(argv=None) -> int:
         figures.write_backpedal_polar_csv(bpp_table, bpp_csv_path, cfg,
                                           args.mode)
         bpp_fig = figures.plot_backpedal_polar(bpp_table, bpp_context, cfg)
-        bpp_text = figures.backpedal_polar_drawn_text(bpp_fig, cfg, args.mode)
+        bpp_text = figures.backpedal_polar_drawn_text(
+            bpp_fig, cfg, args.mode, context=bpp_context)
         figures.render_backpedal_polar(bpp_fig, cfg, bpp_png)
         # D220: the nudge is proven in the saved file, not in the constant —
         # measure the rendered PNG against the pre-shift baseline and record

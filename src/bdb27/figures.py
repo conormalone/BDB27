@@ -11956,10 +11956,13 @@ BACKPEDAL_POLAR_DOT_SIZE = 26.0
 BACKPEDAL_POLAR_DOT_ALPHA = 0.55
 BACKPEDAL_POLAR_TITLE_FONTSIZE = 16.0
 BACKPEDAL_POLAR_AXIS_FONTSIZE = 10.5
-BACKPEDAL_POLAR_MEDIAN_LW = 2.4
-BACKPEDAL_POLAR_ARC_LW = 2.6
-BACKPEDAL_POLAR_ARC_RADIUS = 1.16
-BACKPEDAL_POLAR_MEDIAN_TOP = 0.80
+#: D222: the lobe drawing (two median spokes + two middle-half arcs) is off the
+#: canvas. Conor, 2026-11-24 19:47, verbatim: "No remove the black like at about
+#: halfway between 90 and 135 and 225 and 270, and behind the dots as well, leave
+#: everything else". Both parts of each lobe mark came off; the constants that
+#: sized them were deleted with the artists, and the medians/quintiles remain in
+#: the CSV, the manifest and the drawn-text sidecar. Nothing else about the
+#: dial changes.
 BACKPEDAL_POLAR_RING_RADIUS = 1.0
 BACKPEDAL_POLAR_RMAX = 1.34
 BACKPEDAL_POLAR_TICK_STEP = 45
@@ -11975,7 +11978,7 @@ BACKPEDAL_POLAR_TICK_STEP = 45
 #: masked out from a threshold estimated off the image border, and the subject
 #: is carried through in its source RGB with the mask as alpha — the jersey
 #: keeps its own colours. "Drop all the red" (D218) still governs the plot
-#: furniture: the lobes, arcs and stamp stay neutral ink.
+#: furniture: the stamp stays neutral ink, and the lobe marks are gone (D222).
 BACKPEDAL_POLAR_MARKER_IMAGE = REPO_ROOT / "assets" / "fig_backpedal_polar_marker.jpg"
 BACKPEDAL_POLAR_MARKER_IMAGE_REL = "assets/fig_backpedal_polar_marker.jpg"
 #: Orientation (Conor, 2026-11-24 13:41: "The player is facing 270 degrees so
@@ -11999,7 +12002,7 @@ BACKPEDAL_POLAR_MARKER_ALPHA = 1.0      # full strength inside the masked subjec
 #: colour mode travels in the drawn-text marker block so the sidecar says which
 #: contract produced the pixels.
 BACKPEDAL_POLAR_MARKER_COLOUR_MODE = "original"
-BACKPEDAL_POLAR_MARKER_ZORDER = 2.5     # above the lobe spokes, under the turns
+BACKPEDAL_POLAR_MARKER_ZORDER = 2.5     # under the turns (D222: the lobes are gone)
 #: D220: the nudge Conor asked for. Conor, 2026-11-24 16:25, verbatim:
 #: "Could you move him 10 pixels to the left", then 2026-11-24 17:46, verbatim:
 #: "10 more pixels" — so the total is 20 px left (D221 amends D220; the
@@ -12021,14 +12024,8 @@ BACKPEDAL_POLAR_MARKER_OFFSET_PX_X = -20.0
 BACKPEDAL_POLAR_SHIFT_BASELINE_REL = (
     "fixtures/fig_backpedal_polar_shift_baseline.json")
 BACKPEDAL_POLAR_SHIFT_BASELINE = REPO_ROOT / BACKPEDAL_POLAR_SHIFT_BASELINE_REL
-#: The median spokes start at the origin, so they are drawn under the marker;
-#: they still run to 0.80 radial units, clear of every turn.
-BACKPEDAL_POLAR_MEDIAN_ZORDER = 2.0
-#: Red is gone from this figure entirely (Conor, 2026-11-24 13:35: "drop all
-#: the red"): the lobe medians, the middle-half arcs and the provenance stamp
-#: all use neutral ink now. The geometry and the information are unchanged.
-BACKPEDAL_POLAR_MEDIAN_INK = BACKPEDAL_AXIS_GREY
-BACKPEDAL_POLAR_ARC_INK = "#6b6b6b"
+#: The provenance stamp keeps neutral ink (Conor, 2026-11-24 13:35: "drop all
+#: the red"). D222 removed the lobe spokes and arcs from the canvas entirely.
 BACKPEDAL_POLAR_STAMP_INK = BACKPEDAL_AXIS_GREY
 
 BACKPEDAL_POLAR_CSV_COLUMNS = [
@@ -12530,28 +12527,11 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
                    color=PALETTE["combine"], alpha=BACKPEDAL_POLAR_DOT_ALPHA,
                    edgecolors="none", zorder=3)
 
-    # each lobe's median spoke and its middle half, drawn only where it exists.
-    # No label: the drawn text is the title and the scale only (D215).
-    for side in ("positive", "negative"):
-        lobe = context["lobes"][side]
-        if lobe["n"] == 0 or not np.isfinite(lobe["median_deg"]):
-            continue
-        theta_median = np.radians(lobe["median_deg"])
-        # The spoke starts at the centre, where the player glyph now sits: it is
-        # drawn under the glyph (D217) so the two bearing lines emerge from the
-        # player's shoulders instead of crossing the head. Nothing else moves —
-        # the spoke stops at 0.80 radial units and the turns start at 0.90, so
-        # the dots never meet it either way.
-        ax.plot([theta_median, theta_median], [0.0, BACKPEDAL_POLAR_MEDIAN_TOP],
-                color=BACKPEDAL_POLAR_MEDIAN_INK,
-                lw=BACKPEDAL_POLAR_MEDIAN_LW,
-                zorder=BACKPEDAL_POLAR_MEDIAN_ZORDER)
-        span = np.linspace(lobe["q25_deg"], lobe["q75_deg"], 64)
-        ax.plot(np.radians(span),
-                np.full_like(span, BACKPEDAL_POLAR_ARC_RADIUS),
-                color=BACKPEDAL_POLAR_ARC_INK, lw=BACKPEDAL_POLAR_ARC_LW,
-                alpha=0.85, zorder=4)
-
+    # D222: no lobe marks are drawn. Conor, 2026-11-24 19:47: "No remove the
+    # black like at about halfway between 90 and 135 and 225 and 270, and behind
+    # the dots as well, leave everything else". The median spokes and the
+    # middle-half arcs are gone from the canvas; their numbers stay in the CSV,
+    # the manifest and the drawn-text sidecar. Everything else is unchanged.
     ax.text(0.02, 1.06, BACKPEDAL_POLAR_TITLE, transform=ax.transAxes,
             fontsize=BACKPEDAL_POLAR_TITLE_FONTSIZE, ha="left", va="bottom",
             color=BACKPEDAL_INK)
@@ -12575,7 +12555,8 @@ def render_backpedal_polar(fig, cfg: common.Config, out_png) -> Path:
     return out_png
 
 
-def backpedal_polar_drawn_text(fig, cfg: common.Config, mode: str) -> dict:
+def backpedal_polar_drawn_text(fig, cfg: common.Config, mode: str,
+                               context: dict | None = None) -> dict:
     """Every string the drawing puts on canvas, read back off the figure.
 
     The drawing carries its title and its tick scale (0 ... 315), and nothing
@@ -12583,6 +12564,11 @@ def backpedal_polar_drawn_text(fig, cfg: common.Config, mode: str) -> dict:
     zero, remove the 360"). A lobe label, a count line, an honesty note or a
     duplicate 360 label that comes back raises here instead of being accepted
     quietly.
+
+    D222 removed the lobe spokes and arcs from the canvas. The medians and
+    quintiles that sized them are still recorded here and in the manifest: they
+    stop being drawn, they do not leave the record. ``context`` is the polar
+    table's context; without it the lobe block is omitted, not invented.
     """
     from bdb27.figure_text_scan import BANNED_TOKENS, banned_hits, figure_texts
 
@@ -12604,7 +12590,7 @@ def backpedal_polar_drawn_text(fig, cfg: common.Config, mode: str) -> dict:
         raise ValueError(
             f"{STAGE}: figure 21 draws figure-level text {extra} — the drawing "
             "carries no caption or annotation block")
-    return {
+    payload = {
         "provenance": common.provenance(mode),
         "stamp": stamp_text(mode),
         "config_sha": common.config_fingerprint(cfg),
@@ -12623,6 +12609,20 @@ def backpedal_polar_drawn_text(fig, cfg: common.Config, mode: str) -> dict:
         # render (``backpedal_polar_measured_shift``).
         "marker_offset": backpedal_polar_marker_offset_metadata(fig),
     }
+    if context is not None:
+        # D222: the two lobe marks are no longer drawn; their numbers remain in
+        # the record next to the drawing that used to carry them.
+        payload["lobes"] = {
+            side: {
+                "n": int(context["lobes"][side]["n"]),
+                "median_deg": float(context["lobes"][side]["median_deg"]),
+                "q25_deg": float(context["lobes"][side]["q25_deg"]),
+                "q75_deg": float(context["lobes"][side]["q75_deg"]),
+            }
+            for side in ("positive", "negative")
+        }
+        payload["lobe_marks_drawn"] = False
+    return payload
 
 
 def backpedal_polar_manifest_payload(table: pd.DataFrame, context: dict,

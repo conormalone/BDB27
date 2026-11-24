@@ -117,5 +117,20 @@
       0.00742228094713937
     ],
     "measured_shift_units": "saved PNG pixels, this render minus baseline"
-  }
+  },
+  "lobes": {
+    "positive": {
+      "n": 63,
+      "median_deg": 110.95587921142578,
+      "q25_deg": 100.72697448730469,
+      "q75_deg": 119.22604751586914
+    },
+    "negative": {
+      "n": 70,
+      "median_deg": 243.74980926513672,
+      "q25_deg": 236.3325309753418,
+      "q75_deg": 253.28303337097168
+    }
+  },
+  "lobe_marks_drawn": false
 }

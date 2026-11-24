@@ -374,3 +374,23 @@ The constant holds the **total**, not an increment: `BACKPEDAL_POLAR_MARKER_OFFS
 - **Unchanged.** `fig_backpedal_polar.csv` byte-identical (`f186ebbc…`), strings unchanged
   (`Every turn in the backpedal`, `0` … `315`), manifest entry untouched, every other figure's PNG
   byte-identical, two renders byte-identical (PNG `3d244edb…`).
+
+## Revision — the lobe marks come off the canvas (D222, 2026-11-24)
+
+Amends D221. Conor, verbatim: *"No remove the black like at about halfway between 90 and 135 and 225
+and 270, and behind the dots as well, leave everything else"*. Both parts of each lobe mark are
+removed — the **median spokes** (origin → 0.80 radial at 111.0° and 243.7°) and the **middle-half
+arcs** (64 points at 1.16 radial, behind the dots). They are deleted from the code path, not
+recoloured, and the constants that sized them are deleted with them.
+
+- **The numbers stay in the record.** CSV byte-identical (`f186ebbc…`); `population.lobes` in the
+  manifest unchanged (clockwise n = 63, 110.9559° [100.7270, 119.2261]; counter-clockwise n = 70,
+  243.7498° [236.3325, 253.2830]); a new `lobes` block and `"lobe_marks_drawn": false` in the
+  drawn-text sidecar.
+- **Everything else unchanged.** Title, ticks 0…315, grid, dotted 1.0 ring, marker (image, colours,
+  −90° rotation, −20 px offset), stamp, manifest entry.
+- **Pixel evidence.** Canvas 1096 × 1134; 4,337 changed pixels, rows 601–817 × cols 168–946, 4,277 of
+  them old spoke/arc grey; marker red pixels and centroid unchanged; new PNG `839dbb66…`; every
+  other figure byte-identical.
+- **Tests.** 28/28 in `tests/test_backpedal_polar_figure.py`; the new no-artist test asserts no
+  radial line and no constant-radius arc exist, and the survival test ties CSV → sidecar → manifest.

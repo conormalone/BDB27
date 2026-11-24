@@ -34,8 +34,13 @@ What is tested here, and why:
   off the border, the subject's source RGB carried through the mask, centred on
   the origin, aspect preserved, drawn under the turns and clear of the nearest
   dot by the real ``min(radius_drawn)``, with no text of its own;
-* red is confined to that marker: the lobe medians, the middle-half arcs and the
-  provenance stamp are neutral ink, and a scan of the rendered PNG counts the
+* D222: the lobe marks are off the canvas — no median spoke, no middle-half
+  arc (Conor, 2026-11-24 19:47: "No remove the black like at about halfway
+  between 90 and 135 and 225 and 270, and behind the dots as well, leave
+  everything else"). They are deleted from the code path, not recoloured, and
+  their medians and quintiles stay in the CSV, the sidecar and the manifest;
+* red is confined to that marker: the provenance stamp is neutral ink and the
+  lobes no longer paint anything, and a scan of the rendered PNG counts the
   reddish pixels inside and outside the marker's drawn footprint — inside may be
   the jersey, outside must be zero (D218's "drop all the red" still governs the
   plot furniture; D219 restores Conor's image colours);
@@ -104,7 +109,8 @@ def drawn(polar, cfg):
     table, context = polar
     fig = figures.plot_backpedal_polar(table, context, cfg)
     try:
-        return figures.backpedal_polar_drawn_text(fig, cfg, "sample")
+        return figures.backpedal_polar_drawn_text(
+            fig, cfg, "sample", context=context)
     finally:
         plt.close(fig)
 
@@ -343,11 +349,26 @@ def _marker_radii(ax, image) -> dict:
             "centre_radius": float(centre[1])}
 
 
+def _radial_lines(ax) -> list:
+    """Straight radial lines: one constant theta, running out from the centre."""
+    return [line for line in ax.lines
+            if np.ptp(np.asarray(line.get_xdata(), dtype=float)) == 0.0
+            and np.asarray(line.get_ydata(), dtype=float).max() > 0.5]
+
+
+def _arc_lines(ax, samples: int = 64) -> list:
+    """The middle-half arcs: ``samples`` points on one constant radius."""
+    return [line for line in ax.lines
+            if len(np.asarray(line.get_xdata())) == samples
+            and np.ptp(np.asarray(line.get_ydata(), dtype=float)) == 0.0]
+
+
 def test_the_overhead_player_is_the_supplied_image_at_the_centre(polar, cfg):
     """Conor, 2026-11-24 13:35: "Use this image instead of whatever that is".
 
-    The marker is one drawn image (not vector patches), centred on the polar
-    origin, drawn above the lobe spokes and below the turns, with its own
+    The marker is one drawn image (not vector patches), placed just left of the
+    polar origin (D220/D221), under the turns (D222: the lobe marks are gone),
+    with its own
     aspect ratio preserved — so the subject is not stretched into the circle.
     D220 then moved him 10 saved px left on Conor's instruction (2026-11-24
     16:25) and D221 another 10 (17:46, "10 more pixels"), so the centre is
@@ -386,15 +407,11 @@ def test_the_overhead_player_is_the_supplied_image_at_the_centre(polar, cfg):
         assert drawn_w / drawn_h == pytest.approx(source_w / source_h,
                                                   rel=1e-9)
 
-        # under the turns, above the median spokes
+        # under the turns, and nothing vector-drawn beneath it (D222)
         scatter = [c for c in ax.collections if len(c.get_offsets()) == len(table)]
         assert scatter
         assert image.get_zorder() < min(c.get_zorder() for c in scatter)
-        spokes = [line for line in ax.lines
-                  if np.ptp(np.asarray(line.get_xdata(), dtype=float)) == 0.0
-                  and np.asarray(line.get_ydata(), dtype=float).max() > 0.5]
-        assert spokes, "the lobe medians are not drawn as radial spokes"
-        assert image.get_zorder() > max(line.get_zorder() for line in spokes)
+        assert _radial_lines(ax) == [], "a lobe median spoke is still drawn"
 
         # clipped to the polar axes, and it carries no text of its own
         assert image.get_clip_path() is not None
@@ -533,33 +550,69 @@ def test_the_marker_moves_twenty_pixels_left_in_the_saved_png(
 
 
 # ------------------------------------------------------------- 4. drawn text
-def test_the_lobes_keep_their_geometry_in_neutral_ink(polar, cfg):
-    """D218: the medians and arcs stay, in grey — nothing is deleted."""
+def test_no_lobe_spokes_or_arcs_are_drawn(polar, cfg):
+    """D222: the whole lobe mark is off the canvas, and off the code path.
+
+    Conor, 2026-11-24 19:47, verbatim: "No remove the black like at about
+    halfway between 90 and 135 and 225 and 270, and behind the dots as well,
+    leave everything else". Both halves of each lobe mark — the median spoke
+    (halfway between 90/135 and between 225/270) and the middle-half arc
+    (behind the dots) — must be absent as ARTISTS, not merely recoloured: a
+    white or transparent line would still be drawn. So this asserts the axes
+    carry no radial line and no constant-radius arc at all, and that the only
+    line artist left is the dotted 1.0 ring the dial needs.
+    """
     table, context = polar
+    # the lobes exist in the data — this does not pass on an empty table
+    assert context["lobes"]["positive"]["n"] > 0
+    assert context["lobes"]["negative"]["n"] > 0
     fig = figures.plot_backpedal_polar(table, context, cfg)
     try:
         ax = fig.axes[0]
-        colours = [line.get_color() for line in ax.lines]
-        assert figures.ALERT not in colours
-        spokes = [line for line in ax.lines
-                  if np.ptp(np.asarray(line.get_xdata(), dtype=float)) == 0.0
-                  and np.asarray(line.get_ydata(), dtype=float).max() > 0.5]
-        arcs = [line for line in ax.lines
-                if len(np.asarray(line.get_xdata())) == 64]
-        assert len(spokes) == sum(
-            1 for side in ("positive", "negative")
-            if context["lobes"][side]["n"] > 0)
-        assert len(arcs) == len(spokes)
-        assert all(line.get_color() == figures.BACKPEDAL_POLAR_MEDIAN_INK
-                   for line in spokes)
-        assert all(line.get_color() == figures.BACKPEDAL_POLAR_ARC_INK
-                   for line in arcs)
-        # the spokes still run to the documented radial extent
-        for line in spokes:
-            assert np.asarray(line.get_ydata(), dtype=float).max() == \
-                pytest.approx(figures.BACKPEDAL_POLAR_MEDIAN_TOP)
+        assert _radial_lines(ax) == [], "a lobe median spoke is still drawn"
+        assert _arc_lines(ax) == [], "a lobe middle-half arc is still drawn"
+        ring = [line for line in ax.lines if len(line.get_xdata()) == 241]
+        assert len(ring) == 1, "the dotted 1.0 ring is missing"
+        assert ring[0].get_linestyle() == ":"
     finally:
         plt.close(fig)
+
+
+def test_the_lobe_numbers_survive_removal_in_csv_and_sidecar(polar, drawn):
+    """D222: they stop being drawn; they do not leave the record.
+
+    The medians (111.0° and 243.7° on the drawn scale) and both quintiles are
+    re-derived here from the committed CSV and must match the sidecar and the
+    manifest, so deleting the artists cannot quietly delete the information.
+    """
+    expectations = {
+        "positive": {"n": 63, "median_deg": 111.0},
+        "negative": {"n": 70, "median_deg": 243.7},
+    }
+    committed = pd.read_csv(FIGS / f"{FIGURE}.csv")
+    committed_sidecar = json.loads(
+        (FIGS / f"{FIGURE}.drawn_text.json").read_text(encoding="utf-8"))
+    assert committed_sidecar["lobe_marks_drawn"] is False
+    manifest = json.loads(
+        (FIGS / "figures_manifest.json").read_text(encoding="utf-8"))
+    manifest_lobes = manifest["figures"][FIGURE]["population"]["lobes"]
+    for side, pinned in expectations.items():
+        bearings = committed.loc[
+            committed["side"] == side, "bearing_deg"].to_numpy(float)
+        assert len(bearings) == pinned["n"]
+        assert float(np.median(bearings)) == pytest.approx(
+            pinned["median_deg"], abs=0.05)
+        # CSV -> sidecar -> manifest agree on the same three numbers
+        for key, value in (("median_deg", float(np.median(bearings))),
+                           ("q25_deg", float(np.percentile(bearings, 25))),
+                           ("q75_deg", float(np.percentile(bearings, 75)))):
+            assert drawn["lobes"][side][key] == pytest.approx(value, abs=1e-6)
+            assert committed_sidecar["lobes"][side][key] == pytest.approx(
+                value, abs=1e-6)
+            assert manifest_lobes[side][key] == pytest.approx(value, abs=1e-6)
+        assert drawn["lobes"][side]["n"] == pinned["n"]
+        assert committed_sidecar["lobes"][side]["n"] == pinned["n"]
+    assert drawn["lobe_marks_drawn"] is False
 
 
 def _marker_footprint(png, fig, image, pad_px=2) -> np.ndarray:
@@ -710,7 +763,8 @@ def test_two_rows_still_render_and_a_wide_angle_wraps(cfg, tmp_path):
     assert bool(wide["bearing_wrapped"]) is True
     fig = figures.plot_backpedal_polar(table, context, cfg)
     try:
-        dump = figures.backpedal_polar_drawn_text(fig, cfg, "sample")
+        dump = figures.backpedal_polar_drawn_text(
+            fig, cfg, "sample", context=context)
         assert figures.BACKPEDAL_POLAR_TITLE in dump["strings"]
         out = figures.render_backpedal_polar(fig, cfg, tmp_path / "two.png")
         assert Path(out).stat().st_size > 0
@@ -788,6 +842,11 @@ def test_committed_drawn_text_dump_matches_the_spec():
     assert payload["strings"] == ([figures.BACKPEDAL_POLAR_TITLE]
                                   + [str(tick) for tick in range(0, 360, 45)])
     assert payload["scan_strings"][0] == figures.BACKPEDAL_POLAR_TITLE
+    # D222: the lobe marks are not drawn, but their numbers are in the record
+    assert payload["lobe_marks_drawn"] is False
+    assert set(payload["lobes"]) == {"positive", "negative"}
+    assert payload["lobes"]["positive"]["n"] == 63
+    assert payload["lobes"]["negative"]["n"] == 70
 
 
 def test_sidecar_records_the_offset_and_the_measured_displacement():
