@@ -6596,7 +6596,7 @@
       "stage": "06_figures",
       "artefact_version": 1,
       "figure": "fig_backpedal_polar",
-      "title": "The backpedal drill's turns, with zero at the top",
+      "title": "Every turn in the backpedal",
       "claim": "Every detected turn of BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION is placed on one protractor with zero at the top and the scale running clockwise like a compass bearing, read on the same 0-360 scale as the other plots: 133 turns from 71 players, the clockwise side has a median bearing of 111.0\u00b0 (n = 63) and the counter-clockwise side 243.7\u00b0 (n = 70) \u2014 not where a 45\u00b0 break would put them.",
       "drill_name": "BACK_PEDAL_AND_TRANSITION_45_DEGREE_REACTION",
       "sources": [

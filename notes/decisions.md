@@ -9619,3 +9619,44 @@ eight tick positions in degrees, that "360" is nowhere on the canvas, and that z
 top; the overlap assertion it replaced is gone because no two labels share a spoke. Drawn strings now,
 in order: `The backpedal drill's turns, with zero at the top`, `0`, `45`, `90`, `135`, `180`, `225`,
 `270`, `315`.
+
+## D216 — Figure 21 retitled: "Every turn in the backpedal" · 2026-11-24
+
+**The request.** Conor, 2026-11-24 11:03, verbatim: *"Make the title 'every turn in the backpedal'"*.
+One string, on one figure.
+
+**The change.** `BACKPEDAL_POLAR_TITLE` in `src/bdb27/figures.py` (the only place the figure's title
+lives) is now `Every turn in the backpedal`. Sentence case, leading capital, no trailing period. The
+drawing is untouched: same dots, same median spokes, same IQR arcs, same eight tick labels, same
+theta geometry. `backpedal_polar_drawn_text`'s allow-list is derived from that constant, so the
+strict "title plus tick scale and nothing else" contract moved with it without weakening.
+
+**The data did not move.** `outputs/figures/fig_backpedal_polar.csv` was not rewritten (it is
+unchanged in the tree) and the fresh render's CSV came out **byte-identical** (sha256
+`f186ebbc9d928c0f298d8be17548bbac3ac6418b69a6b4a0f046bdb472e95cd2`, 133 rows, 15 columns), so
+`config_sha` and every measured value are unchanged. Clockwise lobe 111.0° (n = 63),
+counter-clockwise 243.7° (n = 70), 133 turns from 71 of 122 players. The pre-change render was
+reproduced byte-for-byte from the committed tree first (`5eab00c9…`, matching the committed PNG),
+which is what makes the targeted regeneration safe.
+
+**Drawn strings now, in order:** `Every turn in the backpedal`, `0`, `45`, `90`, `135`, `180`, `225`,
+`270`, `315`. No 360, no lobe labels, no count line, no honesty line, no caption, no banned token.
+
+**Manifest.** Only figure 21's `title` field changed in `outputs/figures/figures_manifest.json` (one
+line; the entry's `claim`, `caveats`, `population` and the file's top-level header are untouched).
+
+**No other figure re-rendered.** Figure 21's PNG is the only PNG changed in the tree and in the
+commit.
+
+**Tests.** Red first on the pre-change tree — exactly two failures, both artefact staleness
+(`test_manifest_entry_and_its_population`, `test_committed_drawn_text_dump_matches_the_spec`, each
+reading the old title from the committed manifest/drawn-text dump) — then green after regenerating.
+Full suite: **749 collected, 748 passed, 1 skipped, 0 failed**; the one skip is the pre-existing
+`test_reliability_pairs.py::test_full_run_pins_the_committed_numbers` (the FULL-run parquet is not on
+this machine). `tests/test_backpedal_polar_figure.py` is 18/18 green, including
+`test_drawn_text_is_only_the_title_and_the_scale`, which derives its expectation from the constant and
+still asserts the title carries no digits.
+
+**Deliberately not done.** No change to the drawing, the tick scale, the dots, the median spokes, the
+IQR arcs, the CSV, any measured value, the manifest `claim`/`caveats`/`population`, `TASK.md`, or any
+other figure.

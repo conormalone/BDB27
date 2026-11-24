@@ -11936,8 +11936,10 @@ def backpedal_route_manifest_payload(table: pd.DataFrame, context: dict,
 #: same as every other tick; no 45 deg line is drawn as this drill's geometry.
 FIGURE_KEY_BACKPEDAL_POLAR = "fig_backpedal_polar"
 #: The title stays drawn (Conor asked for the text OFF the plot, not for a
-#: title-less figure); its wording follows the drawing, zero up (D215).
-BACKPEDAL_POLAR_TITLE = "The backpedal drill's turns, with zero at the top"
+#: title-less figure); its wording follows the drawing, zero up (D215), and
+#: Conor retitled it on 2026-11-24 11:03: "Make the title 'every turn in the
+#: backpedal'" (D216).
+BACKPEDAL_POLAR_TITLE = "Every turn in the backpedal"
 BACKPEDAL_POLAR_SIDE_LABELS = {
     "positive": "clockwise side",
     "negative": "counter-clockwise side",

@@ -1,9 +1,10 @@
-"""Figure 21 — "every backpedal turn on one protractor, zero up".
+"""Figure 21 — "Every turn in the backpedal".
 
 Conor, 2026-11-23 19:41: "Ok maybe draw a circle where the line down is zero and
 then plot all the angles in the backpedal 45 on it" (confirmed: "That ok"),
 revised 2026-11-24 09:09: "Could you reverse the X axis so zero is up and remove
-the text on the plot" (D215).
+the text on the plot" (D215), retitled 2026-11-24 11:03: "Make the title 'every
+turn in the backpedal'" (D216).
 
 What is tested here, and why:
 

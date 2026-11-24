@@ -213,3 +213,11 @@ top spoke, so the duplicate label is gone: ticks are 0, 45, 90, 135, 180, 225, 2
 labels, one per spoke). The nudge that used to separate the two labels and its constant are deleted
 along with the label; `backpedal_polar_drawn_text` treats a returned "360" as a contract failure. No
 data, count or CSV column changed — the CSV remains byte-identical to D214's.
+
+## Revision — retitle (D216, 2026-11-24 11:03)
+
+Conor: *"Make the title 'every turn in the backpedal'."* One constant changed:
+`BACKPEDAL_POLAR_TITLE = "Every turn in the backpedal"`. The drawing, the eight
+tick labels, the dots, the median spokes and the IQR arcs are unchanged; the
+canvas still carries the title and the scale and nothing else. The CSV is
+byte-identical to D215's (same sha256), so every measured value and count stands.

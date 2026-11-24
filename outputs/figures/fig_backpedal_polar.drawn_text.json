@@ -3,9 +3,9 @@
   "stamp": "PLACEHOLDER_SAMPLE \u2014 UNVALIDATED SAMPLE OUTPUT",
   "config_sha": "bed47a853f46c1f7",
   "figure": "fig_backpedal_polar",
-  "title": "The backpedal drill's turns, with zero at the top",
+  "title": "Every turn in the backpedal",
   "strings": [
-    "The backpedal drill's turns, with zero at the top",
+    "Every turn in the backpedal",
     "0",
     "45",
     "90",
@@ -16,7 +16,7 @@
     "315"
   ],
   "scan_strings": [
-    "The backpedal drill's turns, with zero at the top",
+    "Every turn in the backpedal",
     "0",
     "45",
     "90",
