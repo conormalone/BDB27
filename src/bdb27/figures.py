@@ -35,7 +35,7 @@ matplotlib.use("Agg")  # deterministic, headless
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.patches import Arc, Patch
+from matplotlib.patches import Arc, Ellipse, Patch, Polygon
 from matplotlib.ticker import LogLocator, NullFormatter
 from plotnine import (
     aes,
@@ -11964,6 +11964,23 @@ BACKPEDAL_POLAR_RMAX = 1.34
 BACKPEDAL_POLAR_TICK_STEP = 45
 #: Ticks run 0 ... 315: 360 is the 0 spoke, printed once as "0" (D215).
 
+#: The overhead player at the centre (D217). Conor, 2026-11-24 11:24: "Could
+#: you also put an overhead view of a player at the centre to show that it's
+#: the way they are facing". A schematic seen from above — head, shoulders,
+#: and a chest/nose wedge at the front — with the front on the 0 deg spoke at
+#: the top, so the dial reads as bearings relative to the direction the player
+#: faces. Vector only (three patches, no image, no font glyph), neutral grey
+#: ink (red stays reserved for the lobes), drawn under the turns.
+BACKPEDAL_POLAR_MARKER_EXTENT = 0.56   # radial units, apex of the chest wedge
+BACKPEDAL_POLAR_MARKER_INK = BACKPEDAL_AXIS_GREY  # same neutral grey ink
+BACKPEDAL_POLAR_MARKER_FILL = "#ececec"
+BACKPEDAL_POLAR_MARKER_CHEST = "#8a8a8a"
+BACKPEDAL_POLAR_MARKER_LW = 1.1
+BACKPEDAL_POLAR_MARKER_ZORDER = 2.5     # above the lobe spokes, under the turns
+#: The median spokes start at the origin, so they are drawn under the player
+#: glyph (D217); they still run to 0.80 radial units, clear of every turn.
+BACKPEDAL_POLAR_MEDIAN_ZORDER = 2.0
+
 BACKPEDAL_POLAR_CSV_COLUMNS = [
     "provenance", "stamp", "config_sha", "figure", "event_id", "nfl_id",
     "attempt", "frame_start", "drill_name", "turn_angle_deg",
@@ -12119,6 +12136,75 @@ def write_backpedal_polar_csv(table: pd.DataFrame, path, cfg: common.Config,
     return path
 
 
+def _polar_axes_fraction_per_unit(ax, fig) -> tuple[float, float]:
+    """Axes-fraction size of one radial unit, for drawing in axes coordinates.
+
+    A polar axes inscribes its ``r = RMAX`` circle in the square box it was
+    given, so one radial unit is ``0.5 * min(box width, box height) / RMAX``
+    inches; in axes fraction that is divided by the box width for x and by its
+    height for y. A patch in polar DATA coordinates would be sheared by the
+    projection, so the player glyph is built in axes fraction and converted
+    back through this function. The figure tests measure the drawn glyph
+    through ``transAxes`` -> ``transData`` rather than trusting the derivation.
+    """
+    box = ax.get_position()
+    width_in = box.width * fig.get_figwidth()
+    height_in = box.height * fig.get_figheight()
+    unit_in = 0.5 * min(width_in, height_in) / BACKPEDAL_POLAR_RMAX
+    return unit_in / width_in, unit_in / height_in
+
+
+def _draw_backpedal_polar_player(ax, fig) -> list:
+    """The overhead player at the centre, facing the top (0 deg) spoke.
+
+    Three patches, all sized in radial units of the protractor and drawn in
+    axes fraction (D217):
+
+    * shoulders — an ellipse wider across than deep, so the shoulder line runs
+      left-right, perpendicular to the facing;
+    * the chest — a grey wedge rising out of the shoulder line to a point on the
+      0 deg spoke, so which way is forward is unambiguous without an arrow
+      head, a label or a legend;
+    * head — a white circle on the shoulder line, drawn last, over the wedge.
+
+    The whole glyph reaches ``BACKPEDAL_POLAR_MARKER_EXTENT`` radial units,
+    well short of the nearest drawn turn (r = 0.90 on the committed data), and
+    sits under the scatter, so it can never cover a point.
+    """
+    fraction_x, fraction_y = _polar_axes_fraction_per_unit(ax, fig)
+    extent = BACKPEDAL_POLAR_MARKER_EXTENT
+    zorder = BACKPEDAL_POLAR_MARKER_ZORDER
+
+    def point(dx: float, dy: float) -> tuple[float, float]:
+        """Radial-unit offset (dx, dy), dy positive towards the 0 spoke."""
+        return (0.5 + dx * extent * fraction_x,
+                0.5 + dy * extent * fraction_y)
+
+    shoulders = Ellipse(
+        point(0.0, 0.0),
+        width=0.62 * extent * fraction_x, height=0.38 * extent * fraction_y,
+        facecolor=BACKPEDAL_POLAR_MARKER_FILL,
+        edgecolor=BACKPEDAL_POLAR_MARKER_INK,
+        lw=BACKPEDAL_POLAR_MARKER_LW, transform=ax.transAxes, zorder=zorder)
+    chest = Polygon(
+        [point(0.0, 1.00), point(-0.30, 0.03), point(0.30, 0.03)],
+        closed=True, facecolor=BACKPEDAL_POLAR_MARKER_CHEST,
+        edgecolor=BACKPEDAL_POLAR_MARKER_INK, lw=1.0,
+        transform=ax.transAxes, zorder=zorder + 0.1)
+    head = Ellipse(
+        point(0.0, 0.0),
+        width=0.30 * extent * fraction_x, height=0.30 * extent * fraction_y,
+        facecolor="white",
+        edgecolor=BACKPEDAL_POLAR_MARKER_INK,
+        lw=BACKPEDAL_POLAR_MARKER_LW, transform=ax.transAxes,
+        zorder=zorder + 0.2)
+    patches = [shoulders, chest, head]
+    for patch in patches:
+        patch.set_clip_on(True)
+        ax.add_patch(patch)
+    return patches
+
+
 def plot_backpedal_polar(table: pd.DataFrame, context: dict,
                          cfg: common.Config):
     """One polar axes: one dot per turn, zero at the top, clockwise positive.
@@ -12130,7 +12216,9 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
 
     The canvas carries the title and the scale and nothing else (D215, Conor
     2026-11-24: "remove the text on the plot"): no lobe labels, no count line, no
-    honesty note. Those numbers are still in the manifest and the CSV.
+    honesty note. Those numbers are still in the manifest and the CSV. An
+    overhead player sits at the origin, facing the 0 deg spoke, so the dial
+    reads as bearings relative to the direction the player faces (D217).
     """
     fig = plt.figure(figsize=BACKPEDAL_POLAR_FIGSIZE)
     ax = fig.add_subplot(1, 1, 1, projection="polar")
@@ -12152,6 +12240,9 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
     ax.plot(around, np.full_like(around, BACKPEDAL_POLAR_RING_RADIUS),
             color=BACKPEDAL_RULE_GREY, lw=0.9, ls=":", zorder=1)
 
+    # the overhead player at the centre, facing the top spoke, under the turns
+    _draw_backpedal_polar_player(ax, fig)
+
     if len(table):
         theta = np.radians(table["bearing_deg"].to_numpy(float))
         radius = table["radius_drawn"].to_numpy(float)
@@ -12166,8 +12257,14 @@ def plot_backpedal_polar(table: pd.DataFrame, context: dict,
         if lobe["n"] == 0 or not np.isfinite(lobe["median_deg"]):
             continue
         theta_median = np.radians(lobe["median_deg"])
+        # The spoke starts at the centre, where the player glyph now sits: it is
+        # drawn under the glyph (D217) so the two bearing lines emerge from the
+        # player's shoulders instead of crossing the head. Nothing else moves —
+        # the spoke stops at 0.80 radial units and the turns start at 0.90, so
+        # the dots never meet it either way.
         ax.plot([theta_median, theta_median], [0.0, BACKPEDAL_POLAR_MEDIAN_TOP],
-                color=ALERT, lw=BACKPEDAL_POLAR_MEDIAN_LW, zorder=4)
+                color=ALERT, lw=BACKPEDAL_POLAR_MEDIAN_LW,
+                zorder=BACKPEDAL_POLAR_MEDIAN_ZORDER)
         span = np.linspace(lobe["q25_deg"], lobe["q75_deg"], 64)
         ax.plot(np.radians(span),
                 np.full_like(span, BACKPEDAL_POLAR_ARC_RADIUS),

@@ -26,6 +26,10 @@ What is tested here, and why:
   the lobe labels, the count line and the honesty line Conor asked off the plot
   must stay off it (D215), with no caption, no subtitle, no legend, no banned
   token;
+* the overhead player at the centre (D217, Conor 2026-11-24 11:24): three
+  vector patches — shoulders, chest wedge, head — centred on the origin, facing
+  the 0° spoke at the top, drawn under the turns and clear of the nearest dot
+  by the real ``min(radius_drawn)``, with no text of its own;
 * no gate: a two-row input still renders, and a 200° angle is drawn at its
   wrapped bearing and flagged;
 * the artefacts: CSV schema, manifest entry, byte-identical renders.
@@ -302,6 +306,139 @@ def test_lobe_stats_are_recomputed_from_the_turn_table(polar, valid_turns):
     assert 45.0 < context["lobes"]["positive"]["median_deg"] < 180.0
     assert 180.0 < context["lobes"]["negative"]["median_deg"] < 360.0
     assert context["n_wrapped"] == 0
+
+
+# ------------------------------------ 3b. the overhead player at the centre
+def _glyph(fig):
+    """The drawn player glyph: patches, plus their geometry through the axes.
+
+    Measured from the transform chain (``transAxes`` -> display -> polar data),
+    never from the constants: whatever is actually on the canvas is what is
+    asserted below.
+    """
+    ax = fig.axes[0]
+    fig.canvas.draw()
+    centre = ax.transData.transform((0.0, 0.0))
+    measured = []
+    for patch in ax.patches:
+        display = patch.get_transform().transform(patch.get_path().vertices)
+        theta, radius = ax.transData.inverted().transform(display).T
+        measured.append({"patch": patch, "display": np.asarray(display),
+                         "theta": np.asarray(theta),
+                         "radius": np.asarray(radius)})
+    return ax, centre, measured
+
+
+def test_the_overhead_player_sits_at_the_centre_facing_the_zero_spoke(
+        polar, cfg):
+    """Conor, 2026-11-24 11:24: an overhead player, facing the way 0 reads.
+
+    Three vector patches: shoulders, chest wedge, head. The chest points up the
+    0 spoke; the shoulders are drawn across it, so the facing is read from the
+    body, not from a label or an arrow annotation.
+    """
+    from matplotlib.patches import Ellipse, Polygon
+
+    table, context = polar
+    fig = figures.plot_backpedal_polar(table, context, cfg)
+    try:
+        ax, centre, glyph = _glyph(fig)
+        assert len(glyph) == 3, [type(g["patch"]).__name__ for g in glyph]
+        assert sorted(type(g["patch"]).__name__ for g in glyph) == [
+            "Ellipse", "Ellipse", "Polygon"]
+        assert all(isinstance(g["patch"], (Ellipse, Polygon)) for g in glyph)
+
+        # the widest patch is the shoulders: wider across than deep, horizontal
+        shoulders = max(glyph, key=lambda g: np.ptp(g["display"][:, 0]))
+        width = np.ptp(shoulders["display"][:, 0])
+        depth = np.ptp(shoulders["display"][:, 1])
+        assert width > 1.5 * depth, (width, depth)
+        shoulders_mid = 0.5 * (shoulders["display"].min(axis=0)
+                               + shoulders["display"].max(axis=0))
+        assert abs(shoulders_mid[0] - centre[0]) < 1.0
+        assert abs(shoulders_mid[1] - centre[1]) < 1.0
+
+        # the chest wedge: its furthest vertex is on the 0 spoke, above centre
+        px_per_unit = abs(centre[1] - ax.transData.transform(
+            (0.0, figures.BACKPEDAL_POLAR_RMAX))[1]) / figures.BACKPEDAL_POLAR_RMAX
+        apex_radius, apex = max((float(g["radius"].max()), g) for g in glyph)
+        assert apex_radius == pytest.approx(
+            figures.BACKPEDAL_POLAR_MARKER_EXTENT, abs=1e-6)
+        top = apex["display"][np.argmax(apex["radius"])]
+        assert abs(top[0] - centre[0]) < 0.5, "the front must be on the 0 spoke"
+        assert top[1] - centre[1] == pytest.approx(
+            apex_radius * px_per_unit, abs=0.5), (
+            "the front must point up the page, where 0 is drawn")
+
+        # the head: a round circle, not a stretched ellipse
+        head = min((g for g in glyph if isinstance(g["patch"], Ellipse)),
+                   key=lambda g: np.ptp(g["display"][:, 0]))
+        head_w = np.ptp(head["display"][:, 0])
+        head_h = np.ptp(head["display"][:, 1])
+        assert abs(head_w - head_h) / head_w < 0.01, (head_w, head_h)
+        head_mid = 0.5 * (head["display"].min(axis=0)
+                          + head["display"].max(axis=0))
+        assert abs(head_mid[0] - centre[0]) < 1.0
+        assert abs(head_mid[1] - centre[1]) < 1.0
+
+        # vector only: the glyph carries no text of its own
+        assert [t.get_text() for t in ax.texts] == [
+            figures.BACKPEDAL_POLAR_TITLE]
+        assert all((patch.get_label() or "") in ("", "_nolegend_") or
+                   patch.get_label().startswith("_")
+                   for patch in ax.patches)
+    finally:
+        plt.close(fig)
+
+
+def test_the_player_glyph_stays_clear_of_every_drawn_turn(polar, cfg):
+    """It is drawn under the turns and never reaches one (D217).
+
+    The clearance is asserted against the actual smallest ``radius_drawn`` in
+    the drawn table, not a guessed threshold, and against the 0.80 x RMAX
+    canvas budget: a marker that grew into the dots would cover data.
+    """
+    table, context = polar
+    fig = figures.plot_backpedal_polar(table, context, cfg)
+    try:
+        ax, _, glyph = _glyph(fig)
+        drawn_max = max(float(g["radius"].max()) for g in glyph)
+        nearest_dot = float(table["radius_drawn"].min())
+        margin = 0.05
+        assert drawn_max <= nearest_dot - margin, (drawn_max, nearest_dot)
+        assert drawn_max < 0.80 * figures.BACKPEDAL_POLAR_RMAX, drawn_max
+        assert len(table) > 0
+        # and it is below the scatter in z-order, so a dot always wins
+        scatter = [c for c in ax.collections
+                   if len(c.get_offsets()) == len(table)]
+        assert scatter
+        assert max(p.get_zorder() for p in ax.patches) < min(
+            c.get_zorder() for c in scatter)
+        # the median spokes start at the origin, so they run under the glyph:
+        # the bearing lines emerge from the player instead of crossing his head
+        spokes = [line for line in ax.lines
+                  if line.get_color() == figures.ALERT
+                  and np.ptp(np.asarray(line.get_xdata(), dtype=float)) == 0.0]
+        assert spokes, "the lobe medians are not drawn as radial spokes"
+        assert max(line.get_zorder() for line in spokes) < min(
+            p.get_zorder() for p in ax.patches)
+    finally:
+        plt.close(fig)
+
+
+def test_the_player_glyph_is_a_schematic_not_data(cfg, tmp_path):
+    """No gate: it is drawn even when the table is empty."""
+    table, context = _synthetic([])
+    fig = figures.plot_backpedal_polar(table, context, cfg)
+    try:
+        ax, centre, glyph = _glyph(fig)
+        assert len(glyph) == 3
+        assert max(float(g["radius"].max()) for g in glyph) == pytest.approx(
+            figures.BACKPEDAL_POLAR_MARKER_EXTENT, abs=1e-6)
+        out = figures.render_backpedal_polar(fig, cfg, tmp_path / "empty.png")
+        assert Path(out).stat().st_size > 0
+    finally:
+        plt.close("all")
 
 
 # ------------------------------------------------------------- 4. drawn text

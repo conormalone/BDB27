@@ -47,8 +47,10 @@ MANIFEST_REGISTRY = "outputs/figures/figures_manifest.json"
 #: committed figures that decision rewrites. D214 (2026-11-23) moved figure 21's
 #: protractor onto the 0-360 scale the other plots use, and D215 (2026-11-24)
 #: put its zero at the top and took the on-plot text off it; both are drawing
-#: changes, no measured value. Every other figure is still off-limits to an
-#: unrecorded edit.
+#: changes, no measured value. D217 (2026-11-24) drew the overhead player at
+#: figure 21's centre, facing the 0 spoke: a drawing change again, with the CSV
+#: and the drawn-text dump byte-identical. Every other figure is still
+#: off-limits to an unrecorded edit.
 DECISION_MOVED_FIGURES = {
     "outputs/figures/fig_drill_coverage.csv",
     "outputs/figures/fig_drill_coverage.png",

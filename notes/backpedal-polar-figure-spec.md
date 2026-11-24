@@ -221,3 +221,39 @@ Conor: *"Make the title 'every turn in the backpedal'."* One constant changed:
 tick labels, the dots, the median spokes and the IQR arcs are unchanged; the
 canvas still carries the title and the scale and nothing else. The CSV is
 byte-identical to D215's (same sha256), so every measured value and count stands.
+
+## Revision — the overhead player at the centre (D217, 2026-11-24 11:24)
+
+Conor: *"Could you also put an overhead view of a player at the centre to show
+that it's the way they are facing."* A schematic seen from above, drawn as three
+vector patches at the origin, with the front on the 0° spoke at the top:
+
+- **shoulders** — an ellipse 0.62 × 0.38 of the glyph's extent, wider across than
+  deep, so the shoulder line is horizontal and perpendicular to the facing;
+- **chest** — a grey wedge rising out of the shoulder line to a point on the 0°
+  spoke: the body's own direction cue, no arrow head, no label, no legend;
+- **head** — a white circle 0.30 of the extent on the shoulder line, over the
+  wedge.
+
+Sizes are radial units of the protractor (`BACKPEDAL_POLAR_MARKER_EXTENT = 0.56`),
+converted to axes fraction by `_polar_axes_fraction_per_unit` because a patch in
+polar data coordinates would be sheared by the projection; the glyph is therefore
+vector-only and round in pixels (the head is asserted round, not assumed).
+
+**It cannot cover a turn.** The glyph's furthest vertex is at r = 0.56; the
+nearest drawn turn on the committed data is at r = 0.9017, and the glyph is also
+inside the 0.80 × RMAX = 1.072 canvas budget from Main. It is drawn at zorder
+2.5–2.7, under the turns at 3, so a dot always wins; a test asserts the clearance
+against `min(radius_drawn)` recomputed from the drawn table, not a guess.
+
+**One dependent drawing change.** The lobe median spokes start at the origin, so
+they would have crossed the glyph's head. They are now drawn at zorder 2.0, under
+the glyph (2.5–2.7), so the two bearing lines emerge from the player's shoulders
+instead. Nothing else moves: the spokes still run from the origin to 0.80 and the
+turns start at 0.90, so the dots never met a spoke either way and no dot pixel
+changes.
+
+**Unchanged.** No on-canvas string is added or removed (title plus 0 … 315); the
+CSV is byte-identical (`f186ebbc…`), lobes 111.0° n = 63 and 243.7° n = 70; the
+drawn-text dump and the manifest entry are byte-identical; no other figure's PNG
+changes. Grey ink only — red stays the lobes' colour.

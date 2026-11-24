@@ -9660,3 +9660,63 @@ still asserts the title carries no digits.
 **Deliberately not done.** No change to the drawing, the tick scale, the dots, the median spokes, the
 IQR arcs, the CSV, any measured value, the manifest `claim`/`caveats`/`population`, `TASK.md`, or any
 other figure.
+
+## D217 — Figure 21: an overhead player at the centre, facing the 0 spoke · 2026-11-24
+
+**The request.** Conor, 2026-11-24 11:24, verbatim: *"Could you also put an overhead view of a
+player at the centre to show that it's the way they are facing"*. Read as: a schematic top-down
+(bird's-eye) player at the centre of the polar plot, oriented so the player faces the 0° spoke at
+the top, so the dial reads as bearings relative to the direction the player faces. No labels, no
+call-outs.
+
+**What was drawn.** Three vector patches at the origin, in `_draw_backpedal_polar_player`
+(`src/bdb27/figures.py`):
+
+- **shoulders** — an ellipse 0.62 × 0.38 of the glyph's extent, wider across than deep, so the
+  shoulder line is horizontal and perpendicular to the facing;
+- **chest** — a grey wedge rising out of the shoulder line to a point on the 0° spoke: the body is
+  its own direction cue, with no arrow head, no label and no legend;
+- **head** — a white circle 0.30 of the extent on the shoulder line, drawn last.
+
+Sizes are radial units of the protractor (`BACKPEDAL_POLAR_MARKER_EXTENT = 0.56`) converted to axes
+fraction by `_polar_axes_fraction_per_unit`, because a patch given in polar data coordinates is
+sheared by the projection. Grey ink only (`#ececec` fill, `BACKPEDAL_AXIS_GREY` edges, `#8a8a8a`
+chest); red stays the lobes' colour.
+
+**Clearance, measured not guessed.** The glyph's furthest vertex sits at **r = 0.56**; the nearest
+drawn turn on the committed data is at **r = 0.9017**, so the clearance is **0.3417 radial units**,
+and 0.56 is well inside the 0.80 × RMAX = 1.072 canvas budget. It is drawn at zorder 2.5–2.7, under
+the turns at 3, so a dot always wins; `test_the_player_glyph_stays_clear_of_every_drawn_turn`
+asserts the margin against `min(radius_drawn)` recomputed from the drawn table.
+
+**One dependent drawing change.** The two lobe median spokes start at the origin, so at their old
+zorder (4) the red bearing lines crossed the glyph's head — verified: the pixel at dead centre came
+back `(176, 0, 32)` before the change. They are now drawn at zorder 2.0
+(`BACKPEDAL_POLAR_MEDIAN_ZORDER`), under the glyph, so the lines emerge from the player's shoulders.
+Nothing else could move: the spokes stop at 0.80 and the turns start at 0.90, so no dot ever met a
+spoke either way. A test pins the spokes below the glyph.
+
+**The data did not move.** `outputs/figures/fig_backpedal_polar.csv` is **byte-identical**
+(sha256 `f186ebbc9d928c0f298d8be17548bbac3ac6418b69a6b4a0f046bdb472e95cd2`, 133 rows, 15 columns):
+clockwise lobe 111.0° n = 63, counter-clockwise 243.7° n = 70, 133 turns from 71 of 122 players. The
+drawn-text dump is byte-identical and the manifest entry is identical to the committed one (the
+glyph adds no claim, no caveat and no string), so `figures_manifest.json` is untouched.
+
+**Pixel evidence that nothing else moved.** Between the old and new PNG (both 1096 × 1134, canvas
+size unchanged) **14,338 of 1,242,864 pixels differ, all inside rows 401–631 × cols 491–613** — the
+glyph's own footprint. Every dot, the dotted ring, the tick labels, the title and the surviving
+spoke lengths are pixel-identical. No other figure's PNG changed in the tree.
+
+**Drawn strings, unchanged:** `Every turn in the backpedal`, `0`, `45`, `90`, `135`, `180`, `225`,
+`270`, `315`. The glyph is patches only — `backpedal_polar_drawn_text`'s allow-list did not move.
+
+**Tests.** Three added: the glyph exists, is centred, faces the 0 spoke, is round and horizontal, and
+carries no text; it clears every drawn turn under the scatter's zorder and above the spokes; and it
+is drawn even for an empty table (no gate). `tests/test_backpedal_polar_figure.py` is 21/21 green;
+two independent regenerations are byte-identical (`b50d0bb1…`). Full suite: **752 collected, 751
+passed, 1 skipped, 0 failed**; the skip is the pre-existing local-artefact skip
+`tests/test_turn_context.py::test_outputs_exist[turn_context.parquet]` (that parquet is gitignored
+and not on this machine), unrelated to this change.
+
+**Deliberately not done.** No change to the CSV, any measured value, the lobe arcs' radius/colour,
+the tick scale, the title, the manifest payload, `TASK.md`, or any other figure.
