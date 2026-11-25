@@ -104,3 +104,11 @@ Thumbs.db
 !outputs/population_shrink_received/
 !outputs/population_shrink_received/*.csv
 !outputs/population_shrink_received/*.md
+# Turn importance (D223): the ten data CSVs, summary.json and run_log.txt are the
+# evidence `notes/turn-importance-result.md` cites, on the same convention as the
+# blocks above. Small tables only (~60 KB); the inputs and the per-turn parquet
+# stay ignored.
+!outputs/turn_importance/
+!outputs/turn_importance/*.csv
+!outputs/turn_importance/*.json
+!outputs/turn_importance/*.txt

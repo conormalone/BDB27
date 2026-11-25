@@ -10072,3 +10072,61 @@ from the committed CSV and requires the sidecar and manifest to agree. Full suit
 
 **Deliberately not done.** No change to the image, mask, rotation, size, placement, dots, title,
 ticks, ring, grid, stamp, CSV, on-canvas strings, manifest payload, `TASK.md` or any other figure.
+
+## D223 — Turn importance: 30–60° is the mildest band and the common one (Test 1 + Test 2)
+
+**Date:** 2026-11-25. **Spec:** `notes/turn-importance-spec.md` (committed `def977f` before any
+band median or coefficient). **Result:** `notes/turn-importance-result.md`. **Authorised by:**
+Conor — *"I don't care about separation, I want to check that 30 to 60 turns are important"* and
+*"Ok run test 1 and 2"*. `TASK.md`, the band table, the four figures and `report-draft.md` are
+unchanged; this is a separate analysis.
+
+**What was built.** `src/bdb27/turn_importance.py` (one code path), `tests/test_turn_importance.py`
+(20 tests; 19 run by default, the two-full-run determinism check needs `BDB27_DETERMINISM=1`),
+`notebooks/bdb27_turn_importance.ipynb` (Run All deliverable), artefacts in
+`outputs/turn_importance/` (10 CSVs + `summary.json` + `run_log.txt`).
+
+**Test 1 — mechanical cost, 58,664 valid DB turns.** On all five cost measures the 30–60° band is
+rank 1 or 2 gentlest of six: peak turn rate 82.8 °/s vs 486.1 at >180° (rank 1), peak lateral
+acceleration 5.46 vs 30.20 yd/s² (rank 1), path radius 2.49 vs 0.40 yd (rank 1), apex retention
+0.857 vs 0.156 (rank 2), speed retention 1.090 (rank 2, non-monotone because plants re-accelerate).
+Pre-declared label: **physically mild**. Caveat recorded: v²/r is not physical for hairpins (>180°
+median ≈ 2.8 g), but the ordering by peak turn rate — a direct measurement — is unambiguous.
+
+**Test 2 — DB player-play panel, 84,225 rows / 62,503 plays, exposure = sharpest turn in the
+play.** Primary sample 46,954 pass rows / 34,392 plays, player FE + down, distance, coverage,
+position, season controls, two-way clustered SEs (player × game). 30–60° vs no turn:
+**EPA allowed +0.1235 (95% CI +0.045 to +0.202), completion +5.85 pp (+3.68 to +8.02)** →
+pre-declared **STAKES CONFIRMED**. Gradient: 0 of 5 sharper bands exceeds 30–60° with a CI
+excluding zero; 150–180° is significantly *lower* (−0.136). The pre-declared "stakes rise with
+angle" claim **fails**.
+
+**Why it is not a causal finding.** A turn exists because the route broke; no-turn DB player-plays
+are quick throws, no-break routes and deep safeties. Every estimate is labelled
+`ASSOCIATION (STAKES), NOT CAUSE`. `separation_at_pass_forward` is never read; no attribution, no
+receiver matching.
+
+**The honest conclusion.** 30–60° is 13.26% of game turns (7,777 / 58,664) and the mildest band the
+detector records — the 30° floor is applied upstream, so no turn in the file falls below it. The
+case for its importance is
+**frequency and stakes, not severity** — consistent with Main's pre-registered observation. The
+Combine's 6.01× share shortfall is a frequency fact, not evidence that 30–60° is a punishing cut.
+
+**Correction recorded.** Spec §3.1's pre-computation estimate of player-play counts conflated turn
+rows with player-play rows; the addendum gives the measured 46,420 with a turn / 37,805 without.
+No estimand, control, estimator or decision rule changed.
+
+**Determinism.** Verified, not asserted: a fresh run of this code reproduced all ten on-disk CSVs
+byte-for-byte and `summary.json` field-for-field apart from its generation timestamp. The check is
+also a test (`test_two_full_runs_write_byte_identical_csvs`, gated behind `BDB27_DETERMINISM=1`).
+
+**Reviewed and validated at closeout (2026-11-25).** Pre-declaration intact (`def977f` already held
+§2.4 and §3.8; the only spec change is the addendum, which corrects pre-computation prose and no
+estimand, control, estimator, sensitivity or floor). Code checked against every spec clause; unit,
+exposure, reference group, filters, controls, two-way clustering and label logic all match, and
+`separation_at_pass_forward` is absent from module and notebook code. Every headline traced to an
+artefact row. Full suite in the repository `.venv`: 779 collected, 777 passed, 2 skipped, 0 failed.
+Two corrections made and disclosed in the result note: a "one turn below 30°" sentence that does not
+reproduce (the file has none; the invalid row is invalid on speed/accel caps, not angle) and a stale
+test count. Residual limits recorded in the note, including that PREVENT is 594 rows of the primary
+sample and the committed spec's `n = 194` parenthetical does not reproduce.

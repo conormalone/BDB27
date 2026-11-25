@@ -324,3 +324,30 @@ to set), a required file is unreadable, or a required column is missing (it prin
 found). It never raises on a small n, a low share, a thin band, an empty outcome subset, a
 singular-feeling FE, an unusual diagnostic or a null result. Every such case prints a table and a
 "descriptive only" note. No minimum-count constant exists in the code.
+
+---
+
+## Addendum — 2026-11-25, after the first execution
+
+One paragraph of §3.1 was an arithmetic estimate written before the panel existed, and it was
+wrong: it said 58,664 of the 84,225 DB player-play rows carry at least one turn and 25,561 carry
+none. That conflated **turn rows** with **player-play rows**. The measured counts are printed by
+the notebook and are **46,420 rows with at least one turn** and **37,805 with no turn (44.9%)**;
+the 30–60° max-angle band is **3,540 rows (4.2%)**, not 13.3% of player-plays.
+
+This is a correction of a pre-computation sample-size expectation, not a result. No estimand,
+control, estimator, sensitivity, decision label or materiality floor is changed. The corrected
+counts are reported with their denominators in `notes/turn-importance-result.md` and in
+`outputs/turn_importance/test2_band_counts.csv`.
+
+Two further wording corrections, recorded for the same reason (the pre-specified rule stands, only
+the prose describing it was wrong):
+
+- **§3.8, materiality floor.** The floor is 0.10 EPA. The text justified it as "~7% of the
+  play-level standard deviation, 1.45". 1.43 is the all-plays panel SD; the SD of `epa_allowed` in
+  the **primary pass sample** — the quantity the coefficient lives on — is **1.653**, so 0.10 is
+  ~6% of it. The floor itself is a fixed pre-declared number and is unchanged.
+- **§3.5, coverage encoding.** The operative rule is the second sentence: `PREVENT` is kept as its
+  own coverage level. The actual pooling is `null` **and** the literal string `'NA'` **and** the
+  empty string → `COVERAGE_MISSING`. The first sentence of §3.5, read alone, said the opposite;
+  the code follows the rule stated here, which was the pre-specified intent.
