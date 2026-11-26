@@ -96,7 +96,7 @@ BDB27/
 │   │   ├── common.py               # stamp, CSV+PNG+provenance+drawn-text sidecars, four-entry manifest
 │   │   ├── hole.py                 # Figure 1 — fig_the_hole
 │   │   ├── positions.py            # Figure 2 — fig_all_positions
-│   │   ├── scatter.py              # Figure 3 — fig_drill_angle_scatter (stamp per §12 U3)
+│   │   ├── scatter.py              # Figure 3 — fig_drill_angle_scatter (stamp per §13 U3)
 │   │   └── schematic.py            # Figure 4 — fig_drill_schematic (SCHEMATIC)
 │   ├── report/
 │   │   ├── __init__.py
@@ -334,7 +334,7 @@ entry in `outputs/figures/figures_manifest.json`; the manifest must have **exact
 |---|---|---|---|
 | 1 | `fig_the_hole` | `FULL` | DB rows of `bands.csv`; headline **6.01×** |
 | 2 | `fig_all_positions` | `FULL` | the four comparison groups' 30–60° rows; **2.12 / 1.68 / 1.35 / 1.43×** |
-| 3 | `fig_drill_angle_scatter` | `PLACEHOLDER_SAMPLE` unless §12 U3 changes it | 1,179 control rows; nothing quoted from it |
+| 3 | `fig_drill_angle_scatter` | `PLACEHOLDER_SAMPLE` unless §13 U3 changes it | 1,179 control rows; nothing quoted from it |
 | 4 | `fig_drill_schematic` | `SCHEMATIC` | no measurement; geometry only |
 
 ### Trace — `report/claims.py` (not a stage)
