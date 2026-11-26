@@ -10130,3 +10130,41 @@ Two corrections made and disclosed in the result note: a "one turn below 30°" s
 reproduce (the file has none; the invalid row is invalid on speed/accel caps, not angle) and a stale
 test count. Residual limits recorded in the note, including that PREVENT is 594 rows of the primary
 sample and the committed spec's `n = 194` parenthetical does not reproduce.
+
+## D224 — Rebuild from scratch: the target tree, the dependency rule, and the switchover gate (spec only)
+
+**Date:** 2026-11-26. **Spec:** `notes/rebuild-spec.md`. **Status:** proposed; needs Conor on
+§12 D1–D3. **Authorised by:** Conor — *"I'm going to say again, the existing files and file
+structures will be gone, I want to redo it from scratch"* (2026-11-26 15:31), his second
+correction after Main twice proposed reorganising the existing tree.
+
+**What this decides.** The rebuild is a new 21-module package (`bdb27/` at repo root) built
+bottom-up behind the same seven stage slots as `TASK.md` (00 config, 01 ingest, 02 turns, 03 bands,
+04 summaries, 05 sensitivity, 06 figures). Packages form a total order `config ← ingest ← turns ←
+measure ← figures ← report ← run`, enforced by AST tests; one `config.yaml`; one turn definition;
+one home per constant. Old `src/` (35 files), `scripts/` (11), `tests/` (37) and six of seven
+notebooks are replaced, not migrated. The four-block claim is the only thing the new stages
+compute; `capacity/`, `coverage/`, the outcome test, attribution, coverage and envelope work are
+out, per `TASK.md`.
+
+**Overturns Main's skeleton on five points:** `config/` folder → single `config.yaml` (TASK binds
+it); `capacity/` and `coverage/` deleted (TASK excludes feasibility and coverage arithmetic);
+`demand/`+`supply/` merged into `measure/` (one share definition); `analyses/` kept but empty and
+import-isolated; `report/` narrowed to a claims trace checked by a test.
+
+**Explicitly not done in this cycle.** No code, no file moves, no deletions, no branch surgery, no
+change to `TASK.md`, `notes/report-draft.md`, `outputs/`, the notebooks or any source file. The old
+tree is not deleted; §8 of the spec defines the parity evidence required before deletion is even
+proposed (full-run parity table, sha256 on CSV/JSON, clean-clone Run All on the laptop, Conor's
+written go-ahead, archive-by-`git mv` then delete in a later cycle). C4, the first expensive
+commit, runs on the data host, not this Pi.
+
+**Flagged, not resolved.** (U1) the band table and 58,664-row turn table live under gitignored
+`data/interim/`, so "committed artefact" is not literally true — acceptance pins sha256 and copies
+the band CSV into tracked `outputs/bands/`. (U2) the cycle brief says the writeup rests on turn
+importance and an outcome test; `report-draft.md` cites neither and `TASK.md` forbids the outcome
+test. (U3) Figure 3 could be promoted from `PLACEHOLDER_SAMPLE` to FULL off the 1,179-row control
+pass, but that changes `TASK.md`, so it is Conor's call. (U4) the 6° median smoother shift hides a
+30–60° share range of 8.64%–16.94% in the FULL sensitivity; the direction survives, the writeup
+currently reports only the 6°. (U5) turn importance would add two modules if D1 includes it.
+(U6) there are six smoothers, not five.
