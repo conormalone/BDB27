@@ -1,0 +1,16 @@
+# data files are not distributed with this repository
+data/*
+!data/.gitkeep
+
+# generated figures and tables
+figures/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.ipynb_checkpoints/
+
+# os
+.DS_Store
