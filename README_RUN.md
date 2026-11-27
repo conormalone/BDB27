@@ -122,9 +122,7 @@ full game file into pandas.
   assert `FULL` before doing anything.
 * Nothing in this repo may be interpreted, reported or tuned against sample results.
 * The notebook takes its banner from the artefact itself, not from the `MODE` variable.
-* `notes/prereg.md` does not exist yet **on purpose**: it must fix the smoother,
-  definitions, bin edges, envelope form, coverage formula and thresholds first, and
-  a full run is refused until it does.
+* There is no prereg step. The operational constants live in `config.yaml`.
 
 ## 8. Tests
 
@@ -158,9 +156,8 @@ src/                     stages 00–06 + bdb27/ shared package
 notebooks/               bdb27_full_run.ipynb — the interface (committed unexecuted)
 fixtures/synthetic/      committed generator + planted fixture
 tests/                   pytest suite
-notes/                   rules, schema, decisions, blockers, phase1-audit
+notes/                   rules, schema, decisions, blockers, phase notes
 outputs/audit/           committed Phase 1 evidence
 outputs/turns/           Phase 2 turn table + summaries (gitignored)
-outputs/                 thresholds.json, run_log.csv, figures/ (later)
-archive/legacy-*/        superseded pipelines, with git history
+outputs/                 thresholds.json, run_log.csv, figures/
 ```

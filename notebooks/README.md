@@ -74,8 +74,8 @@ The same chain runs from the shell — see `README_RUN.md`. The notebook adds no
 pipeline: it calls the same stage `main()` functions, in the same order, with the same
 config.
 
-`archive/legacy-*/notebooks/` holds the superseded pipeline's notebooks. They ran a
-different analysis and must not be reused.
+The superseded pipeline's notebooks ran a different analysis and must not be reused;
+they live only in git history.
 
 ## The outcome-link pre-flight
 

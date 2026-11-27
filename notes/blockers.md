@@ -9,8 +9,7 @@ with a proxy.
 > Entries **B1–B14 below belong to the superseded burst-vs-jump task** and are kept
 > only as the audit trail; their resolutions do not carry over. Current-task
 > blockers are **TB1–TB6**, maintained from 2026-11-06. The previous blockers file
-> (leverage × ceiling) is archived at
-> `archive/legacy-2026-11-05/notes/blockers-legacy.md`.
+> (leverage × ceiling) is in git history only.
 
 ---
 
@@ -260,35 +259,17 @@ limitation.
 
 ---
 
-## B6 — prereg is not written  · **OPEN (blocks every full run; Q5 answered, file still absent)**
+## B6 — prereg · **CLOSED 2026-11-27 — the requirement is dropped**
 
-**Status update (2026-11-05).** Q1 (smallest effect of interest) is now answered
-and in `config.yaml` (D96). Q5 is now answered as **option D, a two-part freeze**
-(D102): the confirmatory core is frozen next cycle before Phase 3 results, and an
-operational annexe (onset threshold, distance grid, minimum snaps) is frozen
-immediately after Phase 3. `notes/prereg.md` still does not exist during this
-cycle. Phase 2 is therefore implemented and unit-tested but driven only in
-`--mode sample` plus synthetic data. The full-mode gate was not weakened:
-`python src/run.py 02_combine_physical_time --mode full` exits 4 with the prereg
-refusal.
+**Closed by Conor, 2026-11-27:** *"I don't care about pre registered anything."* No run is
+gated on a prereg document. The operational constants — thresholds, bin edges, envelope
+form, coverage formula — live in `config.yaml`, which is the single source of truth.
 
-**Tension to resolve before Phase 3 (flagged in D102).** `TASK.md` requires the
-prereg to fix the operational constants *before* the first full-data run; option
-D freezes them *after* Phase 3. Either the annexe must be frozen before that run
-too, or `TASK.md` must say the Phase 3 run is operational and only Phase 4 is
-confirmatory. Not reconciled here.
+**What was here.** Until 2026-11-06 this blocker recorded that `notes/prereg.md` did not
+exist and that full mode was refused without it. Both the file and the gate are gone.
 
-**Blocks:** `--mode full`. The gate in `src/common.py` refuses to run in full mode
-unless `notes/prereg.md` exists and declares `**Status: FROZEN.**`.
-
-**Evidence.** The file does not exist. The previous prereg belonged to the retired
-intra-drive-regeneration spec and has been archived at
-`archive/legacy-2026-11-05/notes/prereg.md`.
-
-**What would clear it.** Write and freeze the confirmatory core first, then the
-operational annexe per Q5/D102. The gate only reads `notes/prereg.md` for
-`**Status: FROZEN.**`; whichever document is authoritative for a given full run
-must exist and be frozen at that moment.
+**Superseded history.** The earlier prereg belonged to the retired intra-drive-regeneration
+spec; it is in git history only.
 
 ---
 

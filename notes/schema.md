@@ -6,9 +6,6 @@ Every number below was **read from the file** in the audit run that produced
 is carried over from the spec's description of the data. Where the spec and the
 files disagree, the disagreement is stated in §6.
 
-Old-task schema notes were archived to
-`archive/legacy-2026-11-06/notes/` on 2026-11-06.
-
 ---
 
 ## 1. Files (paths relative to `data/raw/`, which is a symlink to the USB)

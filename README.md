@@ -7,9 +7,9 @@ Combine-derived feasible region (**Turn Coverage**), with **cut gaps** and a one
 **Cut Card**.
 
 **Binding spec = `TASK.md`.** It supersedes the burst-vs-jump (get-off
-decomposition) task at 2026-11-06 23:04, and before that the intra-drive
-regeneration and leverage × ceiling tasks. All three are preserved with git history
-under `archive/legacy-2026-11-05/` and `archive/legacy-2026-11-06/`.
+decomposition) task, and before that the intra-drive regeneration and leverage ×
+ceiling tasks. Those are in git history only; there is no legacy tree in the working
+repo.
 
 **Competition.** NFL Big Data Bowl 2027, deadline **2027-01-06 23:59 UTC**. Working
 limits: **≤2,000 words**; the notebook must run end to end. Six figures, and no figure cap
