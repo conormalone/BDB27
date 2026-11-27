@@ -610,7 +610,7 @@ def build_turns(data_dir: Path | str = DATA_DIR, *, combine: bool = True,
             if verbose:
                 print(f"combine: {attempts['combine']:,} attempts analysed "
                       f"({stats.get('short_attempts', 0):,} shorter than the "
-                      "0.7 s measurement window)")
+                      "7 frames the detector needs)")
         except MissingInput as exc:
             if verbose:
                 print(f"combine: skipped — {exc}")
