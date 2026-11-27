@@ -10169,7 +10169,7 @@ pass, but that changes `TASK.md`, so it is Conor's call. (U4) the 6° median smo
 currently reports only the 6°. (U5) turn importance would add two modules if D1 includes it.
 (U6) there are six smoothers, not five.
 
-## D225 — Figure 22 rebuilt: the receiver ladder, 7,777 → 413 (five bars; six-figure set still Conor's call)
+## D225 — Figure 22 rebuilt: the receiver ladder, 7,777 → 413 (five bars)
 
 **Date:** 2026-11-27. **Spec:** `notes/figure-22-receivers-spec.md` (`9a265f6`). **Branch:**
 `fig22-population-receivers`. **Artefacts:** `outputs/figures/fig_population_receivers.{png,csv,
@@ -10211,6 +10211,9 @@ never exported to any table, so they fall in neither 413 nor its complement. The
 (the ten files that import `bdb27.figures` or cover another figure): 310 collected, 310 passed, 0
 failed, 0 skipped — the new block disturbs nothing.
 
-**`TASK.md` still says "exactly four, and no others" (§Figures).** It was **not** edited. This
-figure makes the set six; whether the writeup carries six is Conor's decision, recorded here and not
-made here.
+**The four-figure cap is self-imposed, and Conor has ruled it out.** `TASK.md`'s "Figures — exactly
+four, and no others" (§Figures, line 114; "No fifth figure.", line 123) is our own line in this
+repo, not a competition rule. Conor ruled on 2026-11-27 that there is no competition limit and six
+is fine — *"There's is nothing in the rules about a 5 plot limit, 6 is fine."* `TASK.md` is **not**
+edited in this cycle; its figures section will be amended to six in a separate follow-up commit. This
+entry records the ruling, not the amendment.
