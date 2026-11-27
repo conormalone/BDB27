@@ -1,37 +1,64 @@
-# BDB27 — Turn Coverage and the Cut Card (NFL Big Data Bowl 2027)
+# Towards a test for the 45° turn in defensive backs
 
-**Question.** Can a player run the turns his job requires, at game speed? Estimate
-each player's **turning capacity** from Combine tracking, measure the **turn demand**
-of his position in games, and score the share of that demand that falls inside his
-Combine-derived feasible region (**Turn Coverage**), with **cut gaps** and a one-page
-**Cut Card**.
+Defensive backs change direction on almost every snap. Measured from their
+tracking coordinates — a heading change of at least 30° across half a second,
+with entry and exit speeds above 2.5 yd/s — the turns they actually make are
+large. Across three NFL seasons, more than two in five of the 58,664 detected
+defensive-back turns are sharper than 90°, and nearly a quarter are sharper
+than 120°. The band a short-area break lives in, 30–60°, is 13% of what the
+game asks for.
 
-**Binding spec = `TASK.md`.** It supersedes the burst-vs-jump (get-off
-decomposition) task, and before that the intra-drive regeneration and leverage ×
-ceiling tasks. Those are in git history only; there is no legacy tree in the working
-repo.
+The Combine asks for almost none of it. In 1,179 detected turns from 122
+draft-prospect defensive backs, 26 turns — 2.2% — fall in that band, from 16
+players, and 14 of those come from the 3-cone. The drills are built for other
+things: the short shuttle's median turn is 179.6° at 3.55 yd/s entering, which
+is a plant, and the 3-cone's is 70.6° at 3.98. Even the drill named for a 45°
+break lands its turns at 111° and 244°, with one player anywhere near 45°. A
+drill that measured the 30–60° break at game speed would have to be built, not
+re-scored, and the 3-cone's own cones and footprint are enough to build it.
 
-**Competition.** NFL Big Data Bowl 2027, deadline **2027-01-06 23:59 UTC**. Working
-limits: **≤2,000 words**; the notebook must run end to end. Six figures, and no figure cap
-(`TASK.md` §Figures; Conor, 2026-11-27). Official
-competition docs are the source of truth — see `notes/rules.md` for what was
-verified and what is marked `UNVERIFIED`.
+That is the paper's argument. This repository is its code: it detects the turns,
+draws the figures, and computes the reliability and outcome numbers — the
+several-fold gap between Combine supply and game demand, the ICC of a player's
+retention through the band, and the EPA and completion rate attached to each
+band of turn.
 
-## Where things stand
+## What you need
 
-| stage | file | status |
-|---|---|---|
-| 00 thresholds | `src/00_thresholds.py` | implemented — placeholder provenance in `--mode sample` |
-| 01 audit | `src/01_audit.py` | implemented — items a–m, writes `outputs/audit/` |
-| 02 turns | `src/02_turns.py` | implemented — writes the turn table |
-| 03 envelope | `src/03_envelope.py` | implemented — variance route + components |
-| 04 demand/coverage | `src/04_demand_coverage.py` | implemented — demand map, coverage, cut gaps |
-| 05 validate | `src/05_validate.py` | **loud stub** — exits 2 with `STAGE NOT IMPLEMENTED` |
-| 06 figures | `src/06_figures.py` | implemented — twenty-two figures + `figures_manifest.json` |
+Four tables from the NFL Big Data Bowl release, plus the small player table that
+ships with them, in `data/`:
 
-Six of the seven stages are implemented; `05_validate` is still a loud stub and is never
-counted as a pass. **The notebook is the interface** (`notebooks/bdb27_full_run.ipynb`) —
-see `notebooks/README.md`; `README_RUN.md` is the equivalent shell fallback.
+| file | what it supplies |
+| --- | --- |
+| `combine_tracking.parquet` | Combine x/y tracking by drill and attempt |
+| `combine_results.parquet` | each prospect's Combine position (the DB cohort) |
+| `players.parquet` | `nfl_id`, `nfl_position`, `draft_year` |
+| `game_tracking.parquet` | game x/y tracking (the full file, all seasons) |
+| `player_play.parquet` | snap context, pass result, expected points added |
 
-Every artefact written in `--mode sample` carries `UNVALIDATED SAMPLE OUTPUT`.
-Nothing in this repo may be interpreted, reported or tuned against sample results.
+CSV is accepted too: `data/combine_tracking.csv` and so on. If the files live
+somewhere else, set `BDB27_DATA` to that folder. Nothing else is required and
+nothing is downloaded.
+
+## Run it
+
+```
+pip install -r requirements.txt
+python turns.py                # builds figures/turns.parquet and prints counts
+python supply_demand.py        # Combine share vs game share, by band, plus table
+python backpedal_polar.py      # every turn in the backpedal 45, on one dial
+python drill_angle.py          # every Combine turn, sorted by drill
+python drill_schematic.py      # the proposed drill's geometry (no data needed)
+python reliability.py          # ICC(1), adjusted ICC, Spearman-Brown
+python epa_bands.py            # EPA and completion by band, with no-turn baseline
+```
+
+That block is the whole pipeline. The order matters only in that `turns.py`
+comes first: it builds the table everything else reads. Each line also runs on
+its own.
+
+Each figure script writes its PNG and the table behind it, as CSV, into
+`figures/`; `reliability.py` prints its numbers. `turns.py` is the expensive one
+and caches its output, so the rest are quick. Two sides are reported separately
+throughout. If the game tracking file is not present, the scripts say so, print
+the Combine numbers, and skip the game half rather than guessing at it.

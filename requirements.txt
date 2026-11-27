@@ -1,29 +1,5 @@
-# BDB27 burst-vs-jump — pinned dependencies.
-#
-# Versions are `pip show` values from a working ARM64 venv on 2026-11-05
-# (Raspberry Pi OS, aarch64, Python 3.13.5). The same wheels exist for
-# x86_64 Linux; nothing here needs a compiler.
-#
-#   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
-#
-# The previous pin file named duckdb==1.5.6 / pandas==3.0.6 from an environment
-# that no longer existed on this host; duckdb 1.5.6 is not installable here.
-# These are the versions the 249-test suite actually passes against.
-
-# --- required by every stage ---
-duckdb==2.0.0
-pandas==3.1.1
-numpy==2.5.4
-pyarrow==26.0.1
-PyYAML==6.0.3
-psutil==7.2.2
-
-# --- tests ---
-pytest==9.2.0
-
-# --- Phase 2-5 optional acceleration (not imported by the current stages) ---
-polars==2.1.0
-
-# PyMC / Stan are deliberately NOT pinned here. Phase 4 is implemented with the
-# dependency-free EM estimator in src/models.py; the Bayesian refit is deferred
-# to the larger machine. Add a Bayesian stack in `requirements-full.txt` there.
+pandas>=2.0
+numpy>=1.24
+matplotlib>=3.7
+pyarrow>=14.0
+scipy>=1.10
