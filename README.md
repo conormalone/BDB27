@@ -53,6 +53,10 @@ python reliability.py          # ICC(1), adjusted ICC, Spearman-Brown
 python epa_bands.py            # EPA and completion by band, with no-turn baseline
 ```
 
+That block is the whole pipeline. The order matters only in that `turns.py`
+comes first: it builds the table everything else reads. Each line also runs on
+its own.
+
 Each figure script writes its PNG and the table behind it, as CSV, into
 `figures/`; `reliability.py` prints its numbers. `turns.py` is the expensive one
 and caches its output, so the rest are quick. Two sides are reported separately
