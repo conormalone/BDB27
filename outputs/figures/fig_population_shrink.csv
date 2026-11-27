@@ -1,6 +1,0 @@
-provenance,label,config_sha,step,state,entered,survives,lost,reason,source_artefact,source_field,verified_on_this_machine,figure,stamp
-FULL,FULL DATA OUTPUT,a76cf3bd9012f085,1,All DB turns of 30–60°,7777,6315,1462,no opposing player is listed on the play,outputs/ambiguity_attribution/funnel.csv,band_turns,True,fig_population_shrink,FULL + RECEIVED
-FULL,FULL DATA OUTPUT,a76cf3bd9012f085,2,A listing opponent ran a route,6315,3009,3306,opponents are listed but none of them ran a route,outputs/ambiguity_attribution/funnel.csv,turns_with_opposing_route_runner,True,fig_population_shrink,FULL + RECEIVED
-FULL,FULL DATA OUTPUT,a76cf3bd9012f085,3,That route has a separation,3009,2601,408,the route carries no separation value,outputs/ambiguity_attribution/funnel.csv,turns_with_a_candidate_separation,True,fig_population_shrink,FULL + RECEIVED
-FULL,FULL DATA OUTPUT,a76cf3bd9012f085,4,Only one candidate on the play,2601,1731,870,the turn has two or more candidates,outputs/ambiguity_attribution/funnel.csv,turns_with_exactly_one_candidate_separation,True,fig_population_shrink,FULL + RECEIVED
-FULL+RECEIVED,FULL DATA OUTPUT + RECEIVED STEP,a76cf3bd9012f085,5,The man is within 3 yd of him,1731,213,1518,the man is not within 3 yd of the DB at the break frame,outputs/population_shrink_received/single_turn_geometry.csv,within_radius,False,fig_population_shrink,FULL + RECEIVED
