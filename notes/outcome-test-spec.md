@@ -160,7 +160,7 @@ number is not withheld because it is inconvenient.
 `src/bdb27/outcome_test.py` (estimator and sample construction), `scripts/outcome_test.py`
 (writes `outputs/outcome_test/`), `tests/test_outcome_test.py`, and
 `notes/outcome-test-result.md` with the number, its interval, the criterion verdict and the
-caveats. No new figure (TASK.md allows exactly four). `TASK.md`, the band table, the existing
+caveats. No new figure (TASK.md names six). `TASK.md`, the band table, the existing
 figures and `notes/report-draft.md` are untouched.
 
 Small in-scope fix: `notebooks/bdb27_full_game_turns.ipynb` states the tracking sample has

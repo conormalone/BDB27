@@ -5,7 +5,7 @@ Written 2026-11-25. Spec: `notes/turn-importance-spec.md` (committed `def977f`, 
 median or coefficient). Decision: **D223**. Evidence: `outputs/turn_importance/` (10 CSVs +
 `summary.json` + `run_log.txt`). Code: `src/bdb27/turn_importance.py`. Notebook:
 `notebooks/bdb27_turn_importance.ipynb`. Tests: `tests/test_turn_importance.py`.
-`TASK.md`, the band table, the four figures and `notes/report-draft.md` are unchanged.
+`TASK.md`, the band table, the figure set and `notes/report-draft.md` are unchanged.
 
 Every Test 2 number is labelled **`ASSOCIATION (STAKES), NOT CAUSE`**. `separation_at_pass_forward`
 is not read anywhere in this cycle.
@@ -315,7 +315,7 @@ of some coefficients — ≤ 4×10⁻¹², far below every printed figure. The a
 produced in the repository `.venv` and reproduce exactly there.)
 
 *Untouched.* `git status` shows only the six intended paths. `TASK.md`, `notes/report-draft.md`,
-the band table, the four figures and their CSVs carry no diff.
+the band table, the figure set and their CSVs carry no diff.
 
 **Two corrections made in this pass, both disclosed rather than silent.**
 

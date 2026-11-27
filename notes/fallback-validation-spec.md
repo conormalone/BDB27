@@ -8,7 +8,7 @@ what is expected here, the expectation is not edited afterwards.
 Authorising words: Conor, 2026-11-15 00:18 — *"Ok, and we need another plan to validate this if
 this doesn't work out"*.
 
-Spec written by the PM. `TASK.md`, the band table, the four figures and `notes/report-draft.md` are
+Spec written by the PM. `TASK.md`, the band table, the figure set and `notes/report-draft.md` are
 untouched by this cycle.
 
 ---
@@ -36,7 +36,7 @@ This cycle tests two such quantities, plus one descriptive statement.
    "No outcome test" and "No transfer or feasibility test" under *what may not be claimed*. Leg 1
    is explicitly between-player capacity and leg 2 is explicitly a transfer test. They are
    authorised here as a separate analysis in exactly the way D199 was (Conor, 2026-11-14), and by
-   the same rule nothing produced here enters `TASK.md`, the band table, the four figures or the
+   the same rule nothing produced here enters `TASK.md`, the band table, the figure set or the
    report draft. If a leg warrants a report sentence, it is **proposed** to Conor in the result
    note, never inserted.
 3. **Two of the three legs are inferences, and are labelled as such.** Leg 1 measures the
@@ -228,7 +228,7 @@ Printed, each with its n:
    angles, but whether it records them **together** is the question, and the crosstab answers it in
    counts.
 
-**No new figure is produced.** `TASK.md` allows exactly four figures and forbids a fifth in "the
+**No new figure is produced.** `TASK.md` names six figures and this cycle adds none, in "the
 writeup, the notebook or the draft". This cycle adds tables only.
 
 ---
@@ -297,7 +297,7 @@ laptop, and no tracking file is read.
 
 ## 6. What this cycle will not do
 
-- It will not touch `TASK.md`, the band table, the four figures, `notes/report-draft.md`, or
+- It will not touch `TASK.md`, the band table, the figure set, `notes/report-draft.md`, or
   `outputs/figures/`.
 - It will not add a figure.
 - It will not re-run or re-interpret D199 or D200, or read the tracking file.

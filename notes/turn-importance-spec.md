@@ -10,7 +10,7 @@ Authorising words: Conor, 2026-11-25 — *"Just to clarify, I don't care about s
 check that 30 to 60 turns are important"* and *"Ok run test 1 and 2"*.
 
 `BDB27/TASK.md` is unchanged by this cycle and remains binding on the project. This is a separate
-analysis explicitly authorised by Conor. It does **not** change the band table, the four figures,
+analysis explicitly authorised by Conor. It does **not** change the band table, the figure set,
 `notes/report-draft.md` or any existing note. It proposes nothing for the writeup; if a result
 warrants a section, that is proposed to Conor, not inserted.
 

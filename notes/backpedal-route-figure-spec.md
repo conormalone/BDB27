@@ -228,3 +228,6 @@ figure-name sets, the per-figure file loop) and `tests/test_notebook_contract.py
   2026-11-23 and, like figures 5–19 added since D191, it is not part of the
   claim's four. It must not be quoted in the writeup. Main reports this to
   Conor.
+
+> **Amended 2026-11-27 (D226).** The cap is withdrawn; this figure remains off-paper as a
+> diagnostic (it is not in the six named in `TASK.md` §Figures) and is not quoted in the writeup.

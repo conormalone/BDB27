@@ -111,7 +111,11 @@ re-acceleration through a gate, about 90 s, on the existing 3-cone footprint. It
 
 ---
 
-## Figures — exactly four, and no others
+## Figures — six, and these six are the figure set
+
+Six figures. They are the whole figure set for the writeup, the notebook gallery and the
+draft. There is no competition limit on the number of figures (Conor, 2026-11-27: the
+tighter cap was self-imposed and is withdrawn), and no further figure belongs in the paper.
 
 | # | Figure | File | Provenance | Role in the argument |
 |---|---|---|---|---|
@@ -119,8 +123,14 @@ re-acceleration through a gate, about 90 s, on the existing 3-cone footprint. It
 | 2 | The same across positions | `outputs/figures/fig_all_positions.png` | **FULL** | the shortfall is not a DB artefact |
 | 3 | Every Combine turn at its measured angle | `outputs/figures/fig_drill_angle_scatter.png` | `PLACEHOLDER_SAMPLE` | shows the battery's angles by drill; name it, state its stamp, quote nothing from it |
 | 4 | The proposed drill geometry | `outputs/figures/fig_drill_schematic.png` | **SCHEMATIC** | a drawing of the proposal; carries no measurement |
+| 5 | Every turn in the backpedal (polar) | `outputs/figures/fig_backpedal_polar.png` | `PLACEHOLDER_SAMPLE` | do the backpedal drill's measured turns sit where its 45° break would put them; name it, state its stamp, quote nothing from it |
+| 6 | The receiver ladder, 7,777 → 413 | `outputs/figures/fig_population_receivers.png` | **FULL + RECEIVED** | how the 7,777 game band turns fall to 413 with a measured nearest opponent; bars 4–5 are received pastes, not reproducible on this host |
 
-No fifth figure. No other figure may be named in the writeup, the notebook or the draft.
+Row 5 is the artefact known elsewhere in the repo as figure 21 (`fig_backpedal_polar`); row 6
+is figure 22 (`fig_population_receivers`, D225).
+
+These six are the figure set, and no other figure is named in the writeup, the notebook
+gallery or the draft.
 
 **Video.** Conor holds a clip of an in-game run. If it is used it is illustration, placed
 where the demand side of the argument needs a picture, captioned with what it shows and the
@@ -181,8 +191,8 @@ has not stated.
 `00_thresholds → 01_audit → 02_turns → 03_envelope → 04_demand_coverage → 05_validate →
 06_figures`
 
-Stage 02 produces the turn table both settings are counted from; stage 06 renders the four
-figures. Stages 03, 04 and 05 built the envelope, coverage and validation machinery for the
+Stage 02 produces the turn table both settings are counted from; stage 06 renders the figures,
+and §Figures names the six the paper carries. Stages 03, 04 and 05 built the envelope, coverage and validation machinery for the
 framing this task supersedes; they stay in the repo, and **nothing they produce is part of
 this claim**.
 

@@ -222,7 +222,7 @@ Recompute, never hard-code:
 
 ## 7. Out of scope
 
-`TASK.md`, the band table, the four figures, `notes/report-draft.md`, the frozen match rule, the
+`TASK.md`, the band table, the figure set, `notes/report-draft.md`, the frozen match rule, the
 sensitivity set, the gate thresholds. No model, coefficient, interval, p-value. No change to
 the claim. No new figure.
 

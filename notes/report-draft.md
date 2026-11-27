@@ -38,8 +38,8 @@ is made on band shares rather than on cell-by-cell counts.
 
 Provenance is tagged throughout. `[FULL]` means a full-data artefact. `[PROPOSAL]` means the
 drill design, which is not signed off and is not a finding. `[SCHEMATIC]` means a drawing.
-`[PENDING]` marks a check not yet run at full scale. One figure in this writeup carries a
-sample stamp; it is named, and nothing is read from it.
+`[PENDING]` marks a check not yet run at full scale. Two figures in this writeup carry a
+sample stamp; both are named with that stamp stated, and nothing is read from either.
 
 ## 3. Supply against demand
 
@@ -169,6 +169,8 @@ No Combine orientation exists, so a plant cannot be separated from a backpedal o
 and facing-decoupled movement is invisible. Combine entry speeds sit below game speeds, so
 cell-by-cell comparison is partly extrapolated by construction — hence band shares.
 
+**Figure 5** — `outputs/figures/fig_backpedal_polar.png` `PLACEHOLDER_SAMPLE`. Every detected turn in the backpedal drill on one protractor, zero at straight down, one point per turn at that turn's signed angle. A diagnostic, not a claim. Stamped unvalidated sample output; nothing in this writeup is read from it.
+
 Reversal-class turns are measured as plants — apex, exit, regain — never as v·ω: a circle
 fitted to a hairpin reports a non-physical acceleration.
 
@@ -176,3 +178,5 @@ The tracked players are the drafted group: 122 Combine players and 115 game play
 NFL defensive backs; the demand map describes who reached the league. Season sampling is
 uneven — the 2023 tracking file is about a third the size of 2025's for the same number of
 games — so only the pooled figure is used.
+
+**Figure 6** — `outputs/figures/fig_population_receivers.png` `[FULL + RECEIVED]`. The ladder from the 7,777 game band turns to 413 with a measured nearest opponent: 2,558 identified, 413 of them within 3 yd, and 151 identified turns that have no exported distance and so count in neither. Bars 1–3 are `[FULL]`; bars 4–5 are received pastes this host cannot regenerate.

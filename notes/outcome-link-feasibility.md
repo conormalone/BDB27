@@ -416,7 +416,7 @@ No model fitted, no coefficient, no interval, no p-value. No full-tracking noteb
 geometric path cannot be executed or tested on this machine, and an untested one is the failure
 this project has already had. What shipped instead is the pre-flight notebook — the part that
 needs only `player_play` — with its stop conditions tested against the real file. No change to
-`TASK.md`, `notes/report-draft.md`, the band table or the four figures. The inference does not
+`TASK.md`, `notes/report-draft.md`, the band table or the figure set. The inference does not
 enter the claim.
 
 ## 9. The decision

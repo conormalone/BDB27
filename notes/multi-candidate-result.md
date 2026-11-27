@@ -9,7 +9,7 @@ the other. Spec: `notes/multi-candidate-spec.md`, including **Amendment 3**. Dec
 no-tracking number and its composition), D208 (precedence executed), D210 (this entry). Code:
 `src/bdb27/ambiguity_attribution.py`; interface `notebooks/bdb27_multi_candidate.ipynb`.
 
-`TASK.md`, `notes/report-draft.md`, the band table, the four figures, the notebook and `src/` are
+`TASK.md`, `notes/report-draft.md`, the band table, the figure set, the notebook and `src/` are
 unchanged by this note.
 
 ---
@@ -204,5 +204,5 @@ The record is this note, D207, D208 and D210, and two directories that are diffe
   (`68926a26…c35b2a`) plus every output of that run.
 - Band: 7,777 `[FULL]` turns, from
   `data/interim/full_run_20261111/bdb27_full_db_turns.parquet`.
-- **Unchanged by this cycle:** `TASK.md`, `notes/report-draft.md`, the band table, the four figures,
+- **Unchanged by this cycle:** `TASK.md`, `notes/report-draft.md`, the band table, the figure set,
   `notebooks/bdb27_multi_candidate.ipynb`, `src/`, the tests.

@@ -14,7 +14,8 @@ disagrees with them, they win. The anti-tic list in `writer-role.md` still appli
 
 A **~2,000-word** markdown draft of the Kaggle writeup for one claim: the Combine barely tests
 the 30–60° break that games ask for six times more often by share, so it should add a 30–60°
-turn drill. Seven sections, **exactly four figures**, every number tagged with provenance. The
+turn drill. Seven sections, **six figures** (the set named in `TASK.md` §Figures), every number
+tagged with provenance. The
 limits live in §6 and §7; the former closing list of what is not claimed is folded into them
 (D194).
 
@@ -26,8 +27,8 @@ not allowed to widen the claim to fill space.
 Every number in the draft comes from a named artefact in §4. If a sentence needs a number that
 is not there, the sentence is wrong — rewrite it as a statement about the battery, or cut it.
 
-`PLACEHOLDER_SAMPLE` output is **never** evidence. It may be named (figure 3 only), with its
-stamp, and nothing read from it.
+`PLACEHOLDER_SAMPLE` output is **never** evidence. It may be named (figures 3 and 5 only), with
+its stamp, and nothing read from it.
 
 ## 3. Provenance tags
 
@@ -126,7 +127,7 @@ carries the largest proportional shortfall — sits in §7 as the reason that ba
 argument. Do not reinstate the list: repetition cost 80 words against a ceiling that was
 already breached.
 
-## 6. Figures — exactly four, in this order
+## 6. Figures — six, in this order
 
 | # | File | Provenance | Use |
 |---|---|---|---|
@@ -134,8 +135,11 @@ already breached.
 | 2 | `outputs/figures/fig_all_positions.png` | **FULL** | the shortfall is not a DB artefact |
 | 3 | `outputs/figures/fig_drill_angle_scatter.png` | `PLACEHOLDER_SAMPLE` | name it, state the stamp, quote nothing |
 | 4 | `outputs/figures/fig_drill_schematic.png` | **SCHEMATIC** | the proposed geometry; a drawing, no measurement |
+| 5 | `outputs/figures/fig_backpedal_polar.png` | `PLACEHOLDER_SAMPLE` | name it, state the stamp, quote nothing |
+| 6 | `outputs/figures/fig_population_receivers.png` | **FULL + RECEIVED** | the ladder from 7,777 to 413; say which bars are received |
 
-No other figure may be named — not in text, not in a caption, not in a comparison. Do not
+These six are the figure set; no other figure may be named — not in text, not in a caption,
+not in a comparison. Do not
 embed images; reference by path. One caption line per figure carrying the filename and the
 provenance tag.
 
@@ -150,14 +154,14 @@ allowed only in the general sense of a player's turning limit, never as an estim
 
 ## 8. The video
 
-Conor is using a clip of an in-game run alongside the four plots. The draft does **not**
+Conor is using a clip of an in-game run alongside the six figures. The draft does **not**
 describe footage it has not seen. Place a single bracketed slot at the end of section 3 —
 where the demand side of the argument is established — reading like:
 
 > `[Video — in-game DB break. Caption: one line, what the clip shows and the timestamp. No number is read from it.]`
 
 and add one sentence of surrounding prose that the slot earns: the clip is there to make the
-demand concrete, not to add evidence. Do not propose a fifth figure. Do not invent a timestamp,
+demand concrete, not to add evidence. Do not propose another figure. Do not invent a timestamp,
 a player, a down, a distance or a result. If section 3 runs long, the slot moves to the start
 of section 1 and the prose stays the same.
 

@@ -11,7 +11,7 @@ existed). Decisions: D200 (the pre-stated branches) and D204 (this outcome). Cod
 `notebooks/bdb27_geometric_attribution.ipynb`. Tests: `tests/test_geometric_match.py`,
 `tests/test_geometric_notebook.py`.
 
-`TASK.md`, the band table, the four figures and `notes/report-draft.md` are unchanged.
+`TASK.md`, the band table, the figure set and `notes/report-draft.md` are unchanged.
 
 ---
 
@@ -99,7 +99,7 @@ wording is quoted for each rather than paraphrased:
 Quoted, not paraphrased into anything stronger. The two agree on the label and nothing here is
 claimed beyond them: the geometric estimate is descriptive only, it is not a second estimate that
 replaces D199's, and no attenuation claim is made. What D200 says about D199's standing is D200's
-sentence, above. None of D200's outcomes enters `TASK.md`, the band table, the four figures or
+sentence, above. None of D200's outcomes enters `TASK.md`, the band table, the figure set or
 `notes/report-draft.md` without Conor's word, and he has not given it.
 
 ### What the FULL run does not establish

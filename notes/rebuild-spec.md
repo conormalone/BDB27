@@ -46,7 +46,7 @@ it. A module that does not serve one of F1–F11 is not in the tree.
 | **F7** | Shallow-band provenance: how many 30–60° turns, from how many players and drills, turns per player, and how many are 3-cone fragments. | Block 2, in full. |
 | **F8** | Per-band shape statistics (entry speed, apex retention, plant share) sufficient to separate the arc family from the plant family. | Block 3: "Plant-ness rises with angle… 15.3% … against 97.7%." |
 | **F9** | Re-run turn assignment under alternative smoothers, the 2.0 yd/s floor and the alternative segmentation rule; report the movement **and** the band-share range. | Honesty limits 1 and 3; D190 control pass (`combine_db_turns_floor2.5_control.csv`, 1,179 rows). |
-| **F10** | Render **exactly four** figures, each with a provenance stamp and machine-readable sidecars (CSV, PNG, provenance JSON, drawn-text JSON). | "Figures — exactly four, and no others"; "No fifth figure." |
+| **F10** | Render **six** figures — the set named in `TASK.md` §Figures — each with a provenance stamp and machine-readable sidecars (CSV, PNG, provenance JSON, drawn-text JSON). | "Figures — six, and these six are the figure set"; "These six are the figure set". |
 | **F11** | Tie every published number to a named artefact cell; refuse to publish an untraced number. | "If a number is not in a named artefact, it does not go in the writeup"; "No invented data." |
 | **F12** | Run from a notebook, Run All, no terminal. *(Standing constraint from Conor, not from `TASK.md`.)* | "notebooks are Conor's only interface (no CLI instructions to him, ever)". |
 
@@ -118,7 +118,7 @@ BDB27/
 │   ├── test_ingest.py              # inventory, sha256, missing-path naming, chunk boundaries
 │   ├── test_turns.py               # smoother parity, detector fixtures, validity rules
 │   ├── test_measure.py             # band table equality, drill and shape numbers, floor deltas
-│   ├── test_figures.py             # four figures only, stamps, sidecar pairing, CSV equality
+│   ├── test_figures.py             # six figures only, stamps, sidecar pairing, CSV equality
 │   ├── test_claims.py              # every claim resolves to an artefact cell and sha
 │   ├── test_notebook.py            # no outputs, Run All order == STAGES, gallery reads the manifest
 │   ├── test_no_gates.py            # AST scan: no control flow gated on a count
@@ -191,7 +191,7 @@ config ← ingest ← turns ← measure ← figures ← report ← run
 - **R1 — packages form a total order.** A module in package *P* may import only from packages
   **strictly earlier** than *P*. It may not import from a later package, from its own package's
   siblings, or from `analyses`.
-- **R2 — one same-package exception.** `figures/common.py` may be imported by the four figure
+- **R2 — one same-package exception.** `figures/common.py` may be imported by the figure
   modules; `common.py` itself imports only from earlier packages. No other same-package import is
   allowed.
 - **R3 — `analyses/` is downstream only.** An `analyses/*` subpackage may import any core package;
@@ -327,8 +327,9 @@ Writes `outputs/sensitivity/floor_bands.csv`, `drill_delta.csv`, `nulls.csv`, `s
 
 ### Stage 06 — `figures/`
 
-Four figures, no fifth. Each writes `.csv`, `.png`, `.provenance.json`, `.drawn_text.json`, and one
-entry in `outputs/figures/figures_manifest.json`; the manifest must have **exactly four** entries.
+Six figures, the set named in `TASK.md` §Figures. Each writes `.csv`, `.png`, `.provenance.json`, `.drawn_text.json`, and one
+entry in `outputs/figures/figures_manifest.json`; all six must appear in the manifest, and no other
+figure may be named in the paper.
 
 | # | File | Stamp | CSV must equal |
 |---|---|---|---|
@@ -396,7 +397,7 @@ defines what must be true before one is even proposed.
 4. **Budget**: `outputs/run_log.csv` shows per-stage wall time and peak RSS within the declared
    laptop budget. The number is printed, not gated.
 5. **Conor's written go-ahead**, recorded as a new D-number in `notes/decisions.md`, after he has
-   run the notebook himself and seen the four figures.
+   run the notebook himself and seen the six figures.
 6. **Old HEAD is named** in the evidence file, so the thing being retired is an exact commit.
 
 ### Retirement protocol (later cycle, on his word)
@@ -426,7 +427,7 @@ Recommendations only. Conor decides his paper.
 | `outputs/sensitivity/speed_floor/` (control 1,179, floor 2.0, ten drill rows) | **KEEP** — honesty limits 1 and 3, D190 |
 | `outputs/audit/` schema, population, seasons, smoother sensitivity | **KEEP, narrowed** to inventory/population/seasons |
 | `outputs/thresholds.json`, `outputs/run_log.csv` | **KEEP** |
-| `outputs/figures/fig_the_hole`, `fig_all_positions`, `fig_drill_angle_scatter`, `fig_drill_schematic` | **KEEP** — the only four |
+| `outputs/figures/fig_the_hole`, `fig_all_positions`, `fig_drill_angle_scatter`, `fig_drill_schematic`, `fig_backpedal_polar`, `fig_population_receivers` | **KEEP** — the six in `TASK.md` §Figures |
 
 ### Not in the four blocks — recommend off-paper
 
@@ -448,16 +449,16 @@ Recommendations only. Conor decides his paper.
 | `outputs/proof_d202/`, `proof_d202_final/` | Attribution proofs for a superseded question |
 | `outputs/population_shrink_received/`, `outputs/turn_context/`, `outputs/reliability_figures/` | Per-player/shrinkage/context work outside the claim |
 
-### The other twenty figures
+### The other nineteen figures
 
 `fig_drill_coverage`, `fig_before_after`, `fig_measurement_limits`, `fig_gap_honest`,
 `fig_turn_cost`, `fig_stopwatch`, `fig_both_hips`, `fig_shallow_sources`, `fig_ledger`,
 `fig_bars_of_doubt`, `fig_supply_composition`, `fig_band_only`, `fig_entry_exit_speed`,
 `fig_movement_family`, `fig_turn_angle_hist_30_90`, `fig_odd_vs_even`, `fig_season_vs_season`,
-`fig_population_shrink`, `fig_backpedal_route`, `fig_backpedal_polar`.
+`fig_population_shrink`, `fig_backpedal_route`.
 
-**DELETE from the figure stage.** `TASK.md`: "No fifth figure. No other figure may be named in the
-writeup, the notebook or the draft." The underlying measurements survive in `shape.csv` and
+**DELETE from the figure stage.** No other figure is named in the writeup, the notebook or the
+draft (`TASK.md` §Figures, six and no more). The underlying measurements survive in `shape.csv` and
 `sensitivity.csv`; the pictures do not.
 
 ### Notebooks

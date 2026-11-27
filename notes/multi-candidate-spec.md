@@ -17,7 +17,7 @@ the sentence is not edited afterwards; the disagreement is reported as a disagre
    recovery routes: a no-tracking route (target flag, `play_description` name extraction, alignment
    elimination) and a geometric route from frames, shipped as a Run All notebook.
 
-Supersedes nothing outside this cycle. `TASK.md`, the band table, the four figures,
+Supersedes nothing outside this cycle. `TASK.md`, the band table, the figure set,
 `notes/report-draft.md` and every pre-existing artefact under `outputs/` are untouched.
 
 ---
@@ -89,7 +89,7 @@ must never be described as one.
 - **No named man.** No output asserts "the DB was covering X". Every non-frozen pairing is prefixed
   `INFERENCE`.
 - **No entry into the claim.** `TASK.md` forbids outcome tests and per-prospect claims; nothing here
-  is written into the band table, the four figures or the report draft.
+  is written into the band table, the figure set or the report draft.
 - **No gate.** No minimum n, no minimum share, no abort. A small n prints a wide interval and a
   `DESCRIPTIVE ONLY` label. Only a missing/unreadable required file or a missing required column may
   raise, and it names every path tried first.

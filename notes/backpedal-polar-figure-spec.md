@@ -170,6 +170,10 @@ figure-name set, the PNG count, `figures_scanned`) and
   commissioned by Conor on 2026-11-23, and like them it is not one of the claim's
   four and must not be quoted in the writeup. Main reports this to Conor.
 
+> **Amended 2026-11-27 (D226).** The cap is withdrawn. Figure 21 (`fig_backpedal_polar`) is
+> row 5 of the six-figure set named in `TASK.md` §Figures. It must still not be quoted in the
+> writeup — that now rests on its `PLACEHOLDER_SAMPLE` stamp, not on a figure count.
+
 ## Revision — the 0-360 scale (D214, 2026-11-23)
 
 Conor, 2026-11-23 22:06: *"The other plots have it on a 360 scale so please do

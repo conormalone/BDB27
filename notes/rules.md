@@ -39,7 +39,7 @@ That is consistent with this project's question, and it says nothing about caps.
 | # | Limit | Value used here | Provenance |
 |---|---|---|---|
 | L1 | Writeup word cap | **2,000 words** as the working ceiling | **UNVERIFIED for 2027** — widely reported for earlier editions; not readable on the 2027 page. Check `/rules` signed in. |
-| L2 | Figure cap | **4 figures** | **Binding from `TASK.md`** ("exactly four, and no others", D191). The earlier 5-figure cap came from the superseded spec; the Kaggle cap is unverified and higher. |
+| L2 | Figure cap | **None** (six figures named in `TASK.md` §Figures) | Conor, 2026-11-27: *"There's is nothing in the rules about a 5 plot limit, 6 is fine."* The four- and five-figure caps were self-imposed and are withdrawn (D226); no competition figure limit has been verified. |
 | L3 | Notebook requirements | Public Kaggle notebook, runs end to end, no internet assumed, outputs committed | **UNVERIFIED as to runtime/CPU/GPU/internet policy**; `TASK.md` requires a public notebook. |
 | L4 | External data | **Prohibited** | **Binding from `TASK.md`** ("No external data") and consistent with the standard Kaggle rule. |
 | L5 | Deadline | **2027-01-06 23:59 UTC** | From `TASK.md` (supplied by Conor); **not re-verified on Kaggle**. |
@@ -50,9 +50,10 @@ That is consistent with this project's question, and it says nothing about caps.
 
 1. **No external data, ever.** `data/raw/external/gtm/` survives from an earlier
    task and is **not read by any script** in this pipeline. It must not be.
-2. **Five figures, fixed.** The deliverable plan in `TASK.md` Phase 7 names exactly
-   five: Cut Card, demand map + feasible region, transfer scatter with noise
-   ceiling, feasibility by speed range, held-out outcome comparison.
+2. **Six figures, no cap.** `TASK.md` §Figures names the paper's six figures — the hole, the
+   positions panel, the angle scatter, the drill schematic, the backpedal polar and the
+   receiver ladder — and no other figure is named in the writeup. There is no figure limit to
+   design against.
 3. **Reproducible from the competition data alone.** Every stage reads only
    `data/raw/*.csv` and writes only `data/interim/` + `outputs/`, so the notebook can
    be generated from stage outputs rather than ad-hoc cells.

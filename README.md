@@ -12,7 +12,8 @@ regeneration and leverage × ceiling tasks. All three are preserved with git his
 under `archive/legacy-2026-11-05/` and `archive/legacy-2026-11-06/`.
 
 **Competition.** NFL Big Data Bowl 2027, deadline **2027-01-06 23:59 UTC**. Working
-limits: **≤2,000 words, ≤5 figures**; the notebook must run end to end. Official
+limits: **≤2,000 words**; the notebook must run end to end. Six figures, and no figure cap
+(`TASK.md` §Figures; Conor, 2026-11-27). Official
 competition docs are the source of truth — see `notes/rules.md` for what was
 verified and what is marked `UNVERIFIED`.
 

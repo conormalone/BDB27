@@ -175,6 +175,10 @@ two bars is reproducible on this host.
 
 ## 9. Known conflict, do not "fix"
 
-`TASK.md` says the paper carries **exactly four figures** (and ≤5 in the README). Adding figure 22
+`TASK.md` said the paper carried **exactly four figures** (and ≤5 in the README). Adding figure 22
 to the gallery does not change `TASK.md`; the conflict is recorded in the D note (D225) and left for
 Conor.
+
+**Resolved 2026-11-27 (D226).** Conor ruled that there is no figure cap and six figures is fine.
+`TASK.md` §Figures now names all six, figure 22 as row 6; the README's ≤5 line is gone. Nothing else
+in this spec changes.

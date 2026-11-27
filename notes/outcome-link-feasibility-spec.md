@@ -49,7 +49,7 @@ answer whether the link exists.
 - No sentence may claim or imply a finding about turn quality and any outcome.
 - No inferred DB↔receiver link enters `TASK.md`, `notes/report-draft.md`, the claim, the band
   table or any figure.
-- No change to the existing claim, band table, four figures or report draft.
+- No change to the existing claim, band table, the figure set or the report draft.
 - No new position group. DB only (`position_group == 'DB'`).
 - No extrapolation of a SAMPLE rate onto FULL counts. Denominators and numerators are carried
   separately, each with its own provenance stamp.

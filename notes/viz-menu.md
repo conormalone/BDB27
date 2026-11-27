@@ -9,9 +9,12 @@ files contain; they exist to size the layout and to prove the encoding works, no
 published. What survives to full data is the *shape* of each chart and the *direction* of each
 gap. Where a number is used as a running example it is written as "sample:".
 
-Binding spec: `TASK.md` @ the 7 Nov amendment. Five figure slots, fixed order:
-(a) turn-band supply vs demand, DB primary; (b) the same across positions; (c) the drill spec
+Binding spec at the time: `TASK.md` @ the 7 Nov amendment, which named five slots in a fixed
+order: (a) turn-band supply vs demand, DB primary; (b) the same across positions; (c) the drill spec
 with the cells it fills; (d) what the existing DB drills cover; (e) measurement limits.
+
+> **Superseded 2026-11-27 (D226).** There is no figure cap and no fixed slot count. The paper
+> carries six figures, named in `TASK.md` §Figures. This page stays as the 7 Nov design record.
 
 ---
 
@@ -498,7 +501,7 @@ amendment, it should not. **Build last, or not at all.**
 
 ---
 
-## 2. The five-figure build plan
+## 2. The 7 Nov build plan (five slots, superseded)
 
 | slot | concept | hours | depends on |
 |---|---|---:|---|
@@ -508,7 +511,7 @@ amendment, it should not. **Build last, or not at all.**
 | (d) | 4. What each drill asks for | 3 | none |
 | (e) | 7. Bars of Doubt + 8. Two Numbers | 7 | none (kill-test stats stay PENDING FULL RUN) |
 
-Roughly **26 h** for the five-figure set, of which **8 h** is blocked on two decisions and one
+Roughly **26 h** for that five-slot set, of which **8 h** is blocked on two decisions and one
 small code addition. Appendix figures are 1–2 h each and can be cut without loss.
 
 **Build order if time is short:** 1 → 4 → 3 → 5 → 8. That order front-loads the argument

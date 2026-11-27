@@ -4,7 +4,7 @@
 Spec: `notes/outcome-test-spec.md` (committed 2b76348, before the first fit). Evidence:
 `outputs/outcome_test/` (`summary.json`, `estimates.csv`, `attributed_turns.csv`); code
 `src/bdb27/outcome_test.py`, `scripts/outcome_test.py`; tests `tests/test_outcome_test.py`.
-`TASK.md`, the band table, the four figures and `notes/report-draft.md` are unchanged.
+`TASK.md`, the band table, the figure set and `notes/report-draft.md` are unchanged.
 
 ---
 
