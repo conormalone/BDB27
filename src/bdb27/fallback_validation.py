@@ -1294,7 +1294,8 @@ def speed_coverage(game: pd.DataFrame, combine: pd.DataFrame) -> dict:
                          "band label; >180° is outside the four classes"),
             },
         },
-        "figure_policy": "no figure — TASK.md allows exactly four and forbids a fifth",
+        "figure_policy": ("no figure — TASK.md names six figures (§Figures); "
+                          "this analysis adds none of them"),
     }
 
 
@@ -1542,7 +1543,7 @@ def render_verdict(rel: dict, meta: dict, v: dict) -> str:
         f"  {v['mde_note']}",
         "",
         "This is a diagnostic note, not a deliverable. It does not enter TASK.md, the "
-        "band table, the four figures or the report draft.",
+        "band table, the figure set or the report draft.",
     ]
     return "\n".join(lines) + "\n"
 

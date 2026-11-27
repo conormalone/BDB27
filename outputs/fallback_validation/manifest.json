@@ -1,8 +1,8 @@
 {
   "provenance": "FULL",
   "spec": "notes/fallback-validation-spec.md",
-  "generated_utc": "2026-11-15T03:53:38Z",
-  "git_head": "c95c983bc55290ece9b6e2b181c2fd2db0a42615",
+  "generated_utc": "2026-11-27T10:43:33Z",
+  "git_head": "e4ffa2b0811c22318793d2f83cb8ddd9d3536586",
   "seed": 20261115,
   "bootstrap_reps": 2000,
   "config": {
@@ -38,7 +38,8 @@
       "icc1": 101,
       "split_half": 102,
       "split_half_min4": 103,
-      "discriminant": 104
+      "discriminant": 104,
+      "descriptive_share": 105
     },
     "lower_is_better": [
       "forty",
@@ -64,8 +65,8 @@
   "outputs": {
     "reliability.json": "c79d76a3156facdb8f597850d4e56e94a96002792dd9771d54d10d06e7299126",
     "discriminant.csv": "c987208dad14ecb02ba31f67fd0bcf39e6c8f062bb0eec6c1f6e09ad7c45386d",
-    "speed_coverage.json": "8525b04096387c350eb599b7fd9094706e18ea5601ed2194b76a614845fdbf61",
-    "verdict.txt": "1aa9254099dbc55f01250474bd7a6cc39a58f5b9e134f365d4e43a24ea07eb8c"
+    "speed_coverage.json": "e3db3c1e1a8f92f05b848b9339d7e59e0ac96ced2246ca86f0b61057f37d624a",
+    "verdict.txt": "6f7d1d5feb9cb19313c28ab7f756999ba49a61f2dd67995f27f658fffb25a4f3"
   },
   "verdict": {
     "rule": 1,

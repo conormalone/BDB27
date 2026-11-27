@@ -12119,7 +12119,7 @@ def write_population_receivers_provenance(context: dict, png_path, csv_path,
 #: Figure 20 draws ONE Combine drill's routes and the heading change the detector
 #: measured on them (Conor, 2026-11-23 14:10: "show the route of backpedal 45 and
 #: an arrow showing where they were looking for the turn"). It is a diagnostic,
-#: not part of the claim's four figures.
+#: outside the six in TASK.md §Figures.
 #:
 #: WHAT IT MAY NOT SHOW. The Combine tracking file has columns x, y, s, a, dis,
 #: dir and no `o`; `dir` equals the travel heading derived from smoothed x/y on
@@ -12861,9 +12861,9 @@ def backpedal_route_manifest_payload(table: pd.DataFrame, context: dict,
 # ================================================================= figure 21 ==
 #: Figure 21 is ONE question asked of the same 133 turns figure 20 drew, in the
 #: form Conor asked for (2026-11-23 19:41): "draw a circle where the line down is
-#: zero and then plot all the angles in the backpedal 45 on it". It is a
-#: diagnostic, not part of the claim's four figures, and is never quoted in the
-#: writeup.
+#: zero and then plot all the angles in the backpedal 45 on it". It is row 5 of
+#: the six in TASK.md §Figures (PLACEHOLDER_SAMPLE), and nothing in the writeup
+#: quotes it.
 #:
 #: WHY ZERO AT THE TOP, POSITIVE CLOCKWISE (D215). The first cut put zero at the
 #: bottom (D213/D214); Conor, 2026-11-24 09:09: "reverse the X axis so zero is up

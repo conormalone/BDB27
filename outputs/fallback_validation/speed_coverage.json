@@ -453,7 +453,7 @@
       "note": "derived classes from abs_turn_angle vs the CSV's own en-dash band label; >180° is outside the four classes"
     }
   },
-  "figure_policy": "no figure — TASK.md allows exactly four and forbids a fifth",
+  "figure_policy": "no figure — TASK.md names six figures (§Figures); this analysis adds none of them",
   "discriminant_labels": {
     "per_drill": {
       "three_cone": {

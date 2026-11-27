@@ -23,4 +23,4 @@ rules evaluated in order (the first that fires gives the headline):
 MDEs at 80% power (post-hoc, printed so a null is read as 'not detectable', never 'not present'):
   three_cone n_S=23 MDE_S=0.02 n_P=23 MDE_P=0.0321; short_shuttle n_S=31 MDE_S=0.0247 n_P=31 MDE_P=0.0286; forty n_S=96 MDE_S=0.0218 n_P=98 MDE_P=0.0182; ten_yd_split n_S=96 MDE_S=0.0153 n_P=98 MDE_P=0.0147
 
-This is a diagnostic note, not a deliverable. It does not enter TASK.md, the band table, the four figures or the report draft.
+This is a diagnostic note, not a deliverable. It does not enter TASK.md, the band table, the figure set or the report draft.

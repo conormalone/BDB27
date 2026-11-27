@@ -10292,3 +10292,105 @@ fixture (`tests/test_figures_stage.py:411`) runs `06_figures.py --mode sample` e
 **throwaway config whose output root is a `tmp_path`**, so committed outputs were never at risk, and
 `git status -- outputs/` is empty after the run — the 25 committed figures and the manifest are
 byte-unchanged.
+
+## D227 — The cap sentence is out of the code and out of the artefacts · 2026-11-27
+
+**Authority.** Conor, 2026-11-27 09:07 — *"There's is nothing in the rules about a 5 plot limit, 6
+is fine"* — and 09:36 — *"Delete any reference to 5 figures, there are 6 figures."* D226 landed the
+docs pass on that ruling under a bar against changing emitted artefact bytes, so it left the
+strings that are *printed into* `outputs/` untouched and flagged them instead. This entry deletes
+them. **Branch:** `fig22-population-receivers`. **Scope:** five source strings, the artefacts they
+print into, and those artefacts' own manifests. No number, no figure content, no test assertion, no
+deletion.
+
+**The five strings, before → after.** Line numbers are the post-change ones except where noted.
+
+| # | File:line | Before | After |
+|---|---|---|---|
+| 1 | `src/bdb27/fallback_validation.py:1297` (`speed` payload → `speed_coverage.json:456`) | `"figure_policy": "no figure — TASK.md allows exactly four and forbids a fifth"` | `"figure_policy": "no figure — TASK.md names six figures (§Figures); this analysis adds none of them"` |
+| 2 | `src/bdb27/fallback_validation.py:1545-1546` (→ `verdict.txt:26`) | `This is a diagnostic note, not a deliverable. It does not enter TASK.md, the band table, the four figures or the report draft.` | `… the band table, the figure set or the report draft.` |
+| 3 | `scripts/ambiguity_attribution.py:503` (→ `summary.json:908`) | `Nothing here enters TASK.md, the band table, the four figures or the report draft. TASK.md forbids outcome tests; …` | `Nothing here enters TASK.md, the band table, the figure set or the report draft. TASK.md forbids outcome tests; …` |
+| 4 | `src/bdb27/figures.py:12122` (comment, figure 20) | `#: not part of the claim's four figures.` | `#: outside the six in TASK.md §Figures.` |
+| 5 | `src/bdb27/figures.py:12864-12866` (comment, figure 21) | `It is a diagnostic, not part of the claim's four figures, and is never quoted in the writeup.` | `It is row 5 of the six in TASK.md §Figures (PLACEHOLDER_SAMPLE), and nothing in the writeup quotes it.` |
+
+Strings 1–3 say what the diagnostic does and does not feed, in `TASK.md`'s own vocabulary: the
+figure set is six and named (§Figures), so a diagnostic is outside *that set* rather than "not one
+of four". String 1 now matches what D226 wrote into the fallback-validation notebook, so the code
+and the notebook say the same sentence.
+
+String 5 is the one place where the old wording was not merely stale but **false** under the
+ruling: `fig_backpedal_polar` is row 5 of the six (TASK.md §Figures; D226), so calling it "not part
+of the claim's four figures" can no longer stand as a statement about the paper. It is now
+identified by its row and stamp, and the true half of the old sentence — nothing in the writeup
+quotes it — is kept. Figure 20 (`fig_backpedal_route`) is still a diagnostic outside the set, and
+string 4 says only that.
+
+**Method: (a) — both owning stages were re-run on this host, not hand-edited.** Every input was
+present and hash-matched the committed manifest before either run:
+
+- `outputs/fallback_validation/manifest.json` → `bdb27_full_db_turns.parquet` `f2e7cd01…`,
+  `combine_db_turns_floor2.5_control.csv` `41b49c19…`, `combine_results.csv` `e4773ef6…` — all three
+  match.
+- `outputs/ambiguity_attribution/manifest.json` → the same parquet `f2e7cd01…` and
+  `player_play.csv` `68926a26…` — both match.
+
+`scripts/fallback_validation.py` was run through the module's own `analyse` / `write_outputs` path
+(the script's fixed `OUT` retargeted to a scratch dir for the first pass, then written in place), and
+`scripts/ambiguity_attribution.py --mode full --reps 20 --seed 20261117` (the manifest's recorded
+config) was run into a scratch dir first and then in place.
+
+**The diff is confined to the changed sentences — checked, not asserted.**
+
+- `outputs/fallback_validation/`: `reliability.json` and `discriminant.csv` came back **byte-identical**
+  (`c79d76a3…`, `c987208d…`): the fits and the labels did not move. `speed_coverage.json` differs on
+  exactly one line (456), `verdict.txt` on exactly one line (26) — the two sentences above. `diff -u`
+  of both files is one hunk each.
+- `outputs/ambiguity_attribution/`: 16 of the 17 artefacts came back **byte-identical**; `verdict.txt`
+  is byte-identical (`12220532…`). `summary.json` differs in exactly one string, `limits[4]` (line
+  908). All other shas in the manifest are unchanged.
+- The two manifests differ only in their own timestamp, their own `git_head`, and the recorded sha of
+  the file whose sentence changed. `outputs/fallback_validation/manifest.json` additionally gains
+  `"descriptive_share": 105` under `config.rng_streams` — a stream the module registered after
+  2026-11-15, which the old manifest pre-dated; the payload it seeds came back byte-identical, so
+  nothing seeded by it moved.
+- `outputs/run_log.csv` gains **two** rows, both `ambiguity_attribution,full,FULL,OK`, 3,642 rows —
+  one per run (scratch, then in place). The stage logs every run it makes; the rows are kept rather
+  than pruned.
+
+**Artefact shas, before → after.**
+
+| Artefact | Before | After |
+|---|---|---|
+| `outputs/fallback_validation/speed_coverage.json` | `8525b04096387c350eb599b7fd9094706e18ea5601ed2194b76a614845fdbf61` | `e3db3c1e1a8f92f05b848b9339d7e59e0ac96ced2246ca86f0b61057f37d624a` |
+| `outputs/fallback_validation/verdict.txt` | `1aa9254099dbc55f01250474bd7a6cc39a58f5b9e134f365d4e43a24ea07eb8c` | `6f7d1d5feb9cb19313c28ab7f756999ba49a61f2dd67995f27f658fffb25a4f3` |
+| `outputs/fallback_validation/manifest.json` | `72b974bb5a69ad84d2d7991aad19411a0ccb8e49a71976cdd16a576c64f1bc1b` | `162e456017a6afbd179e83b5b31b74bfb4ea439709dd0472bcb8f2887b82e534` |
+| `outputs/fallback_validation/reliability.json` | `c79d76a3156facdb8f597850d4e56e94a96002792dd9771d54d10d06e7299126` | unchanged |
+| `outputs/fallback_validation/discriminant.csv` | `c987208dad14ecb02ba31f67fd0bcf39e6c8f062bb0eec6c1f6e09ad7c45386d` | unchanged |
+| `outputs/ambiguity_attribution/summary.json` | `0b8c9175be029a4e584aa782821da3622ad1a9b3ff2bf575b2139f2bea09ceca` | `6236c723986eb26993477d3d58b89f6646dfd5bd96b5c4ee03a5f4251bab2f97` |
+| `outputs/ambiguity_attribution/manifest.json` | `7184435b336b21de340c98d81faaeb413e3732aa3ea15fc8fac1d7e48d127dac` | `50a88ca9aae64f19a5d0a08de4ad1e1bf08504da93ce0892ccc55095a410aedb` |
+| `outputs/ambiguity_attribution/verdict.txt` | `12220532311976be97f079fde3560d68cf8bfa2b622c97a4e84dd8a35979fcbb` | unchanged |
+
+**Tests.** No test pinned any of these sentences: `grep -n "four figures\|exactly four\|fifth
+figure\|forbids a fifth\|allows exactly\|figure_policy" tests/` returns nothing, so no assertion was
+rewritten, loosened or deleted. The three affected files run first and pass — `tests/test_fallback_validation.py`,
+`tests/test_backpedal_route_figure.py`, `tests/test_backpedal_polar_figure.py`: 120 tests, 0 failures. The stage tests build their own
+fixtures in `tmp_path`, so the re-run outputs above are what the suite reads from disk only where it
+reads committed artefacts at all.
+
+**Full suite — measured, not asserted.** `PYTHONPATH=src .venv/bin/python -m pytest tests/ -q
+--junitxml=/tmp/pytest_d227.xml`: **800 collected, 798 passed, 0 failed, 2 skipped, 1173.33 s**
+pytest time, `exit 0` (`/tmp/pytest_d227.xml`). Both skips are the same pre-existing opt-ins D226
+recorded: `test_turn_context.py::test_outputs_exist[turn_context.parquet]` (local parquet) and
+`test_turn_importance.py::test_two_full_runs_write_byte_identical_csvs` (`BDB27_DETERMINISM=1`).
+
+**The six-figure set stands.** `TASK.md` §Figures is unchanged by this entry, D226 stands, and no
+figure content, PNG, CSV or `drawn_text` moved: `git status -- outputs/figures/` is empty after every
+run in this entry. A repo-wide grep after the change finds no `four figures`, `exactly four`,
+`fifth figure`, `allows exactly` or `forbids a fifth` in `src/`, `scripts/`, `tests/` or `outputs/`,
+with one exception that is not about the figure set: `src/bdb27/figures.py:9845` — "so the figure
+still has exactly four axes", a subplot-axes count inside one drawing.
+
+Historical records that quote the old heading as the text of their own decision are left as written:
+`notes/backpedal-polar-figure-spec.md:168` and `notes/backpedal-route-figure-spec.md:226` (both carry
+a dated D226 amendment block immediately below), `notes/figure-22-receivers-spec.md:178` (its §9
+conflict note now ends with the D226 resolution), and every D-entry in this file.

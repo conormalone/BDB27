@@ -1,6 +1,6 @@
 {
-  "written_utc": "2026-11-18T08:07:40.541700+00:00",
-  "git_head": "99df7846343b656f010b1a7b7c2265dbaa2553a8",
+  "written_utc": "2026-11-27T10:49:51.208122+00:00",
+  "git_head": "e4ffa2b0811c22318793d2f83cb8ddd9d3536586",
   "spec": "notes/multi-candidate-spec.md",
   "attribution": "INFERENCE \u2014 multi-candidate attribution; the dataset records no opponent identifier, so no pairing here identifies the man covered",
   "config": {
@@ -92,8 +92,8 @@
       "bytes": 608
     },
     "outputs/ambiguity_attribution/summary.json": {
-      "sha256": "0b8c9175be029a4e584aa782821da3622ad1a9b3ff2bf575b2139f2bea09ceca",
-      "bytes": 32707
+      "sha256": "6236c723986eb26993477d3d58b89f6646dfd5bd96b5c4ee03a5f4251bab2f97",
+      "bytes": 32705
     },
     "outputs/ambiguity_attribution/verdict.txt": {
       "sha256": "12220532311976be97f079fde3560d68cf8bfa2b622c97a4e84dd8a35979fcbb",

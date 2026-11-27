@@ -500,7 +500,7 @@ def main(argv: list[str] | None = None) -> int:
             "so no output here says which man was covered.",
             "two_candidate_separation_gap_yd is MAX(sep) - MIN(sep) of the candidates' "
             "separation values. It is not a distance between two players.",
-            "Nothing here enters TASK.md, the band table, the four figures or the "
+            "Nothing here enters TASK.md, the band table, the figure set or the "
             "report draft. TASK.md forbids outcome tests; this is a diagnostic on an "
             "estimator TASK.md already excludes.",
         ],
