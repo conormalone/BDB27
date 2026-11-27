@@ -10217,3 +10217,78 @@ repo, not a competition rule. Conor ruled on 2026-11-27 that there is no competi
 is fine — *"There's is nothing in the rules about a 5 plot limit, 6 is fine."* `TASK.md` is **not**
 edited in this cycle; its figures section will be amended to six in a separate follow-up commit. This
 entry records the ruling, not the amendment.
+
+## D226 — The figure set is six, named, and there is no cap · 2026-11-27
+
+**Authority.** Conor, 2026-11-27 09:07 — *"There's is nothing in the rules about a 5 plot limit, 6
+is fine."* — and 09:36 — *"Delete any reference to 5 figures, there are 6 figures. Has it been
+tested to ensure this code still runs"*. **Branch:** `fig22-population-receivers`. **Scope:** docs
+only — no code, no figure content, no number, no test, no deletion.
+
+**The cap was self-imposed, and it is now removed.** The "exactly four, and no others" line in
+`TASK.md` §Figures (and the "no fifth figure" sentence under it) was our own rule in this repo, not
+a competition limit; no competition figure limit has ever been verified (`notes/rules.md` L2, L1).
+D225 recorded the ruling; this entry is the amendment it deferred. The earlier caps — four from
+D191, five from the superseded spec and the old README — are withdrawn together. Every D-entry that
+records them, D225's paragraph included, stands as written: it is the record of what was true then.
+
+**The six figures, and each one's stamp.**
+
+| # | Figure | File | Stamp | Role in the argument |
+|---|---|---|---|---|
+| 1 | The hole (DB band supply vs demand) | `outputs/figures/fig_the_hole.png` | `FULL` | the headline; its counts and shares are quoted |
+| 2 | The same across positions | `outputs/figures/fig_all_positions.png` | `FULL` | the shortfall is not a DB artefact |
+| 3 | Every Combine turn at its measured angle | `outputs/figures/fig_drill_angle_scatter.png` | `PLACEHOLDER_SAMPLE` | the battery's angles by drill; named, stamp stated, nothing quoted |
+| 4 | The proposed drill geometry | `outputs/figures/fig_drill_schematic.png` | `SCHEMATIC` | a drawing of the proposal; carries no measurement |
+| 5 | Every turn in the backpedal (polar) — figure 21 | `outputs/figures/fig_backpedal_polar.png` | `PLACEHOLDER_SAMPLE` | the backpedal drill's measured angles against its own 45° break; named, stamp stated, nothing quoted |
+| 6 | The receiver ladder, 7,777 → 413 — figure 22 | `outputs/figures/fig_population_receivers.png` | `FULL + RECEIVED` | how the 7,777 band turns fall to 413 with a measured nearest opponent; bars 4–5 are received |
+
+**Files amended (all in one commit, `f787475`, plus this entry).**
+- `TASK.md` — §Figures heading (was "Figures — exactly four, and no others", line 114), table rows 5
+  and 6 added, the "No fifth figure" sentence (line 123) replaced by "These six are the figure set",
+  and the pipeline note "stage 06 renders the four figures" → "renders the figures, and §Figures
+  names the six".
+- `README.md` — the "≤2,000 words, ≤5 figures" working limit; the figure half is gone.
+- `notes/rules.md` — L2 (figure cap: **None**, six figures named) and consequence 2 ("Five figures,
+  fixed" → "Six figures, no cap", with the six named).
+- `notes/report-draft.md` — the "one figure carries a sample stamp" line is now two; **Figure 5**
+  caption at the end of §7 (measurement limits, beside the orientation limit) and **Figure 6**
+  caption at the end of §7 and nowhere else. No prose renumbering, no existing caption touched.
+- `notes/report-draft-spec.md` — §1, §2 (sample-stamp figures "3 and 5 only"), §6 (heading and
+  table to six; "no other figure" now scoped to the six), §8 ("alongside the six figures"; "do not
+  propose another figure").
+- `notes/rebuild-spec.md` — F10, the `test_figures.py` comment, R2, the stage-06 paragraph, the
+  switchover item ("seen the six figures"), the KEEP row (six named), the delete-list heading
+  ("the other nineteen") and the delete paragraph; `fig_backpedal_polar` moved off the delete list.
+- `notes/viz-menu.md` — a dated superseded banner; the plan body stays as the 7 Nov record.
+- `notes/backpedal-polar-figure-spec.md`, `notes/backpedal-route-figure-spec.md`,
+  `notes/figure-22-receivers-spec.md` — one dated amendment note each, pointing here.
+- `notebooks/bdb27_fallback_validation.ipynb` ("four figures" → the six named in `TASK.md`;
+  "`TASK.md` allows exactly four and forbids a fifth" → "`TASK.md` names six figures; this analysis
+  adds none of them") and `notebooks/bdb27_multi_candidate.ipynb` ("the four figures" → "the six
+  figures"). Markdown cells only; both still parse as JSON and are still committed unexecuted.
+- `notes/fallback-validation-spec.md`, `notes/outcome-test-spec.md` and the cycle specs/results
+  (`turn-importance`, `multi-candidate`, `geometric-attribution`, `outcome-link-*`,
+  `outcome-test-result`) — "the four figures" → "the figure set", and the two explicit "TASK.md
+  allows exactly four" rule statements corrected. The substance of each record ("we did not touch
+  the figures") is unchanged.
+
+**Not amended, deliberately.** `notes/decisions.md` D-entries (record, not instruction);
+`notes/archive-tasks/` (untouched, still untracked); `archive/` (legacy trees). `src/` and the
+committed artefacts are unchanged: `src/bdb27/fallback_validation.py` still writes
+`"figure_policy": "no figure — TASK.md allows exactly four and forbids a fifth"` into
+`outputs/fallback_validation/speed_coverage.json`, and `src/bdb27/figures.py` comments still say
+"not part of the claim's four figures". Changing those would change emitted artefact text, which
+this commit is not allowed to do; they are flagged to Conor for a one-line follow-up if he wants
+them gone.
+
+**Does the code still run — measured, not asserted (2026-11-27).** `.venv/bin/python -m pytest
+tests/ -q --junitxml=/tmp/pytest_bdb27.xml`: **800 collected, 798 passed, 0 failed, 2 skipped,
+1141.84 s** pytest time (1144 s wall; `RC=0`). Both skips are pre-existing opt-ins
+(`test_turn_context.py` local parquet; `test_turn_importance.py` `BDB27_DETERMINISM=1`). `PYTHONPATH=src
+python -c "import bdb27.figures"` imports clean; `PYTHONPATH=src python src/06_figures.py --help`
+parses and prints the stage usage. No separate regeneration run was needed: the suite's `rendered`
+fixture (`tests/test_figures_stage.py:411`) runs `06_figures.py --mode sample` end to end against a
+**throwaway config whose output root is a `tmp_path`**, so committed outputs were never at risk, and
+`git status -- outputs/` is empty after the run — the 25 committed figures and the manifest are
+byte-unchanged.
