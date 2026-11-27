@@ -26,7 +26,7 @@ verified and what is marked `UNVERIFIED`.
 | 03 envelope | `src/03_envelope.py` | implemented — variance route + components |
 | 04 demand/coverage | `src/04_demand_coverage.py` | implemented — demand map, coverage, cut gaps |
 | 05 validate | `src/05_validate.py` | **loud stub** — exits 2 with `STAGE NOT IMPLEMENTED` |
-| 06 figures | `src/06_figures.py` | implemented — twenty-one figures + `figures_manifest.json` |
+| 06 figures | `src/06_figures.py` | implemented — twenty-two figures + `figures_manifest.json` |
 
 Six of the seven stages are implemented; `05_validate` is still a loud stub and is never
 counted as a pass. **The notebook is the interface** (`notebooks/bdb27_full_run.ipynb`) —

@@ -1,11 +1,11 @@
 {
   "provenance": "MIXED",
-  "label": "MIXED PROVENANCE \u2014 5 FULL, 16 sample, 1 schematic, 1 FULL + RECEIVED",
-  "config_sha": "a76cf3bd9012f085",
-  "generated_utc": "2026-11-16T21:43:46Z",
+  "label": "MIXED PROVENANCE \u2014 5 FULL, 17 sample, 1 schematic, 2 FULL + RECEIVED",
+  "config_sha": "bed47a853f46c1f7",
+  "generated_utc": "2026-11-27T00:19:08Z",
   "stage": "06_figures",
   "artefact_version": 1,
-  "stamp": "MIXED PROVENANCE \u2014 5 FULL, 16 sample, 1 schematic, 1 FULL + RECEIVED",
+  "stamp": "MIXED PROVENANCE \u2014 5 FULL, 17 sample, 1 schematic, 2 FULL + RECEIVED",
   "figures": {
     "fig_the_hole": {
       "stage": "06_figures",
@@ -6642,6 +6642,309 @@
       "png": "outputs/figures/fig_backpedal_polar.png",
       "csv": "outputs/figures/fig_backpedal_polar.csv",
       "drawn_text": "outputs/figures/fig_backpedal_polar.drawn_text.json"
+    },
+    "fig_population_receivers": {
+      "stage": "06_figures",
+      "artefact_version": 1,
+      "figure": "fig_population_receivers",
+      "title": "What survives each step, by how many men were on the play",
+      "claim": "Of 7,777 valid DB game turns in the 30\u201360\u00b0 band, 2,601 carry a candidate separation and 2,558 are identified with a nearest opponent \u2014 the 2,407 turns both sets share plus 151 separation-less turns that 2,601 never contained. 413 of the 2,558 have the nearest opponent within 3 yd: 213 from the frozen rule's one-candidate turns and 200 from the multi-candidate union; the 151 identified turns with no exported distance are counted in neither 413 nor its complement.",
+      "stamp": "FULL + RECEIVED",
+      "provenance_note": "Steps 1-3 are read from the committed funnel artefact (outputs/ambiguity_attribution/funnel.csv) and are reproducible on this machine. Bars 4 and 5 are NOT: bar 4 is the received precedence table's N (outputs/ambiguity_attribution_received/precedence.csv) and its segments come from two received multi-candidate pastes (outputs/ambiguity_attribution_received/geometry.csv, outputs/ambiguity_attribution_received/route_a_turns.csv); bar 5 adds the received frozen-rule paste (outputs/population_shrink_received/single_turn_geometry.csv). All are committed byte-for-byte under outputs/ambiguity_attribution_received/PROVENANCE.md, and no manifest came with any of them \u2014 no hash of the full turn table, none of the tracking file, no git HEAD and no run timestamp \u2014 so each sha256 identifies the bytes that were sent and verifies nothing about the run. This machine has no game tracking file and cannot regenerate any of them. The geometry paste is from the 07:17 UTC upload, before the D208 slot-precedence fix; the precedence table is from 11:07 UTC. They are used together because the residual reconciles them: 676 + 1,731 + 151 = 2,558 = the post-fix N, and the distances and the Route-A reference pass do not depend on slot order.",
+      "reproducible_on_this_machine": {
+        "steps_1_to_3": true,
+        "steps_4_to_5": false,
+        "why_steps_4_to_5": "Bars 4-5 come only from received laptop pastes (precedence.csv, geometry.csv, route_a_turns.csv, single_turn_geometry.csv). No full game tracking file is on this host, so none of the three can be regenerated here; the sha256 pins identify the bytes, not the run."
+      },
+      "bar_encoding": {
+        "length": "the population that entered the step",
+        "fill": "the population that came out of the step",
+        "common_left_origin": true,
+        "colours": {
+          "track": "#f0e4bd",
+          "segment_shades": [
+            "#f6dd8a",
+            "#e8b100",
+            "#b08600",
+            "#6f5400"
+          ]
+        },
+        "segmented_bar": 4,
+        "segment_key": "men on the play (n_candidates)",
+        "note": {
+          "bar": 5,
+          "text": "(+151 without an exported distance)"
+        }
+      },
+      "ladder": [
+        {
+          "row_kind": "bar",
+          "step": 1,
+          "state": "All DB turns of 30\u201360\u00b0",
+          "segment": null,
+          "entered": 7777,
+          "survives": 6315,
+          "lost": 1462,
+          "reason": "no opposing player is listed on the play",
+          "source_artefact": "outputs/ambiguity_attribution/funnel.csv",
+          "source_field": "band_turns - no_opposing_player_play_row",
+          "verified_on_this_machine": true,
+          "provenance": "FULL",
+          "in_both": null,
+          "surviving_from_outside_entered": null,
+          "entered_not_surviving": null
+        },
+        {
+          "row_kind": "bar",
+          "step": 2,
+          "state": "A listing opponent who ran a route",
+          "segment": null,
+          "entered": 6315,
+          "survives": 3009,
+          "lost": 3306,
+          "reason": "opponents are listed but none of them ran a route",
+          "source_artefact": "outputs/ambiguity_attribution/funnel.csv",
+          "source_field": "turns_with_opposing_route_runner",
+          "verified_on_this_machine": true,
+          "provenance": "FULL",
+          "in_both": null,
+          "surviving_from_outside_entered": null,
+          "entered_not_surviving": null
+        },
+        {
+          "row_kind": "bar",
+          "step": 3,
+          "state": "That route has a separation",
+          "segment": null,
+          "entered": 3009,
+          "survives": 2601,
+          "lost": 408,
+          "reason": "the route carries no separation value",
+          "source_artefact": "outputs/ambiguity_attribution/funnel.csv",
+          "source_field": "turns_with_a_candidate_separation",
+          "verified_on_this_machine": true,
+          "provenance": "FULL",
+          "in_both": null,
+          "surviving_from_outside_entered": null,
+          "entered_not_surviving": null
+        },
+        {
+          "row_kind": "bar",
+          "step": 4,
+          "state": "Number of receivers",
+          "segment": null,
+          "entered": 2601,
+          "survives": 2558,
+          "lost": 43,
+          "reason": "194 of the 2,601 with two or more candidates are never identified and 151 separation-less turns are identified: a net -43, not a nested loss",
+          "source_artefact": "outputs/ambiguity_attribution_received/precedence.csv | outputs/ambiguity_attribution_received/geometry.csv | outputs/ambiguity_attribution_received/route_a_turns.csv | outputs/population_shrink_received/single_turn_geometry.csv",
+          "source_field": "N (segments from n_candidates)",
+          "verified_on_this_machine": false,
+          "provenance": "RECEIVED",
+          "in_both": 2407,
+          "surviving_from_outside_entered": 151,
+          "entered_not_surviving": 194
+        },
+        {
+          "row_kind": "bar",
+          "step": 5,
+          "state": "Nearest opponent within 3 yd",
+          "segment": null,
+          "entered": 2558,
+          "survives": 413,
+          "lost": 2145,
+          "reason": "the nearest opponent is beyond 3 yd, or the turn's distance was never exported (151 turns)",
+          "source_artefact": "outputs/population_shrink_received/single_turn_geometry.csv | outputs/ambiguity_attribution_received/geometry.csv",
+          "source_field": "within_radius; dist_nearest_yd",
+          "verified_on_this_machine": false,
+          "provenance": "RECEIVED",
+          "in_both": null,
+          "surviving_from_outside_entered": null,
+          "entered_not_surviving": null
+        },
+        {
+          "row_kind": "segment",
+          "step": 4,
+          "state": "Number of receivers",
+          "segment": 1,
+          "entered": 2558,
+          "survives": 1882,
+          "lost": 676,
+          "reason": "the frozen 3-yd rule's 1,731 one-candidate turns plus the 151 separation-less turns identified in the run",
+          "source_artefact": "outputs/population_shrink_received/single_turn_geometry.csv",
+          "source_field": "n_candidates_tracked (frozen rule) + residual",
+          "verified_on_this_machine": false,
+          "provenance": "RECEIVED",
+          "in_both": null,
+          "surviving_from_outside_entered": null,
+          "entered_not_surviving": null
+        },
+        {
+          "row_kind": "segment",
+          "step": 4,
+          "state": "Number of receivers",
+          "segment": 2,
+          "entered": 2558,
+          "survives": 534,
+          "lost": 2024,
+          "reason": "identified turns with 2 visible candidates in the 676-turn union",
+          "source_artefact": "outputs/ambiguity_attribution_received/geometry.csv | outputs/ambiguity_attribution_received/route_a_turns.csv",
+          "source_field": "n_candidates",
+          "verified_on_this_machine": false,
+          "provenance": "RECEIVED",
+          "in_both": null,
+          "surviving_from_outside_entered": null,
+          "entered_not_surviving": null
+        },
+        {
+          "row_kind": "segment",
+          "step": 4,
+          "state": "Number of receivers",
+          "segment": 3,
+          "entered": 2558,
+          "survives": 137,
+          "lost": 2421,
+          "reason": "identified turns with 3 visible candidates in the 676-turn union",
+          "source_artefact": "outputs/ambiguity_attribution_received/geometry.csv | outputs/ambiguity_attribution_received/route_a_turns.csv",
+          "source_field": "n_candidates",
+          "verified_on_this_machine": false,
+          "provenance": "RECEIVED",
+          "in_both": null,
+          "surviving_from_outside_entered": null,
+          "entered_not_surviving": null
+        },
+        {
+          "row_kind": "segment",
+          "step": 4,
+          "state": "Number of receivers",
+          "segment": 4,
+          "entered": 2558,
+          "survives": 5,
+          "lost": 2553,
+          "reason": "identified turns with 4 visible candidates in the 676-turn union",
+          "source_artefact": "outputs/ambiguity_attribution_received/geometry.csv | outputs/ambiguity_attribution_received/route_a_turns.csv",
+          "source_field": "n_candidates",
+          "verified_on_this_machine": false,
+          "provenance": "RECEIVED",
+          "in_both": null,
+          "surviving_from_outside_entered": null,
+          "entered_not_surviving": null
+        }
+      ],
+      "segments": [
+        {
+          "men_on_the_play": 1,
+          "turns": 1882,
+          "source_artefact": "outputs/population_shrink_received/single_turn_geometry.csv",
+          "source_field": "n_candidates_tracked (frozen rule) + residual"
+        },
+        {
+          "men_on_the_play": 2,
+          "turns": 534,
+          "source_artefact": "outputs/ambiguity_attribution_received/geometry.csv | outputs/ambiguity_attribution_received/route_a_turns.csv",
+          "source_field": "n_candidates"
+        },
+        {
+          "men_on_the_play": 3,
+          "turns": 137,
+          "source_artefact": "outputs/ambiguity_attribution_received/geometry.csv | outputs/ambiguity_attribution_received/route_a_turns.csv",
+          "source_field": "n_candidates"
+        },
+        {
+          "men_on_the_play": 4,
+          "turns": 5,
+          "source_artefact": "outputs/ambiguity_attribution_received/geometry.csv | outputs/ambiguity_attribution_received/route_a_turns.csv",
+          "source_field": "n_candidates"
+        }
+      ],
+      "set_algebra": {
+        "entered": 2601,
+        "survives": 2558,
+        "in_both": 2407,
+        "surviving_from_outside_entered": 151,
+        "entered_not_surviving": 194,
+        "entered_source": "outputs/ambiguity_attribution/funnel.csv band_row turns_with_a_candidate_separation",
+        "survives_source": "outputs/ambiguity_attribution_received/precedence.csv item N",
+        "surviving_from_outside_entered_source": "N - N_frozen - union = 2,558 - 1,731 - 676",
+        "note": "Bar 4 is not a nested subset of bar 3: the 194 turns of the 2,601 with two or more candidates are never identified, and 151 separation-less turns are identified. The drawing keeps the approved look; this block is where the truth lives."
+      },
+      "within_radius_detail": {
+        "radius_yd": 3.0,
+        "frozen_rule": 213,
+        "multi_candidate_union": 200,
+        "total": 413,
+        "by_men_on_the_play": {
+          "2": 148,
+          "3": 51,
+          "4": 1
+        },
+        "not_exported": 151,
+        "what_is_measured": "The frozen rule's turns carry exactly one candidate, so the nearest man is the identified man (213). The union's 200 counts the NEAREST candidate's distance; on the 220 measured Route-A-only turns 105 attribute a man who is not the nearest, and 3 of those are within the radius. So the bar says 'nearest opponent', not 'the receiver'."
+      },
+      "population": {
+        "setting": "game",
+        "position_group": "DB",
+        "band_deg": [
+          30.0,
+          60.0
+        ],
+        "band_label": "30\u201360\u00b0",
+        "turns": 7777,
+        "final_turns": 413,
+        "radius_yd": 3.0
+      },
+      "sources": [
+        "outputs/ambiguity_attribution/funnel.csv",
+        "outputs/ambiguity_attribution_received/precedence.csv",
+        "outputs/ambiguity_attribution_received/geometry.csv",
+        "outputs/ambiguity_attribution_received/route_a_turns.csv",
+        "outputs/population_shrink_received/single_turn_geometry.csv"
+      ],
+      "source_artefacts": [
+        {
+          "path": "outputs/ambiguity_attribution/funnel.csv",
+          "sha256": "102c1f2be9cdde167ec7e415fa9f8138c2ec2dbd998443263abf3936f7c4719f",
+          "provenance": "FULL",
+          "role": "committed funnel: bars 1-3"
+        },
+        {
+          "path": "outputs/ambiguity_attribution_received/precedence.csv",
+          "sha256": "896a1f5c189ff4c409cf72d8051b85c9dd0c52dc0c09074ceeb32edbea3aaeb8",
+          "provenance": "RECEIVED",
+          "role": "laptop paste: bar 4's N; no manifest came with it"
+        },
+        {
+          "path": "outputs/ambiguity_attribution_received/geometry.csv",
+          "sha256": "d93eab30a790ca7646359202d4d284045515e151aad16b80d4cda6e30b270074",
+          "bytes": 636148,
+          "provenance": "RECEIVED",
+          "role": "laptop paste: multi-candidate distances; pinned"
+        },
+        {
+          "path": "outputs/ambiguity_attribution_received/route_a_turns.csv",
+          "sha256": "79ed9a087a59e3a6fc13f3de02c2fd83ea8bcc7b9a31bc59eabf068d8fa4af51",
+          "bytes": 114073,
+          "provenance": "RECEIVED",
+          "role": "laptop paste: the Route-A reference pass; pinned"
+        },
+        {
+          "path": "outputs/population_shrink_received/single_turn_geometry.csv",
+          "sha256": "49e08e2186e04227b7625e2296f55e8791a1a99dd3e013027d4ff987fd2b5680",
+          "provenance": "RECEIVED",
+          "role": "laptop paste: the frozen rule's 213"
+        }
+      ],
+      "png": "outputs/figures/fig_population_receivers.png",
+      "csv": "outputs/figures/fig_population_receivers.csv",
+      "drawn_text": "outputs/figures/fig_population_receivers.drawn_text.json",
+      "caveats": [
+        "Steps 1-3 are committed funnel counts and are reproducible here. Bars 4 and 5 are received laptop numbers and are not: no manifest came with either paste, and this machine has no game tracking file to regenerate them from.",
+        "Bar 4 is not a nested subset of bar 3: 194 of the 2,601 with two or more candidates are never identified and 151 separation-less turns are identified, a net -43. The bars keep the approved nested look; the arithmetic is in the CSV and this entry.",
+        "The 151 identified turns carry no exported distance, so they are counted in neither the 413 nor its complement: the canvas note says '(+151 without an exported distance)'.",
+        "Bar 5's 200 counts the NEAREST candidate's distance, not always the identified man's: on the 220 measured Route-A-only turns 105 attribute a man who is not the nearest, and 3 of those are within the radius. The bar is labelled 'nearest opponent', not 'the receiver'.",
+        "Counts only: the bars are populations, not rates, and nothing on the figure is a test or an estimate of ability.",
+        "No player names and no nfl_id appear in the figure, the CSV, the drawn-text dump or this entry."
+      ]
     }
   }
 }

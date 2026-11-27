@@ -917,7 +917,7 @@ def test_on_image_stamp_switch_controls_the_banner(rendered, tmp_path):
 
 
 def test_no_figure_draws_placeholder_text(rendered):
-    """Every one of the 21 figures is scanned for placeholder hedging (D180).
+    """Every one of the 22 figures is scanned for placeholder hedging (D180).
 
     Rebuilds each figure in-process and reads the drawn text back — the PNG
     cannot be searched as text, so the figure objects are the evidence.
@@ -926,7 +926,7 @@ def test_no_figure_draws_placeholder_text(rendered):
 
     report = scan_figures(rendered["cfg"])
     assert report["exit_code"] == 0
-    assert report["figures_scanned"] == 21, report["figures_scanned"]
+    assert report["figures_scanned"] == 22, report["figures_scanned"]
     assert report["total_hits"] == 0, [
         (f["png"], f["hits"]) for f in report["figures"] if f["hits"]]
     assert BANNED_TOKENS == ("PLACEHOLDER", "UNVALIDATED", "SAMPLE OUTPUT",
@@ -1267,7 +1267,8 @@ def test_drill_schematic_stage_06_still_renders_figures_1_to_3(rendered):
                                    "fig_drill_angle_scatter",
                                    "fig_population_shrink",
                                    "fig_backpedal_route",
-                                   "fig_backpedal_polar"}
+                                   "fig_backpedal_polar",
+                                   "fig_population_receivers"}
 
 
 def test_drill_schematic_checks_can_fail(rendered):
@@ -1913,8 +1914,9 @@ def test_stage_06_manifest_lists_every_figure(rendered):
         "fig_supply_composition", "fig_band_only",
         "fig_entry_exit_speed", "fig_movement_family",
         "fig_drill_angle_scatter", "fig_population_shrink",
-        "fig_backpedal_route", "fig_backpedal_polar"}
-    assert len(man["figures"]) == 21
+        "fig_backpedal_route", "fig_backpedal_polar",
+        "fig_population_receivers"}
+    assert len(man["figures"]) == 22
     out = rendered["tmp"] / "outputs" / "figures"
     for key in man["figures"]:
         assert (out / f"{key}.png").exists(), f"{key}.png missing"
@@ -3045,7 +3047,7 @@ def test_both_hips_computes_no_symmetry_or_p_value(rendered):
 def test_both_hips_renders_every_figure(rendered):
     out = rendered["tmp"] / "outputs" / "figures"
     pngs = sorted(p.name for p in out.glob("fig_*.png"))
-    assert len(pngs) == 21, f"stage 06 must render twenty-one figures, found {pngs}"
+    assert len(pngs) == 22, f"stage 06 must render twenty-two figures, found {pngs}"
     assert "fig_both_hips.png" in pngs
 
 
@@ -3075,6 +3077,37 @@ def test_population_shrink_is_rendered_by_the_stage(rendered):
     assert entry["stamp"] == "FULL + RECEIVED"
     assert entry["reproducible_on_this_machine"]["step_5"] is False
     # the stage renders it in sample mode without claiming sample data
+    assert "PLACEHOLDER" not in json.dumps(entry)
+
+
+def test_population_receivers_is_rendered_by_the_stage(rendered):
+    """Figure 22 is produced by stage 06 itself — not by a separate script.
+
+    It reads committed artefacts (the funnel, the received pastes), so it is
+    drawn in sample mode too; its own stamp says `FULL + RECEIVED` and the run's
+    mode stamp is not forced onto it.
+    """
+    out = rendered["tmp"] / "outputs" / "figures"
+    for suffix in ("png", "csv", "drawn_text.json", "provenance.json"):
+        path = out / f"fig_population_receivers.{suffix}"
+        assert path.exists(), f"fig_population_receivers.{suffix} missing"
+        assert path.stat().st_size > 0
+    frame = pd.read_csv(out / "fig_population_receivers.csv")
+    assert list(frame["row_kind"]) == ["bar"] * 5 + ["segment"] * 4
+    bars = frame[frame["row_kind"] == "bar"]
+    assert list(bars["entered"]) == [7777, 6315, 3009, 2601, 2558]
+    assert list(bars["survives"]) == [6315, 3009, 2601, 2558, 413]
+    assert list(bars["provenance"])[-2:] == ["RECEIVED", "RECEIVED"]
+    assert int(bars.iloc[3]["in_both"]) == 2407
+    texts = json.loads(
+        (out / "fig_population_receivers.drawn_text.json").read_text())
+    assert "(+151 without an exported distance)" in texts["strings"]
+    assert texts["banned_hits"] == []
+    manifest = json.loads(rendered["manifest"].read_text())
+    entry = manifest["figures"]["fig_population_receivers"]
+    assert entry["stage"] == "06_figures"
+    assert entry["stamp"] == "FULL + RECEIVED"
+    assert entry["reproducible_on_this_machine"]["steps_4_to_5"] is False
     assert "PLACEHOLDER" not in json.dumps(entry)
 
 

@@ -74,6 +74,13 @@
                           acceleration, the circle-fit usable share, and the
                           median peak angular rate on a log axis, each with a
                           player-clustered percentile bootstrap interval.
+ 22. "The receiver ladder" — the 18 Nov prototype rebuilt from committed
+                          files: five bars from the 30-60 degree band total to
+                          the turns whose nearest opponent is within 3 yd, bar
+                          four split by how many men were on the play and bar
+                          five carrying the turns with no exported distance.
+                          Bars 4-5 are received laptop numbers, pinned by
+                          sha256 and not reproducible on this host.
 
 Stage 06 grows one committed figure at a time; each figure writes a PNG, a
 CSV beside it, and one entry in outputs/figures/figures_manifest.json.
@@ -573,6 +580,30 @@ def main(argv=None) -> int:
             bpp_table, bpp_context, cfg, args.mode)
         _write_manifest(bpp_payload, manifest_path, args.mode, cfg)
 
+        # ---- figure 22: the receiver ladder, by how many men were on the play
+        # Bars 1-3 are the committed funnel's band rows; bars 4-5 are received
+        # laptop pastes (precedence + the multi-candidate union). Like figure 19
+        # it therefore carries its OWN provenance (`FULL + RECEIVED`), and the
+        # flat table carries the set algebra the canvas must not assert.
+        pr_table, pr_context = figures.population_receivers_ladder()
+        pr_png = outdir / f"{figures.FIGURE_KEY_POPULATION_RECEIVERS}.png"
+        pr_csv_path = outdir / (
+            f"{figures.FIGURE_KEY_POPULATION_RECEIVERS}.csv")
+        pr_text_path = outdir / (
+            f"{figures.FIGURE_KEY_POPULATION_RECEIVERS}.drawn_text.json")
+        figures.write_population_receivers_csv(pr_table, pr_csv_path, cfg)
+        pr_fig = figures.plot_population_receivers(pr_table, pr_context, cfg)
+        pr_text = figures.population_receivers_drawn_text(pr_fig, cfg)
+        pr_text_path.write_text(json.dumps(pr_text, indent=2),
+                                encoding="utf-8")
+        figures.render_population_receivers(pr_fig, cfg, pr_png)
+        pr_payload = figures.population_receivers_manifest_payload(
+            pr_table, pr_context)
+        _write_manifest(pr_payload, manifest_path, args.mode, cfg)
+        figures.write_population_receivers_provenance(
+            pr_context, pr_png, pr_csv_path, pr_text_path, cfg,
+            manifest_path=manifest_path)
+
         timer.rows = context["n_valid"]
         timer.detail = (f"{figures.FIGURE_KEY}: bands={len(context['bands'])} "
                         f"valid_{position}={context['n_valid']}; "
@@ -690,6 +721,13 @@ def main(argv=None) -> int:
                         f"band={ps_context['band_turns']} "
                         f"final={ps_context['final']} "
                         f"received_rows={ps_context['geometry_rows']}; "
+                        f"{figures.FIGURE_KEY_POPULATION_RECEIVERS}: "
+                        f"steps={pr_context['steps']} "
+                        f"band={pr_context['band_turns']} "
+                        f"identified={pr_context['algebra']['survives']} "
+                        f"within={pr_context['final']} "
+                        f"segments={pr_context['segment_counts']} "
+                        f"outside={pr_context['algebra']['surviving_from_outside_entered']}; "
                         f"{figures.FIGURE_KEY_BACKPEDAL}: "
                         f"turns={bp_context['n_turns']} "
                         f"players={bp_context['n_players']}/"
@@ -724,6 +762,7 @@ def main(argv=None) -> int:
           f"{mf_png.name}, {mf_csv_path.name}, "
           f"{da_png.name}, {da_csv_path.name}, "
           f"{ps_png.name}, {ps_csv_path.name}, {ps_text_path.name}, "
+          f"{pr_png.name}, {pr_csv_path.name}, {pr_text_path.name}, "
           f"{bp_png.name}, {bp_csv_path.name}, {bp_text_path.name}, "
           f"{bpp_png.name}, {bpp_csv_path.name}, {bpp_text_path.name}, "
           f"{manifest_path.name} "
@@ -784,6 +823,14 @@ def main(argv=None) -> int:
           f"{ps_context['final']:,} through {ps_context['steps']} steps "
           f"(step 5 from the received paste, "
           f"{ps_context['geometry_sha256'][:12]})"
+          f"; figure 22 receiver ladder {pr_context['band_turns']:,} -> "
+          f"{pr_context['algebra']['survives']:,} identified -> "
+          f"{pr_context['final']:,} within "
+          f"{pr_context['radius_yd']:g} yd, segments "
+          + "/".join(f"{count}:{number:,}" for count, number
+                     in sorted(pr_context['segment_counts'].items()))
+          + f", {pr_context['algebra']['surviving_from_outside_entered']:,} "
+          "without an exported distance"
           f"; figure 20 backpedal route {bp_context['n_turns']} turns from "
           f"{bp_context['n_players']} of "
           f"{bp_context['n_players_tracked']} players tracked, median "

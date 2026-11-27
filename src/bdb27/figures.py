@@ -10892,34 +10892,91 @@ def write_population_shrink_csv(table: pd.DataFrame, path,
     return path
 
 
+def _pop_shrink_draw_segments(ax, y, bar_segments) -> None:
+    """One bar's fill as stacked shades, each count labelled above with a leader.
+
+    Used only when ``plot_population_shrink`` is handed ``segments``; figure 19
+    never passes them, so its drawing is untouched. The shades and the label
+    placement are figure 22's approved values (see the figure-22 block below).
+    The leader is drawn as a plain line segment rather than an annotation arrow
+    so the drawn-text readback sees only the numbers, never the arrow.
+    """
+    left = 0
+    for index, (label, count) in enumerate(bar_segments):
+        count = int(count)
+        shade = POP_RECV_SEGMENT_SHADES[index % len(POP_RECV_SEGMENT_SHADES)]
+        ax.barh(y, count, left=left, height=POP_SHRINK_BAR_HEIGHT,
+                color=shade, zorder=3)
+        centre = left + count / 2.0
+        if index < len(POP_RECV_SEGMENT_LABEL_PLACEMENT):
+            dx, dy, ha = POP_RECV_SEGMENT_LABEL_PLACEMENT[index]
+        else:
+            dx, dy, ha = 0.0, POP_RECV_SEGMENT_LABEL_DY[index % 2], "center"
+        text_x = centre + dx
+        ax.plot([centre, text_x], [y + POP_SHRINK_BAR_HEIGHT / 2, y + dy],
+                color=POP_SHRINK_INK, lw=0.7, zorder=5,
+                solid_capstyle="butt")
+        ax.text(text_x, y + dy, str(label), ha=ha, va="bottom",
+                fontsize=POP_RECV_SEGMENT_FONTSIZE, color=POP_SHRINK_INK,
+                zorder=6)
+        left += count
+
+
 def plot_population_shrink(table: pd.DataFrame, context: dict,
-                           cfg: common.Config):
-    """Five nested bars, one common left origin, one colour family (approved)."""
+                           cfg: common.Config, segments=None, notes=None):
+    """Five nested bars, one common left origin, one colour family (approved).
+
+    ``segments`` and ``notes`` are optional and default to ``None``.
+
+    * ``segments`` — ``{bar_index: [(label, count), ...]}`` (0-based bar index,
+      top bar first). That bar's fill is drawn as those stacked shades and each
+      count is written small above its own sliver with a leader line.
+    * ``notes`` — ``{bar_index: str}``, drawn muted to the right of that bar's
+      ``survives of entered`` label.
+
+    With both ``None`` the drawing is figure 19's, byte for byte: the only
+    other change here is that the title and x label may come from ``context``
+    (figure 19 puts exactly its own constants there), so the same function can
+    carry figure 22's title without a second drawing implementation.
+    """
+    title = str(context.get("title") or POP_SHRINK_TITLE)
+    xlabel = str(context.get("xlabel") or POP_SHRINK_XLABEL)
     fig, ax = plt.subplots(figsize=POP_SHRINK_FIGSIZE)
     ys = list(range(len(table)))[::-1]
     ax.set_yticks([])
     ax.set_ylim(-0.70, ys[0] + 0.55)
     ax.set_xlim(0, POP_SHRINK_X_MAX)
-    for y, record in zip(ys, table.itertuples(index=False)):
+    for position, (y, record) in enumerate(
+            zip(ys, table.itertuples(index=False))):
         entered = int(record.entered)
         survives = int(record.survives)
         ax.barh(y, entered, height=POP_SHRINK_BAR_HEIGHT,
                 color=POP_SHRINK_TRACK, zorder=1)
-        ax.barh(y, survives, height=POP_SHRINK_BAR_HEIGHT,
-                color=POP_SHRINK_FILL, zorder=2)
+        bar_segments = segments.get(position) if segments else None
+        if bar_segments:
+            _pop_shrink_draw_segments(ax, y, bar_segments)
+        else:
+            ax.barh(y, survives, height=POP_SHRINK_BAR_HEIGHT,
+                    color=POP_SHRINK_FILL, zorder=2)
         ax.text(entered + 130, y, f"{survives:,} of {entered:,}", va="center",
                 ha="left", fontsize=POP_SHRINK_LABEL_FONTSIZE,
                 color=POP_SHRINK_INK, zorder=5)
+        if notes and position in notes:
+            ax.annotate(str(notes[position]), xy=(entered + 130, y),
+                        xytext=(POP_RECV_NOTE_OFFSET_PT, 0),
+                        textcoords="offset points", ha="left", va="center",
+                        fontsize=POP_RECV_NOTE_FONTSIZE,
+                        color=POP_SHRINK_AXIS_GREY)
         ax.annotate(str(record.state), xy=(-0.012, y),
                     xycoords=("axes fraction", "data"), ha="right",
                     va="center", fontsize=POP_SHRINK_LABEL_FONTSIZE,
                     color=POP_SHRINK_INK)
-    ax.set_xlabel(POP_SHRINK_XLABEL, fontsize=POP_SHRINK_XLABEL_FONTSIZE)
+    ax.set_xlabel(xlabel, fontsize=POP_SHRINK_XLABEL_FONTSIZE)
     # The heading is drawn as axes text, not ``ax.set_title``: a left-side title
     # is not returned by ``ax.get_title()``, so the drawn-text scan (and this
     # figure's own dump) would not see it. Axes text is read back, and the
     # figure carries no figure-level text block at all (no caption, no banner).
-    ax.text(0.012, 1.035, POP_SHRINK_TITLE, transform=ax.transAxes,
+    ax.text(0.012, 1.035, title, transform=ax.transAxes,
             fontsize=POP_SHRINK_TITLE_FONTSIZE, ha="left", va="bottom",
             color=POP_SHRINK_INK)
     for spine in ("top", "right", "left"):
@@ -11154,6 +11211,903 @@ def write_population_shrink_provenance(context: dict, png_path, csv_path,
             "csv_sha256": _pop_shrink_sha256(csv_path),
             "drawn_text": str(text_path),
             "drawn_text_sha256": _pop_shrink_sha256(text_path),
+            "manifest": str(manifest_path) if manifest_path else None,
+        },
+    }
+    return common.write_json(payload, png_path.with_suffix(".provenance.json"),
+                             "full", cfg)
+
+
+# ================================================================ figure 22 ==
+#: Figure 22 is the 18 Nov receiver ladder rebuilt from committed files
+#: (Conor, 2026-11-26 22:16: "Rebuild it."). It reuses figure 19's drawing —
+#: ``plot_population_shrink`` with ``segments`` and ``notes`` — rather than
+#: growing a second bar-drawing implementation.
+#:
+#: WHAT IT SHOWS. Five bars. Each bar's track is the population that entered the
+#: step; its filled part is the population that came out. Steps 1-3 are band rows
+#: of the committed funnel. Bar 4 is the received precedence table's ``N``
+#: (2,558), its fill split by how many men were on the play. Bar 5 is 413: the
+#: frozen 3-yd rule's 213 plus 200 turns from the received multi-candidate union.
+#: Bars 4 and 5 are NOT reproducible on this host — it has no game tracking file
+#: — which is why the figure's stamp is ``FULL + RECEIVED`` with the steps plural.
+#:
+#: THE SET ALGEBRA IS NOT NESTED (spec §4). 2,558 is not a subset of the 2,601:
+#: 194 of the 2,601 (two or more candidates) are never identified, and 151 turns
+#: with no separation value are identified. The drawing keeps the approved nested
+#: look and the approved numbers; the algebra is carried in the CSV, the sidecar,
+#: the manifest and D225 — never asserted on the canvas.
+#:
+#: THE WORDING IS DELIBERATE. The prototype's ``(+151 not measured)`` becomes
+#: ``(+151 without an exported distance)``: 134 of the 151 were attributed *by* a
+#: radius in the run, so their distance exists and was never exported — "not
+#: measured" is false about the run. Bar 5 says ``Nearest opponent within 3 yd``,
+#: not "receiver": the 200 is the nearest candidate's distance, and for 3 of the
+#: 220 measured Route-A-only turns the identified man is not the nearest one.
+FIGURE_KEY_POPULATION_RECEIVERS = "fig_population_receivers"
+
+POP_RECV_FUNNEL = "outputs/ambiguity_attribution/funnel.csv"
+POP_RECV_PRECEDENCE = "outputs/ambiguity_attribution_received/precedence.csv"
+POP_RECV_GEOMETRY = "outputs/ambiguity_attribution_received/geometry.csv"
+POP_RECV_ROUTE_A = "outputs/ambiguity_attribution_received/route_a_turns.csv"
+POP_RECV_SINGLE = ("outputs/population_shrink_received/"
+                   "single_turn_geometry.csv")
+POP_RECV_PROVENANCE_DOC = "outputs/ambiguity_attribution_received/PROVENANCE.md"
+
+#: The two newly committed received pastes, pinned (§5). Changed bytes are a
+#: provenance event and refuse, naming PROVENANCE.md, after printing both
+#: digests — so no bar can become a different number without someone editing a
+#: pin. The numbers are computed from the files, never typed into the drawing.
+POP_RECV_GEOMETRY_SHA256 = (
+    "d93eab30a790ca7646359202d4d284045515e151aad16b80d4cda6e30b270074"
+)
+POP_RECV_GEOMETRY_BYTES = 636148
+POP_RECV_ROUTE_A_SHA256 = (
+    "79ed9a087a59e3a6fc13f3de02c2fd83ea8bcc7b9a31bc59eabf068d8fa4af51"
+)
+POP_RECV_ROUTE_A_BYTES = 114073
+
+POP_RECV_TITLE = "What survives each step, by how many men were on the play"
+POP_RECV_XLABEL = "DB turns of 30\u201360\u00b0 (n)"
+#: The five state labels, verbatim from the approved drawing, top bar first.
+POP_RECV_STATES = (
+    "All DB turns of 30\u201360\u00b0",
+    "A listing opponent who ran a route",
+    "That route has a separation",
+    "Number of receivers",
+    "Nearest opponent within 3 yd",
+)
+POP_RECV_NOTE = "(+151 without an exported distance)"
+POP_RECV_RADIUS_YD = 3.0
+POP_RECV_STAMP = "FULL + RECEIVED"
+POP_RECV_LABEL = "FULL DATA OUTPUT + RECEIVED STEPS"
+#: The four segment shades, verbatim from the prototype (light to dark).
+POP_RECV_SEGMENT_SHADES = ("#f6dd8a", "#e8b100", "#b08600", "#6f5400")
+POP_RECV_SEGMENT_FONTSIZE = 10.5
+#: Two label heights above a segment, alternating, and an explicit placement
+#: for the four approved segments: the two wide ones sit over their own sliver's
+#: centre; the two slivers at the end (137 and 5) are too narrow to label in
+#: place, so their numbers sit above and to either side with a leader line.
+POP_RECV_SEGMENT_LABEL_DY = (0.40, 0.58)
+POP_RECV_SEGMENT_LABEL_PLACEMENT = (
+    (0.0, 0.40, "center"),
+    (0.0, 0.40, "center"),
+    (-40.0, 0.62, "right"),
+    (60.0, 0.62, "left"),
+)
+POP_RECV_NOTE_FONTSIZE = 11.5
+POP_RECV_NOTE_OFFSET_PT = 92.0
+
+POP_RECV_CSV_COLUMNS = [
+    "row_kind", "step", "state", "segment", "entered", "survives",
+    "lost", "reason", "source_artefact", "source_field",
+    "verified_on_this_machine", "provenance", "label", "figure",
+    "config_sha", "stamp", "in_both", "surviving_from_outside_entered",
+    "entered_not_surviving",
+]
+#: A row may need more than one artefact (a residual is the difference between
+#: three files). Those paths are joined with this separator, and each one is
+#: checked to exist in the tests.
+POP_RECV_SOURCE_SEP = " | "
+
+
+def _pop_recv_sha256(path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _pop_recv_check(label: str, holds: bool, detail: str) -> None:
+    """Print an identity with the numbers it compared; raise on contradiction."""
+    print(f"[{STAGE}] check {label}: {detail} — "
+          f"{'ok' if holds else 'CONTRADICTION'}")
+    if not holds:
+        raise ValueError(f"{STAGE}: {label} does not hold — {detail}")
+
+
+def population_receivers_ladder(root=None):
+    """Read figure 22's ladder from five committed files; print, then check.
+
+    Nothing on the figure is typed. Every bar is a field read here, printed with
+    its own denominator and the artefact and field it came from. The checks are
+    identities that must hold given the definitions (a violated one is a real
+    contradiction and raises). A missing file, a missing column or changed
+    pinned bytes refuse earlier, naming what was found first.
+    """
+    root = Path(root) if root is not None else REPO_ROOT
+    funnel_path = root / POP_RECV_FUNNEL
+    precedence_path = root / POP_RECV_PRECEDENCE
+    geometry_path = root / POP_RECV_GEOMETRY
+    route_a_path = root / POP_RECV_ROUTE_A
+    single_path = root / POP_RECV_SINGLE
+    common.require_inputs([funnel_path, precedence_path, geometry_path,
+                           route_a_path, single_path], stage=STAGE)
+
+    # ---- the pinned received bytes: print both digests, refuse on a change
+    for path, pinned_sha, pinned_bytes in (
+            (geometry_path, POP_RECV_GEOMETRY_SHA256, POP_RECV_GEOMETRY_BYTES),
+            (route_a_path, POP_RECV_ROUTE_A_SHA256, POP_RECV_ROUTE_A_BYTES)):
+        found_sha = _pop_recv_sha256(path)
+        found_bytes = int(path.stat().st_size)
+        print(f"[{STAGE}] {path.relative_to(root)}: sha256 {found_sha} "
+              f"({found_bytes:,} bytes), pinned {pinned_sha} "
+              f"({pinned_bytes:,} bytes)")
+        if found_sha != pinned_sha:
+            raise common.StageRefused(
+                f"{STAGE}: {path.relative_to(root)} is not the received paste "
+                f"this figure was built on — found sha256 {found_sha} "
+                f"({found_bytes:,} bytes), pinned {pinned_sha} "
+                f"({pinned_bytes:,} bytes). Redrawing now would change a bar "
+                f"without saying so; read {POP_RECV_PROVENANCE_DOC} and re-pin "
+                "in code.")
+
+    # ---- steps 1-3: the committed funnel's band rows
+    funnel = pd.read_csv(funnel_path)
+    for column in ("step", "n", "denominator", "grouping", "matches"):
+        if column not in funnel.columns:
+            raise common.StageRefused(
+                f"{STAGE}: {funnel_path} has no '{column}' column "
+                f"(columns: {', '.join(map(str, funnel.columns))})")
+    band = funnel[funnel["grouping"] == "band_row"].set_index("step")
+    if band.empty:
+        raise common.StageRefused(
+            f"{STAGE}: {funnel_path} carries no grouping == 'band_row' rows")
+
+    def funnel_row(step: str) -> int:
+        if step not in band.index:
+            raise common.StageRefused(
+                f"{STAGE}: {funnel_path} has no band_row step {step!r} "
+                f"(steps found: {', '.join(map(str, band.index))})")
+        found = band.loc[step]
+        n = int(found["n"])
+        print(f"[{STAGE}] {funnel_path.name} {step}: n = {n:,} of "
+              f"{int(found['denominator']):,} (matches={found['matches']})")
+        if str(found["matches"]).strip().lower() == "false":
+            raise ValueError(
+                f"{STAGE}: {funnel_path} step {step!r} records matches=False "
+                f"(n = {n:,})")
+        return n
+
+    band_turns = funnel_row("band_turns")
+    no_opposing = funnel_row("no_opposing_player_play_row")
+    no_route_runner = funnel_row("opposing_rows_no_route_runner")
+    with_runner = funnel_row("turns_with_opposing_route_runner")
+    with_separation = funnel_row("turns_with_a_candidate_separation")
+    one_candidate = funnel_row("turns_with_exactly_one_candidate_separation")
+    two_or_more = funnel_row("turns_with_two_or_more_candidate_separations")
+
+    # ---- bar 4's population: the received precedence table
+    prec = pd.read_csv(precedence_path)
+    for column in ("item", "n", "denominator"):
+        if column not in prec.columns:
+            raise common.StageRefused(
+                f"{STAGE}: {precedence_path} has no '{column}' column "
+                f"(columns: {', '.join(map(str, prec.columns))})")
+    prec = prec.set_index("item")
+
+    def prec_item(item: str) -> int:
+        if item not in prec.index:
+            raise common.StageRefused(
+                f"{STAGE}: {precedence_path} has no item {item!r} "
+                f"(items found: {', '.join(map(str, prec.index))})")
+        found = prec.loc[item]
+        n = int(found["n"])
+        print(f"[{STAGE}] {precedence_path.name} {item}: n = {n:,} of "
+              f"{int(found['denominator']):,}")
+        return n
+
+    identified = prec_item("N")
+    n_frozen = prec_item("N_frozen")
+
+    # ---- the received multi-candidate geometry, and the Route-A reference pass
+    key = ["game_id", "play_id", "nfl_id", "frame_start"]
+    geometry = pd.read_csv(geometry_path)
+    needed = key + ["n_candidates", "dist_nearest_yd", "dist_second_yd",
+                    "nearest_nfl_id", "geometry_status"]
+    missing = [column for column in needed if column not in geometry.columns]
+    if missing:
+        raise common.StageRefused(
+            f"{STAGE}: {geometry_path} has no {', '.join(missing)} column(s) "
+            f"(columns: {', '.join(map(str, geometry.columns))})")
+    route_a = pd.read_csv(route_a_path)
+    needed_a = key + ["attributed_nfl_id"]
+    missing_a = [column for column in needed_a if column not in route_a.columns]
+    if missing_a:
+        raise common.StageRefused(
+            f"{STAGE}: {route_a_path} has no {', '.join(missing_a)} column(s) "
+            f"(columns: {', '.join(map(str, route_a.columns))})")
+
+    geo5 = (geometry["dist_nearest_yd"] <= 5) & (geometry["dist_second_yd"] > 5)
+    geo8 = ((geometry["dist_nearest_yd"] > 5)
+            & (geometry["dist_nearest_yd"] <= 8)
+            & ((geometry["dist_second_yd"] > 8)
+               | geometry["dist_second_yd"].isna()))
+    geometry_taken = geo5 | geo8
+    route_a_keys = set(map(tuple, route_a[key].values))
+    geometry_keys = [tuple(values) for values in geometry[key].values]
+    route_a_in_geometry = pd.Series(
+        [found in route_a_keys for found in geometry_keys],
+        index=geometry.index)
+    union = geometry_taken | route_a_in_geometry
+    overlap = geometry_taken & route_a_in_geometry
+
+    print(f"[{STAGE}] {geometry_path.name}: {len(geometry):,} rows with a "
+          f"recorded distance; geo5 {int(geo5.sum()):,}, geo8 "
+          f"{int(geo8.sum()):,}, geometry {int(geometry_taken.sum()):,}")
+    print(f"[{STAGE}] {route_a_path.name}: {len(route_a):,} rows; "
+          f"{int(route_a_in_geometry.sum()):,} of them are inside the "
+          f"{len(geometry):,}-row geometry table, "
+          f"{len(route_a) - int(route_a_in_geometry.sum()):,} are not")
+    print(f"[{STAGE}] multi-candidate union: {int(union.sum()):,} turns "
+          f"(geometry {int(geometry_taken.sum()):,} + route-A "
+          f"{int(route_a_in_geometry.sum()):,} - overlap "
+          f"{int(overlap.sum()):,})")
+
+    union_frame = geometry[union]
+    union_segments = {int(count): int(number) for count, number in
+                      union_frame["n_candidates"].value_counts().items()}
+    print(f"[{STAGE}] bar-4 segments, men on the play (n_candidates) over the "
+          f"{int(union.sum()):,}-turn union: "
+          + ", ".join(f"{count} -> {number:,}"
+                      for count, number in sorted(union_segments.items())))
+
+    within3 = union & (geometry["dist_nearest_yd"] <= POP_RECV_RADIUS_YD)
+    within3_by_segment = {int(count): int(number) for count, number in
+                          geometry[within3]["n_candidates"]
+                          .value_counts().items()}
+    within_union = int(within3.sum())
+    print(f"[{STAGE}] nearest candidate within {POP_RECV_RADIUS_YD:g} yd, by "
+          f"men on the play, over the same union: "
+          + ", ".join(f"{count} -> {number:,}"
+                      for count, number in sorted(within3_by_segment.items()))
+          + f" (total {within_union:,} of {int(union.sum()):,})")
+
+    # ---- the frozen rule's 213
+    single = pd.read_csv(single_path)
+    for column in ("within_radius", "dist_nearest_yd", "n_candidates_tracked"):
+        if column not in single.columns:
+            raise common.StageRefused(
+                f"{STAGE}: {single_path} has no '{column}' column "
+                f"(columns: {', '.join(map(str, single.columns))})")
+    within_single = int((single["within_radius"].astype(str).str.strip()
+                         .str.lower() == "true").sum())
+    print(f"[{STAGE}] {single_path.name}: {len(single):,} rows, "
+          f"{within_single:,} with within_radius == True")
+
+    # ---- the residual, and the algebra it forces
+    outside = identified - n_frozen - int(union.sum())
+    one_segment = n_frozen + outside
+    #: The drawn four segments: the union supplies 2/3/4, and the frozen rule's
+    #: one-candidate turns plus the recovered residual make up 1.
+    segments = {1: one_segment, **union_segments}
+    in_both = identified - outside
+    entered_not_surviving = with_separation - in_both
+    final = within_single + within_union
+    print(f"[{STAGE}] residual: outside = N {identified:,} - N_frozen "
+          f"{n_frozen:,} - union {int(union.sum()):,} = {outside:,}")
+    print(f"[{STAGE}] segment 1 = N_frozen {n_frozen:,} + outside "
+          f"{outside:,} = {one_segment:,}")
+    print(f"[{STAGE}] set algebra at bar 4: entered {with_separation:,} = "
+          f"in_both {in_both:,} + entered_not_surviving "
+          f"{entered_not_surviving:,}; survives {identified:,} = in_both "
+          f"{in_both:,} + surviving_from_outside_entered {outside:,}")
+    print(f"[{STAGE}] bar 5 = frozen-rule within {POP_RECV_RADIUS_YD:g} yd "
+          f"{within_single:,} + union within {within_union:,} = {final:,}, "
+          f"plus the {outside:,} identified turns with no exported distance")
+
+    # ---- the Route-A-only diagnostic behind bar 5's wording (§6)
+    route_a_only = union & ~geometry_taken
+    diagnosed = geometry[route_a_only].merge(
+        route_a[key + ["attributed_nfl_id"]], on=key, how="left")
+    measurable = diagnosed[diagnosed["nearest_nfl_id"].notna()]
+    not_nearest = int((measurable["attributed_nfl_id"]
+                       != measurable["nearest_nfl_id"]).sum())
+    not_nearest_within3 = int(((measurable["attributed_nfl_id"]
+                                != measurable["nearest_nfl_id"])
+                               & (measurable["dist_nearest_yd"]
+                                  <= POP_RECV_RADIUS_YD)).sum())
+    print(f"[{STAGE}] Route-A-only turns: {int(route_a_only.sum()):,}, of "
+          f"which {len(measurable):,} have a distance; on those, "
+          f"{not_nearest:,} attribute a man who is not the nearest and "
+          f"{not_nearest_within3:,} of those are within "
+          f"{POP_RECV_RADIUS_YD:g} yd")
+
+    # ---- the identities. A violated one is a contradiction, not a threshold.
+    _pop_recv_check("bar 1 partition",
+                    no_opposing + no_route_runner + with_runner == band_turns,
+                    f"no_opposing {no_opposing:,} + opposing-without-a-route-"
+                    f"runner {no_route_runner:,} + route-runner {with_runner:,} "
+                    f"= {no_opposing + no_route_runner + with_runner:,} = "
+                    f"band_turns {band_turns:,}; so bar 1 leaves "
+                    f"{band_turns - no_opposing:,}")
+    _pop_recv_check("survivors non-increasing",
+                    band_turns >= band_turns - no_opposing >= with_runner
+                    >= with_separation,
+                    f"{band_turns:,} >= {band_turns - no_opposing:,} >= "
+                    f"{with_runner:,} >= {with_separation:,}")
+    _pop_recv_check("geo5 + geo8", int(geo5.sum()) + int(geo8.sum())
+                    == int(geometry_taken.sum()),
+                    f"{int(geo5.sum()):,} + {int(geo8.sum()):,} = "
+                    f"{int(geometry_taken.sum()):,}")
+    _pop_recv_check("overlap bound",
+                    int(overlap.sum()) <= min(int(geometry_taken.sum()),
+                                              int(route_a_in_geometry.sum())),
+                    f"overlap {int(overlap.sum()):,} <= min(geometry "
+                    f"{int(geometry_taken.sum()):,}, route-A "
+                    f"{int(route_a_in_geometry.sum()):,})")
+    _pop_recv_check("union inside the geometry table",
+                    int(union.sum()) <= len(geometry),
+                    f"union {int(union.sum()):,} <= {len(geometry):,} rows")
+    _pop_recv_check("segments sum to the union",
+                    sum(union_segments.values()) == int(union.sum()),
+                    ", ".join(f"{count} -> {number:,}"
+                              for count, number
+                              in sorted(union_segments.items()))
+                    + f" = {sum(union_segments.values()):,}")
+    _pop_recv_check("segment 1 is frozen + residual",
+                    segments.get(1) == one_segment,
+                    f"segment 1 = {segments.get(1):,}, N_frozen + outside = "
+                    f"{one_segment:,}")
+    _pop_recv_check("segments fill bar 4",
+                    sum(segments.values()) == identified,
+                    f"segments {sum(segments.values()):,} = N {identified:,}")
+    _pop_recv_check("union + frozen + residual",
+                    int(union.sum()) + n_frozen + outside == identified,
+                    f"{int(union.sum()):,} + {n_frozen:,} + {outside:,} = "
+                    f"{identified:,}")
+    _pop_recv_check("residual non-negative", outside >= 0, f"outside {outside:,}")
+    _pop_recv_check("frozen rows agree",
+                    len(single) == n_frozen == one_candidate,
+                    f"single_turn_geometry rows {len(single):,} = N_frozen "
+                    f"{n_frozen:,} = funnel one-candidate {one_candidate:,}")
+    _pop_recv_check("within-3 total", within_single + within_union == final,
+                    f"{within_single:,} + {within_union:,} = {final:,}")
+    _pop_recv_check("within-3 segments sum",
+                    sum(within3_by_segment.values()) == within_union,
+                    f"{sum(within3_by_segment.values()):,} = {within_union:,}")
+    _pop_recv_check("within-3 fits inside its segments",
+                    all(within3_by_segment.get(count, 0) <= number
+                        for count, number in segments.items()),
+                    ", ".join(f"{count}: {within3_by_segment.get(count, 0):,}"
+                              f"<={number:,}"
+                              for count, number in sorted(segments.items())))
+    _pop_recv_check("in_both + not surviving",
+                    in_both + entered_not_surviving == with_separation,
+                    f"{in_both:,} + {entered_not_surviving:,} = "
+                    f"{with_separation:,}")
+    _pop_recv_check("in_both + residual", in_both + outside == identified,
+                    f"{in_both:,} + {outside:,} = {identified:,}")
+    _pop_recv_check("identified of band", identified <= band_turns,
+                    f"N {identified:,} <= band_turns {band_turns:,}")
+    _pop_recv_check("two-or-more after the rule",
+                    one_candidate + two_or_more == with_separation,
+                    f"{one_candidate:,} + {two_or_more:,} = "
+                    f"{with_separation:,}")
+
+    geometry_sources = POP_RECV_SOURCE_SEP.join(
+        [POP_RECV_GEOMETRY, POP_RECV_ROUTE_A])
+
+    def bar_row(index, entered, survives, reason, source_artefact,
+                source_field, verified, provenance, algebra=None):
+        algebra = algebra or {}
+        row = {
+            "row_kind": "bar",
+            "step": index,
+            "state": POP_RECV_STATES[index - 1],
+            "segment": None,
+            "entered": int(entered),
+            "survives": int(survives),
+            "lost": int(entered) - int(survives),
+            "reason": reason,
+            "source_artefact": source_artefact,
+            "source_field": source_field,
+            "verified_on_this_machine": bool(verified),
+            "provenance": provenance,
+            "in_both": algebra.get("in_both"),
+            "surviving_from_outside_entered": algebra.get(
+                "surviving_from_outside_entered"),
+            "entered_not_surviving": algebra.get("entered_not_surviving"),
+        }
+        print(f"[{STAGE}] bar {index} {row['state']!r}: enters "
+              f"{row['entered']:,}, survives {row['survives']:,} of "
+              f"{row['entered']:,} (lost {row['lost']:,}) — source "
+              f"{source_artefact} :: {source_field} "
+              f"[{'verified here' if verified else 'received'}]")
+        return row
+
+    rows = [
+        bar_row(1, band_turns, band_turns - no_opposing,
+                "no opposing player is listed on the play",
+                POP_RECV_FUNNEL, "band_turns - no_opposing_player_play_row",
+                True, "FULL"),
+        bar_row(2, band_turns - no_opposing, with_runner,
+                "opponents are listed but none of them ran a route",
+                POP_RECV_FUNNEL, "turns_with_opposing_route_runner",
+                True, "FULL"),
+        bar_row(3, with_runner, with_separation,
+                "the route carries no separation value",
+                POP_RECV_FUNNEL, "turns_with_a_candidate_separation",
+                True, "FULL"),
+        bar_row(4, with_separation, identified,
+                f"{entered_not_surviving:,} of the {with_separation:,} with two "
+                f"or more candidates are never identified and {outside:,} "
+                f"separation-less turns are identified: a net "
+                f"{identified - with_separation:,}, not a nested loss",
+                POP_RECV_SOURCE_SEP.join(
+                    [POP_RECV_PRECEDENCE, POP_RECV_GEOMETRY,
+                     POP_RECV_ROUTE_A, POP_RECV_SINGLE]),
+                "N (segments from n_candidates)", False, "RECEIVED",
+                {"in_both": in_both,
+                 "surviving_from_outside_entered": outside,
+                 "entered_not_surviving": entered_not_surviving}),
+        bar_row(5, identified, final,
+                f"the nearest opponent is beyond "
+                f"{POP_RECV_RADIUS_YD:g} yd, or the turn's distance was never "
+                f"exported ({outside:,} turns)",
+                POP_RECV_SOURCE_SEP.join([POP_RECV_SINGLE, POP_RECV_GEOMETRY]),
+                "within_radius; dist_nearest_yd", False, "RECEIVED"),
+    ]
+
+    for count, number in sorted(segments.items()):
+        if count == 1:
+            reason = (f"the frozen {POP_RECV_RADIUS_YD:g}-yd rule's "
+                      f"{n_frozen:,} one-candidate turns plus the {outside:,} "
+                      f"separation-less turns identified in the run")
+            field = "n_candidates_tracked (frozen rule) + residual"
+        else:
+            reason = (f"identified turns with {count} visible candidates in the "
+                      f"{int(union.sum()):,}-turn union")
+            field = "n_candidates"
+        rows.append({
+            "row_kind": "segment",
+            "step": 4,
+            "state": POP_RECV_STATES[3],
+            "segment": count,
+            "entered": identified,
+            "survives": number,
+            "lost": identified - number,
+            "reason": reason,
+            "source_artefact": (POP_RECV_SINGLE if count == 1
+                                else geometry_sources),
+            "source_field": field,
+            "verified_on_this_machine": False,
+            "provenance": "RECEIVED",
+            "in_both": None,
+            "surviving_from_outside_entered": None,
+            "entered_not_surviving": None,
+        })
+        print(f"[{STAGE}] bar-4 segment {count}: {number:,} of {identified:,} "
+              f"({rows[-1]['source_artefact']})")
+
+    table = pd.DataFrame(rows)
+
+    # ---- the table must still be the arithmetic it says it is
+    bars = table[table["row_kind"] == "bar"].reset_index(drop=True)
+    for record in bars.itertuples(index=False):
+        if int(record.lost) != int(record.entered) - int(record.survives):
+            raise ValueError(
+                f"{STAGE}: bar {record.step} lost is not entered - survives")
+        if int(record.survives) < 0 or int(record.lost) < 0:
+            raise ValueError(f"{STAGE}: bar {record.step} has a negative count")
+    for previous, following in zip(list(bars.itertuples(index=False)),
+                                   list(bars.itertuples(index=False))[1:]):
+        if int(previous.survives) != int(following.entered):
+            raise ValueError(
+                f"{STAGE}: bar {following.step} enters "
+                f"{int(following.entered):,} but bar {previous.step} leaves "
+                f"{int(previous.survives):,}")
+    if int(bars["survives"].iloc[3]) != int(table[table["row_kind"]
+                                                 == "segment"]["survives"]
+                                                .sum()):
+        raise ValueError(
+            f"{STAGE}: bar 4's segments do not sum to its fill")
+
+    context = {
+        "title": POP_RECV_TITLE,
+        "xlabel": POP_RECV_XLABEL,
+        "stamp": POP_RECV_STAMP,
+        "label": POP_RECV_LABEL,
+        "steps": int(len(bars)),
+        "band_turns": int(band_turns),
+        "final": int(final),
+        "radius_yd": POP_RECV_RADIUS_YD,
+        "segments": {3: [(str(count), number)
+                         for count, number in sorted(segments.items())]},
+        "notes": {4: POP_RECV_NOTE},
+        "segment_counts": {int(k): int(v)
+                           for k, v in sorted(segments.items())},
+        "within3": {"single": int(within_single),
+                    "union": int(within_union),
+                    "by_segment": {int(k): int(v) for k, v
+                                   in sorted(within3_by_segment.items())}},
+        "algebra": {"entered": int(with_separation),
+                    "survives": int(identified),
+                    "in_both": int(in_both),
+                    "surviving_from_outside_entered": int(outside),
+                    "entered_not_surviving": int(entered_not_surviving)},
+        "union": int(union.sum()),
+        "geometry_taken": int(geometry_taken.sum()),
+        "geo5": int(geo5.sum()),
+        "geo8": int(geo8.sum()),
+        "overlap": int(overlap.sum()),
+        "route_a_rows": int(len(route_a)),
+        "route_a_in_geometry": int(route_a_in_geometry.sum()),
+        "n_frozen": int(n_frozen),
+        "one_candidate": int(one_candidate),
+        "two_or_more": int(two_or_more),
+        "geometry_rows": int(len(geometry)),
+        "route_a_only": {"total": int(route_a_only.sum()),
+                          "measurable": int(len(measurable)),
+                          "not_nearest": not_nearest,
+                          "not_nearest_within3": not_nearest_within3},
+        "funnel_path": POP_RECV_FUNNEL,
+        "precedence_path": POP_RECV_PRECEDENCE,
+        "geometry_path": POP_RECV_GEOMETRY,
+        "route_a_path": POP_RECV_ROUTE_A,
+        "single_path": POP_RECV_SINGLE,
+        "sha256": {
+            POP_RECV_FUNNEL: _pop_recv_sha256(funnel_path),
+            POP_RECV_PRECEDENCE: _pop_recv_sha256(precedence_path),
+            POP_RECV_GEOMETRY: _pop_recv_sha256(geometry_path),
+            POP_RECV_ROUTE_A: _pop_recv_sha256(route_a_path),
+            POP_RECV_SINGLE: _pop_recv_sha256(single_path),
+        },
+        "bytes": {
+            POP_RECV_GEOMETRY: int(geometry_path.stat().st_size),
+            POP_RECV_ROUTE_A: int(route_a_path.stat().st_size),
+        },
+        "provenance_note": (
+            "Steps 1-3 are read from the committed funnel artefact "
+            f"({POP_RECV_FUNNEL}) and are reproducible on this machine. Bars 4 "
+            "and 5 are NOT: bar 4 is the received precedence table's N "
+            f"({POP_RECV_PRECEDENCE}) and its segments come from two received "
+            f"multi-candidate pastes ({POP_RECV_GEOMETRY}, "
+            f"{POP_RECV_ROUTE_A}); bar 5 adds the received frozen-rule paste "
+            f"({POP_RECV_SINGLE}). All are committed byte-for-byte under "
+            f"{POP_RECV_PROVENANCE_DOC}, and no manifest came with any of them "
+            "— no hash of the full turn table, none of the tracking file, no "
+            "git HEAD and no run timestamp — so each sha256 identifies the "
+            "bytes that were sent and verifies nothing about the run. This "
+            "machine has no game tracking file and cannot regenerate any of "
+            "them. The geometry paste is from the 07:17 UTC upload, before the "
+            "D208 slot-precedence fix; the precedence table is from 11:07 UTC. "
+            "They are used together because the residual reconciles them: "
+            f"{int(union.sum()):,} + {n_frozen:,} + {outside:,} = "
+            f"{identified:,} = the post-fix N, and the distances and the "
+            "Route-A reference pass do not depend on slot order."),
+        "ladder": [dict(record) for record in rows],
+    }
+    return table, context
+
+
+def population_receivers_csv_frame(table: pd.DataFrame,
+                                   cfg: common.Config) -> pd.DataFrame:
+    """The drawn elements, flat: five bars and bar 4's four segments."""
+    out = table.copy()
+    #: ``segment`` and the three bar-4 algebra columns are counts with blanks on
+    #: the rows that do not carry them: nullable integers, so the CSV prints
+    #: ``2407`` rather than ``2407.0`` and an empty cell rather than ``NaN``.
+    for column in ("segment", "in_both", "surviving_from_outside_entered",
+                   "entered_not_surviving"):
+        out[column] = out[column].astype("Int64")
+    out["label"] = POP_RECV_LABEL
+    out["figure"] = FIGURE_KEY_POPULATION_RECEIVERS
+    out["config_sha"] = common.config_fingerprint(cfg)
+    out["stamp"] = POP_RECV_STAMP
+    return out[POP_RECV_CSV_COLUMNS]
+
+
+def write_population_receivers_csv(table: pd.DataFrame, path,
+                                   cfg: common.Config) -> Path:
+    """Write the flat CSV with per-row provenance, not one stage-wide stamp."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    population_receivers_csv_frame(table, cfg).to_csv(path, index=False)
+    return path
+
+
+def plot_population_receivers(table: pd.DataFrame, context: dict,
+                              cfg: common.Config):
+    """Figure 22: figure 19's five-bar drawing, segmented bar 4, noted bar 5.
+
+    The table carries the segments as their own rows (the CSV is flat, one row
+    per drawn element); the bar drawing takes only the five ``bar`` rows.
+    """
+    bars = table[table["row_kind"] == "bar"].reset_index(drop=True)
+    return plot_population_shrink(bars, context, cfg,
+                                  segments=context["segments"],
+                                  notes=context["notes"])
+
+
+def render_population_receivers(fig, cfg: common.Config, out_png) -> Path:
+    """Save figure 22 with figure 19's exact settings, so a re-run is identical."""
+    return render_population_shrink(fig, cfg, out_png)
+
+
+def population_receivers_drawn_text(fig, cfg: common.Config) -> dict:
+    """The drawn-text record, read back off the figure rather than restated."""
+    from bdb27.figure_text_scan import BANNED_TOKENS, banned_hits, figure_texts
+
+    strings = figure_texts(fig)
+    hits = banned_hits(strings)
+    if POP_RECV_TITLE not in strings:
+        raise ValueError(f"{STAGE}: figure 22 does not draw its own title")
+    extra = [text.get_text() for text in fig.texts
+             if text.get_text() and text.get_text() != STAMP]
+    if extra:
+        raise ValueError(
+            f"{STAGE}: figure 22 draws figure-level text {extra} — the "
+            "approved drawing carries no caption, subtitle or annotation block")
+    scan_strings = [POP_RECV_TITLE] + [s for s in strings
+                                       if s != POP_RECV_TITLE]
+    return {
+        "provenance": POP_RECV_STAMP,
+        "label": POP_RECV_LABEL,
+        "config_sha": common.config_fingerprint(cfg),
+        "figure": FIGURE_KEY_POPULATION_RECEIVERS,
+        "stamp": POP_RECV_STAMP,
+        "strings": strings,
+        "scan_strings": scan_strings,
+        "notes": [POP_RECV_NOTE],
+        "banned_tokens": list(BANNED_TOKENS),
+        "banned_hits": [{"token": token, "text": text}
+                        for token, text in hits],
+    }
+
+
+def population_receivers_manifest_payload(table: pd.DataFrame,
+                                          context: dict) -> dict:
+    """Figure 22's manifest entry: the bars, the segments and the set algebra."""
+    bars = table[table["row_kind"] == "bar"].reset_index(drop=True)
+    segment_rows = table[table["row_kind"] == "segment"].reset_index(drop=True)
+    if int(len(bars)) != context["steps"]:
+        raise ValueError(f"{STAGE}: manifest bar count does not match")
+    if int(bars["entered"].iloc[0]) != context["band_turns"]:
+        raise ValueError(
+            f"{STAGE}: the manifest ladder's first bar is not the band total")
+    if int(bars["survives"].iloc[-1]) != context["final"]:
+        raise ValueError(
+            f"{STAGE}: the manifest ladder's last fill is not the final count")
+    if int(segment_rows["survives"].sum()) != int(bars["survives"].iloc[3]):
+        raise ValueError(
+            f"{STAGE}: the manifest's bar-4 segments do not sum to its fill")
+    algebra = context["algebra"]
+    within = context["within3"]
+    band = context["band_turns"]
+    final = context["final"]
+    claim = (
+        f"Of {band:,} valid DB game turns in the 30\u201360\u00b0 band, "
+        f"{algebra['entered']:,} carry a candidate separation and "
+        f"{algebra['survives']:,} are identified with a nearest opponent — the "
+        f"{algebra['in_both']:,} turns both sets share plus "
+        f"{algebra['surviving_from_outside_entered']:,} separation-less turns "
+        f"that {algebra['entered']:,} never contained. {final:,} of the "
+        f"{algebra['survives']:,} have the nearest opponent within "
+        f"{context['radius_yd']:g} yd: {within['single']:,} from the frozen "
+        f"rule's one-candidate turns and {within['union']:,} from the "
+        f"multi-candidate union; the "
+        f"{algebra['surviving_from_outside_entered']:,} identified turns with no "
+        f"exported distance are counted in neither {final:,} nor its "
+        "complement.")
+    note = context["provenance_note"]
+    return {
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_POPULATION_RECEIVERS,
+        "title": POP_RECV_TITLE,
+        "claim": claim,
+        "stamp": POP_RECV_STAMP,
+        "provenance_note": note,
+        "reproducible_on_this_machine": {
+            "steps_1_to_3": True,
+            "steps_4_to_5": False,
+            "why_steps_4_to_5": (
+                "Bars 4-5 come only from received laptop pastes (precedence.csv, "
+                "geometry.csv, route_a_turns.csv, single_turn_geometry.csv). "
+                "No full game tracking file is on this host, so none of the "
+                "three can be regenerated here; the sha256 pins identify the "
+                "bytes, not the run."),
+        },
+        "bar_encoding": {
+            "length": "the population that entered the step",
+            "fill": "the population that came out of the step",
+            "common_left_origin": True,
+            "colours": {"track": POP_SHRINK_TRACK,
+                        "segment_shades": list(POP_RECV_SEGMENT_SHADES)},
+            "segmented_bar": 4,
+            "segment_key": "men on the play (n_candidates)",
+            "note": {"bar": 5, "text": POP_RECV_NOTE},
+        },
+        "ladder": [dict(record) for record in context["ladder"]],
+        "segments": [
+            {"men_on_the_play": int(record["segment"]),
+             "turns": int(record["survives"]),
+             "source_artefact": record["source_artefact"],
+             "source_field": record["source_field"]}
+            for record in context["ladder"]
+            if record["row_kind"] == "segment"
+        ],
+        "set_algebra": {
+            **algebra,
+            "entered_source": f"{POP_RECV_FUNNEL} band_row "
+                              "turns_with_a_candidate_separation",
+            "survives_source": f"{POP_RECV_PRECEDENCE} item N",
+            "surviving_from_outside_entered_source": (
+                f"N - N_frozen - union = {algebra['survives']:,} - "
+                f"{context['n_frozen']:,} - {context['union']:,}"),
+            "note": ("Bar 4 is not a nested subset of bar 3: the "
+                     f"{algebra['entered_not_surviving']:,} turns of the "
+                     f"{algebra['entered']:,} with two or more candidates are "
+                     "never identified, and "
+                     f"{algebra['surviving_from_outside_entered']:,} "
+                     "separation-less turns are identified. The drawing keeps "
+                     "the approved look; this block is where the truth lives."),
+        },
+        "within_radius_detail": {
+            "radius_yd": context["radius_yd"],
+            "frozen_rule": within["single"],
+            "multi_candidate_union": within["union"],
+            "total": final,
+            "by_men_on_the_play": {str(count): number for count, number in
+                                   within["by_segment"].items()},
+            "not_exported": algebra["surviving_from_outside_entered"],
+            "what_is_measured": (
+                "The frozen rule's turns carry exactly one candidate, so the "
+                "nearest man is the identified man (213). The union's 200 "
+                "counts the NEAREST candidate's distance; on the "
+                f"{context['route_a_only']['measurable']:,} measured "
+                "Route-A-only turns "
+                f"{context['route_a_only']['not_nearest']:,} attribute a man "
+                "who is not the nearest, and "
+                f"{context['route_a_only']['not_nearest_within3']:,} of those "
+                "are within the radius. So the bar says 'nearest opponent', "
+                "not 'the receiver'."),
+        },
+        "population": {
+            "setting": "game",
+            "position_group": "DB",
+            "band_deg": [30.0, 60.0],
+            "band_label": "30\u201360\u00b0",
+            "turns": band,
+            "final_turns": final,
+            "radius_yd": context["radius_yd"],
+        },
+        "sources": [POP_RECV_FUNNEL, POP_RECV_PRECEDENCE, POP_RECV_GEOMETRY,
+                    POP_RECV_ROUTE_A, POP_RECV_SINGLE],
+        "source_artefacts": [
+            {"path": POP_RECV_FUNNEL,
+             "sha256": context["sha256"][POP_RECV_FUNNEL],
+             "provenance": "FULL", "role": "committed funnel: bars 1-3"},
+            {"path": POP_RECV_PRECEDENCE,
+             "sha256": context["sha256"][POP_RECV_PRECEDENCE],
+             "provenance": "RECEIVED",
+             "role": "laptop paste: bar 4's N; no manifest came with it"},
+            {"path": POP_RECV_GEOMETRY,
+             "sha256": context["sha256"][POP_RECV_GEOMETRY],
+             "bytes": context["bytes"][POP_RECV_GEOMETRY],
+             "provenance": "RECEIVED",
+             "role": "laptop paste: multi-candidate distances; pinned"},
+            {"path": POP_RECV_ROUTE_A,
+             "sha256": context["sha256"][POP_RECV_ROUTE_A],
+             "bytes": context["bytes"][POP_RECV_ROUTE_A],
+             "provenance": "RECEIVED",
+             "role": "laptop paste: the Route-A reference pass; pinned"},
+            {"path": POP_RECV_SINGLE,
+             "sha256": context["sha256"][POP_RECV_SINGLE],
+             "provenance": "RECEIVED",
+             "role": "laptop paste: the frozen rule's 213"},
+        ],
+        "png": f"outputs/figures/{FIGURE_KEY_POPULATION_RECEIVERS}.png",
+        "csv": f"outputs/figures/{FIGURE_KEY_POPULATION_RECEIVERS}.csv",
+        "drawn_text": ("outputs/figures/"
+                       f"{FIGURE_KEY_POPULATION_RECEIVERS}.drawn_text.json"),
+        "caveats": [
+            ("Steps 1-3 are committed funnel counts and are reproducible "
+             "here. Bars 4 and 5 are received laptop numbers and are not: "
+             "no manifest came with either paste, and this machine has no game "
+             "tracking file to regenerate them from."),
+            (f"Bar 4 is not a nested subset of bar 3: "
+             f"{algebra['entered_not_surviving']:,} of the "
+             f"{algebra['entered']:,} with two or more candidates are never "
+             f"identified and "
+             f"{algebra['surviving_from_outside_entered']:,} separation-less "
+             "turns are identified, a net -43. The bars keep the approved "
+             "nested look; the arithmetic is in the CSV and this entry."),
+            (f"The {algebra['surviving_from_outside_entered']:,} identified "
+             "turns carry no exported distance, so they are counted in neither "
+             f"the {final:,} nor its complement: the canvas note says "
+             f"'{POP_RECV_NOTE}'."),
+            (f"Bar 5's {within['union']:,} counts the NEAREST candidate's "
+             f"distance, not always the identified man's: on the "
+             f"{context['route_a_only']['measurable']:,} measured Route-A-only "
+             f"turns {context['route_a_only']['not_nearest']:,} attribute a man "
+             "who is not the nearest, and "
+             f"{context['route_a_only']['not_nearest_within3']:,} of those are "
+             "within the radius. The bar is labelled 'nearest opponent', not "
+             "'the receiver'."),
+            ("Counts only: the bars are populations, not rates, and nothing on "
+             "the figure is a test or an estimate of ability."),
+            ("No player names and no nfl_id appear in the figure, the CSV, the "
+             "drawn-text dump or this entry."),
+        ],
+    }
+
+
+def write_population_receivers_provenance(context: dict, png_path, csv_path,
+                                         text_path, cfg: common.Config,
+                                         manifest_path=None) -> Path:
+    """``<key>.provenance.json`` beside the figure, in the house schema."""
+    png_path, csv_path = Path(png_path), Path(csv_path)
+    text_path = Path(text_path)
+    algebra = context["algebra"]
+    payload = {
+        "provenance": POP_RECV_STAMP,
+        "label": POP_RECV_LABEL,
+        "stage": STAGE,
+        "artefact_version": ARTEFACT_VERSION,
+        "figure": FIGURE_KEY_POPULATION_RECEIVERS,
+        "title": POP_RECV_TITLE,
+        "claim": (
+            f"Of {context['band_turns']:,} valid DB game turns in the "
+            f"30\u201360\u00b0 band, {algebra['survives']:,} are identified with a "
+            f"nearest opponent and {context['final']:,} have that opponent "
+            f"within {context['radius_yd']:g} yd."),
+        "stamp": POP_RECV_STAMP,
+        "provenance_note": context["provenance_note"],
+        "reproducible_on_this_machine": {
+            "steps_1_to_3": True,
+            "steps_1_to_3_source": POP_RECV_FUNNEL,
+            "steps_4_to_5": False,
+            "steps_4_to_5_sources": [POP_RECV_PRECEDENCE, POP_RECV_GEOMETRY,
+                                     POP_RECV_ROUTE_A, POP_RECV_SINGLE],
+            "why_steps_4_to_5": (
+                "No full game tracking file is on this host. Every number on "
+                "bars 4-5 comes from a received laptop paste; no manifest came "
+                "with any of them, and the sha256 pins identify the bytes, not "
+                "the run."),
+        },
+        "set_algebra": algebra,
+        "within_radius_detail": {
+            "frozen_rule": context["within3"]["single"],
+            "multi_candidate_union": context["within3"]["union"],
+            "total": context["final"],
+            "by_men_on_the_play": context["within3"]["by_segment"],
+            "not_exported": algebra["surviving_from_outside_entered"],
+        },
+        "ladder": context["ladder"],
+        "source_artefacts": [
+            {"path": path,
+             "sha256": context["sha256"][path],
+             "provenance": ("FULL" if path == POP_RECV_FUNNEL
+                            else "RECEIVED")}
+            for path in (POP_RECV_FUNNEL, POP_RECV_PRECEDENCE,
+                         POP_RECV_GEOMETRY, POP_RECV_ROUTE_A, POP_RECV_SINGLE)
+        ],
+        "outputs": {
+            "png": str(png_path),
+            "png_sha256": _pop_recv_sha256(png_path),
+            "csv": str(csv_path),
+            "csv_sha256": _pop_recv_sha256(csv_path),
+            "drawn_text": str(text_path),
+            "drawn_text_sha256": _pop_recv_sha256(text_path),
             "manifest": str(manifest_path) if manifest_path else None,
         },
     }

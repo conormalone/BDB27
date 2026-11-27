@@ -54,6 +54,7 @@ RENDER_FUNCTIONS = (
     "render_movement_family",
     "render_drill_angle",
     "render_population_shrink",
+    "render_population_receivers",
     "render_backpedal_route",
     "render_backpedal_polar",
 )
