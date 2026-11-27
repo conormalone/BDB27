@@ -3,9 +3,10 @@
 Defensive backs change direction on almost every snap. Measured from their
 tracking coordinates — a heading change of at least 30° across half a second,
 with entry and exit speeds above 2.5 yd/s — the turns they actually make are
-large. Across three NFL seasons, half of the 58,664 detected defensive-back
-turns are sharper than 90° and almost a third are sharper than 120°. The band a
-short-area break lives in, 30–60°, is 13% of what the game asks for.
+large. Across three NFL seasons, more than two in five of the 58,664 detected
+defensive-back turns are sharper than 90°, and nearly a quarter are sharper
+than 120°. The band a short-area break lives in, 30–60°, is 13% of what the
+game asks for.
 
 The Combine asks for almost none of it. In 1,179 detected turns from 122
 draft-prospect defensive backs, 26 turns — 2.2% — fall in that band, from 16
@@ -52,8 +53,8 @@ python reliability.py          # ICC(1), adjusted ICC, Spearman-Brown
 python epa_bands.py            # EPA and completion by band, with no-turn baseline
 ```
 
-Each script writes its PNG (and the table behind it, as CSV) into `figures/`.
-`turns.py` is the expensive one and caches its output, so the rest are quick.
-Two sides are reported separately throughout. If the game tracking file is not
-present, the scripts say so, print the Combine numbers, and skip the game half
-rather than guessing at it.
+Each figure script writes its PNG and the table behind it, as CSV, into
+`figures/`; `reliability.py` prints its numbers. `turns.py` is the expensive one
+and caches its output, so the rest are quick. Two sides are reported separately
+throughout. If the game tracking file is not present, the scripts say so, print
+the Combine numbers, and skip the game half rather than guessing at it.
