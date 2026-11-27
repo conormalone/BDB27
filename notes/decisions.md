@@ -10168,3 +10168,49 @@ pass, but that changes `TASK.md`, so it is Conor's call. (U4) the 6° median smo
 30–60° share range of 8.64%–16.94% in the FULL sensitivity; the direction survives, the writeup
 currently reports only the 6°. (U5) turn importance would add two modules if D1 includes it.
 (U6) there are six smoothers, not five.
+
+## D225 — Figure 22 rebuilt: the receiver ladder, 7,777 → 413 (five bars; six-figure set still Conor's call)
+
+**Date:** 2026-11-27. **Spec:** `notes/figure-22-receivers-spec.md` (`9a265f6`). **Branch:**
+`fig22-population-receivers`. **Artefacts:** `outputs/figures/fig_population_receivers.{png,csv,
+drawn_text.json,provenance.json}` plus a `figures_manifest.json` entry. **Authorised by:** Conor —
+*"Rebuild it"* (2026-11-26 22:16), on the 18 Nov prototype JPEG (`pop_receivers`). `TASK.md`,
+`notes/report-draft.md` and every other figure are unchanged.
+
+**What was rebuilt, and why.** Figure 22 — the attribution ladder Conor was sent on 18 Nov as a
+prototype image — is rebuilt as a first-class committed artefact. The prototype was never
+committed: its scratch directory is gone, so the figure is regenerated from committed data, not
+copied forward. Every bar is a named field printed with its own denominator and its source artefact;
+nothing on the canvas is a typed literal.
+
+**418 was a bar width, not a count.** The reference chart Conor sent to copy has bars 878 / 418 /
+361 / 241 / 65 px — 418 is a **pixel width in that image**, not a datum. The committed bottom column
+is **413**.
+
+**The five bars, and where each comes from.**
+- Bars 1–3 are computed on this machine from `outputs/ambiguity_attribution/funnel.csv`
+  (`band_row`): 7,777 → −1,462 → 6,315 → −3,306 → 3,009 → −408 → 2,601.
+- Bar 4's total is the received `precedence.csv` `N` = 2,558 of 7,777. Its four segments by men on
+  the play (1/2/3/4 receivers → 1,882 / 534 / 137 / 5, sum 2,558) come from the received
+  `geometry.csv` + `route_a_turns.csv` union (676) plus the frozen rule's 1,731 one-candidate turns
+  and a 151-turn residual (676 + 1,731 + 151 = 2,558).
+- Bar 5's 413 = 213 (`single_turn_geometry.csv`, `within_radius == True`, the frozen one-candidate
+  rule) + 200 (the same 676-turn multi-candidate union within 3 yd; by men on the play 148 / 51 / 1).
+- Steps 1–3 are **FULL** — reproducible here from the committed funnel artefact. Steps 4–5 are
+  **RECEIVED** laptop pastes; this host has no game tracking file and cannot regenerate them, so the
+  stamp is **FULL + RECEIVED**. The residual reconciles the pre-fix 07:17 geometry paste with the
+  11:07 precedence table: 676 + 1,731 + 151 = 2,558 = the post-fix `N`.
+
+**The +151 annotation.** 151 of the 2,558 identified turns have a distance computed in the run but
+never exported to any table, so they fall in neither 413 nor its complement. They are drawn as
+`(+151 without an exported distance)` and counted in neither.
+
+**Verified at closeout (2026-11-27).** Every bar re-traced on this machine to its named
+`source_artefact` / `source_field`: all five bars traced, none untraced.
+`tests/test_population_receivers.py`: 20 collected, 20 passed, 0 failed, 0 skipped. Figure suite
+(the ten files that import `bdb27.figures` or cover another figure): 310 collected, 310 passed, 0
+failed, 0 skipped — the new block disturbs nothing.
+
+**`TASK.md` still says "exactly four, and no others" (§Figures).** It was **not** edited. This
+figure makes the set six; whether the writeup carries six is Conor's decision, recorded here and not
+made here.
